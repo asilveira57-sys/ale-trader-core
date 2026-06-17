@@ -203,14 +203,66 @@ function DashboardPage() {
               </div>
             </div>
           </div>
+          {/* Chart for selected pair */}
+          <div className="mb-3 rounded-md border border-border/60 bg-muted/20 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium">
+                {selectedPair ? <>Gráfico — <span className="font-mono">{selectedPair}</span></> : "Selecione um ativo"}
+                <span className="text-muted-foreground"> · {tickersQ.data?.label ?? tf}</span>
+              </p>
+              {klinesQ.data?.ok && klinesQ.data.points.length > 0 && (
+                <p className="text-[11px] font-mono text-muted-foreground">
+                  {fmtUsd(klinesQ.data.points[klinesQ.data.points.length - 1].price)}
+                </p>
+              )}
+            </div>
+            <div className="h-[180px]">
+              {klinesQ.isLoading && <p className="text-xs text-muted-foreground">Carregando gráfico…</p>}
+              {klinesQ.data?.ok && klinesQ.data.points.length > 0 && (() => {
+                const pts = klinesQ.data.points;
+                const up = pts[pts.length - 1].price >= pts[0].price;
+                const stroke = up ? "hsl(var(--success, 142 71% 45%))" : "hsl(var(--destructive))";
+                const fmtTime = (t: number) => {
+                  const d = new Date(t);
+                  if (tf === "7d" || tf === "30d") return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                };
+                return (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={pts} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
+                      <XAxis dataKey="t" tickFormatter={fmtTime} tick={{ fontSize: 10 }} minTickGap={24} />
+                      <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10 }} width={60} tickFormatter={(v) => Number(v).toLocaleString("en-US", { maximumFractionDigits: v > 1 ? 2 : 4 })} />
+                      <Tooltip
+                        labelFormatter={(t) => new Date(Number(t)).toLocaleString("pt-BR")}
+                        formatter={(v: any) => [fmtUsd(Number(v)), "Preço"]}
+                        contentStyle={{ fontSize: 12 }}
+                      />
+                      <Line type="monotone" dataKey="price" stroke={stroke} strokeWidth={2} dot={false} isAnimationActive={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                );
+              })()}
+              {klinesQ.data && !klinesQ.data.ok && (
+                <p className="text-xs text-destructive">Gráfico indisponível.</p>
+              )}
+            </div>
+          </div>
+
           <div className="divide-y divide-border">
             {tickersQ.isLoading && <p className="text-sm text-muted-foreground py-6">Carregando cotações…</p>}
             {tickersQ.data?.tickers.map((t: any) => {
               const up = t.change_percent >= 0;
+              const active = t.pair === selectedPair;
               return (
-                <div key={t.pair} className="flex items-center justify-between py-3">
+                <button
+                  key={t.pair}
+                  type="button"
+                  onClick={() => setSelectedPair(t.pair)}
+                  className={`w-full flex items-center justify-between py-3 px-2 -mx-2 rounded transition-colors text-left ${active ? "bg-muted/50" : "hover:bg-muted/30"}`}
+                >
                   <div>
-                    <p className="font-medium">{t.pair}</p>
+                    <p className="font-medium">{t.pair}{active && <span className="ml-2 text-[10px] text-primary">●</span>}</p>
                     <p className="text-xs text-muted-foreground">{t.name}</p>
                   </div>
                   <div className="text-right">
@@ -222,7 +274,7 @@ function DashboardPage() {
                       </p>
                     )}
                   </div>
-                </div>
+                </button>
               );
             })}
             {tickersQ.data && !tickersQ.data.tickers.length && <p className="text-sm text-muted-foreground py-6">Nenhum ativo ativo. Cadastre em Ativos.</p>}
