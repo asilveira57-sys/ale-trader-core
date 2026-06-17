@@ -221,7 +221,7 @@ function DashboardPage() {
               {klinesQ.data?.ok && klinesQ.data.points.length > 0 && (() => {
                 const pts = klinesQ.data.points;
                 const up = pts[pts.length - 1].price >= pts[0].price;
-                const stroke = up ? "hsl(var(--success, 142 71% 45%))" : "hsl(var(--destructive))";
+                const stroke = up ? "var(--success)" : "var(--destructive)";
                 const fmtTime = (t: number) => {
                   const d = new Date(t);
                   if (tf === "7d" || tf === "30d") return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
@@ -230,13 +230,16 @@ function DashboardPage() {
                 return (
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={pts} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
-                      <XAxis dataKey="t" tickFormatter={fmtTime} tick={{ fontSize: 10 }} minTickGap={24} />
-                      <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10 }} width={60} tickFormatter={(v) => Number(v).toLocaleString("en-US", { maximumFractionDigits: v > 1 ? 2 : 4 })} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey="t" tickFormatter={fmtTime} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} minTickGap={24} stroke="var(--border)" />
+                      <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} width={60} stroke="var(--border)" tickFormatter={(v) => Number(v).toLocaleString("en-US", { maximumFractionDigits: v > 1 ? 2 : 4 })} />
                       <Tooltip
                         labelFormatter={(t) => new Date(Number(t)).toLocaleString("pt-BR")}
                         formatter={(v: any) => [fmtUsd(Number(v)), "Preço"]}
-                        contentStyle={{ fontSize: 12 }}
+                        contentStyle={{ fontSize: 12, background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--popover-foreground)" }}
+                        labelStyle={{ color: "var(--muted-foreground)" }}
+                        itemStyle={{ color: "var(--popover-foreground)" }}
+                        cursor={{ stroke: "var(--muted-foreground)", strokeWidth: 1, strokeDasharray: "3 3" }}
                       />
                       <Line type="monotone" dataKey="price" stroke={stroke} strokeWidth={2} dot={false} isAnimationActive={false} />
                     </LineChart>
