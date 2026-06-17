@@ -49,6 +49,14 @@ function DashboardPage() {
     refetchInterval: 15000,
   });
 
+  const fetchTickers = useServerFn(getTickersByTimeframe);
+  const [tf, setTf] = useState<TF>("24h");
+  const tickersQ = useQuery({
+    queryKey: ["dashboard-tickers", tf],
+    queryFn: () => fetchTickers({ data: { timeframe: tf } }),
+    refetchInterval: 30000,
+  });
+
   const mToggle = useMutation({
     mutationFn: (status: "active" | "paused") => toggle({ data: { status } }),
     onSuccess: (_, status) => {
