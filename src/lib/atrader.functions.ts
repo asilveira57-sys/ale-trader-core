@@ -911,10 +911,7 @@ export const getPairKlines = createServerFn({ method: "GET" })
     await assertOwner(supabase, userId);
     const tf = CHART_TF_MAP[data.timeframe];
     try {
-      const url = `https://data-api.binance.vision/api/v3/klines?symbol=${data.pair}&interval=${tf.interval}&limit=${tf.limit}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const rows = (await res.json()) as any[][];
+      const rows = await fetchKlines(data.pair, tf.interval, tf.limit);
       const points = rows.map((r) => ({ t: Number(r[0]), price: Number(r[4]) }));
       return { ok: true as const, pair: data.pair, timeframe: data.timeframe, label: tf.label, points, fetched_at: new Date().toISOString() };
     } catch (e: any) {
