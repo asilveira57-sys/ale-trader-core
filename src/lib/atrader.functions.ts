@@ -848,7 +848,7 @@ export const getTickersByTimeframe = createServerFn({ method: "GET" })
     const tickers = await Promise.all(
       (assets ?? []).map(async (a: any) => {
         try {
-          const url = `https://api.binance.com/api/v3/klines?symbol=${a.pair}&interval=${tf.interval}&limit=${tf.limit}`;
+          const url = `https://data-api.binance.vision/api/v3/klines?symbol=${a.pair}&interval=${tf.interval}&limit=${tf.limit}`;
           const res = await fetch(url);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const rows = (await res.json()) as any[][];
@@ -889,7 +889,7 @@ export const getPairKlines = createServerFn({ method: "GET" })
     await assertOwner(supabase, userId);
     const tf = CHART_TF_MAP[data.timeframe];
     try {
-      const url = `https://api.binance.com/api/v3/klines?symbol=${data.pair}&interval=${tf.interval}&limit=${tf.limit}`;
+      const url = `https://data-api.binance.vision/api/v3/klines?symbol=${data.pair}&interval=${tf.interval}&limit=${tf.limit}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const rows = (await res.json()) as any[][];
