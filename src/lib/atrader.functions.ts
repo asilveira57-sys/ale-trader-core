@@ -818,3 +818,50 @@ export const updateAgentConfig = createServerFn({ method: "POST" })
     await supabase.from("agents").update(patch).eq("id", data.id);
     return { ok: true };
   });
+
+// ---- Tickers by timeframe (real Binance public klines) ------------------
+const TF_MAP: Record<string, { interval: string; limit: number; label: string }> = {
+  "15m": { interval: "15m", limit: 2, label: "15min" },
+  "1h":  { interval: "1h",  limit: 2, label: "1h" },
+  "4h":  { interval: "4h",  limit: 2, label: "4h" },
+  "24h": { interval: "1d",  limit: 2, label: "24h" },
+  "7d":  { interval: "1d",  limit: 8, label: "7d" },
+  "30d": { interval: "1d",  limit: 31, label: "30d" },
+};
+
+export const getTickersByTimeframe = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ timeframe: z.enum(["15m", "1h", "4h", "24h", "7d", "30d"]).default("24h") }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context as any;
+    await assertOwner(supabase, userId);
+    const tf = TF_MAP[data.timeframe];
+
+    const { data: assets } = await supabase
+      .from("monitored_assets")
+      .select("pair,name")
+      .eq("active", true)
+      .order("pair");
+
+    const tickers = await Promise.all(
+      (assets ?? []).map(async (a: any) => {
+        try {
+          const url = `https://api.binance.com/api/v3/klines?symbol=${a.pair}&interval=${tf.interval}&limit=${tf.limit}`;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const rows = (await res.json()) as any[][];
+          if (!rows.length) throw new Error("empty");
+          const firstOpen = Number(rows[0][1]);
+          const lastClose = Number(rows[rows.length - 1][4]);
+          const change = ((lastClose - firstOpen) / firstOpen) * 100;
+          return { pair: a.pair, name: a.name, price: lastClose, change_percent: change, timeframe: data.timeframe, ok: true as const };
+        } catch (e: any) {
+          return { pair: a.pair, name: a.name, price: 0, change_percent: 0, timeframe: data.timeframe, ok: false as const, error: String(e?.message ?? e) };
+        }
+      }),
+    );
+
+    return { timeframe: data.timeframe, label: tf.label, tickers, fetched_at: new Date().toISOString() };
+  });
