@@ -186,29 +186,42 @@ function WalletPage() {
           }
           events.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
           let running = Number(w?.initial_balance ?? 0);
-          const rows = events.map((e) => { running += e.delta; return { ...e, running }; }).reverse();
-          if (!rows.length) return <p className="text-sm text-muted-foreground">Nenhum movimento registrado.</p>;
+          const allRows = events.map((e) => { running += e.delta; return { ...e, running }; }).reverse();
+          if (!allRows.length) return <p className="text-sm text-muted-foreground">Nenhum movimento registrado.</p>;
+          const totalPages = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE));
+          const curPage = Math.min(page, totalPages);
+          const rows = allRows.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
           return (
-            <div className="text-xs divide-y divide-border font-mono">
-              <div className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 pb-2 text-muted-foreground">
-                <span>Data</span><span>Par</span><span>Tipo</span><span>Detalhe</span><span className="text-right">Valor</span><span className="text-right">Saldo</span>
-              </div>
-              {rows.map((r, i) => (
-                <div key={i} className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 py-2 items-center">
-                  <span className="text-muted-foreground">{new Date(r.ts).toLocaleString()}</span>
-                  <span>{r.pair}</span>
-                  <span className="text-muted-foreground">{r.kind}</span>
-                  <span className="text-muted-foreground truncate">{r.note}</span>
-                  <span className={`text-right ${r.delta > 0 ? "text-success" : r.delta < 0 ? "text-destructive" : ""}`}>
-                    {r.delta === 0 ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta.toFixed(2)}`}
-                  </span>
-                  <span className="text-right">${r.running.toFixed(2)}</span>
+            <>
+              <div className="text-xs divide-y divide-border font-mono">
+                <div className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 pb-2 text-muted-foreground">
+                  <span>Data</span><span>Par</span><span>Tipo</span><span>Detalhe</span><span className="text-right">Valor</span><span className="text-right">Saldo</span>
                 </div>
-              ))}
-            </div>
+                {rows.map((r, i) => (
+                  <div key={i} className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 py-2 items-center">
+                    <span className="text-muted-foreground">{new Date(r.ts).toLocaleString()}</span>
+                    <span>{r.pair}</span>
+                    <span className="text-muted-foreground">{r.kind}</span>
+                    <span className="text-muted-foreground truncate">{r.note}</span>
+                    <span className={`text-right ${r.delta > 0 ? "text-success" : r.delta < 0 ? "text-destructive" : ""}`}>
+                      {r.delta === 0 ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta.toFixed(2)}`}
+                    </span>
+                    <span className="text-right">${r.running.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between mt-4 text-xs text-muted-foreground">
+                <span>{allRows.length} movimentos · página {curPage} de {totalPages} · {PAGE_SIZE}/página</span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={curPage <= 1} onClick={() => setPage(curPage - 1)}>Anterior</Button>
+                  <Button size="sm" variant="outline" disabled={curPage >= totalPages} onClick={() => setPage(curPage + 1)}>Próxima</Button>
+                </div>
+              </div>
+            </>
           );
         })()}
       </section>
+
 
       <section className="panel p-5">
         <h2 className="text-sm font-semibold mb-4">Posições simuladas</h2>
