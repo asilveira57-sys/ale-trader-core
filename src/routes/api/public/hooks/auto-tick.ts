@@ -6,7 +6,7 @@ export const Route = createFileRoute("/api/public/hooks/auto-tick")({
       POST: async () => {
         const { createClient } = await import("@supabase/supabase-js");
         const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } });
-        const { data: sessions } = await sb.from("trading_sessions").select("id, mode").eq("status", "active");
+        const { data: sessions } = await sb.from("trading_sessions").select("id, mode").eq("status", "running");
         const { runAutoCycle, monitorAutoPositions } = await import("@/lib/auto-trading.server");
         const results: any[] = [];
         for (const s of sessions ?? []) {
