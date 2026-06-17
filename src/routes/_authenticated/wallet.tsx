@@ -18,6 +18,9 @@ function WalletPage() {
   const fetchDash = useServerFn(getCommitteeDashboard);
   const reset = useServerFn(resetSimulatedWallet);
   const [initial, setInitial] = useState(10000);
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 30;
 
   const { data, isLoading } = useQuery({
     queryKey: ["committee"],
