@@ -116,14 +116,19 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
     const proceeds = qty * price;
     const cost = qty * avg;
     const pnl = proceeds - cost;
+    const closedAt = new Date().toISOString();
     await sb.from("simulated_orders").insert({
       decision_id: decision.id, pair: asset.pair, side: "sell", quantity: qty,
       entry_price: avg, closed_price: price, realized_pnl: pnl,
       stop_price: price * 0.97, target_price: price * 1.03, score: decision.score,
       agents_favor: decision.votes_sell, agents_against: decision.votes_buy,
       justification: decision.consolidated_justification,
-      status: "closed", closed_at: new Date().toISOString(),
+      status: "closed", closed_at: closedAt,
     });
+    // Close the matching open buy order(s) so they don't reappear as ghost positions
+    await sb.from("simulated_orders")
+      .update({ status: "closed", closed_price: price, realized_pnl: pnl, closed_at: closedAt })
+      .eq("pair", asset.pair).eq("side", "buy").eq("status", "open");
     await sb.from("simulated_positions").update({ quantity: 0, unrealized_pnl: 0 }).eq("pair", asset.pair);
     const newBalance = Number(wallet?.current_balance ?? 0) + proceeds;
     await sb.from("simulated_wallet").update({ current_balance: newBalance, equity: newBalance }).eq("id", 1);
