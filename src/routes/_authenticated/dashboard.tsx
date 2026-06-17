@@ -1,12 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getDashboard, setRobotStatus, collectMarket, runCommitteeAll } from "@/lib/atrader.functions";
+import { getDashboard, setRobotStatus, collectMarket, runCommitteeAll, getTickersByTimeframe } from "@/lib/atrader.functions";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Play, Pause, RefreshCw, TrendingUp, TrendingDown, Wallet, Wifi, WifiOff, Brain, Activity } from "lucide-react";
 import { toast } from "sonner";
+import { useState } from "react";
+
+const TIMEFRAMES = [
+  { value: "15m", label: "15 min" },
+  { value: "1h", label: "1 hora" },
+  { value: "4h", label: "4 horas" },
+  { value: "24h", label: "24 horas" },
+  { value: "7d", label: "7 dias" },
+  { value: "30d", label: "30 dias" },
+] as const;
+type TF = typeof TIMEFRAMES[number]["value"];
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — AleTrader AI" }] }),
