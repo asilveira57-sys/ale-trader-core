@@ -161,13 +161,33 @@ function DashboardPage() {
       {/* Tickers + balances */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="panel p-5 lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold">Ativos monitorados</h2>
-            <span className="text-xs text-muted-foreground">{data.tickers.length} pares ativos</span>
+          <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
+            <div>
+              <h2 className="text-sm font-semibold">Ativos monitorados</h2>
+              <p className="text-[11px] text-muted-foreground">
+                Variação % calculada via Binance (klines) no período selecionado · {tickersQ.data?.fetched_at ? `atualizado ${new Date(tickersQ.data.fetched_at).toLocaleTimeString()}` : "—"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">Período:</span>
+              <div className="flex rounded-md border border-border overflow-hidden">
+                {TIMEFRAMES.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setTf(opt.value)}
+                    className={`px-2 py-1 text-[11px] transition-colors ${tf === opt.value ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="divide-y divide-border">
-            {data.tickers.map((t: any) => {
-              const up = t.change_percent_24h >= 0;
+            {tickersQ.isLoading && <p className="text-sm text-muted-foreground py-6">Carregando cotações…</p>}
+            {tickersQ.data?.tickers.map((t: any) => {
+              const up = t.change_percent >= 0;
               return (
                 <div key={t.pair} className="flex items-center justify-between py-3">
                   <div>
@@ -175,18 +195,21 @@ function DashboardPage() {
                     <p className="text-xs text-muted-foreground">{t.name}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-mono">{fmtUsd(t.price)}</p>
-                    <p className={`text-xs flex items-center justify-end gap-1 ${up ? "stat-up" : "stat-down"}`}>
-                      {up ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-                      {t.change_percent_24h.toFixed(2)}%
-                    </p>
+                    <p className="font-mono">{t.ok ? fmtUsd(t.price) : <span className="text-destructive text-xs">indisponível</span>}</p>
+                    {t.ok && (
+                      <p className={`text-xs flex items-center justify-end gap-1 ${up ? "stat-up" : "stat-down"}`}>
+                        {up ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+                        {t.change_percent.toFixed(2)}% <span className="text-muted-foreground">/ {tickersQ.data?.label}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
               );
             })}
-            {!data.tickers.length && <p className="text-sm text-muted-foreground py-6">Nenhum ativo ativo. Cadastre em Ativos.</p>}
+            {tickersQ.data && !tickersQ.data.tickers.length && <p className="text-sm text-muted-foreground py-6">Nenhum ativo ativo. Cadastre em Ativos.</p>}
           </div>
         </div>
+
 
         <div className="panel p-5">
           <h2 className="text-sm font-semibold mb-4">Saldo da carteira</h2>
