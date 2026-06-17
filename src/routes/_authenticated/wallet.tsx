@@ -97,6 +97,55 @@ function WalletPage() {
       </section>
 
       <section className="panel p-5">
+        <h2 className="text-sm font-semibold mb-1">Extrato (débito / crédito)</h2>
+        <p className="text-xs text-muted-foreground mb-4">
+          Saldo inicial ${Number(w?.initial_balance ?? 0).toFixed(2)} → saldo atual ${Number(w?.current_balance ?? 0).toFixed(2)}.
+          Cada compra debita o capital alocado; o crédito acontece quando a posição é fechada (TP/SL ou venda).
+        </p>
+        {(() => {
+          const events: { ts: string; pair: string; kind: string; delta: number; note: string }[] = [];
+          for (const o of data.orders ?? []) {
+            const value = Number(o.entry_price) * Number(o.quantity);
+            if (o.side === "buy") {
+              events.push({ ts: o.created_at, pair: o.pair, kind: "Compra (débito)", delta: -value, note: `qty ${Number(o.quantity).toFixed(6)} @ ${Number(o.entry_price).toFixed(4)}` });
+              if (o.status === "closed" && o.closed_price != null) {
+                const proceeds = Number(o.closed_price) * Number(o.quantity);
+                events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Fechamento compra (crédito)", delta: proceeds, note: `saída @ ${Number(o.closed_price).toFixed(4)} · PnL ${Number(o.realized_pnl ?? 0).toFixed(2)}` });
+              }
+            } else if (o.side === "sell" && o.status === "closed" && o.closed_price != null) {
+              const proceeds = Number(o.closed_price) * Number(o.quantity);
+              events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Venda (crédito)", delta: proceeds, note: `qty ${Number(o.quantity).toFixed(6)} @ ${Number(o.closed_price).toFixed(4)} · PnL ${Number(o.realized_pnl ?? 0).toFixed(2)}` });
+            } else if (o.status === "cancelled") {
+              events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Cancelada", delta: 0, note: `${o.side} ignorada` });
+            }
+          }
+          events.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+          let running = Number(w?.initial_balance ?? 0);
+          const rows = events.map((e) => { running += e.delta; return { ...e, running }; }).reverse();
+          if (!rows.length) return <p className="text-sm text-muted-foreground">Nenhum movimento registrado.</p>;
+          return (
+            <div className="text-xs divide-y divide-border font-mono">
+              <div className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 pb-2 text-muted-foreground">
+                <span>Data</span><span>Par</span><span>Tipo</span><span>Detalhe</span><span className="text-right">Valor</span><span className="text-right">Saldo</span>
+              </div>
+              {rows.map((r, i) => (
+                <div key={i} className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 py-2 items-center">
+                  <span className="text-muted-foreground">{new Date(r.ts).toLocaleString()}</span>
+                  <span>{r.pair}</span>
+                  <span className="text-muted-foreground">{r.kind}</span>
+                  <span className="text-muted-foreground truncate">{r.note}</span>
+                  <span className={`text-right ${r.delta > 0 ? "text-success" : r.delta < 0 ? "text-destructive" : ""}`}>
+                    {r.delta === 0 ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta.toFixed(2)}`}
+                  </span>
+                  <span className="text-right">${r.running.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </section>
+
+      <section className="panel p-5">
         <h2 className="text-sm font-semibold mb-4">Posições simuladas</h2>
         <div className="divide-y divide-border text-sm">
           {data.positions.map((p: any) => (
