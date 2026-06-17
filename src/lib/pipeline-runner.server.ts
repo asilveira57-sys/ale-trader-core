@@ -97,11 +97,84 @@ export async function runCommitteeForAsset(sb: any, asset: any, sessionId: strin
   return { decision_id: decRow.id, final: decision.final_decision, score: decision.score };
 }
 
+async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, settings: any) {
+  if (decision.final_decision !== "buy_approved" && decision.final_decision !== "sell_approved") return null;
+  const side = decision.final_decision === "buy_approved" ? "buy" : "sell";
+  const { data: wallet } = await sb.from("simulated_wallet").select("*").eq("id", 1).maybeSingle();
+  const positionValue = Math.min(
+    Number(settings?.max_position_value ?? 1000),
+    Number(wallet?.current_balance ?? 0) * 0.1,
+  );
+  if (positionValue <= 10) return null;
+  const price = Number(ctx.price);
+  const qty = Number((positionValue / price).toFixed(6));
+  const stopPct = Number(settings?.default_stop_pct ?? 3) / 100;
+  const targetPct = Number(settings?.default_target_pct ?? 6) / 100;
+  const stop = side === "buy" ? price * (1 - stopPct) : price * (1 + stopPct);
+  const target = side === "buy" ? price * (1 + targetPct) : price * (1 - targetPct);
+
+  const { data: existing } = await sb.from("simulated_orders")
+    .select("id").eq("pair", asset.pair).eq("side", side).eq("status", "open").limit(1);
+  if (existing && existing.length) return null;
+
+  await sb.from("simulated_orders").insert({
+    decision_id: decision.id, pair: asset.pair, side, quantity: qty, entry_price: price,
+    stop_price: stop, target_price: target, score: decision.score,
+    agents_favor: side === "buy" ? decision.votes_buy : decision.votes_sell,
+    agents_against: side === "buy" ? decision.votes_sell : decision.votes_buy,
+    justification: decision.consolidated_justification, status: "open",
+  });
+  const { data: pos } = await sb.from("simulated_positions").select("*").eq("pair", asset.pair).maybeSingle();
+  const delta = side === "buy" ? qty : -qty;
+  const newQty = Number(pos?.quantity ?? 0) + delta;
+  const newAvg = side === "buy" && newQty > 0
+    ? ((Number(pos?.avg_price ?? 0) * Number(pos?.quantity ?? 0)) + price * qty) / newQty
+    : Number(pos?.avg_price ?? price);
+  await sb.from("simulated_positions").upsert({
+    pair: asset.pair, quantity: newQty, avg_price: newAvg, unrealized_pnl: 0,
+  }, { onConflict: "pair" });
+  const newBalance = Number(wallet?.current_balance ?? 0) - (side === "buy" ? positionValue : -positionValue);
+  await sb.from("simulated_wallet").update({ current_balance: newBalance, equity: newBalance }).eq("id", 1);
+  await log(sb, "Execução", "sim", `[cron] ${side.toUpperCase()} ${asset.pair} qty=${qty} @ ${price.toFixed(2)}`, "info");
+  return { pair: asset.pair, side, qty, price };
+}
+
+async function monitorSimulatedOrders(sb: any) {
+  const { data: open } = await sb.from("simulated_orders").select("*").eq("status", "open");
+  let closed = 0;
+  for (const o of open ?? []) {
+    const price = mockPrice(o.pair);
+    const hitStop = o.side === "buy" ? price <= Number(o.stop_price) : price >= Number(o.stop_price);
+    const hitTarget = o.side === "buy" ? price >= Number(o.target_price) : price <= Number(o.target_price);
+    if (!hitStop && !hitTarget) {
+      const pnl = (price - Number(o.entry_price)) * Number(o.quantity) * (o.side === "buy" ? 1 : -1);
+      await sb.from("simulated_positions").update({ unrealized_pnl: pnl }).eq("pair", o.pair);
+      continue;
+    }
+    const exitPrice = hitTarget ? Number(o.target_price) : Number(o.stop_price);
+    const pnl = (exitPrice - Number(o.entry_price)) * Number(o.quantity) * (o.side === "buy" ? 1 : -1);
+    await sb.from("simulated_orders").update({
+      status: "closed", closed_price: exitPrice, realized_pnl: pnl, closed_at: new Date().toISOString(),
+    }).eq("id", o.id);
+    const positionValue = Number(o.entry_price) * Number(o.quantity);
+    const { data: wallet } = await sb.from("simulated_wallet").select("*").eq("id", 1).maybeSingle();
+    const newBalance = Number(wallet?.current_balance ?? 0) + (o.side === "buy" ? positionValue + pnl : -positionValue + pnl);
+    await sb.from("simulated_wallet").update({ current_balance: newBalance, equity: newBalance }).eq("id", 1);
+    const { data: pos } = await sb.from("simulated_positions").select("*").eq("pair", o.pair).maybeSingle();
+    if (pos) {
+      const newQty = Number(pos.quantity) - (o.side === "buy" ? Number(o.quantity) : -Number(o.quantity));
+      await sb.from("simulated_positions").update({ quantity: newQty, unrealized_pnl: 0 }).eq("pair", o.pair);
+    }
+    await log(sb, "Execução", "sim", `[cron] CLOSE ${o.pair} ${hitTarget ? "TP" : "SL"} pnl=${pnl.toFixed(2)}`, "info");
+    closed++;
+  }
+  return { closed };
+}
+
 export async function runPipelineTick(sb: any) {
-  const results: any = { collect: null, committee: [], autoCycle: [], monitor: null };
+  const results: any = { collect: null, committee: [], executed: [], monitor: null };
   results.collect = await collectMarketTick(sb);
 
-  // Ensure an active session exists
   let { data: session } = await sb.from("trading_sessions").select("*").eq("status", "running").maybeSingle();
   if (!session) {
     const { data: newSession } = await sb.from("trading_sessions").insert({
@@ -111,19 +184,21 @@ export async function runPipelineTick(sb: any) {
     await log(sb, "Sessão", "auto", `[cron] Sessão de simulação iniciada ${session?.id}`, "info");
   }
 
+  const { data: settings } = await sb.from("committee_settings").select("*").eq("id", 1).maybeSingle();
   const { data: assets } = await sb.from("monitored_assets").select("*").eq("active", true);
   for (const a of assets ?? []) {
-    try { results.committee.push(await runCommitteeForAsset(sb, a, session?.id ?? null)); }
-    catch (e) { results.committee.push({ pair: a.pair, error: (e as Error).message }); }
+    try {
+      const r = await runCommitteeForAsset(sb, a, session?.id ?? null);
+      results.committee.push(r);
+      const { data: dec } = await sb.from("committee_decisions").select("*").eq("id", r.decision_id).single();
+      const price = mockPrice(a.pair);
+      const exec = await executeSimulated(sb, dec, { price }, a, settings);
+      if (exec) results.executed.push(exec);
+    } catch (e) {
+      results.committee.push({ pair: a.pair, error: (e as Error).message });
+    }
   }
 
-  // Auto-cycle + position monitor
-  try {
-    const { runAutoCycle, monitorAutoPositions } = await import("./auto-trading.server");
-    if (session?.id) results.autoCycle.push(await runAutoCycle(sb, session.id));
-    results.monitor = await monitorAutoPositions(sb);
-  } catch (e) {
-    await log(sb, "AutoCycle", "auto", `[cron] erro: ${(e as Error).message}`, "warning");
-  }
+  results.monitor = await monitorSimulatedOrders(sb);
   return results;
 }
