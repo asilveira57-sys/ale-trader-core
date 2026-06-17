@@ -51,10 +51,28 @@ function DashboardPage() {
   });
 
   const fetchTickers = useServerFn(getTickersByTimeframe);
+  const fetchKlines = useServerFn(getPairKlines);
   const [tf, setTf] = useState<TF>("24h");
+  const [selectedPair, setSelectedPair] = useState<string | null>(null);
   const tickersQ = useQuery({
     queryKey: ["dashboard-tickers", tf],
     queryFn: () => fetchTickers({ data: { timeframe: tf } }),
+    refetchInterval: 30000,
+  });
+
+  // auto-select first pair when list loads / changes
+  useEffect(() => {
+    const list = tickersQ.data?.tickers ?? [];
+    if (!list.length) return;
+    if (!selectedPair || !list.find((t: any) => t.pair === selectedPair)) {
+      setSelectedPair(list[0].pair);
+    }
+  }, [tickersQ.data, selectedPair]);
+
+  const klinesQ = useQuery({
+    queryKey: ["dashboard-klines", selectedPair, tf],
+    queryFn: () => fetchKlines({ data: { pair: selectedPair!, timeframe: tf } }),
+    enabled: !!selectedPair,
     refetchInterval: 30000,
   });
 
