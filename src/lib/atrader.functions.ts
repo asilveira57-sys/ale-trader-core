@@ -829,6 +829,32 @@ const TF_MAP: Record<string, { interval: string; limit: number; label: string }>
   "30d": { interval: "1d",  limit: 31, label: "30d" },
 };
 
+// Multiple public mirrors — Cloudflare Workers often hit geo/CDN blocks on a
+// single host, so try several until one responds.
+const BINANCE_HOSTS = [
+  "https://data-api.binance.vision",
+  "https://api.binance.com",
+  "https://api1.binance.com",
+  "https://api2.binance.com",
+  "https://api3.binance.com",
+  "https://api-gcp.binance.com",
+  "https://api.binance.us",
+];
+async function fetchKlines(symbol: string, interval: string, limit: number): Promise<any[][]> {
+  let lastErr: any = null;
+  for (const host of BINANCE_HOSTS) {
+    try {
+      const url = `${host}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+      if (!res.ok) { lastErr = new Error(`${host} HTTP ${res.status}`); continue; }
+      const rows = (await res.json()) as any[][];
+      if (!Array.isArray(rows) || rows.length === 0) { lastErr = new Error(`${host} empty`); continue; }
+      return rows;
+    } catch (e: any) { lastErr = e; }
+  }
+  throw lastErr ?? new Error("all binance hosts failed");
+}
+
 export const getTickersByTimeframe = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
