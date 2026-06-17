@@ -81,11 +81,17 @@ export const listAgentRankings = createServerFn({ method: "GET" })
     const { supabase } = context as any;
     const { data: rows, error } = await supabase
       .from("agent_rankings")
-      .select("*, agents(name)")
+      .select("*")
       .eq("period", data.period)
       .order("score", { ascending: false });
     if (error) throw new Error(error.message);
-    return rows as any;
+    const ids = Array.from(new Set((rows ?? []).map((r: any) => r.agent_id).filter(Boolean)));
+    let nameById: Record<string, string> = {};
+    if (ids.length) {
+      const { data: ags } = await supabase.from("agents").select("id, name").in("id", ids);
+      nameById = Object.fromEntries((ags ?? []).map((a: any) => [a.id, a.name]));
+    }
+    return (rows ?? []).map((r: any) => ({ ...r, agents: { name: nameById[r.agent_id] ?? null } })) as any;
   });
 
 export const recomputeRankings = createServerFn({ method: "POST" })
