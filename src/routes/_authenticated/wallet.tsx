@@ -88,6 +88,59 @@ function WalletPage() {
         </div>
       </section>
 
+      {walletOpen && (() => {
+        const cash = Number(w?.current_balance ?? 0);
+        const cryptos = (data.positions ?? []).filter((p: any) => Number(p.quantity) > 0);
+        const cryptoValue = cryptos.reduce((s: number, p: any) => s + Number(p.quantity) * Number(p.avg_price), 0);
+        const total = cash + cryptoValue;
+        return (
+          <section className="panel p-5">
+            <h2 className="text-sm font-semibold mb-3">Composição da carteira</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <div className="rounded-md border border-border p-3">
+                <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Caixa (USD)</p>
+                <p className="text-lg font-mono mt-1">${cash.toFixed(2)}</p>
+                <p className="text-[10px] text-muted-foreground">{total ? ((cash / total) * 100).toFixed(1) : "0"}% do total</p>
+              </div>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Cripto (valor alocado)</p>
+                <p className="text-lg font-mono mt-1">${cryptoValue.toFixed(2)}</p>
+                <p className="text-[10px] text-muted-foreground">{total ? ((cryptoValue / total) * 100).toFixed(1) : "0"}% do total</p>
+              </div>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Total estimado</p>
+                <p className="text-lg font-mono mt-1">${total.toFixed(2)}</p>
+                <p className="text-[10px] text-muted-foreground">{cryptos.length} cripto(s) em carteira</p>
+              </div>
+            </div>
+            {cryptos.length > 0 ? (
+              <div className="text-xs font-mono divide-y divide-border">
+                <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 pb-2 text-muted-foreground">
+                  <span>Par</span><span className="text-right">Quantidade</span><span className="text-right">Preço médio</span><span className="text-right">Valor</span><span className="text-right">PnL não realizado</span>
+                </div>
+                {cryptos.map((p: any) => {
+                  const val = Number(p.quantity) * Number(p.avg_price);
+                  return (
+                    <div key={p.id} className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 py-2">
+                      <span>{p.pair}</span>
+                      <span className="text-right">{Number(p.quantity).toFixed(8)}</span>
+                      <span className="text-right">${Number(p.avg_price).toFixed(4)}</span>
+                      <span className="text-right">${val.toFixed(2)}</span>
+                      <span className={`text-right ${Number(p.unrealized_pnl) >= 0 ? "text-success" : "text-destructive"}`}>
+                        {Number(p.unrealized_pnl) >= 0 ? "+" : ""}${Number(p.unrealized_pnl).toFixed(2)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Sem cripto em carteira no momento — 100% em caixa.</p>
+            )}
+          </section>
+        );
+      })()}
+
+
       <section className="panel p-5">
         <h2 className="text-sm font-semibold mb-4">Evolução (últimos scores)</h2>
         <div className="flex items-end gap-1 h-32">
