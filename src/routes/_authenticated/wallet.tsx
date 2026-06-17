@@ -55,10 +55,19 @@ function WalletPage() {
       </header>
 
       <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="panel p-5">
-          <p className="text-xs uppercase text-muted-foreground tracking-wider flex items-center gap-2"><Wallet className="size-3" />Saldo atual</p>
+        <button
+          type="button"
+          onClick={() => setWalletOpen((v) => !v)}
+          className="panel p-5 text-left hover:border-primary/50 transition cursor-pointer"
+          aria-expanded={walletOpen}
+        >
+          <p className="text-xs uppercase text-muted-foreground tracking-wider flex items-center gap-2">
+            <Wallet className="size-3" />Saldo atual
+            {walletOpen ? <ChevronDown className="size-3 ml-auto" /> : <ChevronRight className="size-3 ml-auto" />}
+          </p>
           <p className="text-2xl font-semibold mt-2 font-mono">${Number(w?.current_balance ?? 0).toFixed(2)}</p>
-        </div>
+          <p className="text-[10px] text-muted-foreground mt-1">clique para ver composição</p>
+        </button>
         <div className="panel p-5">
           <p className="text-xs uppercase text-muted-foreground tracking-wider">Saldo inicial</p>
           <p className="text-2xl font-semibold mt-2 font-mono">${Number(w?.initial_balance ?? 0).toFixed(2)}</p>
