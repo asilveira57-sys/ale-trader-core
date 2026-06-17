@@ -865,3 +865,37 @@ export const getTickersByTimeframe = createServerFn({ method: "GET" })
 
     return { timeframe: data.timeframe, label: tf.label, tickers, fetched_at: new Date().toISOString() };
   });
+
+// ---- Klines for a single pair (line chart) -----------------------------
+const CHART_TF_MAP: Record<string, { interval: string; limit: number; label: string }> = {
+  "15m": { interval: "1m",  limit: 15, label: "15min" },
+  "1h":  { interval: "5m",  limit: 12, label: "1h" },
+  "4h":  { interval: "15m", limit: 16, label: "4h" },
+  "24h": { interval: "1h",  limit: 24, label: "24h" },
+  "7d":  { interval: "4h",  limit: 42, label: "7d" },
+  "30d": { interval: "1d",  limit: 30, label: "30d" },
+};
+
+export const getPairKlines = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({
+      pair: z.string().min(3),
+      timeframe: z.enum(["15m", "1h", "4h", "24h", "7d", "30d"]).default("24h"),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context as any;
+    await assertOwner(supabase, userId);
+    const tf = CHART_TF_MAP[data.timeframe];
+    try {
+      const url = `https://api.binance.com/api/v3/klines?symbol=${data.pair}&interval=${tf.interval}&limit=${tf.limit}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows = (await res.json()) as any[][];
+      const points = rows.map((r) => ({ t: Number(r[0]), price: Number(r[4]) }));
+      return { ok: true as const, pair: data.pair, timeframe: data.timeframe, label: tf.label, points, fetched_at: new Date().toISOString() };
+    } catch (e: any) {
+      return { ok: false as const, pair: data.pair, timeframe: data.timeframe, label: tf.label, points: [], error: String(e?.message ?? e), fetched_at: new Date().toISOString() };
+    }
+  });
