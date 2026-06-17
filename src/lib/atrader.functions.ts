@@ -872,13 +872,9 @@ export const getTickersByTimeframe = createServerFn({ method: "GET" })
       .order("pair");
 
     const tickers = await Promise.all(
-      (assets ?? []).map(async (a: any) => {
+    (assets ?? []).map(async (a: any) => {
         try {
-          const url = `https://data-api.binance.vision/api/v3/klines?symbol=${a.pair}&interval=${tf.interval}&limit=${tf.limit}`;
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const rows = (await res.json()) as any[][];
-          if (!rows.length) throw new Error("empty");
+          const rows = await fetchKlines(a.pair, tf.interval, tf.limit);
           const firstOpen = Number(rows[0][1]);
           const lastClose = Number(rows[rows.length - 1][4]);
           const change = ((lastClose - firstOpen) / firstOpen) * 100;
