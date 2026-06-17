@@ -31,6 +31,7 @@ const NAV = [
   { to: "/agents", label: "Agentes", icon: Bot },
   { to: "/alerts", label: "Alertas", icon: Bell },
   { to: "/logs", label: "Logs", icon: ScrollText },
+  { to: "/pipeline-diagnostics", label: "Diagnóstico Pipeline", icon: Activity },
   { to: "/settings", label: "Configurações", icon: Settings },
 ] as const;
 
