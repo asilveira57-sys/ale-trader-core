@@ -84,14 +84,30 @@ function WalletPage() {
         </div>
         <div className="panel p-5">
           <p className="text-xs uppercase text-muted-foreground tracking-wider">Posições abertas</p>
-          <p className="text-2xl font-semibold mt-2">{data.positions.filter((p: any) => Number(p.quantity) > 0).length}</p>
+          <p className="text-2xl font-semibold mt-2">
+            {(data.orders ?? []).filter((o: any) => o.status === "open" && o.side === "buy").length}
+          </p>
         </div>
       </section>
 
       {walletOpen && (() => {
+        const openBuys = (data.orders ?? []).filter((o: any) => o.status === "open" && o.side === "buy");
+        const byPair = new Map<string, { qty: number; cost: number }>();
+        for (const o of openBuys) {
+          const qty = Number(o.quantity);
+          const cost = qty * Number(o.entry_price);
+          const cur = byPair.get(o.pair) ?? { qty: 0, cost: 0 };
+          cur.qty += qty; cur.cost += cost;
+          byPair.set(o.pair, cur);
+        }
+        const cryptos = [...byPair.entries()].map(([pair, v]) => {
+          const avg = v.qty > 0 ? v.cost / v.qty : 0;
+          const posRow = (data.positions ?? []).find((p: any) => p.pair === pair);
+          const unreal = posRow ? Number(posRow.unrealized_pnl ?? 0) : 0;
+          return { pair, quantity: v.qty, avg_price: avg, value: v.cost, unrealized_pnl: unreal };
+        });
         const cash = Number(w?.current_balance ?? 0);
-        const cryptos = (data.positions ?? []).filter((p: any) => Number(p.quantity) > 0);
-        const cryptoValue = cryptos.reduce((s: number, p: any) => s + Number(p.quantity) * Number(p.avg_price), 0);
+        const cryptoValue = cryptos.reduce((s, p) => s + p.value, 0);
         const total = cash + cryptoValue;
         return (
           <section className="panel p-5">
@@ -118,20 +134,17 @@ function WalletPage() {
                 <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 pb-2 text-muted-foreground">
                   <span>Par</span><span className="text-right">Quantidade</span><span className="text-right">Preço médio</span><span className="text-right">Valor</span><span className="text-right">PnL não realizado</span>
                 </div>
-                {cryptos.map((p: any) => {
-                  const val = Number(p.quantity) * Number(p.avg_price);
-                  return (
-                    <div key={p.id} className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 py-2">
-                      <span>{p.pair}</span>
-                      <span className="text-right">{Number(p.quantity).toFixed(8)}</span>
-                      <span className="text-right">${Number(p.avg_price).toFixed(4)}</span>
-                      <span className="text-right">${val.toFixed(2)}</span>
-                      <span className={`text-right ${Number(p.unrealized_pnl) >= 0 ? "text-success" : "text-destructive"}`}>
-                        {Number(p.unrealized_pnl) >= 0 ? "+" : ""}${Number(p.unrealized_pnl).toFixed(2)}
-                      </span>
-                    </div>
-                  );
-                })}
+                {cryptos.map((p) => (
+                  <div key={p.pair} className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 py-2">
+                    <span>{p.pair}</span>
+                    <span className="text-right">{p.quantity.toFixed(8)}</span>
+                    <span className="text-right">${p.avg_price.toFixed(4)}</span>
+                    <span className="text-right">${p.value.toFixed(2)}</span>
+                    <span className={`text-right ${p.unrealized_pnl >= 0 ? "text-success" : "text-destructive"}`}>
+                      {p.unrealized_pnl >= 0 ? "+" : ""}${p.unrealized_pnl.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">Sem cripto em carteira no momento — 100% em caixa.</p>
