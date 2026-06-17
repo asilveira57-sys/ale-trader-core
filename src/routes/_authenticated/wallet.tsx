@@ -4,9 +4,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { getCommitteeDashboard, resetSimulatedWallet } from "@/lib/atrader.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
-import { RotateCcw, Wallet, TrendingUp, TrendingDown } from "lucide-react";
+import { RotateCcw, Wallet, TrendingUp, TrendingDown, ChevronDown, ChevronRight } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/wallet")({
   head: () => ({ meta: [{ title: "Carteira simulada — AleTrader AI" }] }),
