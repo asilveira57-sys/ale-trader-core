@@ -70,7 +70,7 @@ export async function runCommitteeForAsset(sb: any, asset: any, sessionId: strin
     max_position_value: Number(settings?.max_position_value ?? 1000),
   }, ctx.data_quality);
 
-  const { data: decRow, error: decErr } = await sb.from("committee_decisions").insert({
+  const row: any = {
     asset_id: asset.id, pair: asset.pair, timeframe,
     final_decision: decision.final_decision, score: decision.score,
     classification: decision.classification, avg_confidence: decision.avg_confidence,
@@ -78,8 +78,10 @@ export async function runCommitteeForAsset(sb: any, asset: any, sessionId: strin
     votes_hold: decision.votes_hold, votes_wait: decision.votes_wait,
     risk_approved: decision.risk_approved, euphoria_vetoed: decision.euphoria_vetoed,
     data_quality: decision.data_quality, consolidated_justification: decision.consolidated_justification,
-    context: ctx as any, session_id: sessionId,
-  }).select().single();
+    context: ctx as any,
+  };
+  if (sessionId) row.session_id = sessionId;
+  const { data: decRow, error: decErr } = await sb.from("committee_decisions").insert(row).select().single();
   if (decErr) throw new Error(decErr.message);
 
   const agentByName: Record<string, string> = {};
@@ -100,13 +102,13 @@ export async function runPipelineTick(sb: any) {
   results.collect = await collectMarketTick(sb);
 
   // Ensure an active session exists
-  let { data: session } = await sb.from("trading_sessions").select("*").eq("status", "active").maybeSingle();
+  let { data: session } = await sb.from("trading_sessions").select("*").eq("status", "running").maybeSingle();
   if (!session) {
     const { data: newSession } = await sb.from("trading_sessions").insert({
-      mode: "simulated", status: "active", started_at: new Date().toISOString(),
+      mode: "simulation", status: "running", started_at: new Date().toISOString(),
     }).select().single();
     session = newSession;
-    await log(sb, "Sessão", "auto", `[cron] Sessão simulada iniciada ${session?.id}`, "info");
+    await log(sb, "Sessão", "auto", `[cron] Sessão de simulação iniciada ${session?.id}`, "info");
   }
 
   const { data: assets } = await sb.from("monitored_assets").select("*").eq("active", true);
