@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getDashboard, setRobotStatus, collectMarket, runCommitteeAll, getTickersByTimeframe } from "@/lib/atrader.functions";
+import { getDashboard, setRobotStatus, collectMarket, runCommitteeAll, getTickersByTimeframe, getPairKlines } from "@/lib/atrader.functions";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Play, Pause, RefreshCw, TrendingUp, TrendingDown, Wallet, Wifi, WifiOff, Brain, Activity } from "lucide-react";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const TIMEFRAMES = [
   { value: "15m", label: "15 min" },
