@@ -1196,6 +1196,7 @@ export type Database = {
           pair: string
           risk_approved: boolean
           score: number
+          session_id: string | null
           timeframe: string
           votes_buy: number
           votes_hold: number
@@ -1216,6 +1217,7 @@ export type Database = {
           pair: string
           risk_approved?: boolean
           score?: number
+          session_id?: string | null
           timeframe: string
           votes_buy?: number
           votes_hold?: number
@@ -1236,6 +1238,7 @@ export type Database = {
           pair?: string
           risk_approved?: boolean
           score?: number
+          session_id?: string | null
           timeframe?: string
           votes_buy?: number
           votes_hold?: number
@@ -1248,6 +1251,13 @@ export type Database = {
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "monitored_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "committee_decisions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "trading_sessions"
             referencedColumns: ["id"]
           },
         ]
