@@ -101,41 +101,68 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
   if (decision.final_decision !== "buy_approved" && decision.final_decision !== "sell_approved") return null;
   const side = decision.final_decision === "buy_approved" ? "buy" : "sell";
   const { data: wallet } = await sb.from("simulated_wallet").select("*").eq("id", 1).maybeSingle();
+  const { data: pos } = await sb.from("simulated_positions").select("*").eq("pair", asset.pair).maybeSingle();
+  const price = Number(ctx.price);
+
+  // SELL = close existing long. Skip if no long position.
+  if (side === "sell") {
+    const longQty = Number(pos?.quantity ?? 0);
+    if (longQty <= 0) {
+      await log(sb, "Execução", "sim", `[cron] SELL ${asset.pair} ignorado: sem posição comprada para vender`, "warning");
+      return null;
+    }
+    const qty = Number(longQty.toFixed(6));
+    const avg = Number(pos!.avg_price);
+    const proceeds = qty * price;
+    const cost = qty * avg;
+    const pnl = proceeds - cost;
+    await sb.from("simulated_orders").insert({
+      decision_id: decision.id, pair: asset.pair, side: "sell", quantity: qty,
+      entry_price: avg, closed_price: price, realized_pnl: pnl,
+      stop_price: price * 0.97, target_price: price * 1.03, score: decision.score,
+      agents_favor: decision.votes_sell, agents_against: decision.votes_buy,
+      justification: decision.consolidated_justification,
+      status: "closed", closed_at: new Date().toISOString(),
+    });
+    await sb.from("simulated_positions").update({ quantity: 0, unrealized_pnl: 0 }).eq("pair", asset.pair);
+    const newBalance = Number(wallet?.current_balance ?? 0) + proceeds;
+    await sb.from("simulated_wallet").update({ current_balance: newBalance, equity: newBalance }).eq("id", 1);
+    await log(sb, "Execução", "sim", `[cron] SELL ${asset.pair} qty=${qty} @ ${price.toFixed(2)} pnl=${pnl.toFixed(2)}`, "info");
+    return { pair: asset.pair, side, qty, price, pnl };
+  }
+
+  // BUY = open long, debit cash, lock capital.
   const positionValue = Math.min(
     Number(settings?.max_position_value ?? 1000),
     Number(wallet?.current_balance ?? 0) * 0.1,
   );
   if (positionValue <= 10) return null;
-  const price = Number(ctx.price);
   const qty = Number((positionValue / price).toFixed(6));
   const stopPct = Number(settings?.default_stop_pct ?? 3) / 100;
   const targetPct = Number(settings?.default_target_pct ?? 6) / 100;
-  const stop = side === "buy" ? price * (1 - stopPct) : price * (1 + stopPct);
-  const target = side === "buy" ? price * (1 + targetPct) : price * (1 - targetPct);
+  const stop = price * (1 - stopPct);
+  const target = price * (1 + targetPct);
 
   const { data: existing } = await sb.from("simulated_orders")
-    .select("id").eq("pair", asset.pair).eq("side", side).eq("status", "open").limit(1);
+    .select("id").eq("pair", asset.pair).eq("side", "buy").eq("status", "open").limit(1);
   if (existing && existing.length) return null;
 
   await sb.from("simulated_orders").insert({
-    decision_id: decision.id, pair: asset.pair, side, quantity: qty, entry_price: price,
+    decision_id: decision.id, pair: asset.pair, side: "buy", quantity: qty, entry_price: price,
     stop_price: stop, target_price: target, score: decision.score,
-    agents_favor: side === "buy" ? decision.votes_buy : decision.votes_sell,
-    agents_against: side === "buy" ? decision.votes_sell : decision.votes_buy,
+    agents_favor: decision.votes_buy, agents_against: decision.votes_sell,
     justification: decision.consolidated_justification, status: "open",
   });
-  const { data: pos } = await sb.from("simulated_positions").select("*").eq("pair", asset.pair).maybeSingle();
-  const delta = side === "buy" ? qty : -qty;
-  const newQty = Number(pos?.quantity ?? 0) + delta;
-  const newAvg = side === "buy" && newQty > 0
+  const newQty = Number(pos?.quantity ?? 0) + qty;
+  const newAvg = newQty > 0
     ? ((Number(pos?.avg_price ?? 0) * Number(pos?.quantity ?? 0)) + price * qty) / newQty
-    : Number(pos?.avg_price ?? price);
+    : price;
   await sb.from("simulated_positions").upsert({
     pair: asset.pair, quantity: newQty, avg_price: newAvg, unrealized_pnl: 0,
   }, { onConflict: "pair" });
-  const newBalance = Number(wallet?.current_balance ?? 0) - (side === "buy" ? positionValue : -positionValue);
+  const newBalance = Number(wallet?.current_balance ?? 0) - positionValue;
   await sb.from("simulated_wallet").update({ current_balance: newBalance, equity: newBalance }).eq("id", 1);
-  await log(sb, "Execução", "sim", `[cron] ${side.toUpperCase()} ${asset.pair} qty=${qty} @ ${price.toFixed(2)}`, "info");
+  await log(sb, "Execução", "sim", `[cron] BUY ${asset.pair} qty=${qty} @ ${price.toFixed(2)}`, "info");
   return { pair: asset.pair, side, qty, price };
 }
 
