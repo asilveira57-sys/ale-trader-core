@@ -7,9 +7,6 @@ import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { toast } from "sonner";
 import { RotateCcw, Wallet, TrendingUp, TrendingDown, ChevronDown, ChevronRight, FileSpreadsheet, FileText } from "lucide-react";
-import * as XLSX from "xlsx";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 
 export const Route = createFileRoute("/_authenticated/wallet")({
   head: () => ({ meta: [{ title: "Carteira simulada — AleTrader AI" }] }),
@@ -204,7 +201,8 @@ function WalletPage() {
         const totalSold = allRowsAsc.filter((r) => r.delta > 0).reduce((s, r) => s + r.delta, 0);
         const totalPnl = allRowsAsc.reduce((s, r) => s + r.pnl, 0);
 
-        const exportXLSX = () => {
+        const exportXLSX = async () => {
+          const XLSX = await import("xlsx");
           const rows = allRowsAsc.map((r) => ({
             Data: new Date(r.ts).toLocaleString(),
             Par: r.pair,
@@ -231,7 +229,9 @@ function WalletPage() {
           XLSX.writeFile(wb, `extrato-carteira-${new Date().toISOString().slice(0, 10)}.xlsx`);
         };
 
-        const exportPDF = () => {
+        const exportPDF = async () => {
+          const { jsPDF } = await import("jspdf");
+          const autoTable = (await import("jspdf-autotable")).default;
           const doc = new jsPDF({ orientation: "landscape" });
           doc.setFontSize(14);
           doc.text("Extrato da carteira simulada", 14, 14);
