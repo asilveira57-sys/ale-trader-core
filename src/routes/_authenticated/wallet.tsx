@@ -39,6 +39,17 @@ function WalletPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const mLiquidate = useMutation({
+    mutationFn: () => liquidate({ data: { slippage_pct: 0.5 } }),
+    onSuccess: (r: any) => {
+      toast.success(
+        `Liquidação concluída: ${r.sold} vendidas, ${r.cancelled} canceladas · caixa +$${Number(r.proceeds).toFixed(2)} · PnL ${Number(r.pnl) >= 0 ? "+" : ""}$${Number(r.pnl).toFixed(2)}`,
+      );
+      qc.invalidateQueries({ queryKey: ["committee"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   if (isLoading || !data) return <div className="p-8 text-muted-foreground">Carregando…</div>;
 
   const w = data.wallet;
