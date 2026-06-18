@@ -636,3 +636,172 @@ function SettingsForm({
     </Card>
   );
 }
+
+// ────────────────────────────────────────────────────────────────────
+function CommitteePanel({ settings }: { settings: B3Settings }) {
+  const runFn = useServerFn(runB3Committee);
+  const listFn = useServerFn(listB3AgentVotes);
+  const [side, setSide] = useState<Side>("buy");
+  const [qty, setQty] = useState<number>(1);
+  const [result, setResult] = useState<any>(null);
+
+  const historyQ = useQuery({
+    queryKey: ["b3-agent-votes"],
+    queryFn: () => listFn({}),
+    refetchInterval: 20000,
+  });
+
+  const run = useMutation({
+    mutationFn: () => runFn({ data: { side, qty } }),
+    onSuccess: (res: any) => {
+      setResult(res);
+      const f = res.decision.final;
+      if (f === "approved") toast.success(`Comitê aprovou ${side === "buy" ? "compra" : "venda"}`);
+      else if (f === "blocked") toast.error("Bloqueado por veto");
+      else if (f === "rejected") toast.error("Rejeitado pelo comitê");
+      else toast.message("Sem consenso");
+      historyQ.refetch();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const lastRun: any[] = (historyQ.data ?? []) as any[];
+  const lastBatchTs = lastRun[0]?.created_at ?? null;
+  const lastBatch = lastBatchTs ? lastRun.filter(v => v.created_at === lastBatchTs) : [];
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2 mt-3">
+      <Card>
+        <CardHeader><CardTitle className="text-base">Consulta ao comitê (8 agentes)</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>Lado</Label>
+              <Select value={side} onValueChange={v => setSide(v as Side)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="buy">Compra</SelectItem>
+                  <SelectItem value="sell">Venda</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Contratos</Label>
+              <Input type="number" min={1} max={settings.max_contracts} value={qty}
+                onChange={e => setQty(Number(e.target.value))} />
+            </div>
+          </div>
+          <Button onClick={() => run.mutate()} disabled={run.isPending}>
+            <Users className="w-4 h-4 mr-1" />
+            {run.isPending ? "Consultando..." : "Rodar comitê"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Modo {settings.strategy_mode} · limites diários: perda {BRL(settings.daily_loss_limit)} / ganho {BRL(settings.daily_gain_target)}.
+            Fonte de mercado: mock determinístico (Fase 3 integra feed B3).
+          </p>
+
+          {result && (
+            <div className="border rounded p-3 text-sm space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant={
+                  result.decision.final === "approved" ? "default" :
+                  result.decision.final === "blocked" ? "destructive" :
+                  result.decision.final === "rejected" ? "destructive" : "secondary"
+                }>{result.decision.final}</Badge>
+                <Badge variant="outline">{result.decision.classification}</Badge>
+                <span className="text-xs text-muted-foreground">
+                  score {result.decision.score.toFixed(0)} · conf {result.decision.avg_confidence.toFixed(0)} ·
+                  {" "}{result.decision.approve_votes}A / {result.decision.reject_votes}R / {result.decision.neutral_votes}N
+                </span>
+              </div>
+              <p className="text-xs">{result.decision.justification}</p>
+              {result.decision.vetoes.length > 0 && (
+                <ul className="text-xs text-destructive list-disc pl-4">
+                  {result.decision.vetoes.map((v: string, i: number) => <li key={i}>{v}</li>)}
+                </ul>
+              )}
+              <div className="grid grid-cols-3 gap-1 text-xs text-muted-foreground pt-1 border-t">
+                <span>preço {NUM(result.context.price)}</span>
+                <span>VWAP {NUM(result.context.vwap, 0)}</span>
+                <span>RSI {result.context.rsi.toFixed(0)}</span>
+                <span>vol {result.context.volume_ratio.toFixed(2)}x</span>
+                <span>volat {result.context.volatility_pct.toFixed(1)}%</span>
+                <span>fase {result.context.session_phase}</span>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Votos do último comitê</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {lastBatch.length === 0 && (
+            <p className="text-sm text-muted-foreground">Rode o comitê para ver os votos.</p>
+          )}
+          {lastBatch.map((v: any) => (
+            <div key={v.id} className="border rounded p-2 text-sm">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">{v.agent_name}</span>
+                <Badge variant={
+                  v.vote === "approve" ? "default" :
+                  v.vote === "reject" ? "destructive" : "secondary"
+                }>{v.vote}</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                conf {Number(v.confidence).toFixed(0)} · {v.reason}
+              </p>
+              {v.market_data_snapshot?.has_veto && (
+                <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                  <ShieldAlert className="w-3 h-3" /> veto: {v.market_data_snapshot.veto_reason}
+                </p>
+              )}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="md:col-span-2">
+        <CardHeader><CardTitle className="text-base">Histórico de consultas ao comitê</CardTitle></CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-left text-muted-foreground border-b">
+                <tr>
+                  <th className="py-1 pr-2">Hora</th>
+                  <th>Agente</th>
+                  <th>Voto</th>
+                  <th className="text-right">Conf.</th>
+                  <th>Decisão</th>
+                  <th className="text-right">Score</th>
+                  <th>Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lastRun.slice(0, 40).map((v: any) => (
+                  <tr key={v.id} className="border-b last:border-0">
+                    <td className="py-1 pr-2">{new Date(v.created_at).toLocaleTimeString("pt-BR")}</td>
+                    <td>{v.agent_name}</td>
+                    <td>
+                      <Badge variant={
+                        v.vote === "approve" ? "default" :
+                        v.vote === "reject" ? "destructive" : "secondary"
+                      }>{v.vote}</Badge>
+                    </td>
+                    <td className="text-right">{Number(v.confidence).toFixed(0)}</td>
+                    <td>{v.market_data_snapshot?.decision ?? "—"}</td>
+                    <td className="text-right">{Number(v.market_data_snapshot?.score ?? 0).toFixed(0)}</td>
+                    <td className="truncate max-w-[360px]">{v.reason}</td>
+                  </tr>
+                ))}
+                {lastRun.length === 0 && (
+                  <tr><td colSpan={7} className="py-4 text-center text-muted-foreground">Sem histórico ainda.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
