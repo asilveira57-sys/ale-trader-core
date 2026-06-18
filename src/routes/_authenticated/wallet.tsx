@@ -201,7 +201,8 @@ function WalletPage() {
         const totalSold = allRowsAsc.filter((r) => r.delta > 0).reduce((s, r) => s + r.delta, 0);
         const totalPnl = allRowsAsc.reduce((s, r) => s + r.pnl, 0);
 
-        const exportXLSX = () => {
+        const exportXLSX = async () => {
+          const XLSX = await import("xlsx");
           const rows = allRowsAsc.map((r) => ({
             Data: new Date(r.ts).toLocaleString(),
             Par: r.pair,
