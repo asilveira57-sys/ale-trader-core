@@ -17,6 +17,7 @@ function WalletPage() {
   const qc = useQueryClient();
   const fetchDash = useServerFn(getCommitteeDashboard);
   const reset = useServerFn(resetSimulatedWallet);
+  const liquidate = useServerFn(liquidateSimulatedWallet);
   const [initial, setInitial] = useState(10000);
   const [walletOpen, setWalletOpen] = useState(false);
   const [page, setPage] = useState(1);
