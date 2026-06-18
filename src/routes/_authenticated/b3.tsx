@@ -166,6 +166,7 @@ function B3Page() {
           <TabsTrigger value="panel"><Activity className="w-4 h-4 mr-1" />Painel</TabsTrigger>
           <TabsTrigger value="trade"><TrendingUp className="w-4 h-4 mr-1" />Operar (sim.)</TabsTrigger>
           <TabsTrigger value="committee"><Users className="w-4 h-4 mr-1" />Comitê</TabsTrigger>
+          <TabsTrigger value="sim3"><Swords className="w-4 h-4 mr-1" />Simulação 3 Modos</TabsTrigger>
           <TabsTrigger value="report"><FileBarChart className="w-4 h-4 mr-1" />Relatório</TabsTrigger>
           <TabsTrigger value="settings"><SettingsIcon className="w-4 h-4 mr-1" />Configurações</TabsTrigger>
         </TabsList>
