@@ -404,16 +404,15 @@ function WalletPage() {
           doc.setFontSize(9);
           doc.text(
             [
-              `Saldo inicial: $${initialBalance.toFixed(2)}    Saldo disponível: $${cash.toFixed(2)}    Capital alocado: $${capitalAlocado.toFixed(2)}    Equity: $${equity.toFixed(2)}`,
-              `PnL realizado: $${realizedPnl.toFixed(2)}    PnL não realizado: $${unrealizedPnl.toFixed(2)}    PnL total: $${totalPnl.toFixed(2)}    ROI: ${roiPct.toFixed(2)}%`,
-              `Volume comprado: $${volumeComprado.toFixed(2)}    Volume vendido: $${volumeVendido.toFixed(2)}  (movimentação, não lucro)`,
-              `Operações encerradas: ${closedOps.length}    Posições abertas: ${openBuys.length}    Gerado em ${new Date().toLocaleString()}`,
+              `Saldo inicial: $${initialBalance.toFixed(2)}    Caixa atual: $${cash.toFixed(2)}    Capital alocado: $${capitalAlocado.toFixed(2)}    Patrimônio total: $${equity.toFixed(2)}`,
+              `PnL realizado: $${realizedPnl.toFixed(2)}    PnL não realizado: $${unrealizedPnl.toFixed(2)}    Resultado total: $${totalPnl.toFixed(2)}    ROI: ${roiPct.toFixed(2)}%`,
+              `Operações abertas: ${openBuys.length}    Operações encerradas: ${closedOps.length}    Gerado em ${new Date().toLocaleString()}`,
             ],
             14,
             22,
           );
           autoTable(doc, {
-            startY: 48,
+            startY: 42,
             head: [["Ativo", "Abertura", "Fechamento", "Qtd", "Entrada", "Saída", "Investido", "PnL", "ROI %"]],
             body: closedOps.map((o: any) => [
               o.pair,
@@ -430,7 +429,7 @@ function WalletPage() {
             headStyles: { fillColor: [40, 40, 40] },
             didDrawPage: (d) => {
               doc.setFontSize(10);
-              doc.text("Operações encerradas", 14, d.cursor?.y ? 42 : 42);
+              doc.text("Auditoria de operações encerradas", 14, d.cursor?.y ? 36 : 36);
             },
           });
           autoTable(doc, {
@@ -447,7 +446,19 @@ function WalletPage() {
             ]),
             styles: { fontSize: 7 },
             headStyles: { fillColor: [40, 40, 40] },
+            didDrawPage: (d) => {
+              doc.setFontSize(10);
+              doc.text("Extrato débito / crédito", 14, d.cursor?.y ? 36 : 36);
+            },
           });
+          const finalY = (doc as any).lastAutoTable?.finalY ?? 200;
+          doc.setFontSize(8);
+          doc.setTextColor(100, 100, 100);
+          doc.text(
+            `Auditoria de volume — comprado: $${volumeComprado.toFixed(2)} · vendido: $${volumeVendido.toFixed(2)} · total: $${(volumeComprado + volumeVendido).toFixed(2)} (movimentação bruta, não confundir com lucro)`,
+            14,
+            finalY + 10,
+          );
           doc.save(`extrato-carteira-${new Date().toISOString().slice(0, 10)}.pdf`);
         };
 
