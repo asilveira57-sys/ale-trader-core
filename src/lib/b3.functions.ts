@@ -88,14 +88,14 @@ export const runB3Committee = createServerFn({ method: "POST" })
         side: data.side, qty: data.qty, ctx_price: ctx.price, phase: ctx.session_phase,
         decision: decision.final, score: decision.score, data: v.data,
         has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
-      },
+      } as any,
     }));
-    const { error: insErr } = await supabase.from("b3_agent_votes").insert(rowsToInsert);
+    const { error: insErr } = await (supabase as any).from("b3_agent_votes").insert(rowsToInsert);
     if (insErr) throw insErr;
 
     return {
       decision,
-      votes,
+      votes: votes as any,
       context: {
         price: ctx.price, vwap: ctx.vwap, ema9: ctx.ema9, ema21: ctx.ema21,
         rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
@@ -104,7 +104,7 @@ export const runB3Committee = createServerFn({ method: "POST" })
       },
       risk,
       committee,
-    };
+    } as any;
   });
 
 export const listB3AgentVotes = createServerFn({ method: "GET" })
