@@ -834,15 +834,23 @@ export const liquidateSimulatedWallet = createServerFn({ method: "POST" })
       .update({ quantity: 0, unrealized_pnl: 0 })
       .neq("id", "00000000-0000-0000-0000-000000000000");
 
+    // Pause robot — requires manual reactivation
+    await supabase.from("robot_settings").update({ status: "paused" }).eq("id", 1);
+    await supabase.from("alerts").insert({
+      type: "robot_paused",
+      message: "Robô pausado após liquidação total",
+      severity: "warning",
+    });
+
     await log(
       supabase,
       "Simulação",
       "wallet",
-      `Liquidação total: ${sold} posições vendidas (slippage ${data.slippage_pct}%), ${cancelled} ordens canceladas, PnL ${totalPnl.toFixed(2)}, caixa +${proceeds.toFixed(2)}`,
+      `Liquidação total: ${sold} posições vendidas (slippage ${data.slippage_pct}%), ${cancelled} ordens canceladas, PnL ${totalPnl.toFixed(2)}, caixa +${proceeds.toFixed(2)}. Robô pausado.`,
       "warning",
     );
 
-    return { ok: true, sold, cancelled, proceeds, pnl: totalPnl };
+    return { ok: true, sold, cancelled, proceeds, pnl: totalPnl, paused: true };
   });
 
 export const getCommitteeSettings = createServerFn({ method: "GET" })
