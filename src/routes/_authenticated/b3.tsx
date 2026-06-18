@@ -13,10 +13,11 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   AlertTriangle, ShieldAlert, Activity, TrendingUp, TrendingDown,
-  Clock, PauseCircle, PlayCircle, XCircle, FileBarChart, Settings as SettingsIcon, Users,
+  Clock, PauseCircle, PlayCircle, XCircle, FileBarChart, Settings as SettingsIcon, Users, Swords,
 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { runB3Committee, listB3AgentVotes } from "@/lib/b3.functions";
+import { SimComparePanel } from "@/components/b3/SimComparePanel";
 
 export const Route = createFileRoute("/_authenticated/b3")({
   head: () => ({ meta: [{ title: "B3 Day Trade (WIN) — AleTrader AI" }] }),
