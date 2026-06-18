@@ -164,6 +164,7 @@ function B3Page() {
         <TabsList>
           <TabsTrigger value="panel"><Activity className="w-4 h-4 mr-1" />Painel</TabsTrigger>
           <TabsTrigger value="trade"><TrendingUp className="w-4 h-4 mr-1" />Operar (sim.)</TabsTrigger>
+          <TabsTrigger value="committee"><Users className="w-4 h-4 mr-1" />Comitê</TabsTrigger>
           <TabsTrigger value="report"><FileBarChart className="w-4 h-4 mr-1" />Relatório</TabsTrigger>
           <TabsTrigger value="settings"><SettingsIcon className="w-4 h-4 mr-1" />Configurações</TabsTrigger>
         </TabsList>
@@ -180,6 +181,9 @@ function B3Page() {
               qc.invalidateQueries({ queryKey: ["b3-orders", userId] });
             }}
           />
+        </TabsContent>
+        <TabsContent value="committee">
+          <CommitteePanel settings={settings} />
         </TabsContent>
         <TabsContent value="report">
           <Report orders={orders} settings={settings} />
