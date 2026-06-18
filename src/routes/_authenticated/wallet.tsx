@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getCommitteeDashboard, resetSimulatedWallet } from "@/lib/atrader.functions";
+import { getCommitteeDashboard, resetSimulatedWallet, liquidateSimulatedWallet } from "@/lib/atrader.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { toast } from "sonner";
-import { RotateCcw, Wallet, TrendingUp, TrendingDown, ChevronDown, ChevronRight, FileSpreadsheet, FileText, AlertTriangle, Info } from "lucide-react";
+import { RotateCcw, Wallet, TrendingUp, TrendingDown, ChevronDown, ChevronRight, FileSpreadsheet, FileText, AlertTriangle, Info, DollarSign } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/wallet")({
   head: () => ({ meta: [{ title: "Carteira simulada — AleTrader AI" }] }),
@@ -17,6 +17,7 @@ function WalletPage() {
   const qc = useQueryClient();
   const fetchDash = useServerFn(getCommitteeDashboard);
   const reset = useServerFn(resetSimulatedWallet);
+  const liquidate = useServerFn(liquidateSimulatedWallet);
   const [initial, setInitial] = useState(10000);
   const [walletOpen, setWalletOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -33,6 +34,17 @@ function WalletPage() {
     mutationFn: () => reset({ data: { initial_balance: initial } }),
     onSuccess: () => {
       toast.success("Carteira simulada reiniciada");
+      qc.invalidateQueries({ queryKey: ["committee"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const mLiquidate = useMutation({
+    mutationFn: () => liquidate({ data: { slippage_pct: 0.5 } }),
+    onSuccess: (r: any) => {
+      toast.success(
+        `Liquidação concluída: ${r.sold} vendidas, ${r.cancelled} canceladas · caixa +$${Number(r.proceeds).toFixed(2)} · PnL ${Number(r.pnl) >= 0 ? "+" : ""}$${Number(r.pnl).toFixed(2)}`,
+      );
       qc.invalidateQueries({ queryKey: ["committee"] });
     },
     onError: (e: any) => toast.error(e.message),
@@ -657,6 +669,28 @@ function WalletPage() {
           ))}
           {!data.positions.length && <p className="text-sm text-muted-foreground py-4">Sem posições abertas.</p>}
         </div>
+      </section>
+
+      <section className="panel p-5">
+        <h2 className="text-sm font-semibold mb-1 flex items-center gap-2">
+          <DollarSign className="size-4 text-warning" /> Vender tudo (liquidar carteira)
+        </h2>
+        <p className="text-xs text-muted-foreground mb-4">
+          Cancela todas as ordens de compra pendentes e vende todas as posições abertas a preço de mercado
+          com slippage de 0,5%. Ao final, a carteira fica somente em USDT, sem moedas.
+        </p>
+        <Button
+          variant="destructive"
+          onClick={() => {
+            if (confirm("Confirmar liquidação total? Todas as posições abertas serão vendidas a mercado -0,5%.")) {
+              mLiquidate.mutate();
+            }
+          }}
+          disabled={mLiquidate.isPending}
+        >
+          <DollarSign className="size-4 mr-2" />
+          {mLiquidate.isPending ? "Liquidando…" : "Vender tudo agora"}
+        </Button>
       </section>
 
       <section className="panel p-5">
