@@ -772,6 +772,79 @@ export const resetSimulatedWallet = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const liquidateSimulatedWallet = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ slippage_pct: z.number().min(0).max(10).default(0.5) }).parse(d ?? {}),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context as any;
+    await assertOwner(supabase, userId);
+    const slip = 1 - data.slippage_pct / 100;
+
+    const { data: openOrders } = await supabase
+      .from("simulated_orders")
+      .select("*")
+      .eq("status", "open");
+
+    let cancelled = 0;
+    let sold = 0;
+    let proceeds = 0;
+    let totalPnl = 0;
+    const now = new Date().toISOString();
+
+    for (const o of openOrders ?? []) {
+      // Pending sell orders: just cancel — they don't hold capital
+      if (o.side === "sell") {
+        await supabase.from("simulated_orders").update({ status: "cancelled", closed_at: now }).eq("id", o.id);
+        cancelled++;
+        continue;
+      }
+      // Open buys = open long position — liquidate at market - slippage
+      const marketPrice = mockPrice(o.pair);
+      const exitPrice = marketPrice * slip;
+      const qty = Number(o.quantity);
+      const entry = Number(o.entry_price);
+      const pnl = (exitPrice - entry) * qty;
+      const refund = entry * qty + pnl; // = exitPrice * qty
+      await supabase
+        .from("simulated_orders")
+        .update({ status: "closed", closed_price: exitPrice, realized_pnl: pnl, closed_at: now })
+        .eq("id", o.id);
+      proceeds += refund;
+      totalPnl += pnl;
+      sold++;
+    }
+
+    // Update wallet cash
+    if (proceeds !== 0) {
+      const { data: wallet } = await supabase.from("simulated_wallet").select("*").eq("id", 1).maybeSingle();
+      if (wallet) {
+        const newBalance = Number(wallet.current_balance) + proceeds;
+        await supabase
+          .from("simulated_wallet")
+          .update({ current_balance: newBalance, equity: newBalance })
+          .eq("id", 1);
+      }
+    }
+
+    // Zero out tracked positions
+    await supabase
+      .from("simulated_positions")
+      .update({ quantity: 0, unrealized_pnl: 0 })
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+
+    await log(
+      supabase,
+      "Simulação",
+      "wallet",
+      `Liquidação total: ${sold} posições vendidas (slippage ${data.slippage_pct}%), ${cancelled} ordens canceladas, PnL ${totalPnl.toFixed(2)}, caixa +${proceeds.toFixed(2)}`,
+      "warning",
+    );
+
+    return { ok: true, sold, cancelled, proceeds, pnl: totalPnl };
+  });
+
 export const getCommitteeSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
