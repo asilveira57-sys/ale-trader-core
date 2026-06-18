@@ -123,15 +123,15 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
     ]);
     const totalClosed = (realClosed.count ?? 0) + (autoClosed.count ?? 0);
 
-    // mapa asset_id -> symbol (para automated_trades)
+    // mapa asset_id -> pair (para automated_trades)
     const assetIds = (autoTrades.data ?? []).map((t) => t.asset_id).filter(Boolean) as string[];
     const assetMap = new Map<string, string>();
     if (assetIds.length) {
       const { data: assets } = await supabase
         .from("monitored_assets")
-        .select("id, symbol")
+        .select("id, pair")
         .in("id", assetIds);
-      for (const a of assets ?? []) assetMap.set(a.id as string, (a as { symbol: string }).symbol);
+      for (const a of (assets ?? []) as Array<{ id: string; pair: string }>) assetMap.set(a.id, a.pair);
     }
 
     const losses: LossSell[] = [];
