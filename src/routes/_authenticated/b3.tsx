@@ -187,6 +187,9 @@ function B3Page() {
         <TabsContent value="committee">
           <CommitteePanel settings={settings} />
         </TabsContent>
+        <TabsContent value="sim3">
+          <SimComparePanel />
+        </TabsContent>
         <TabsContent value="report">
           <Report orders={orders} settings={settings} />
         </TabsContent>
