@@ -356,17 +356,15 @@ function WalletPage() {
           }));
           const summary = [
             { Métrica: "Saldo inicial", Valor: initialBalance },
-            { Métrica: "Saldo disponível", Valor: cash },
+            { Métrica: "Caixa atual", Valor: Number(cash.toFixed(2)) },
             { Métrica: "Capital alocado (posições abertas)", Valor: Number(capitalAlocado.toFixed(2)) },
-            { Métrica: "Equity (patrimônio total)", Valor: Number(equity.toFixed(2)) },
+            { Métrica: "Patrimônio total (Equity)", Valor: Number(equity.toFixed(2)) },
             { Métrica: "PnL realizado", Valor: Number(realizedPnl.toFixed(2)) },
             { Métrica: "PnL não realizado", Valor: Number(unrealizedPnl.toFixed(2)) },
-            { Métrica: "PnL total", Valor: Number(totalPnl.toFixed(2)) },
+            { Métrica: "Resultado total (PnL)", Valor: Number(totalPnl.toFixed(2)) },
             { Métrica: "ROI (%)", Valor: Number(roiPct.toFixed(2)) },
-            { Métrica: "Volume comprado (movimentação, não lucro)", Valor: Number(volumeComprado.toFixed(2)) },
-            { Métrica: "Volume vendido (movimentação, não lucro)", Valor: Number(volumeVendido.toFixed(2)) },
+            { Métrica: "Operações abertas", Valor: openBuys.length },
             { Métrica: "Operações encerradas", Valor: closedOps.length },
-            { Métrica: "Posições abertas", Valor: openBuys.length },
             { Métrica: "Movimentos no extrato", Valor: allRowsAsc.length },
           ];
           const audit = closedOps.map((o: any) => ({
@@ -384,9 +382,15 @@ function WalletPage() {
             "ROI (%)": Number(o.roi.toFixed(2)),
             Status: "encerrada",
           }));
+          const volumeAudit = [
+            { Métrica: "Volume comprado (movimentação bruta)", Valor: Number(volumeComprado.toFixed(2)) },
+            { Métrica: "Volume vendido (movimentação bruta)", Valor: Number(volumeVendido.toFixed(2)) },
+            { Métrica: "Volume total movimentado", Valor: Number((volumeComprado + volumeVendido).toFixed(2)) },
+          ];
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Resumo");
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(audit), "Auditoria");
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(volumeAudit), "Volume");
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Extrato");
           XLSX.writeFile(wb, `extrato-carteira-${new Date().toISOString().slice(0, 10)}.xlsx`);
         };
@@ -400,16 +404,15 @@ function WalletPage() {
           doc.setFontSize(9);
           doc.text(
             [
-              `Saldo inicial: $${initialBalance.toFixed(2)}    Saldo disponível: $${cash.toFixed(2)}    Capital alocado: $${capitalAlocado.toFixed(2)}    Equity: $${equity.toFixed(2)}`,
-              `PnL realizado: $${realizedPnl.toFixed(2)}    PnL não realizado: $${unrealizedPnl.toFixed(2)}    PnL total: $${totalPnl.toFixed(2)}    ROI: ${roiPct.toFixed(2)}%`,
-              `Volume comprado: $${volumeComprado.toFixed(2)}    Volume vendido: $${volumeVendido.toFixed(2)}  (movimentação, não lucro)`,
-              `Operações encerradas: ${closedOps.length}    Posições abertas: ${openBuys.length}    Gerado em ${new Date().toLocaleString()}`,
+              `Saldo inicial: $${initialBalance.toFixed(2)}    Caixa atual: $${cash.toFixed(2)}    Capital alocado: $${capitalAlocado.toFixed(2)}    Patrimônio total: $${equity.toFixed(2)}`,
+              `PnL realizado: $${realizedPnl.toFixed(2)}    PnL não realizado: $${unrealizedPnl.toFixed(2)}    Resultado total: $${totalPnl.toFixed(2)}    ROI: ${roiPct.toFixed(2)}%`,
+              `Operações abertas: ${openBuys.length}    Operações encerradas: ${closedOps.length}    Gerado em ${new Date().toLocaleString()}`,
             ],
             14,
             22,
           );
           autoTable(doc, {
-            startY: 48,
+            startY: 42,
             head: [["Ativo", "Abertura", "Fechamento", "Qtd", "Entrada", "Saída", "Investido", "PnL", "ROI %"]],
             body: closedOps.map((o: any) => [
               o.pair,
@@ -426,7 +429,7 @@ function WalletPage() {
             headStyles: { fillColor: [40, 40, 40] },
             didDrawPage: (d) => {
               doc.setFontSize(10);
-              doc.text("Operações encerradas", 14, d.cursor?.y ? 42 : 42);
+              doc.text("Auditoria de operações encerradas", 14, d.cursor?.y ? 36 : 36);
             },
           });
           autoTable(doc, {
@@ -443,7 +446,19 @@ function WalletPage() {
             ]),
             styles: { fontSize: 7 },
             headStyles: { fillColor: [40, 40, 40] },
+            didDrawPage: (d) => {
+              doc.setFontSize(10);
+              doc.text("Extrato débito / crédito", 14, d.cursor?.y ? 36 : 36);
+            },
           });
+          const finalY = (doc as any).lastAutoTable?.finalY ?? 200;
+          doc.setFontSize(8);
+          doc.setTextColor(100, 100, 100);
+          doc.text(
+            `Auditoria de volume — comprado: $${volumeComprado.toFixed(2)} · vendido: $${volumeVendido.toFixed(2)} · total: $${(volumeComprado + volumeVendido).toFixed(2)} (movimentação bruta, não confundir com lucro)`,
+            14,
+            finalY + 10,
+          );
           doc.save(`extrato-carteira-${new Date().toISOString().slice(0, 10)}.pdf`);
         };
 
