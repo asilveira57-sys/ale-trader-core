@@ -313,86 +313,155 @@ function WalletPage() {
         })()}
       </section>
 
-      {/* Extrato débito / crédito */}
+      {/* Extrato Patrimonial da Carteira */}
       {(() => {
-        const events: { ts: string; pair: string; kind: string; side: string; delta: number; note: string; qty: number; price: number; pnl: number }[] = [];
+        type Mov = {
+          ts: string; pair: string; kind: string; side: string;
+          qty: number; price: number;
+          debito: number; credito: number;
+          pnl_realizado: number;
+        };
+        const movs: Mov[] = [];
         for (const o of data.orders ?? []) {
           const qty = Number(o.quantity);
-          const value = Number(o.entry_price) * qty;
+          const entryPrice = Number(o.entry_price);
+          const entryValue = entryPrice * qty;
           if (o.side === "buy") {
-            events.push({ ts: o.created_at, pair: o.pair, kind: "Compra (débito)", side: "buy", delta: -value, note: `qty ${qty.toFixed(6)} @ ${Number(o.entry_price).toFixed(4)}`, qty, price: Number(o.entry_price), pnl: 0 });
+            movs.push({
+              ts: o.created_at, pair: o.pair, kind: "Compra", side: "buy",
+              qty, price: entryPrice,
+              debito: entryValue, credito: 0, pnl_realizado: 0,
+            });
             if (o.status === "closed" && o.closed_price != null) {
-              const proceeds = Number(o.closed_price) * qty;
-              events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Fechamento compra (crédito)", side: "sell", delta: proceeds, note: `saída @ ${Number(o.closed_price).toFixed(4)} · PnL ${Number(o.realized_pnl ?? 0).toFixed(2)}`, qty, price: Number(o.closed_price), pnl: Number(o.realized_pnl ?? 0) });
+              const exitPrice = Number(o.closed_price);
+              const proceeds = exitPrice * qty;
+              const pnl = Number(o.realized_pnl ?? (exitPrice - entryPrice) * qty);
+              movs.push({
+                ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Venda (fechamento)", side: "sell",
+                qty, price: exitPrice,
+                debito: 0, credito: proceeds, pnl_realizado: pnl,
+              });
             }
           } else if (o.side === "sell" && o.status === "closed" && o.closed_price != null) {
-            const proceeds = Number(o.closed_price) * qty;
-            events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Venda (crédito)", side: "sell", delta: proceeds, note: `qty ${qty.toFixed(6)} @ ${Number(o.closed_price).toFixed(4)} · PnL ${Number(o.realized_pnl ?? 0).toFixed(2)}`, qty, price: Number(o.closed_price), pnl: Number(o.realized_pnl ?? 0) });
-          } else if (o.status === "cancelled") {
-            events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Cancelada", side: o.side, delta: 0, note: `${o.side} ignorada`, qty, price: 0, pnl: 0 });
+            const exitPrice = Number(o.closed_price);
+            movs.push({
+              ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Venda", side: "sell",
+              qty, price: exitPrice,
+              debito: 0, credito: exitPrice * qty, pnl_realizado: Number(o.realized_pnl ?? 0),
+            });
           }
         }
-        events.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
-        let running = initialBalance;
-        const allRowsAsc = events.map((e) => { running += e.delta; return { ...e, running }; });
-        const allRows = [...allRowsAsc].reverse();
+        movs.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
 
-        const volumeComprado = allRowsAsc.filter((r) => r.delta < 0).reduce((s, r) => s + Math.abs(r.delta), 0);
-        const volumeVendido = allRowsAsc.filter((r) => r.delta > 0).reduce((s, r) => s + r.delta, 0);
+        const currentPriceByPair = new Map<string, number>();
+        for (const c of cryptos) {
+          const px = c.quantity > 0 ? (c.value + c.unrealized_pnl) / c.quantity : c.avg_price;
+          currentPriceByPair.set(c.pair, px);
+        }
+        const priceFor = (pair: string, fallback: number) => currentPriceByPair.get(pair) ?? fallback;
+
+        let caixa = initialBalance;
+        let pnlRealAcum = 0;
+        const holdings = new Map<string, { qty: number; cost: number }>();
+        const ledger = movs.map((m) => {
+          caixa = caixa - m.debito + m.credito;
+          pnlRealAcum += m.pnl_realizado;
+          const h = holdings.get(m.pair) ?? { qty: 0, cost: 0 };
+          if (m.side === "buy") {
+            h.qty += m.qty; h.cost += m.qty * m.price;
+          } else {
+            const avg = h.qty > 0 ? h.cost / h.qty : m.price;
+            h.cost = Math.max(0, h.cost - m.qty * avg);
+            h.qty = Math.max(0, h.qty - m.qty);
+          }
+          holdings.set(m.pair, h);
+
+          let valorPosicoes = 0;
+          let custoPosicoes = 0;
+          for (const [p, hh] of holdings.entries()) {
+            if (hh.qty > 0) {
+              valorPosicoes += hh.qty * priceFor(p, hh.cost / hh.qty);
+              custoPosicoes += hh.cost;
+            }
+          }
+          const pnlUnrealAcum = valorPosicoes - custoPosicoes;
+          const patrimonio = caixa + valorPosicoes;
+          const qtyPair = h.qty;
+          const precoAtualPair = qtyPair > 0 ? priceFor(m.pair, m.price) : 0;
+          const valorPosicaoPair = qtyPair * precoAtualPair;
+
+          return {
+            ...m,
+            caixa_apos: caixa,
+            qty_carteira_apos: qtyPair,
+            preco_atual: precoAtualPair,
+            valor_posicao: valorPosicaoPair,
+            pnl_realizado_acum: pnlRealAcum,
+            pnl_nao_realizado_acum: pnlUnrealAcum,
+            patrimonio_apos: patrimonio,
+          };
+        });
+
+        const allRowsAsc = ledger;
+        const allRows = [...ledger].reverse();
+
+        const volumeComprado = movs.reduce((s, m) => s + m.debito, 0);
+        const volumeVendido = movs.reduce((s, m) => s + m.credito, 0);
+        const variacaoPct = initialBalance > 0 ? ((equity - initialBalance) / initialBalance) * 100 : 0;
 
         const exportXLSX = async () => {
           const XLSX = await import("xlsx");
           const rows = allRowsAsc.map((r) => ({
             Data: new Date(r.ts).toLocaleString(),
-            Par: r.pair,
-            Tipo: r.kind,
-            Lado: r.side,
-            Quantidade: r.qty,
-            Preço: r.price,
-            "Valor (USD)": Number(r.delta.toFixed(2)),
-            "PnL realizado": Number(r.pnl.toFixed(2)),
-            "Saldo (USD)": Number(r.running.toFixed(2)),
-            Detalhe: r.note,
+            Ativo: r.pair,
+            "Tipo de movimento": r.kind,
+            Quantidade: Number(r.qty.toFixed(8)),
+            "Preço unitário": Number(r.price.toFixed(6)),
+            "Débito USDT": Number(r.debito.toFixed(2)),
+            "Crédito USDT": Number(r.credito.toFixed(2)),
+            "Saldo caixa após": Number(r.caixa_apos.toFixed(2)),
+            "Qtd em carteira após": Number(r.qty_carteira_apos.toFixed(8)),
+            "Preço atual": Number(r.preco_atual.toFixed(6)),
+            "Valor atual da posição": Number(r.valor_posicao.toFixed(2)),
+            "PnL realizado (acum.)": Number(r.pnl_realizado_acum.toFixed(2)),
+            "PnL não realizado (acum.)": Number(r.pnl_nao_realizado_acum.toFixed(2)),
+            "Patrimônio total após": Number(r.patrimonio_apos.toFixed(2)),
           }));
           const summary = [
-            { Métrica: "Saldo inicial", Valor: initialBalance },
-            { Métrica: "Caixa atual", Valor: Number(cash.toFixed(2)) },
-            { Métrica: "Capital alocado (posições abertas)", Valor: Number(capitalAlocado.toFixed(2)) },
-            { Métrica: "Patrimônio total (Equity)", Valor: Number(equity.toFixed(2)) },
+            { Métrica: "Saldo inicial (USDT)", Valor: initialBalance },
+            { Métrica: "Caixa atual (USDT)", Valor: Number(cash.toFixed(2)) },
+            { Métrica: "Valor atual das moedas abertas (USDT)", Valor: Number(openPositionsValue.toFixed(2)) },
+            { Métrica: "Patrimônio total atual (USDT)", Valor: Number(equity.toFixed(2)) },
             { Métrica: "PnL realizado", Valor: Number(realizedPnl.toFixed(2)) },
             { Métrica: "PnL não realizado", Valor: Number(unrealizedPnl.toFixed(2)) },
-            { Métrica: "Resultado total (PnL)", Valor: Number(totalPnl.toFixed(2)) },
-            { Métrica: "ROI (%)", Valor: Number(roiPct.toFixed(2)) },
+            { Métrica: "Resultado total da carteira", Valor: Number(totalPnl.toFixed(2)) },
+            { Métrica: "Variação percentual da carteira (%)", Valor: Number(variacaoPct.toFixed(2)) },
             { Métrica: "Operações abertas", Valor: openBuys.length },
             { Métrica: "Operações encerradas", Valor: closedOps.length },
-            { Métrica: "Movimentos no extrato", Valor: allRowsAsc.length },
           ];
           const audit = closedOps.map((o: any) => ({
-            ID: o.id,
             Ativo: o.pair,
             Abertura: new Date(o.opened_at).toLocaleString(),
             Fechamento: new Date(o.closed_at).toLocaleString(),
             Quantidade: o.qty,
             "Preço entrada": o.entry,
             "Preço saída": o.exit,
-            "Valor investido": Number(o.invested.toFixed(2)),
-            "Valor retornado": Number(o.proceeds.toFixed(2)),
-            Taxas: Number(o.fees.toFixed(4)),
+            "Investido (USDT)": Number(o.invested.toFixed(2)),
+            "Retornado (USDT)": Number(o.proceeds.toFixed(2)),
             "PnL realizado": Number(o.pnl.toFixed(2)),
             "ROI (%)": Number(o.roi.toFixed(2)),
-            Status: "encerrada",
           }));
           const volumeAudit = [
-            { Métrica: "Volume comprado (movimentação bruta)", Valor: Number(volumeComprado.toFixed(2)) },
-            { Métrica: "Volume vendido (movimentação bruta)", Valor: Number(volumeVendido.toFixed(2)) },
+            { Métrica: "Volume comprado (bruto)", Valor: Number(volumeComprado.toFixed(2)) },
+            { Métrica: "Volume vendido (bruto)", Valor: Number(volumeVendido.toFixed(2)) },
             { Métrica: "Volume total movimentado", Valor: Number((volumeComprado + volumeVendido).toFixed(2)) },
           ];
           const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Resumo");
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(audit), "Auditoria");
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(volumeAudit), "Volume");
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Extrato");
-          XLSX.writeFile(wb, `extrato-carteira-${new Date().toISOString().slice(0, 10)}.xlsx`);
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Resumo Patrimonial");
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Extrato Patrimonial");
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(audit), "Operacoes Encerradas");
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(volumeAudit), "Volume (auditoria)");
+          XLSX.writeFile(wb, `extrato-patrimonial-${new Date().toISOString().slice(0, 10)}.xlsx`);
         };
 
         const exportPDF = async () => {
@@ -400,75 +469,57 @@ function WalletPage() {
           const autoTable = (await import("jspdf-autotable")).default;
           const doc = new jsPDF({ orientation: "landscape" });
           doc.setFontSize(14);
-          doc.text("Extrato da carteira simulada", 14, 14);
+          doc.text("Extrato Patrimonial da Carteira", 14, 14);
           doc.setFontSize(9);
           doc.text(
             [
-              `Saldo inicial: $${initialBalance.toFixed(2)}    Caixa atual: $${cash.toFixed(2)}    Capital alocado: $${capitalAlocado.toFixed(2)}    Patrimônio total: $${equity.toFixed(2)}`,
-              `PnL realizado: $${realizedPnl.toFixed(2)}    PnL não realizado: $${unrealizedPnl.toFixed(2)}    Resultado total: $${totalPnl.toFixed(2)}    ROI: ${roiPct.toFixed(2)}%`,
-              `Operações abertas: ${openBuys.length}    Operações encerradas: ${closedOps.length}    Gerado em ${new Date().toLocaleString()}`,
+              `Saldo inicial: $${initialBalance.toFixed(2)}    Caixa atual: $${cash.toFixed(2)}    Valor moedas abertas: $${openPositionsValue.toFixed(2)}    Patrimônio total: $${equity.toFixed(2)}`,
+              `PnL realizado: $${realizedPnl.toFixed(2)}    PnL não realizado: $${unrealizedPnl.toFixed(2)}    Resultado total: $${totalPnl.toFixed(2)}    Variação: ${variacaoPct.toFixed(2)}%`,
+              `Ops abertas: ${openBuys.length}    Ops encerradas: ${closedOps.length}    Gerado em ${new Date().toLocaleString()}`,
             ],
             14,
             22,
           );
           autoTable(doc, {
             startY: 42,
-            head: [["Ativo", "Abertura", "Fechamento", "Qtd", "Entrada", "Saída", "Investido", "PnL", "ROI %"]],
-            body: closedOps.map((o: any) => [
-              o.pair,
-              new Date(o.opened_at).toLocaleString(),
-              new Date(o.closed_at).toLocaleString(),
-              o.qty.toFixed(6),
-              o.entry.toFixed(4),
-              o.exit.toFixed(4),
-              o.invested.toFixed(2),
-              `${o.pnl >= 0 ? "+" : ""}${o.pnl.toFixed(2)}`,
-              `${o.roi >= 0 ? "+" : ""}${o.roi.toFixed(2)}`,
-            ]),
-            styles: { fontSize: 7 },
-            headStyles: { fillColor: [40, 40, 40] },
-            didDrawPage: (d) => {
-              doc.setFontSize(10);
-              doc.text("Auditoria de operações encerradas", 14, d.cursor?.y ? 36 : 36);
-            },
-          });
-          autoTable(doc, {
-            head: [["Data", "Par", "Tipo", "Qtd", "Preço", "Valor (USD)", "Saldo (USD)", "Detalhe"]],
+            head: [["Data", "Ativo", "Movimento", "Qtd", "Preço", "Débito", "Crédito", "Caixa após", "Qtd cart.", "Preço atual", "Valor pos.", "PnL real.", "PnL n/real.", "Patrim."]],
             body: allRowsAsc.map((r) => [
               new Date(r.ts).toLocaleString(),
               r.pair,
               r.kind,
-              r.qty ? r.qty.toFixed(6) : "—",
-              r.price ? r.price.toFixed(4) : "—",
-              r.delta === 0 ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta.toFixed(2)}`,
-              r.running.toFixed(2),
-              r.note,
+              r.qty.toFixed(6),
+              r.price.toFixed(4),
+              r.debito > 0 ? `-${r.debito.toFixed(2)}` : "—",
+              r.credito > 0 ? `+${r.credito.toFixed(2)}` : "—",
+              r.caixa_apos.toFixed(2),
+              r.qty_carteira_apos.toFixed(6),
+              r.preco_atual > 0 ? r.preco_atual.toFixed(4) : "—",
+              r.valor_posicao.toFixed(2),
+              `${r.pnl_realizado_acum >= 0 ? "+" : ""}${r.pnl_realizado_acum.toFixed(2)}`,
+              `${r.pnl_nao_realizado_acum >= 0 ? "+" : ""}${r.pnl_nao_realizado_acum.toFixed(2)}`,
+              r.patrimonio_apos.toFixed(2),
             ]),
-            styles: { fontSize: 7 },
+            styles: { fontSize: 6 },
             headStyles: { fillColor: [40, 40, 40] },
-            didDrawPage: (d) => {
-              doc.setFontSize(10);
-              doc.text("Extrato débito / crédito", 14, d.cursor?.y ? 36 : 36);
-            },
           });
           const finalY = (doc as any).lastAutoTable?.finalY ?? 200;
           doc.setFontSize(8);
           doc.setTextColor(100, 100, 100);
           doc.text(
-            `Auditoria de volume — comprado: $${volumeComprado.toFixed(2)} · vendido: $${volumeVendido.toFixed(2)} · total: $${(volumeComprado + volumeVendido).toFixed(2)} (movimentação bruta, não confundir com lucro)`,
+            `Volume bruto — comprado: $${volumeComprado.toFixed(2)} · vendido: $${volumeVendido.toFixed(2)} · total: $${(volumeComprado + volumeVendido).toFixed(2)} (auditoria; não confundir com lucro)`,
             14,
-            finalY + 10,
+            finalY + 8,
           );
-          doc.save(`extrato-carteira-${new Date().toISOString().slice(0, 10)}.pdf`);
+          doc.save(`extrato-patrimonial-${new Date().toISOString().slice(0, 10)}.pdf`);
         };
 
         return (
           <section className="panel p-5">
             <div className="flex items-start justify-between gap-3 mb-1 flex-wrap">
               <div>
-                <h2 className="text-sm font-semibold">Extrato (débito / crédito)</h2>
+                <h2 className="text-sm font-semibold">Extrato Patrimonial da Carteira</h2>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Cada compra debita o capital alocado; o crédito acontece quando a posição é fechada (TP/SL ou venda).
+                  Livro-razão de débitos e créditos por operação — reconstrói a carteira do saldo inicial até o patrimônio final.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -483,63 +534,51 @@ function WalletPage() {
 
             <div className="mt-3 mb-4 flex items-start gap-2 text-[11px] text-muted-foreground bg-muted/30 border border-border rounded-md p-2">
               <Info className="size-3.5 mt-0.5 shrink-0" />
-              <span>Visão patrimonial: foco em caixa, capital alocado, patrimônio total e PnL realizado/não realizado. Volume movimentado fica disponível apenas na exportação para auditoria contábil.</span>
+              <span>Compra debita caixa e credita ativo. Venda credita caixa e debita ativo (gerando PnL realizado se fechar uma compra). Patrimônio = caixa + Σ (qtd × preço atual).</span>
             </div>
 
-            {(() => {
-              const wins = closedOps.filter((o: any) => o.pnl > 0).length;
-              const hitRate = closedOps.length > 0 ? (wins / closedOps.length) * 100 : 0;
-              return (
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-2 my-4 text-xs">
-                  <div className="rounded-md border border-border p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">Saldo inicial</p>
-                    <p className="font-mono">${initialBalance.toFixed(2)}</p>
-                  </div>
-                  <div className="rounded-md border border-border p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">Caixa atual</p>
-                    <p className="font-mono">${cash.toFixed(2)}</p>
-                  </div>
-                  <div className="rounded-md border border-border p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">Capital alocado</p>
-                    <p className="font-mono">${capitalAlocado.toFixed(2)}</p>
-                  </div>
-                  <div className="rounded-md border border-border p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">Patrimônio total</p>
-                    <p className="font-mono">${equity.toFixed(2)}</p>
-                  </div>
-                  <div className="rounded-md border border-border p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">Resultado total</p>
-                    <p className={`font-mono ${totalPnl >= 0 ? "text-success" : "text-destructive"}`}>
-                      {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-border p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">PnL realizado</p>
-                    <p className={`font-mono ${realizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
-                      {realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-border p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">PnL não realizado</p>
-                    <p className={`font-mono ${unrealizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
-                      {unrealizedPnl >= 0 ? "+" : ""}${unrealizedPnl.toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-border p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">Ops abertas</p>
-                    <p className="font-mono">{openBuys.length}</p>
-                  </div>
-                  <div className="rounded-md border border-border p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">Ops encerradas</p>
-                    <p className="font-mono">{closedOps.length}</p>
-                  </div>
-                  <div className="rounded-md border border-border p-2">
-                    <p className="text-[10px] uppercase text-muted-foreground">Taxa de acerto</p>
-                    <p className="font-mono">{hitRate.toFixed(1)}% <span className="text-[10px] text-muted-foreground">({wins}/{closedOps.length})</span></p>
-                  </div>
-                </div>
-              );
-            })()}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 my-4 text-xs">
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Saldo inicial</p>
+                <p className="font-mono">${initialBalance.toFixed(2)}</p>
+              </div>
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Caixa atual (USDT)</p>
+                <p className="font-mono">${cash.toFixed(2)}</p>
+              </div>
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Valor moedas abertas</p>
+                <p className="font-mono">${openPositionsValue.toFixed(2)}</p>
+              </div>
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Patrimônio total</p>
+                <p className="font-mono">${equity.toFixed(2)}</p>
+              </div>
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">PnL realizado</p>
+                <p className={`font-mono ${realizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                  {realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}
+                </p>
+              </div>
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">PnL não realizado</p>
+                <p className={`font-mono ${unrealizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                  {unrealizedPnl >= 0 ? "+" : ""}${unrealizedPnl.toFixed(2)}
+                </p>
+              </div>
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Resultado total</p>
+                <p className={`font-mono ${totalPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                  {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
+                </p>
+              </div>
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Variação da carteira</p>
+                <p className={`font-mono ${variacaoPct >= 0 ? "text-success" : "text-destructive"}`}>
+                  {variacaoPct >= 0 ? "+" : ""}{variacaoPct.toFixed(2)}%
+                </p>
+              </div>
+            </div>
 
             {!allRows.length ? (
               <p className="text-sm text-muted-foreground">Nenhum movimento registrado.</p>
@@ -549,22 +588,41 @@ function WalletPage() {
               const rows = allRows.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
               return (
                 <>
-                  <div className="text-xs divide-y divide-border font-mono">
-                    <div className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 pb-2 text-muted-foreground">
-                      <span>Data</span><span>Par</span><span>Tipo</span><span>Detalhe</span><span className="text-right">Valor</span><span className="text-right">Saldo</span>
-                    </div>
-                    {rows.map((r, i) => (
-                      <div key={i} className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 py-2 items-center">
-                        <span className="text-muted-foreground">{new Date(r.ts).toLocaleString()}</span>
-                        <span>{r.pair}</span>
-                        <span className="text-muted-foreground">{r.kind}</span>
-                        <span className="text-muted-foreground truncate">{r.note}</span>
-                        <span className={`text-right ${r.delta > 0 ? "text-success" : r.delta < 0 ? "text-destructive" : ""}`}>
-                          {r.delta === 0 ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta.toFixed(2)}`}
-                        </span>
-                        <span className="text-right">${r.running.toFixed(2)}</span>
+                  <div className="overflow-x-auto">
+                    <div className="text-[11px] divide-y divide-border font-mono min-w-[1400px]">
+                      <div className="grid grid-cols-[130px_70px_140px_80px_80px_90px_90px_100px_90px_80px_90px_90px_90px_100px] gap-2 pb-2 text-muted-foreground">
+                        <span>Data</span><span>Ativo</span><span>Movimento</span>
+                        <span className="text-right">Qtd</span><span className="text-right">Preço</span>
+                        <span className="text-right">Débito</span><span className="text-right">Crédito</span>
+                        <span className="text-right">Caixa após</span>
+                        <span className="text-right">Qtd carteira</span><span className="text-right">Preço atual</span>
+                        <span className="text-right">Valor posição</span>
+                        <span className="text-right">PnL real.</span><span className="text-right">PnL n/real.</span>
+                        <span className="text-right">Patrimônio</span>
                       </div>
-                    ))}
+                      {rows.map((r, i) => (
+                        <div key={i} className="grid grid-cols-[130px_70px_140px_80px_80px_90px_90px_100px_90px_80px_90px_90px_90px_100px] gap-2 py-2 items-center">
+                          <span className="text-muted-foreground">{new Date(r.ts).toLocaleString()}</span>
+                          <span>{r.pair}</span>
+                          <span className="text-muted-foreground">{r.kind}</span>
+                          <span className="text-right">{r.qty.toFixed(6)}</span>
+                          <span className="text-right">${r.price.toFixed(4)}</span>
+                          <span className={`text-right ${r.debito > 0 ? "text-destructive" : ""}`}>{r.debito > 0 ? `-$${r.debito.toFixed(2)}` : "—"}</span>
+                          <span className={`text-right ${r.credito > 0 ? "text-success" : ""}`}>{r.credito > 0 ? `+$${r.credito.toFixed(2)}` : "—"}</span>
+                          <span className="text-right">${r.caixa_apos.toFixed(2)}</span>
+                          <span className="text-right">{r.qty_carteira_apos.toFixed(6)}</span>
+                          <span className="text-right">{r.preco_atual > 0 ? `$${r.preco_atual.toFixed(4)}` : "—"}</span>
+                          <span className="text-right">${r.valor_posicao.toFixed(2)}</span>
+                          <span className={`text-right ${r.pnl_realizado_acum >= 0 ? "text-success" : "text-destructive"}`}>
+                            {r.pnl_realizado_acum >= 0 ? "+" : ""}${r.pnl_realizado_acum.toFixed(2)}
+                          </span>
+                          <span className={`text-right ${r.pnl_nao_realizado_acum >= 0 ? "text-success" : "text-destructive"}`}>
+                            {r.pnl_nao_realizado_acum >= 0 ? "+" : ""}${r.pnl_nao_realizado_acum.toFixed(2)}
+                          </span>
+                          <span className="text-right font-semibold">${r.patrimonio_apos.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between mt-4 text-xs text-muted-foreground">
                     <span>{allRows.length} movimentos · página {curPage} de {totalPages} · {PAGE_SIZE}/página</span>
