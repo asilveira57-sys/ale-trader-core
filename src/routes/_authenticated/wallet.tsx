@@ -43,7 +43,7 @@ function WalletPage() {
     mutationFn: () => liquidate({ data: { slippage_pct: 0.5 } }),
     onSuccess: (r: any) => {
       toast.success(
-        `Liquidação concluída: ${r.sold} vendidas, ${r.cancelled} canceladas · caixa +$${Number(r.proceeds).toFixed(2)} · PnL ${Number(r.pnl) >= 0 ? "+" : ""}$${Number(r.pnl).toFixed(2)}`,
+        `Liquidação concluída: ${r.sold} vendidas, ${r.cancelled} canceladas · caixa +$${Number(r.proceeds).toFixed(2)} · PnL ${Number(r.pnl) >= 0 ? "+" : ""}$${Number(r.pnl).toFixed(2)}. Robô pausado — reative manualmente para voltar a operar.`,
       );
       qc.invalidateQueries({ queryKey: ["committee"] });
     },
