@@ -204,7 +204,8 @@ export const tickB3Simulation = createServerFn({ method: "POST" })
         const prof = modeProfile(mode);
 
         // Fecha posição se: forçar zeragem, ou stop/gain atingido, ou bloqueio macro com posição aberta + zeragem
-        const open = (await getOpen()).find((o: any) => o.simulation_mode_id === m.id);
+        const openList = await getOpen();
+        const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
         if (open) {
           const dirSign = open.side === "buy" ? 1 : -1;
           const movePts = (ctx.price - Number(open.entry_price)) * dirSign;
