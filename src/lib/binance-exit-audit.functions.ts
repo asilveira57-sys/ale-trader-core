@@ -193,16 +193,19 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
     if (requestIds.length) {
       const { data: reqs } = await supabase
         .from("real_trade_requests")
-        .select("id, decision_id, score, consensus, justification, final_decision")
+        .select("id, decision_id, score, votes_for, votes_against, justification")
         .in("id", requestIds);
       const reqMap = new Map<string, { decision_id: string | null; score: number | null; consensus: number | null; justification: string | null; final_decision: string | null }>();
-      for (const r of reqs ?? []) {
-        reqMap.set(r.id as string, {
-          decision_id: (r as { decision_id: string | null }).decision_id ?? null,
-          score: (r as { score: number | null }).score ?? null,
-          consensus: (r as { consensus: number | null }).consensus ?? null,
-          justification: (r as { justification: string | null }).justification ?? null,
-          final_decision: (r as { final_decision: string | null }).final_decision ?? null,
+      for (const r of (reqs ?? []) as Array<{ id: string; decision_id: string | null; score: number | null; votes_for: number | null; votes_against: number | null; justification: string | null }>) {
+        const vf = r.votes_for ?? 0;
+        const va = r.votes_against ?? 0;
+        const totalV = vf + va;
+        reqMap.set(r.id, {
+          decision_id: r.decision_id,
+          score: r.score,
+          consensus: totalV ? (vf / totalV) * 100 : null,
+          justification: r.justification,
+          final_decision: null,
         });
       }
       const decisionIds = Array.from(reqMap.values()).map((v) => v.decision_id).filter((v): v is string => !!v);
