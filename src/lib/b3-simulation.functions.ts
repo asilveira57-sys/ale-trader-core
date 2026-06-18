@@ -126,183 +126,179 @@ export const getB3SimulationDetail = createServerFn({ method: "POST" })
     };
   });
 
-// ───────────────────── tick ─────────────────────
-// Cria 1 snapshot de mercado e processa os 3 modos com base nele.
+// ───────────────────── tick (core, reutilizado por hook público) ─────────────────────
+export async function runB3SimulationTick(
+  supabase: any,
+  userId: string,
+  runId: string,
+  ticks = 1,
+): Promise<{ ok?: boolean; skipped?: boolean; reason?: string; processed?: number; log: any[] }> {
+  ticks = Math.min(Math.max(1, Number(ticks)), 60);
+
+  const { data: run, error: runErr } = await supabase.from("b3_simulation_runs")
+    .select("*").eq("id", runId).eq("user_id", userId).maybeSingle();
+  if (runErr) throw runErr;
+  if (!run) throw new Error("Run não encontrada");
+  if (run.status !== "running") return { skipped: true, reason: `Status ${run.status}`, log: [] };
+
+  const { data: modeRows, error: mErr } = await supabase.from("b3_simulation_modes")
+    .select("*").eq("simulation_run_id", runId).eq("user_id", userId);
+  if (mErr) throw mErr;
+  const modeById: Record<string, any> = {};
+  const modeByName: Record<string, any> = {};
+  for (const m of modeRows ?? []) { modeById[m.id] = m; modeByName[m.mode] = m; }
+
+  const startMin = hhmmToMin(run.trading_start_time);
+  const cutoffMin = hhmmToMin(run.entry_cutoff_time);
+  const forceMin = hhmmToMin(run.force_close_time);
+
+  const now0 = new Date();
+  const { data: macros } = await supabase.from("b3_macro_events")
+    .select("*").eq("user_id", userId).eq("active", true)
+    .lte("block_start", new Date(now0.getTime() + 24 * 3600 * 1000).toISOString())
+    .gte("block_end", new Date(now0.getTime() - 24 * 3600 * 1000).toISOString());
+
+  const log: any[] = [];
+  let openOrdersCache: any[] | null = null;
+  async function getOpen() {
+    if (openOrdersCache) return openOrdersCache;
+    const { data: o } = await supabase.from("b3_simulation_orders")
+      .select("*").eq("simulation_run_id", runId).eq("user_id", userId).eq("status", "open");
+    openOrdersCache = o ?? [];
+    return openOrdersCache;
+  }
+
+  for (let i = 0; i < ticks; i++) {
+    const now = new Date();
+    const cur = now.getHours() * 60 + now.getMinutes();
+    const insideHours = cur >= startMin && cur <= cutoffMin;
+    const forceClose = cur >= forceMin || cur < startMin;
+
+    const ctx = buildMockB3Context("WIN", "WINFUT", 130000);
+    const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
+      .insert({
+        simulation_run_id: runId, user_id: userId, symbol: "WIN",
+        price: ctx.price, candle_open: ctx.open, candle_high: ctx.high, candle_low: ctx.low,
+        candle_close: ctx.price, volume: ctx.volume_ratio, vwap: ctx.vwap,
+        market_time: now.toISOString(), source: "mock",
+        extra: { ema9: ctx.ema9, ema21: ctx.ema21, rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
+          momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase },
+      }).select("id").single();
+    if (sErr) throw sErr;
+
+    const macroBlock = (macros ?? []).find((m: any) => {
+      const a = new Date(m.block_start).getTime();
+      const b = new Date(m.block_end).getTime();
+      return now.getTime() >= a && now.getTime() <= b;
+    });
+
+    const intendedSide: B3Side = ctx.ema9 >= ctx.ema21 ? "buy" : "sell";
+
+    for (const mode of MODES) {
+      const m = modeByName[mode];
+      if (!m) continue;
+      const prof = modeProfile(mode);
+
+      const openList = await getOpen();
+      const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
+      if (open) {
+        const dirSign = open.side === "buy" ? 1 : -1;
+        const movePts = (ctx.price - Number(open.entry_price)) * dirSign;
+        const hitStop = movePts <= -prof.stop_pts;
+        const hitGain = movePts >= prof.gain_pts;
+        if (forceClose || hitStop || hitGain) {
+          await closeOrder(supabase, userId, run, m, open, ctx.price, forceClose ? "force_close" : hitStop ? "stop" : "gain");
+          openOrdersCache = null;
+          log.push({ mode, action: "close", reason: forceClose ? "force_close" : hitStop ? "stop" : "gain", price: ctx.price });
+          continue;
+        }
+      }
+
+      if (!insideHours || forceClose) {
+        log.push({ mode, action: "skip", reason: !insideHours ? "fora_horario" : "zeragem" });
+        continue;
+      }
+      if (macroBlock) {
+        log.push({ mode, action: "skip", reason: `macro:${macroBlock.name}` });
+        await supabase.from("b3_simulation_modes")
+          .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
+        m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        continue;
+      }
+      if (open) continue;
+
+      const risk: B3RiskState = {
+        daily_loss_limit: prof.stop_pts * POINT_VALUE_BRL * prof.max_contracts * 5,
+        daily_gain_target: prof.gain_pts * POINT_VALUE_BRL * prof.max_contracts * 5,
+        realized_today_brl: Number(m.realized_pnl) || 0,
+        open_contracts: 0,
+        max_contracts: prof.max_contracts,
+        requested_qty: 1,
+        inside_hours: insideHours,
+        force_close_now: forceClose,
+        strategy_mode: mode,
+      };
+      const localCtx = { ...ctx };
+      if (localCtx.volatility_pct > prof.max_vol) {
+        await supabase.from("b3_simulation_modes")
+          .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
+        m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        log.push({ mode, action: "skip", reason: "volatilidade" });
+        continue;
+      }
+
+      const votes = runB3Agents(localCtx, intendedSide, risk);
+      const decision = buildB3Decision(votes, intendedSide, committeeFor(mode));
+
+      const voteRows = votes.map(v => ({
+        simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
+        mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
+        market_data_snapshot: {
+          snapshot_id: snapIns.id, decision: decision.final, score: decision.score,
+          price: ctx.price, side: intendedSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
+        } as any,
+      }));
+      await supabase.from("b3_simulation_agent_votes").insert(voteRows);
+
+      if (decision.final === "approved") {
+        const slip = Number(run.simulated_slippage_pts) || 0;
+        const entry = intendedSide === "buy" ? ctx.price + slip : ctx.price - slip;
+        const { error: oErr } = await supabase.from("b3_simulation_orders").insert({
+          simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
+          mode, symbol: "WIN", contract_code: "WINFUT", side: intendedSide,
+          entry_price: Math.round(entry / TICK) * TICK, quantity: 1,
+          fees: Number(run.simulated_fee_brl) || 0, status: "open",
+        });
+        if (oErr) throw oErr;
+        openOrdersCache = null;
+        await supabase.from("b3_simulation_modes")
+          .update({
+            committee_approvals: (Number(m.committee_approvals) || 0) + 1,
+            contracts_traded: (Number(m.contracts_traded) || 0) + 1,
+          }).eq("id", m.id);
+        m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
+        m.contracts_traded = (Number(m.contracts_traded) || 0) + 1;
+        log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score });
+      } else {
+        const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
+        await supabase.from("b3_simulation_modes")
+          .update({ [field]: (Number(m[field]) || 0) + 1 }).eq("id", m.id);
+        m[field] = (Number(m[field]) || 0) + 1;
+        log.push({ mode, action: "reject", final: decision.final, score: decision.score });
+      }
+    }
+  }
+
+  return { ok: true, processed: ticks, log };
+}
+
 export const tickB3Simulation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { run_id: string; ticks?: number }) => d)
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const ticks = Math.min(Math.max(1, Number(data.ticks ?? 1)), 60);
-
-    const { data: run, error: runErr } = await (supabase as any).from("b3_simulation_runs")
-      .select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle();
-    if (runErr) throw runErr;
-    if (!run) throw new Error("Run não encontrada");
-    if (run.status !== "running") return { skipped: true, reason: `Status ${run.status}` };
-
-    const { data: modeRows, error: mErr } = await (supabase as any).from("b3_simulation_modes")
-      .select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId);
-    if (mErr) throw mErr;
-    const modeById: Record<string, any> = {};
-    const modeByName: Record<string, any> = {};
-    for (const m of modeRows ?? []) { modeById[m.id] = m; modeByName[m.mode] = m; }
-
-    // janela horária
-    const startMin = hhmmToMin(run.trading_start_time);
-    const cutoffMin = hhmmToMin(run.entry_cutoff_time);
-    const forceMin = hhmmToMin(run.force_close_time);
-
-    // macro events ativos
-    const now0 = new Date();
-    const { data: macros } = await (supabase as any).from("b3_macro_events")
-      .select("*").eq("user_id", userId).eq("active", true)
-      .lte("block_start", new Date(now0.getTime() + 24 * 3600 * 1000).toISOString())
-      .gte("block_end", new Date(now0.getTime() - 24 * 3600 * 1000).toISOString());
-
-    const log: any[] = [];
-    let openOrdersCache: any[] | null = null;
-    async function getOpen() {
-      if (openOrdersCache) return openOrdersCache;
-      const { data: o } = await (supabase as any).from("b3_simulation_orders")
-        .select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).eq("status", "open");
-      openOrdersCache = o ?? [];
-      return openOrdersCache;
-    }
-
-    for (let i = 0; i < ticks; i++) {
-      const now = new Date();
-      const cur = now.getHours() * 60 + now.getMinutes();
-      const insideHours = cur >= startMin && cur <= cutoffMin;
-      const forceClose = cur >= forceMin || cur < startMin;
-
-      // snapshot único compartilhado
-      const ctx = buildMockB3Context("WIN", "WINFUT", 130000);
-      const { data: snapIns, error: sErr } = await (supabase as any).from("b3_simulation_market_snapshots")
-        .insert({
-          simulation_run_id: data.run_id, user_id: userId, symbol: "WIN",
-          price: ctx.price, candle_open: ctx.open, candle_high: ctx.high, candle_low: ctx.low,
-          candle_close: ctx.price, volume: ctx.volume_ratio, vwap: ctx.vwap,
-          market_time: now.toISOString(), source: "mock",
-          extra: { ema9: ctx.ema9, ema21: ctx.ema21, rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
-            momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase },
-        }).select("id").single();
-      if (sErr) throw sErr;
-
-      // verifica bloqueio macro
-      const macroBlock = (macros ?? []).find((m: any) => {
-        const a = new Date(m.block_start).getTime();
-        const b = new Date(m.block_end).getTime();
-        return now.getTime() >= a && now.getTime() <= b;
-      });
-
-      // decide side baseado no contexto (para os 3 modos receberem mesma "intenção" e o comitê filtrar)
-      const intendedSide: B3Side = ctx.ema9 >= ctx.ema21 ? "buy" : "sell";
-
-      for (const mode of MODES) {
-        const m = modeByName[mode];
-        const prof = modeProfile(mode);
-
-        // Fecha posição se: forçar zeragem, ou stop/gain atingido, ou bloqueio macro com posição aberta + zeragem
-        const openList = await getOpen();
-        const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
-        if (open) {
-          const dirSign = open.side === "buy" ? 1 : -1;
-          const movePts = (ctx.price - Number(open.entry_price)) * dirSign;
-          const hitStop = movePts <= -prof.stop_pts;
-          const hitGain = movePts >= prof.gain_pts;
-          if (forceClose || hitStop || hitGain) {
-            await closeOrder(supabase, userId, run, m, open, ctx.price, forceClose ? "force_close" : hitStop ? "stop" : "gain");
-            openOrdersCache = null;
-            log.push({ mode, action: "close", reason: forceClose ? "force_close" : hitStop ? "stop" : "gain", price: ctx.price });
-            continue;
-          }
-        }
-
-        // Sem entrada nova fora da janela / em macro / após zeragem
-        if (!insideHours || forceClose) {
-          log.push({ mode, action: "skip", reason: !insideHours ? "fora_horario" : "zeragem" });
-          continue;
-        }
-        if (macroBlock) {
-          log.push({ mode, action: "skip", reason: `macro:${macroBlock.name}` });
-          await (supabase as any).from("b3_simulation_modes")
-            .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
-          m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
-          continue;
-        }
-        if (open) {
-          // já posicionado nesse modo — não abre nova
-          continue;
-        }
-
-        // comitê para este modo
-        const risk: B3RiskState = {
-          daily_loss_limit: prof.stop_pts * POINT_VALUE_BRL * prof.max_contracts * 5,
-          daily_gain_target: prof.gain_pts * POINT_VALUE_BRL * prof.max_contracts * 5,
-          realized_today_brl: Number(m.realized_pnl) || 0,
-          open_contracts: 0,
-          max_contracts: prof.max_contracts,
-          requested_qty: 1,
-          inside_hours: insideHours,
-          force_close_now: forceClose,
-          strategy_mode: mode,
-        };
-        // override volatility cap por modo
-        const localCtx = { ...ctx };
-        if (localCtx.volatility_pct > prof.max_vol) {
-          await (supabase as any).from("b3_simulation_modes")
-            .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
-          m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
-          log.push({ mode, action: "skip", reason: "volatilidade" });
-          continue;
-        }
-
-        const votes = runB3Agents(localCtx, intendedSide, risk);
-        const decision = buildB3Decision(votes, intendedSide, committeeFor(mode));
-
-        // persiste votos
-        const voteRows = votes.map(v => ({
-          simulation_run_id: data.run_id, simulation_mode_id: m.id, user_id: userId,
-          mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
-          market_data_snapshot: {
-            snapshot_id: snapIns.id, decision: decision.final, score: decision.score,
-            price: ctx.price, side: intendedSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
-          } as any,
-        }));
-        await (supabase as any).from("b3_simulation_agent_votes").insert(voteRows);
-
-        if (decision.final === "approved") {
-          const slip = Number(run.simulated_slippage_pts) || 0;
-          const entry = intendedSide === "buy" ? ctx.price + slip : ctx.price - slip;
-          const { error: oErr } = await (supabase as any).from("b3_simulation_orders").insert({
-            simulation_run_id: data.run_id, simulation_mode_id: m.id, user_id: userId,
-            mode, symbol: "WIN", contract_code: "WINFUT", side: intendedSide,
-            entry_price: Math.round(entry / TICK) * TICK, quantity: 1,
-            fees: Number(run.simulated_fee_brl) || 0, status: "open",
-          });
-          if (oErr) throw oErr;
-          openOrdersCache = null;
-          await (supabase as any).from("b3_simulation_modes")
-            .update({
-              committee_approvals: (Number(m.committee_approvals) || 0) + 1,
-              contracts_traded: (Number(m.contracts_traded) || 0) + 1,
-            }).eq("id", m.id);
-          m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
-          m.contracts_traded = (Number(m.contracts_traded) || 0) + 1;
-          log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score });
-        } else {
-          const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
-          await (supabase as any).from("b3_simulation_modes")
-            .update({ [field]: (Number(m[field]) || 0) + 1 }).eq("id", m.id);
-          m[field] = (Number(m[field]) || 0) + 1;
-          log.push({ mode, action: "reject", final: decision.final, score: decision.score });
-        }
-      }
-    }
-
-    return { ok: true, processed: ticks, log };
+    return runB3SimulationTick(context.supabase, context.userId, data.run_id, data.ticks ?? 1);
   });
+
 
 async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitPrice: number, reason: string) {
   const dir = order.side === "buy" ? 1 : -1;
