@@ -13,10 +13,11 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   AlertTriangle, ShieldAlert, Activity, TrendingUp, TrendingDown,
-  Clock, PauseCircle, PlayCircle, XCircle, FileBarChart, Settings as SettingsIcon, Users,
+  Clock, PauseCircle, PlayCircle, XCircle, FileBarChart, Settings as SettingsIcon, Users, Swords,
 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { runB3Committee, listB3AgentVotes } from "@/lib/b3.functions";
+import { SimComparePanel } from "@/components/b3/SimComparePanel";
 
 export const Route = createFileRoute("/_authenticated/b3")({
   head: () => ({ meta: [{ title: "B3 Day Trade (WIN) — AleTrader AI" }] }),
@@ -165,6 +166,7 @@ function B3Page() {
           <TabsTrigger value="panel"><Activity className="w-4 h-4 mr-1" />Painel</TabsTrigger>
           <TabsTrigger value="trade"><TrendingUp className="w-4 h-4 mr-1" />Operar (sim.)</TabsTrigger>
           <TabsTrigger value="committee"><Users className="w-4 h-4 mr-1" />Comitê</TabsTrigger>
+          <TabsTrigger value="sim3"><Swords className="w-4 h-4 mr-1" />Simulação 3 Modos</TabsTrigger>
           <TabsTrigger value="report"><FileBarChart className="w-4 h-4 mr-1" />Relatório</TabsTrigger>
           <TabsTrigger value="settings"><SettingsIcon className="w-4 h-4 mr-1" />Configurações</TabsTrigger>
         </TabsList>
@@ -184,6 +186,9 @@ function B3Page() {
         </TabsContent>
         <TabsContent value="committee">
           <CommitteePanel settings={settings} />
+        </TabsContent>
+        <TabsContent value="sim3">
+          <SimComparePanel />
         </TabsContent>
         <TabsContent value="report">
           <Report orders={orders} settings={settings} />

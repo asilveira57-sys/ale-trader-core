@@ -711,6 +711,48 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_macro_events: {
+        Row: {
+          active: boolean
+          block_end: string
+          block_start: string
+          category: string
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          severity: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          block_end: string
+          block_start: string
+          category?: string
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          severity?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          block_end?: string
+          block_start?: string
+          category?: string
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          severity?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_orders: {
         Row: {
           close_reason: string | null
@@ -774,6 +816,374 @@ export type Database = {
           symbol?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      b3_simulation_agent_votes: {
+        Row: {
+          agent_name: string
+          confidence: number
+          created_at: string
+          id: string
+          market_data_snapshot: Json
+          mode: string
+          order_id: string | null
+          reason: string | null
+          simulation_mode_id: string
+          simulation_run_id: string
+          user_id: string
+          vote: string
+        }
+        Insert: {
+          agent_name: string
+          confidence?: number
+          created_at?: string
+          id?: string
+          market_data_snapshot?: Json
+          mode: string
+          order_id?: string | null
+          reason?: string | null
+          simulation_mode_id: string
+          simulation_run_id: string
+          user_id: string
+          vote: string
+        }
+        Update: {
+          agent_name?: string
+          confidence?: number
+          created_at?: string
+          id?: string
+          market_data_snapshot?: Json
+          mode?: string
+          order_id?: string | null
+          reason?: string | null
+          simulation_mode_id?: string
+          simulation_run_id?: string
+          user_id?: string
+          vote?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_simulation_agent_votes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_simulation_agent_votes_simulation_mode_id_fkey"
+            columns: ["simulation_mode_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_modes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_simulation_agent_votes_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      b3_simulation_market_snapshots: {
+        Row: {
+          candle_close: number | null
+          candle_high: number | null
+          candle_low: number | null
+          candle_open: number | null
+          created_at: string
+          extra: Json
+          id: string
+          market_time: string
+          price: number
+          simulation_run_id: string
+          source: string
+          symbol: string
+          user_id: string
+          volume: number | null
+          vwap: number | null
+        }
+        Insert: {
+          candle_close?: number | null
+          candle_high?: number | null
+          candle_low?: number | null
+          candle_open?: number | null
+          created_at?: string
+          extra?: Json
+          id?: string
+          market_time?: string
+          price: number
+          simulation_run_id: string
+          source?: string
+          symbol?: string
+          user_id: string
+          volume?: number | null
+          vwap?: number | null
+        }
+        Update: {
+          candle_close?: number | null
+          candle_high?: number | null
+          candle_low?: number | null
+          candle_open?: number | null
+          created_at?: string
+          extra?: Json
+          id?: string
+          market_time?: string
+          price?: number
+          simulation_run_id?: string
+          source?: string
+          symbol?: string
+          user_id?: string
+          volume?: number | null
+          vwap?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_simulation_market_snapshots_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      b3_simulation_modes: {
+        Row: {
+          committee_approvals: number
+          committee_rejections: number
+          contracts_traded: number
+          created_at: string
+          current_balance: number
+          id: string
+          initial_balance: number
+          losing_trades: number
+          max_drawdown: number
+          max_gain: number
+          max_loss: number
+          mode: string
+          points_result: number
+          realized_pnl: number
+          risk_blocks: number
+          simulation_run_id: string
+          status: string
+          total_fees: number
+          total_trades: number
+          unrealized_pnl: number
+          updated_at: string
+          user_id: string
+          winning_trades: number
+        }
+        Insert: {
+          committee_approvals?: number
+          committee_rejections?: number
+          contracts_traded?: number
+          created_at?: string
+          current_balance?: number
+          id?: string
+          initial_balance?: number
+          losing_trades?: number
+          max_drawdown?: number
+          max_gain?: number
+          max_loss?: number
+          mode: string
+          points_result?: number
+          realized_pnl?: number
+          risk_blocks?: number
+          simulation_run_id: string
+          status?: string
+          total_fees?: number
+          total_trades?: number
+          unrealized_pnl?: number
+          updated_at?: string
+          user_id: string
+          winning_trades?: number
+        }
+        Update: {
+          committee_approvals?: number
+          committee_rejections?: number
+          contracts_traded?: number
+          created_at?: string
+          current_balance?: number
+          id?: string
+          initial_balance?: number
+          losing_trades?: number
+          max_drawdown?: number
+          max_gain?: number
+          max_loss?: number
+          mode?: string
+          points_result?: number
+          realized_pnl?: number
+          risk_blocks?: number
+          simulation_run_id?: string
+          status?: string
+          total_fees?: number
+          total_trades?: number
+          unrealized_pnl?: number
+          updated_at?: string
+          user_id?: string
+          winning_trades?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_simulation_modes_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      b3_simulation_orders: {
+        Row: {
+          close_reason: string | null
+          contract_code: string
+          created_at: string
+          entry_price: number
+          entry_time: string
+          exit_price: number | null
+          exit_time: string | null
+          fees: number
+          gross_result_brl: number
+          gross_result_points: number
+          id: string
+          mode: string
+          net_result_brl: number
+          quantity: number
+          side: string
+          simulation_mode_id: string
+          simulation_run_id: string
+          status: string
+          symbol: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          close_reason?: string | null
+          contract_code?: string
+          created_at?: string
+          entry_price: number
+          entry_time?: string
+          exit_price?: number | null
+          exit_time?: string | null
+          fees?: number
+          gross_result_brl?: number
+          gross_result_points?: number
+          id?: string
+          mode: string
+          net_result_brl?: number
+          quantity?: number
+          side: string
+          simulation_mode_id: string
+          simulation_run_id: string
+          status?: string
+          symbol?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          close_reason?: string | null
+          contract_code?: string
+          created_at?: string
+          entry_price?: number
+          entry_time?: string
+          exit_price?: number | null
+          exit_time?: string | null
+          fees?: number
+          gross_result_brl?: number
+          gross_result_points?: number
+          id?: string
+          mode?: string
+          net_result_brl?: number
+          quantity?: number
+          side?: string
+          simulation_mode_id?: string
+          simulation_run_id?: string
+          status?: string
+          symbol?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_simulation_orders_simulation_mode_id_fkey"
+            columns: ["simulation_mode_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_modes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_simulation_orders_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      b3_simulation_runs: {
+        Row: {
+          created_at: string
+          end_date: string | null
+          ended_at: string | null
+          entry_cutoff_time: string
+          force_close_time: string
+          id: string
+          initial_balance: number
+          market_source: string
+          max_contracts: number
+          notes: string | null
+          simulated_fee_brl: number
+          simulated_slippage_pts: number
+          start_date: string | null
+          started_at: string
+          status: string
+          trading_start_time: string
+          updated_at: string
+          user_id: string
+          winner_mode: string | null
+        }
+        Insert: {
+          created_at?: string
+          end_date?: string | null
+          ended_at?: string | null
+          entry_cutoff_time?: string
+          force_close_time?: string
+          id?: string
+          initial_balance?: number
+          market_source?: string
+          max_contracts?: number
+          notes?: string | null
+          simulated_fee_brl?: number
+          simulated_slippage_pts?: number
+          start_date?: string | null
+          started_at?: string
+          status?: string
+          trading_start_time?: string
+          updated_at?: string
+          user_id: string
+          winner_mode?: string | null
+        }
+        Update: {
+          created_at?: string
+          end_date?: string | null
+          ended_at?: string | null
+          entry_cutoff_time?: string
+          force_close_time?: string
+          id?: string
+          initial_balance?: number
+          market_source?: string
+          max_contracts?: number
+          notes?: string | null
+          simulated_fee_brl?: number
+          simulated_slippage_pts?: number
+          start_date?: string | null
+          started_at?: string
+          status?: string
+          trading_start_time?: string
+          updated_at?: string
+          user_id?: string
+          winner_mode?: string | null
         }
         Relationships: []
       }
