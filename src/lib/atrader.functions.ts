@@ -781,7 +781,12 @@ export const liquidateSimulatedWallet = createServerFn({ method: "POST" })
     const { supabase, userId } = context as any;
     await assertOwner(supabase, userId);
     const slip = 1 - data.slippage_pct / 100;
+    const now = new Date().toISOString();
 
+    // 1) Pause robot FIRST to block any new buys from the auto-cycle while we liquidate
+    await supabase.from("robot_settings").update({ status: "paused" }).eq("id", 1);
+
+    // 2) Fetch open orders AFTER pause so we capture anything the bot just opened
     const { data: openOrders } = await supabase
       .from("simulated_orders")
       .select("*")
@@ -791,7 +796,6 @@ export const liquidateSimulatedWallet = createServerFn({ method: "POST" })
     let sold = 0;
     let proceeds = 0;
     let totalPnl = 0;
-    const now = new Date().toISOString();
 
     for (const o of openOrders ?? []) {
       // Pending sell orders: just cancel — they don't hold capital
@@ -834,8 +838,7 @@ export const liquidateSimulatedWallet = createServerFn({ method: "POST" })
       .update({ quantity: 0, unrealized_pnl: 0 })
       .neq("id", "00000000-0000-0000-0000-000000000000");
 
-    // Pause robot — requires manual reactivation
-    await supabase.from("robot_settings").update({ status: "paused" }).eq("id", 1);
+    // Robot was paused at the start of the handler; emit an alert now.
     await supabase.from("alerts").insert({
       type: "robot_paused",
       message: "Robô pausado após liquidação total",
