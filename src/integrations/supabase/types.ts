@@ -616,6 +616,233 @@ export type Database = {
           },
         ]
       }
+      b3_agent_votes: {
+        Row: {
+          agent_name: string
+          confidence: number
+          created_at: string
+          id: string
+          market_data_snapshot: Json | null
+          order_id: string | null
+          reason: string | null
+          user_id: string
+          vote: string
+        }
+        Insert: {
+          agent_name: string
+          confidence?: number
+          created_at?: string
+          id?: string
+          market_data_snapshot?: Json | null
+          order_id?: string | null
+          reason?: string | null
+          user_id: string
+          vote: string
+        }
+        Update: {
+          agent_name?: string
+          confidence?: number
+          created_at?: string
+          id?: string
+          market_data_snapshot?: Json | null
+          order_id?: string | null
+          reason?: string | null
+          user_id?: string
+          vote?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_agent_votes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "b3_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      b3_daily_report: {
+        Row: {
+          closed_positions: number
+          created_at: string
+          daily_status: string
+          fees: number
+          gross_result: number
+          id: string
+          net_result: number
+          open_positions: number
+          starting_balance: number
+          total_bought: number
+          total_sold: number
+          trade_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          closed_positions?: number
+          created_at?: string
+          daily_status?: string
+          fees?: number
+          gross_result?: number
+          id?: string
+          net_result?: number
+          open_positions?: number
+          starting_balance?: number
+          total_bought?: number
+          total_sold?: number
+          trade_date?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          closed_positions?: number
+          created_at?: string
+          daily_status?: string
+          fees?: number
+          gross_result?: number
+          id?: string
+          net_result?: number
+          open_positions?: number
+          starting_balance?: number
+          total_bought?: number
+          total_sold?: number
+          trade_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      b3_orders: {
+        Row: {
+          close_reason: string | null
+          contract_code: string
+          created_at: string
+          entry_price: number
+          entry_time: string
+          environment: string
+          exit_price: number | null
+          exit_time: string | null
+          fees: number
+          gross_result_brl: number | null
+          gross_result_points: number | null
+          id: string
+          net_result_brl: number | null
+          quantity: number
+          side: string
+          status: string
+          symbol: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          close_reason?: string | null
+          contract_code: string
+          created_at?: string
+          entry_price: number
+          entry_time?: string
+          environment?: string
+          exit_price?: number | null
+          exit_time?: string | null
+          fees?: number
+          gross_result_brl?: number | null
+          gross_result_points?: number | null
+          id?: string
+          net_result_brl?: number | null
+          quantity?: number
+          side: string
+          status?: string
+          symbol?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          close_reason?: string | null
+          contract_code?: string
+          created_at?: string
+          entry_price?: number
+          entry_time?: string
+          environment?: string
+          exit_price?: number | null
+          exit_time?: string | null
+          fees?: number
+          gross_result_brl?: number | null
+          gross_result_points?: number | null
+          id?: string
+          net_result_brl?: number | null
+          quantity?: number
+          side?: string
+          status?: string
+          symbol?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      b3_trading_settings: {
+        Row: {
+          alert_only_enabled: boolean
+          api_status: string
+          auto_trade_enabled: boolean
+          broker_name: string
+          capital_allocated: number
+          created_at: string
+          daily_gain_target: number
+          daily_loss_limit: number
+          end_time: string
+          environment: string
+          force_close_time: string
+          gain_points: number
+          id: string
+          max_contracts: number
+          start_time: string
+          stop_points: number
+          strategy_mode: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alert_only_enabled?: boolean
+          api_status?: string
+          auto_trade_enabled?: boolean
+          broker_name?: string
+          capital_allocated?: number
+          created_at?: string
+          daily_gain_target?: number
+          daily_loss_limit?: number
+          end_time?: string
+          environment?: string
+          force_close_time?: string
+          gain_points?: number
+          id?: string
+          max_contracts?: number
+          start_time?: string
+          stop_points?: number
+          strategy_mode?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alert_only_enabled?: boolean
+          api_status?: string
+          auto_trade_enabled?: boolean
+          broker_name?: string
+          capital_allocated?: number
+          created_at?: string
+          daily_gain_target?: number
+          daily_loss_limit?: number
+          end_time?: string
+          environment?: string
+          force_close_time?: string
+          gain_points?: number
+          id?: string
+          max_contracts?: number
+          start_time?: string
+          stop_points?: number
+          strategy_mode?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       backtest_agent_votes: {
         Row: {
           agent_id: string | null

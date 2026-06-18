@@ -42,6 +42,7 @@ import { Route as AuthenticatedGovernanceRouteImport } from './routes/_authentic
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCouncilRouteImport } from './routes/_authenticated/council'
 import { Route as AuthenticatedCommitteeRouteImport } from './routes/_authenticated/committee'
+import { Route as AuthenticatedB3RouteImport } from './routes/_authenticated/b3'
 import { Route as AuthenticatedAutoDashboardRouteImport } from './routes/_authenticated/auto-dashboard'
 import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
 import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated/assets'
@@ -234,6 +235,11 @@ const AuthenticatedCommitteeRoute = AuthenticatedCommitteeRouteImport.update({
   path: '/committee',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedB3Route = AuthenticatedB3RouteImport.update({
+  id: '/b3',
+  path: '/b3',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAutoDashboardRoute =
   AuthenticatedAutoDashboardRouteImport.update({
     id: '/auto-dashboard',
@@ -366,6 +372,7 @@ export interface FileRoutesByFullPath {
   '/assets': typeof AuthenticatedAssetsRoute
   '/audit': typeof AuthenticatedAuditRouteWithChildren
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
+  '/b3': typeof AuthenticatedB3Route
   '/committee': typeof AuthenticatedCommitteeRoute
   '/council': typeof AuthenticatedCouncilRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -421,6 +428,7 @@ export interface FileRoutesByTo {
   '/assets': typeof AuthenticatedAssetsRoute
   '/audit': typeof AuthenticatedAuditRouteWithChildren
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
+  '/b3': typeof AuthenticatedB3Route
   '/committee': typeof AuthenticatedCommitteeRoute
   '/council': typeof AuthenticatedCouncilRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -478,6 +486,7 @@ export interface FileRoutesById {
   '/_authenticated/assets': typeof AuthenticatedAssetsRoute
   '/_authenticated/audit': typeof AuthenticatedAuditRouteWithChildren
   '/_authenticated/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
+  '/_authenticated/b3': typeof AuthenticatedB3Route
   '/_authenticated/committee': typeof AuthenticatedCommitteeRoute
   '/_authenticated/council': typeof AuthenticatedCouncilRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -535,6 +544,7 @@ export interface FileRouteTypes {
     | '/assets'
     | '/audit'
     | '/auto-dashboard'
+    | '/b3'
     | '/committee'
     | '/council'
     | '/dashboard'
@@ -590,6 +600,7 @@ export interface FileRouteTypes {
     | '/assets'
     | '/audit'
     | '/auto-dashboard'
+    | '/b3'
     | '/committee'
     | '/council'
     | '/dashboard'
@@ -646,6 +657,7 @@ export interface FileRouteTypes {
     | '/_authenticated/assets'
     | '/_authenticated/audit'
     | '/_authenticated/auto-dashboard'
+    | '/_authenticated/b3'
     | '/_authenticated/committee'
     | '/_authenticated/council'
     | '/_authenticated/dashboard'
@@ -936,6 +948,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCommitteeRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/b3': {
+      id: '/_authenticated/b3'
+      path: '/b3'
+      fullPath: '/b3'
+      preLoaderRoute: typeof AuthenticatedB3RouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/auto-dashboard': {
       id: '/_authenticated/auto-dashboard'
       path: '/auto-dashboard'
@@ -1127,6 +1146,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAssetsRoute: typeof AuthenticatedAssetsRoute
   AuthenticatedAuditRoute: typeof AuthenticatedAuditRouteWithChildren
   AuthenticatedAutoDashboardRoute: typeof AuthenticatedAutoDashboardRoute
+  AuthenticatedB3Route: typeof AuthenticatedB3Route
   AuthenticatedCommitteeRoute: typeof AuthenticatedCommitteeRoute
   AuthenticatedCouncilRoute: typeof AuthenticatedCouncilRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -1173,6 +1193,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAssetsRoute: AuthenticatedAssetsRoute,
   AuthenticatedAuditRoute: AuthenticatedAuditRouteWithChildren,
   AuthenticatedAutoDashboardRoute: AuthenticatedAutoDashboardRoute,
+  AuthenticatedB3Route: AuthenticatedB3Route,
   AuthenticatedCommitteeRoute: AuthenticatedCommitteeRoute,
   AuthenticatedCouncilRoute: AuthenticatedCouncilRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
