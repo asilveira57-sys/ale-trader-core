@@ -43,7 +43,7 @@ function WalletPage() {
     mutationFn: () => liquidate({ data: { slippage_pct: 0.5 } }),
     onSuccess: (r: any) => {
       toast.success(
-        `Liquidação concluída: ${r.sold} vendidas, ${r.cancelled} canceladas · caixa +$${Number(r.proceeds).toFixed(2)} · PnL ${Number(r.pnl) >= 0 ? "+" : ""}$${Number(r.pnl).toFixed(2)}`,
+        `Liquidação concluída: ${r.sold} vendidas, ${r.cancelled} canceladas · caixa +$${Number(r.proceeds).toFixed(2)} · PnL ${Number(r.pnl) >= 0 ? "+" : ""}$${Number(r.pnl).toFixed(2)}. Robô pausado — reative manualmente para voltar a operar.`,
       );
       qc.invalidateQueries({ queryKey: ["committee"] });
     },
@@ -676,13 +676,14 @@ function WalletPage() {
           <DollarSign className="size-4 text-warning" /> Vender tudo (liquidar carteira)
         </h2>
         <p className="text-xs text-muted-foreground mb-4">
-          Cancela todas as ordens de compra pendentes e vende todas as posições abertas a preço de mercado
-          com slippage de 0,5%. Ao final, a carteira fica somente em USDT, sem moedas.
+          Cancela todas as ordens de compra pendentes, vende todas as posições abertas a preço de mercado
+          com slippage de 0,5% e <strong>pausa o robô</strong>. A carteira fica somente em USDT e o robô só
+          volta a operar após reativação manual.
         </p>
         <Button
           variant="destructive"
           onClick={() => {
-            if (confirm("Confirmar liquidação total? Todas as posições abertas serão vendidas a mercado -0,5%.")) {
+            if (confirm("Confirmar liquidação total e pausa do robô? Todas as posições serão vendidas a mercado -0,5% e o robô ficará pausado até reativação manual.")) {
               mLiquidate.mutate();
             }
           }}
