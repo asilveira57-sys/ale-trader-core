@@ -177,66 +177,172 @@ function WalletPage() {
         </div>
       </section>
 
-      <section className="panel p-5">
-        <h2 className="text-sm font-semibold mb-1">Extrato (débito / crédito)</h2>
-        <p className="text-xs text-muted-foreground mb-4">
-          Saldo inicial ${Number(w?.initial_balance ?? 0).toFixed(2)} → saldo atual ${Number(w?.current_balance ?? 0).toFixed(2)}.
-          Cada compra debita o capital alocado; o crédito acontece quando a posição é fechada (TP/SL ou venda).
-        </p>
-        {(() => {
-          const events: { ts: string; pair: string; kind: string; delta: number; note: string }[] = [];
-          for (const o of data.orders ?? []) {
-            const value = Number(o.entry_price) * Number(o.quantity);
-            if (o.side === "buy") {
-              events.push({ ts: o.created_at, pair: o.pair, kind: "Compra (débito)", delta: -value, note: `qty ${Number(o.quantity).toFixed(6)} @ ${Number(o.entry_price).toFixed(4)}` });
-              if (o.status === "closed" && o.closed_price != null) {
-                const proceeds = Number(o.closed_price) * Number(o.quantity);
-                events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Fechamento compra (crédito)", delta: proceeds, note: `saída @ ${Number(o.closed_price).toFixed(4)} · PnL ${Number(o.realized_pnl ?? 0).toFixed(2)}` });
-              }
-            } else if (o.side === "sell" && o.status === "closed" && o.closed_price != null) {
-              const proceeds = Number(o.closed_price) * Number(o.quantity);
-              events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Venda (crédito)", delta: proceeds, note: `qty ${Number(o.quantity).toFixed(6)} @ ${Number(o.closed_price).toFixed(4)} · PnL ${Number(o.realized_pnl ?? 0).toFixed(2)}` });
-            } else if (o.status === "cancelled") {
-              events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Cancelada", delta: 0, note: `${o.side} ignorada` });
+      {(() => {
+        const events: { ts: string; pair: string; kind: string; side: string; delta: number; note: string; qty: number; price: number; pnl: number }[] = [];
+        for (const o of data.orders ?? []) {
+          const qty = Number(o.quantity);
+          const value = Number(o.entry_price) * qty;
+          if (o.side === "buy") {
+            events.push({ ts: o.created_at, pair: o.pair, kind: "Compra (débito)", side: "buy", delta: -value, note: `qty ${qty.toFixed(6)} @ ${Number(o.entry_price).toFixed(4)}`, qty, price: Number(o.entry_price), pnl: 0 });
+            if (o.status === "closed" && o.closed_price != null) {
+              const proceeds = Number(o.closed_price) * qty;
+              events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Fechamento compra (crédito)", side: "sell", delta: proceeds, note: `saída @ ${Number(o.closed_price).toFixed(4)} · PnL ${Number(o.realized_pnl ?? 0).toFixed(2)}`, qty, price: Number(o.closed_price), pnl: Number(o.realized_pnl ?? 0) });
             }
+          } else if (o.side === "sell" && o.status === "closed" && o.closed_price != null) {
+            const proceeds = Number(o.closed_price) * qty;
+            events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Venda (crédito)", side: "sell", delta: proceeds, note: `qty ${qty.toFixed(6)} @ ${Number(o.closed_price).toFixed(4)} · PnL ${Number(o.realized_pnl ?? 0).toFixed(2)}`, qty, price: Number(o.closed_price), pnl: Number(o.realized_pnl ?? 0) });
+          } else if (o.status === "cancelled") {
+            events.push({ ts: o.closed_at ?? o.created_at, pair: o.pair, kind: "Cancelada", side: o.side, delta: 0, note: `${o.side} ignorada`, qty, price: 0, pnl: 0 });
           }
-          events.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
-          let running = Number(w?.initial_balance ?? 0);
-          const allRows = events.map((e) => { running += e.delta; return { ...e, running }; }).reverse();
-          if (!allRows.length) return <p className="text-sm text-muted-foreground">Nenhum movimento registrado.</p>;
-          const totalPages = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE));
-          const curPage = Math.min(page, totalPages);
-          const rows = allRows.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
-          return (
-            <>
-              <div className="text-xs divide-y divide-border font-mono">
-                <div className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 pb-2 text-muted-foreground">
-                  <span>Data</span><span>Par</span><span>Tipo</span><span>Detalhe</span><span className="text-right">Valor</span><span className="text-right">Saldo</span>
-                </div>
-                {rows.map((r, i) => (
-                  <div key={i} className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 py-2 items-center">
-                    <span className="text-muted-foreground">{new Date(r.ts).toLocaleString()}</span>
-                    <span>{r.pair}</span>
-                    <span className="text-muted-foreground">{r.kind}</span>
-                    <span className="text-muted-foreground truncate">{r.note}</span>
-                    <span className={`text-right ${r.delta > 0 ? "text-success" : r.delta < 0 ? "text-destructive" : ""}`}>
-                      {r.delta === 0 ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta.toFixed(2)}`}
-                    </span>
-                    <span className="text-right">${r.running.toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-between mt-4 text-xs text-muted-foreground">
-                <span>{allRows.length} movimentos · página {curPage} de {totalPages} · {PAGE_SIZE}/página</span>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" disabled={curPage <= 1} onClick={() => setPage(curPage - 1)}>Anterior</Button>
-                  <Button size="sm" variant="outline" disabled={curPage >= totalPages} onClick={() => setPage(curPage + 1)}>Próxima</Button>
-                </div>
-              </div>
-            </>
+        }
+        events.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+        let running = Number(w?.initial_balance ?? 0);
+        const allRowsAsc = events.map((e) => { running += e.delta; return { ...e, running }; });
+        const allRows = [...allRowsAsc].reverse();
+
+        const totalBought = allRowsAsc.filter((r) => r.delta < 0).reduce((s, r) => s + Math.abs(r.delta), 0);
+        const totalSold = allRowsAsc.filter((r) => r.delta > 0).reduce((s, r) => s + r.delta, 0);
+        const totalPnl = allRowsAsc.reduce((s, r) => s + r.pnl, 0);
+
+        const exportXLSX = () => {
+          const rows = allRowsAsc.map((r) => ({
+            Data: new Date(r.ts).toLocaleString(),
+            Par: r.pair,
+            Tipo: r.kind,
+            Lado: r.side,
+            Quantidade: r.qty,
+            Preço: r.price,
+            "Valor (USD)": Number(r.delta.toFixed(2)),
+            "PnL realizado": Number(r.pnl.toFixed(2)),
+            "Saldo (USD)": Number(r.running.toFixed(2)),
+            Detalhe: r.note,
+          }));
+          const summary = [
+            { Métrica: "Saldo inicial", Valor: Number(w?.initial_balance ?? 0) },
+            { Métrica: "Saldo atual", Valor: Number(w?.current_balance ?? 0) },
+            { Métrica: "Total comprado (débitos)", Valor: Number(totalBought.toFixed(2)) },
+            { Métrica: "Total vendido (créditos)", Valor: Number(totalSold.toFixed(2)) },
+            { Métrica: "PnL realizado", Valor: Number(totalPnl.toFixed(2)) },
+            { Métrica: "Movimentos", Valor: allRowsAsc.length },
+          ];
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Resumo");
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Extrato");
+          XLSX.writeFile(wb, `extrato-carteira-${new Date().toISOString().slice(0, 10)}.xlsx`);
+        };
+
+        const exportPDF = () => {
+          const doc = new jsPDF({ orientation: "landscape" });
+          doc.setFontSize(14);
+          doc.text("Extrato da carteira simulada", 14, 14);
+          doc.setFontSize(9);
+          doc.text(
+            [
+              `Saldo inicial: $${Number(w?.initial_balance ?? 0).toFixed(2)}    Saldo atual: $${Number(w?.current_balance ?? 0).toFixed(2)}`,
+              `Total comprado: $${totalBought.toFixed(2)}    Total vendido: $${totalSold.toFixed(2)}    PnL realizado: $${totalPnl.toFixed(2)}`,
+              `Movimentos: ${allRowsAsc.length}    Gerado em ${new Date().toLocaleString()}`,
+            ],
+            14,
+            22,
           );
-        })()}
-      </section>
+          autoTable(doc, {
+            startY: 40,
+            head: [["Data", "Par", "Tipo", "Qtd", "Preço", "Valor (USD)", "Saldo (USD)", "Detalhe"]],
+            body: allRowsAsc.map((r) => [
+              new Date(r.ts).toLocaleString(),
+              r.pair,
+              r.kind,
+              r.qty ? r.qty.toFixed(6) : "—",
+              r.price ? r.price.toFixed(4) : "—",
+              r.delta === 0 ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta.toFixed(2)}`,
+              r.running.toFixed(2),
+              r.note,
+            ]),
+            styles: { fontSize: 7 },
+            headStyles: { fillColor: [40, 40, 40] },
+          });
+          doc.save(`extrato-carteira-${new Date().toISOString().slice(0, 10)}.pdf`);
+        };
+
+        return (
+          <section className="panel p-5">
+            <div className="flex items-start justify-between gap-3 mb-1 flex-wrap">
+              <div>
+                <h2 className="text-sm font-semibold">Extrato (débito / crédito)</h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Saldo inicial ${Number(w?.initial_balance ?? 0).toFixed(2)} → saldo atual ${Number(w?.current_balance ?? 0).toFixed(2)}.
+                  Cada compra debita o capital alocado; o crédito acontece quando a posição é fechada (TP/SL ou venda).
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={exportXLSX} disabled={!allRowsAsc.length}>
+                  <FileSpreadsheet className="size-4 mr-1" />XLSX
+                </Button>
+                <Button size="sm" variant="outline" onClick={exportPDF} disabled={!allRowsAsc.length}>
+                  <FileText className="size-4 mr-1" />PDF
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 my-4 text-xs">
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Total comprado</p>
+                <p className="font-mono text-destructive">-${totalBought.toFixed(2)}</p>
+              </div>
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Total vendido</p>
+                <p className="font-mono text-success">+${totalSold.toFixed(2)}</p>
+              </div>
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">PnL realizado</p>
+                <p className={`font-mono ${totalPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                  {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
+                </p>
+              </div>
+              <div className="rounded-md border border-border p-2">
+                <p className="text-[10px] uppercase text-muted-foreground">Movimentos</p>
+                <p className="font-mono">{allRowsAsc.length}</p>
+              </div>
+            </div>
+
+            {!allRows.length ? (
+              <p className="text-sm text-muted-foreground">Nenhum movimento registrado.</p>
+            ) : (() => {
+              const totalPages = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE));
+              const curPage = Math.min(page, totalPages);
+              const rows = allRows.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
+              return (
+                <>
+                  <div className="text-xs divide-y divide-border font-mono">
+                    <div className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 pb-2 text-muted-foreground">
+                      <span>Data</span><span>Par</span><span>Tipo</span><span>Detalhe</span><span className="text-right">Valor</span><span className="text-right">Saldo</span>
+                    </div>
+                    {rows.map((r, i) => (
+                      <div key={i} className="grid grid-cols-[140px_70px_180px_1fr_100px_110px] gap-2 py-2 items-center">
+                        <span className="text-muted-foreground">{new Date(r.ts).toLocaleString()}</span>
+                        <span>{r.pair}</span>
+                        <span className="text-muted-foreground">{r.kind}</span>
+                        <span className="text-muted-foreground truncate">{r.note}</span>
+                        <span className={`text-right ${r.delta > 0 ? "text-success" : r.delta < 0 ? "text-destructive" : ""}`}>
+                          {r.delta === 0 ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta.toFixed(2)}`}
+                        </span>
+                        <span className="text-right">${r.running.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between mt-4 text-xs text-muted-foreground">
+                    <span>{allRows.length} movimentos · página {curPage} de {totalPages} · {PAGE_SIZE}/página</span>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" disabled={curPage <= 1} onClick={() => setPage(curPage - 1)}>Anterior</Button>
+                      <Button size="sm" variant="outline" disabled={curPage >= totalPages} onClick={() => setPage(curPage + 1)}>Próxima</Button>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </section>
+        );
+      })()}
 
 
       <section className="panel p-5">
