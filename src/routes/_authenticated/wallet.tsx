@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { toast } from "sonner";
-import { RotateCcw, Wallet, TrendingUp, TrendingDown, ChevronDown, ChevronRight, FileSpreadsheet, FileText } from "lucide-react";
+import { RotateCcw, Wallet, TrendingUp, TrendingDown, ChevronDown, ChevronRight, FileSpreadsheet, FileText, AlertTriangle, Info } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/wallet")({
   head: () => ({ meta: [{ title: "Carteira simulada — AleTrader AI" }] }),
@@ -20,6 +20,7 @@ function WalletPage() {
   const [initial, setInitial] = useState(10000);
   const [walletOpen, setWalletOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const [auditPage, setAuditPage] = useState(1);
   const PAGE_SIZE = 30;
 
   const { data, isLoading } = useQuery({
@@ -40,12 +41,70 @@ function WalletPage() {
   if (isLoading || !data) return <div className="p-8 text-muted-foreground">Carregando…</div>;
 
   const w = data.wallet;
-  const pnl = Number(w?.current_balance ?? 0) - Number(w?.initial_balance ?? 0);
-  const pnlPct = Number(w?.initial_balance) ? (pnl / Number(w!.initial_balance)) * 100 : 0;
+  const initialBalance = Number(w?.initial_balance ?? 0);
+  const cash = Number(w?.current_balance ?? 0);
 
-  // simple equity history from decisions (cumulative score impact)
+  // Composição: ordens de compra abertas → capital alocado por par
+  const openBuys = (data.orders ?? []).filter((o: any) => o.status === "open" && o.side === "buy");
+  const byPair = new Map<string, { qty: number; cost: number }>();
+  for (const o of openBuys) {
+    const qty = Number(o.quantity);
+    const cost = qty * Number(o.entry_price);
+    const cur = byPair.get(o.pair) ?? { qty: 0, cost: 0 };
+    cur.qty += qty; cur.cost += cost;
+    byPair.set(o.pair, cur);
+  }
+  const cryptos = [...byPair.entries()].map(([pair, v]) => {
+    const avg = v.qty > 0 ? v.cost / v.qty : 0;
+    const posRow = (data.positions ?? []).find((p: any) => p.pair === pair);
+    const unreal = posRow ? Number(posRow.unrealized_pnl ?? 0) : 0;
+    return { pair, quantity: v.qty, avg_price: avg, value: v.cost, unrealized_pnl: unreal };
+  });
+
+  const capitalAlocado = cryptos.reduce((s, p) => s + p.value, 0);
+  const unrealizedPnl = cryptos.reduce((s, p) => s + p.unrealized_pnl, 0);
+  const openPositionsValue = capitalAlocado + unrealizedPnl; // valor de mercado estimado
+  const equity = cash + openPositionsValue;
+
+  // simple equity history from decisions
   const history = [...data.decisions].reverse().slice(-40);
   const max = Math.max(...history.map((d: any) => Number(d.score)), 1);
+
+  // Operações encerradas (auditoria) — apenas compras fechadas
+  const closedOps = (data.orders ?? [])
+    .filter((o: any) => o.side === "buy" && o.status === "closed" && o.closed_price != null)
+    .map((o: any) => {
+      const qty = Number(o.quantity);
+      const entry = Number(o.entry_price);
+      const exit = Number(o.closed_price);
+      const pnl = Number(o.realized_pnl ?? (exit - entry) * qty);
+      const invested = entry * qty;
+      const roi = invested > 0 ? (pnl / invested) * 100 : 0;
+      return {
+        id: o.id,
+        pair: o.pair,
+        opened_at: o.created_at,
+        closed_at: o.closed_at ?? o.created_at,
+        entry,
+        exit,
+        qty,
+        invested,
+        proceeds: exit * qty,
+        fees: Number(o.fees ?? 0),
+        pnl,
+        roi,
+      };
+    })
+    .sort((a: any, b: any) => new Date(b.closed_at).getTime() - new Date(a.closed_at).getTime());
+
+  const realizedPnl = closedOps.reduce((s: number, o: any) => s + o.pnl, 0);
+  const totalPnl = realizedPnl + unrealizedPnl;
+  const roiPct = initialBalance > 0 ? (totalPnl / initialBalance) * 100 : 0;
+
+  // Consistência: equity esperada = inicial + PnL realizado + PnL não realizado
+  const expectedEquity = initialBalance + realizedPnl + unrealizedPnl;
+  const equityDiff = equity - expectedEquity;
+  const inconsistent = Math.abs(equityDiff) > 1; // tolera 1 USD de arredondamento
 
   return (
     <div className="p-8 space-y-8 max-w-7xl">
@@ -54,7 +113,8 @@ function WalletPage() {
         <p className="text-sm text-muted-foreground">Saldo de papel — nenhum valor real é movimentado.</p>
       </header>
 
-      <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Painel principal — separa caixa, posição, equity, PnL */}
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <button
           type="button"
           onClick={() => setWalletOpen((v) => !v)}
@@ -62,97 +122,120 @@ function WalletPage() {
           aria-expanded={walletOpen}
         >
           <p className="text-xs uppercase text-muted-foreground tracking-wider flex items-center gap-2">
-            <Wallet className="size-3" />Saldo atual
+            <Wallet className="size-3" />Saldo disponível
             {walletOpen ? <ChevronDown className="size-3 ml-auto" /> : <ChevronRight className="size-3 ml-auto" />}
           </p>
-          <p className="text-2xl font-semibold mt-2 font-mono">${Number(w?.current_balance ?? 0).toFixed(2)}</p>
-          <p className="text-[10px] text-muted-foreground mt-1">clique para ver composição</p>
+          <p className="text-2xl font-semibold mt-2 font-mono">${cash.toFixed(2)}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">caixa em USD · clique para composição</p>
         </button>
         <div className="panel p-5">
-          <p className="text-xs uppercase text-muted-foreground tracking-wider">Saldo inicial</p>
-          <p className="text-2xl font-semibold mt-2 font-mono">${Number(w?.initial_balance ?? 0).toFixed(2)}</p>
+          <p className="text-xs uppercase text-muted-foreground tracking-wider">Capital alocado</p>
+          <p className="text-2xl font-semibold mt-2 font-mono">${capitalAlocado.toFixed(2)}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{cryptos.length} posição(ões) aberta(s)</p>
         </div>
         <div className="panel p-5">
-          <p className="text-xs uppercase text-muted-foreground tracking-wider">PnL simulado</p>
-          <p className={`text-2xl font-semibold mt-2 font-mono ${pnl >= 0 ? "text-success" : "text-destructive"}`}>
-            {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
-          </p>
-          <p className={`text-xs ${pnl >= 0 ? "text-success" : "text-destructive"} flex items-center gap-1`}>
-            {pnl >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-            {pnlPct.toFixed(2)}%
-          </p>
+          <p className="text-xs uppercase text-muted-foreground tracking-wider">Equity (patrimônio)</p>
+          <p className="text-2xl font-semibold mt-2 font-mono">${equity.toFixed(2)}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">caixa + posições a mercado</p>
         </div>
         <div className="panel p-5">
-          <p className="text-xs uppercase text-muted-foreground tracking-wider">Posições abertas</p>
-          <p className="text-2xl font-semibold mt-2">
-            {(data.orders ?? []).filter((o: any) => o.status === "open" && o.side === "buy").length}
+          <p className="text-xs uppercase text-muted-foreground tracking-wider">ROI</p>
+          <p className={`text-2xl font-semibold mt-2 font-mono ${totalPnl >= 0 ? "text-success" : "text-destructive"}`}>
+            {totalPnl >= 0 ? "+" : ""}{roiPct.toFixed(2)}%
+          </p>
+          <p className={`text-[10px] flex items-center gap-1 mt-1 ${totalPnl >= 0 ? "text-success" : "text-destructive"}`}>
+            {totalPnl >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+            PnL total {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
           </p>
         </div>
       </section>
 
-      {walletOpen && (() => {
-        const openBuys = (data.orders ?? []).filter((o: any) => o.status === "open" && o.side === "buy");
-        const byPair = new Map<string, { qty: number; cost: number }>();
-        for (const o of openBuys) {
-          const qty = Number(o.quantity);
-          const cost = qty * Number(o.entry_price);
-          const cur = byPair.get(o.pair) ?? { qty: 0, cost: 0 };
-          cur.qty += qty; cur.cost += cost;
-          byPair.set(o.pair, cur);
-        }
-        const cryptos = [...byPair.entries()].map(([pair, v]) => {
-          const avg = v.qty > 0 ? v.cost / v.qty : 0;
-          const posRow = (data.positions ?? []).find((p: any) => p.pair === pair);
-          const unreal = posRow ? Number(posRow.unrealized_pnl ?? 0) : 0;
-          return { pair, quantity: v.qty, avg_price: avg, value: v.cost, unrealized_pnl: unreal };
-        });
-        const cash = Number(w?.current_balance ?? 0);
-        const cryptoValue = cryptos.reduce((s, p) => s + p.value, 0);
-        const total = cash + cryptoValue;
-        return (
-          <section className="panel p-5">
-            <h2 className="text-sm font-semibold mb-3">Composição da carteira</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <div className="rounded-md border border-border p-3">
-                <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Caixa (USD)</p>
-                <p className="text-lg font-mono mt-1">${cash.toFixed(2)}</p>
-                <p className="text-[10px] text-muted-foreground">{total ? ((cash / total) * 100).toFixed(1) : "0"}% do total</p>
-              </div>
-              <div className="rounded-md border border-border p-3">
-                <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Cripto (valor alocado)</p>
-                <p className="text-lg font-mono mt-1">${cryptoValue.toFixed(2)}</p>
-                <p className="text-[10px] text-muted-foreground">{total ? ((cryptoValue / total) * 100).toFixed(1) : "0"}% do total</p>
-              </div>
-              <div className="rounded-md border border-border p-3">
-                <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Total estimado</p>
-                <p className="text-lg font-mono mt-1">${total.toFixed(2)}</p>
-                <p className="text-[10px] text-muted-foreground">{cryptos.length} cripto(s) em carteira</p>
-              </div>
-            </div>
-            {cryptos.length > 0 ? (
-              <div className="text-xs font-mono divide-y divide-border">
-                <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 pb-2 text-muted-foreground">
-                  <span>Par</span><span className="text-right">Quantidade</span><span className="text-right">Preço médio</span><span className="text-right">Valor</span><span className="text-right">PnL não realizado</span>
-                </div>
-                {cryptos.map((p) => (
-                  <div key={p.pair} className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 py-2">
-                    <span>{p.pair}</span>
-                    <span className="text-right">{p.quantity.toFixed(8)}</span>
-                    <span className="text-right">${p.avg_price.toFixed(4)}</span>
-                    <span className="text-right">${p.value.toFixed(2)}</span>
-                    <span className={`text-right ${p.unrealized_pnl >= 0 ? "text-success" : "text-destructive"}`}>
-                      {p.unrealized_pnl >= 0 ? "+" : ""}${p.unrealized_pnl.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Sem cripto em carteira no momento — 100% em caixa.</p>
-            )}
-          </section>
-        );
-      })()}
+      {/* PnL detalhado */}
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="panel p-4">
+          <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Saldo inicial</p>
+          <p className="text-lg font-mono mt-1">${initialBalance.toFixed(2)}</p>
+        </div>
+        <div className="panel p-4">
+          <p className="text-[10px] uppercase text-muted-foreground tracking-wider">PnL realizado</p>
+          <p className={`text-lg font-mono mt-1 ${realizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
+            {realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}
+          </p>
+          <p className="text-[10px] text-muted-foreground">{closedOps.length} operação(ões) encerrada(s)</p>
+        </div>
+        <div className="panel p-4">
+          <p className="text-[10px] uppercase text-muted-foreground tracking-wider">PnL não realizado</p>
+          <p className={`text-lg font-mono mt-1 ${unrealizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
+            {unrealizedPnl >= 0 ? "+" : ""}${unrealizedPnl.toFixed(2)}
+          </p>
+          <p className="text-[10px] text-muted-foreground">posições abertas a mercado</p>
+        </div>
+        <div className="panel p-4">
+          <p className="text-[10px] uppercase text-muted-foreground tracking-wider">PnL total</p>
+          <p className={`text-lg font-mono mt-1 ${totalPnl >= 0 ? "text-success" : "text-destructive"}`}>
+            {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
+          </p>
+          <p className="text-[10px] text-muted-foreground">realizado + não realizado</p>
+        </div>
+      </section>
 
+      {inconsistent && (
+        <div className="panel p-4 border-destructive/50 bg-destructive/5">
+          <div className="flex items-start gap-2 text-destructive">
+            <AlertTriangle className="size-4 mt-0.5 shrink-0" />
+            <div className="text-xs">
+              <p className="font-semibold">Divergência detectada entre saldo, posições e PnL.</p>
+              <p className="text-destructive/80 mt-1">
+                Equity calculada ${equity.toFixed(2)} vs. esperada ${expectedEquity.toFixed(2)} (diferença {equityDiff >= 0 ? "+" : ""}${equityDiff.toFixed(2)}).
+                Verifique operações abertas, taxas ou eventos sem vínculo.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {walletOpen && (
+        <section className="panel p-5">
+          <h2 className="text-sm font-semibold mb-3">Composição da carteira</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            <div className="rounded-md border border-border p-3">
+              <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Caixa (USD)</p>
+              <p className="text-lg font-mono mt-1">${cash.toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground">{equity ? ((cash / equity) * 100).toFixed(1) : "0"}% da equity</p>
+            </div>
+            <div className="rounded-md border border-border p-3">
+              <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Posições (a mercado)</p>
+              <p className="text-lg font-mono mt-1">${openPositionsValue.toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground">capital ${capitalAlocado.toFixed(2)} · PnL {unrealizedPnl >= 0 ? "+" : ""}${unrealizedPnl.toFixed(2)}</p>
+            </div>
+            <div className="rounded-md border border-border p-3">
+              <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Equity total</p>
+              <p className="text-lg font-mono mt-1">${equity.toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground">{cryptos.length} cripto(s) em carteira</p>
+            </div>
+          </div>
+          {cryptos.length > 0 ? (
+            <div className="text-xs font-mono divide-y divide-border">
+              <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 pb-2 text-muted-foreground">
+                <span>Par</span><span className="text-right">Quantidade</span><span className="text-right">Preço médio</span><span className="text-right">Capital</span><span className="text-right">PnL não realizado</span>
+              </div>
+              {cryptos.map((p) => (
+                <div key={p.pair} className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-2 py-2">
+                  <span>{p.pair}</span>
+                  <span className="text-right">{p.quantity.toFixed(8)}</span>
+                  <span className="text-right">${p.avg_price.toFixed(4)}</span>
+                  <span className="text-right">${p.value.toFixed(2)}</span>
+                  <span className={`text-right ${p.unrealized_pnl >= 0 ? "text-success" : "text-destructive"}`}>
+                    {p.unrealized_pnl >= 0 ? "+" : ""}${p.unrealized_pnl.toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Sem cripto em carteira no momento — 100% em caixa.</p>
+          )}
+        </section>
+      )}
 
       <section className="panel p-5">
         <h2 className="text-sm font-semibold mb-4">Evolução (últimos scores)</h2>
@@ -174,6 +257,63 @@ function WalletPage() {
         </div>
       </section>
 
+      {/* Auditoria de operações encerradas */}
+      <section className="panel p-5">
+        <div className="flex items-start justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <h2 className="text-sm font-semibold">Auditoria de operações encerradas</h2>
+            <p className="text-xs text-muted-foreground mt-1">Cada linha é uma compra que já foi fechada — entrada, saída, PnL realizado e ROI.</p>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {closedOps.length} encerrada(s) · {openBuys.length} aberta(s)
+          </div>
+        </div>
+        {!closedOps.length ? (
+          <p className="text-sm text-muted-foreground">Nenhuma operação encerrada ainda.</p>
+        ) : (() => {
+          const totalPages = Math.max(1, Math.ceil(closedOps.length / PAGE_SIZE));
+          const curPage = Math.min(auditPage, totalPages);
+          const rows = closedOps.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
+          return (
+            <>
+              <div className="text-xs font-mono divide-y divide-border overflow-x-auto">
+                <div className="grid grid-cols-[70px_140px_140px_70px_80px_80px_90px_90px_70px] gap-2 pb-2 text-muted-foreground min-w-[900px]">
+                  <span>Ativo</span><span>Abertura</span><span>Fechamento</span>
+                  <span className="text-right">Qtd</span>
+                  <span className="text-right">Entrada</span><span className="text-right">Saída</span>
+                  <span className="text-right">Investido</span><span className="text-right">PnL</span><span className="text-right">ROI</span>
+                </div>
+                {rows.map((o: any) => (
+                  <div key={o.id} className="grid grid-cols-[70px_140px_140px_70px_80px_80px_90px_90px_70px] gap-2 py-2 min-w-[900px]">
+                    <span>{o.pair}</span>
+                    <span className="text-muted-foreground">{new Date(o.opened_at).toLocaleString()}</span>
+                    <span className="text-muted-foreground">{new Date(o.closed_at).toLocaleString()}</span>
+                    <span className="text-right">{o.qty.toFixed(6)}</span>
+                    <span className="text-right">${o.entry.toFixed(4)}</span>
+                    <span className="text-right">${o.exit.toFixed(4)}</span>
+                    <span className="text-right">${o.invested.toFixed(2)}</span>
+                    <span className={`text-right ${o.pnl >= 0 ? "text-success" : "text-destructive"}`}>
+                      {o.pnl >= 0 ? "+" : ""}${o.pnl.toFixed(2)}
+                    </span>
+                    <span className={`text-right ${o.roi >= 0 ? "text-success" : "text-destructive"}`}>
+                      {o.roi >= 0 ? "+" : ""}{o.roi.toFixed(2)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between mt-4 text-xs text-muted-foreground">
+                <span>página {curPage} de {totalPages}</span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={curPage <= 1} onClick={() => setAuditPage(curPage - 1)}>Anterior</Button>
+                  <Button size="sm" variant="outline" disabled={curPage >= totalPages} onClick={() => setAuditPage(curPage + 1)}>Próxima</Button>
+                </div>
+              </div>
+            </>
+          );
+        })()}
+      </section>
+
+      {/* Extrato débito / crédito */}
       {(() => {
         const events: { ts: string; pair: string; kind: string; side: string; delta: number; note: string; qty: number; price: number; pnl: number }[] = [];
         for (const o of data.orders ?? []) {
@@ -193,13 +333,12 @@ function WalletPage() {
           }
         }
         events.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
-        let running = Number(w?.initial_balance ?? 0);
+        let running = initialBalance;
         const allRowsAsc = events.map((e) => { running += e.delta; return { ...e, running }; });
         const allRows = [...allRowsAsc].reverse();
 
-        const totalBought = allRowsAsc.filter((r) => r.delta < 0).reduce((s, r) => s + Math.abs(r.delta), 0);
-        const totalSold = allRowsAsc.filter((r) => r.delta > 0).reduce((s, r) => s + r.delta, 0);
-        const totalPnl = allRowsAsc.reduce((s, r) => s + r.pnl, 0);
+        const volumeComprado = allRowsAsc.filter((r) => r.delta < 0).reduce((s, r) => s + Math.abs(r.delta), 0);
+        const volumeVendido = allRowsAsc.filter((r) => r.delta > 0).reduce((s, r) => s + r.delta, 0);
 
         const exportXLSX = async () => {
           const XLSX = await import("xlsx");
@@ -216,15 +355,38 @@ function WalletPage() {
             Detalhe: r.note,
           }));
           const summary = [
-            { Métrica: "Saldo inicial", Valor: Number(w?.initial_balance ?? 0) },
-            { Métrica: "Saldo atual", Valor: Number(w?.current_balance ?? 0) },
-            { Métrica: "Total comprado (débitos)", Valor: Number(totalBought.toFixed(2)) },
-            { Métrica: "Total vendido (créditos)", Valor: Number(totalSold.toFixed(2)) },
-            { Métrica: "PnL realizado", Valor: Number(totalPnl.toFixed(2)) },
-            { Métrica: "Movimentos", Valor: allRowsAsc.length },
+            { Métrica: "Saldo inicial", Valor: initialBalance },
+            { Métrica: "Saldo disponível", Valor: cash },
+            { Métrica: "Capital alocado (posições abertas)", Valor: Number(capitalAlocado.toFixed(2)) },
+            { Métrica: "Equity (patrimônio total)", Valor: Number(equity.toFixed(2)) },
+            { Métrica: "PnL realizado", Valor: Number(realizedPnl.toFixed(2)) },
+            { Métrica: "PnL não realizado", Valor: Number(unrealizedPnl.toFixed(2)) },
+            { Métrica: "PnL total", Valor: Number(totalPnl.toFixed(2)) },
+            { Métrica: "ROI (%)", Valor: Number(roiPct.toFixed(2)) },
+            { Métrica: "Volume comprado (movimentação, não lucro)", Valor: Number(volumeComprado.toFixed(2)) },
+            { Métrica: "Volume vendido (movimentação, não lucro)", Valor: Number(volumeVendido.toFixed(2)) },
+            { Métrica: "Operações encerradas", Valor: closedOps.length },
+            { Métrica: "Posições abertas", Valor: openBuys.length },
+            { Métrica: "Movimentos no extrato", Valor: allRowsAsc.length },
           ];
+          const audit = closedOps.map((o: any) => ({
+            ID: o.id,
+            Ativo: o.pair,
+            Abertura: new Date(o.opened_at).toLocaleString(),
+            Fechamento: new Date(o.closed_at).toLocaleString(),
+            Quantidade: o.qty,
+            "Preço entrada": o.entry,
+            "Preço saída": o.exit,
+            "Valor investido": Number(o.invested.toFixed(2)),
+            "Valor retornado": Number(o.proceeds.toFixed(2)),
+            Taxas: Number(o.fees.toFixed(4)),
+            "PnL realizado": Number(o.pnl.toFixed(2)),
+            "ROI (%)": Number(o.roi.toFixed(2)),
+            Status: "encerrada",
+          }));
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Resumo");
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(audit), "Auditoria");
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Extrato");
           XLSX.writeFile(wb, `extrato-carteira-${new Date().toISOString().slice(0, 10)}.xlsx`);
         };
@@ -238,15 +400,36 @@ function WalletPage() {
           doc.setFontSize(9);
           doc.text(
             [
-              `Saldo inicial: $${Number(w?.initial_balance ?? 0).toFixed(2)}    Saldo atual: $${Number(w?.current_balance ?? 0).toFixed(2)}`,
-              `Total comprado: $${totalBought.toFixed(2)}    Total vendido: $${totalSold.toFixed(2)}    PnL realizado: $${totalPnl.toFixed(2)}`,
-              `Movimentos: ${allRowsAsc.length}    Gerado em ${new Date().toLocaleString()}`,
+              `Saldo inicial: $${initialBalance.toFixed(2)}    Saldo disponível: $${cash.toFixed(2)}    Capital alocado: $${capitalAlocado.toFixed(2)}    Equity: $${equity.toFixed(2)}`,
+              `PnL realizado: $${realizedPnl.toFixed(2)}    PnL não realizado: $${unrealizedPnl.toFixed(2)}    PnL total: $${totalPnl.toFixed(2)}    ROI: ${roiPct.toFixed(2)}%`,
+              `Volume comprado: $${volumeComprado.toFixed(2)}    Volume vendido: $${volumeVendido.toFixed(2)}  (movimentação, não lucro)`,
+              `Operações encerradas: ${closedOps.length}    Posições abertas: ${openBuys.length}    Gerado em ${new Date().toLocaleString()}`,
             ],
             14,
             22,
           );
           autoTable(doc, {
-            startY: 40,
+            startY: 48,
+            head: [["Ativo", "Abertura", "Fechamento", "Qtd", "Entrada", "Saída", "Investido", "PnL", "ROI %"]],
+            body: closedOps.map((o: any) => [
+              o.pair,
+              new Date(o.opened_at).toLocaleString(),
+              new Date(o.closed_at).toLocaleString(),
+              o.qty.toFixed(6),
+              o.entry.toFixed(4),
+              o.exit.toFixed(4),
+              o.invested.toFixed(2),
+              `${o.pnl >= 0 ? "+" : ""}${o.pnl.toFixed(2)}`,
+              `${o.roi >= 0 ? "+" : ""}${o.roi.toFixed(2)}`,
+            ]),
+            styles: { fontSize: 7 },
+            headStyles: { fillColor: [40, 40, 40] },
+            didDrawPage: (d) => {
+              doc.setFontSize(10);
+              doc.text("Operações encerradas", 14, d.cursor?.y ? 42 : 42);
+            },
+          });
+          autoTable(doc, {
             head: [["Data", "Par", "Tipo", "Qtd", "Preço", "Valor (USD)", "Saldo (USD)", "Detalhe"]],
             body: allRowsAsc.map((r) => [
               new Date(r.ts).toLocaleString(),
@@ -270,7 +453,6 @@ function WalletPage() {
               <div>
                 <h2 className="text-sm font-semibold">Extrato (débito / crédito)</h2>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Saldo inicial ${Number(w?.initial_balance ?? 0).toFixed(2)} → saldo atual ${Number(w?.current_balance ?? 0).toFixed(2)}.
                   Cada compra debita o capital alocado; o crédito acontece quando a posição é fechada (TP/SL ou venda).
                 </p>
               </div>
@@ -284,19 +466,24 @@ function WalletPage() {
               </div>
             </div>
 
+            <div className="mt-3 mb-4 flex items-start gap-2 text-[11px] text-muted-foreground bg-muted/30 border border-border rounded-md p-2">
+              <Info className="size-3.5 mt-0.5 shrink-0" />
+              <span>Volume comprado e vendido representam movimentação financeira, não lucro. O resultado real está em PnL realizado / não realizado acima.</span>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 my-4 text-xs">
               <div className="rounded-md border border-border p-2">
-                <p className="text-[10px] uppercase text-muted-foreground">Total comprado</p>
-                <p className="font-mono text-destructive">-${totalBought.toFixed(2)}</p>
+                <p className="text-[10px] uppercase text-muted-foreground">Volume comprado</p>
+                <p className="font-mono">${volumeComprado.toFixed(2)}</p>
               </div>
               <div className="rounded-md border border-border p-2">
-                <p className="text-[10px] uppercase text-muted-foreground">Total vendido</p>
-                <p className="font-mono text-success">+${totalSold.toFixed(2)}</p>
+                <p className="text-[10px] uppercase text-muted-foreground">Volume vendido</p>
+                <p className="font-mono">${volumeVendido.toFixed(2)}</p>
               </div>
               <div className="rounded-md border border-border p-2">
                 <p className="text-[10px] uppercase text-muted-foreground">PnL realizado</p>
-                <p className={`font-mono ${totalPnl >= 0 ? "text-success" : "text-destructive"}`}>
-                  {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
+                <p className={`font-mono ${realizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                  {realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}
                 </p>
               </div>
               <div className="rounded-md border border-border p-2">
@@ -343,7 +530,6 @@ function WalletPage() {
           </section>
         );
       })()}
-
 
       <section className="panel p-5">
         <h2 className="text-sm font-semibold mb-4">Posições simuladas</h2>
