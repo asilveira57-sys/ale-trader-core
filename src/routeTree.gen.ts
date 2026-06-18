@@ -42,6 +42,7 @@ import { Route as AuthenticatedGovernanceRouteImport } from './routes/_authentic
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCouncilRouteImport } from './routes/_authenticated/council'
 import { Route as AuthenticatedCommitteeRouteImport } from './routes/_authenticated/committee'
+import { Route as AuthenticatedBinanceAuditRouteImport } from './routes/_authenticated/binance-audit'
 import { Route as AuthenticatedB3RouteImport } from './routes/_authenticated/b3'
 import { Route as AuthenticatedAutoDashboardRouteImport } from './routes/_authenticated/auto-dashboard'
 import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
@@ -235,6 +236,12 @@ const AuthenticatedCommitteeRoute = AuthenticatedCommitteeRouteImport.update({
   path: '/committee',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedBinanceAuditRoute =
+  AuthenticatedBinanceAuditRouteImport.update({
+    id: '/binance-audit',
+    path: '/binance-audit',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedB3Route = AuthenticatedB3RouteImport.update({
   id: '/b3',
   path: '/b3',
@@ -373,6 +380,7 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuthenticatedAuditRouteWithChildren
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
+  '/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/committee': typeof AuthenticatedCommitteeRoute
   '/council': typeof AuthenticatedCouncilRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -429,6 +437,7 @@ export interface FileRoutesByTo {
   '/audit': typeof AuthenticatedAuditRouteWithChildren
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
+  '/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/committee': typeof AuthenticatedCommitteeRoute
   '/council': typeof AuthenticatedCouncilRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -487,6 +496,7 @@ export interface FileRoutesById {
   '/_authenticated/audit': typeof AuthenticatedAuditRouteWithChildren
   '/_authenticated/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/_authenticated/b3': typeof AuthenticatedB3Route
+  '/_authenticated/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/_authenticated/committee': typeof AuthenticatedCommitteeRoute
   '/_authenticated/council': typeof AuthenticatedCouncilRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -545,6 +555,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/auto-dashboard'
     | '/b3'
+    | '/binance-audit'
     | '/committee'
     | '/council'
     | '/dashboard'
@@ -601,6 +612,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/auto-dashboard'
     | '/b3'
+    | '/binance-audit'
     | '/committee'
     | '/council'
     | '/dashboard'
@@ -658,6 +670,7 @@ export interface FileRouteTypes {
     | '/_authenticated/audit'
     | '/_authenticated/auto-dashboard'
     | '/_authenticated/b3'
+    | '/_authenticated/binance-audit'
     | '/_authenticated/committee'
     | '/_authenticated/council'
     | '/_authenticated/dashboard'
@@ -948,6 +961,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCommitteeRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/binance-audit': {
+      id: '/_authenticated/binance-audit'
+      path: '/binance-audit'
+      fullPath: '/binance-audit'
+      preLoaderRoute: typeof AuthenticatedBinanceAuditRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/b3': {
       id: '/_authenticated/b3'
       path: '/b3'
@@ -1147,6 +1167,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAuditRoute: typeof AuthenticatedAuditRouteWithChildren
   AuthenticatedAutoDashboardRoute: typeof AuthenticatedAutoDashboardRoute
   AuthenticatedB3Route: typeof AuthenticatedB3Route
+  AuthenticatedBinanceAuditRoute: typeof AuthenticatedBinanceAuditRoute
   AuthenticatedCommitteeRoute: typeof AuthenticatedCommitteeRoute
   AuthenticatedCouncilRoute: typeof AuthenticatedCouncilRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -1194,6 +1215,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAuditRoute: AuthenticatedAuditRouteWithChildren,
   AuthenticatedAutoDashboardRoute: AuthenticatedAutoDashboardRoute,
   AuthenticatedB3Route: AuthenticatedB3Route,
+  AuthenticatedBinanceAuditRoute: AuthenticatedBinanceAuditRoute,
   AuthenticatedCommitteeRoute: AuthenticatedCommitteeRoute,
   AuthenticatedCouncilRoute: AuthenticatedCouncilRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,

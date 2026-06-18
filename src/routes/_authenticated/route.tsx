@@ -26,6 +26,7 @@ const NAV = [
   { to: "/ranking", label: "Ranking", icon: Trophy },
   { to: "/wallet", label: "Binance — Carteira", icon: Wallet },
   { to: "/orders", label: "Binance — Ordens", icon: Receipt },
+  { to: "/binance-audit", label: "Binance — Auditoria Saídas", icon: FileSearch },
   { to: "/b3", label: "B3 Day Trade (WIN)", icon: BarChart3 },
   { to: "/backtest", label: "Laboratório", icon: FlaskConical },
   { to: "/assets", label: "Ativos", icon: Coins },
