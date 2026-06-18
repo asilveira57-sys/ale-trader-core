@@ -229,7 +229,9 @@ function WalletPage() {
           XLSX.writeFile(wb, `extrato-carteira-${new Date().toISOString().slice(0, 10)}.xlsx`);
         };
 
-        const exportPDF = () => {
+        const exportPDF = async () => {
+          const { jsPDF } = await import("jspdf");
+          const autoTable = (await import("jspdf-autotable")).default;
           const doc = new jsPDF({ orientation: "landscape" });
           doc.setFontSize(14);
           doc.text("Extrato da carteira simulada", 14, 14);
