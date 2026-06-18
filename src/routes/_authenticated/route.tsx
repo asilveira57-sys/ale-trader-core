@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, redirect, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { LayoutDashboard, Coins, Bot, Bell, ScrollText, Settings, LogOut, Activity, Users, Wallet, Receipt, BookOpen, Trophy, Brain, FlaskConical, Radio, ListChecks, ShieldAlert, BarChart3, ShieldCheck, FileText, Gauge, PowerOff, Eye, AlertTriangle, FileBarChart, Lightbulb, Database, Radar, Calendar, BookMarked, Sparkles } from "lucide-react";
+import { LayoutDashboard, Coins, Bot, Bell, ScrollText, Settings, LogOut, Activity, Users, Wallet, Receipt, BookOpen, Trophy, Brain, FlaskConical, Radio, ListChecks, ShieldAlert, BarChart3, ShieldCheck, FileText, Gauge, PowerOff, Eye, AlertTriangle, FileBarChart, Lightbulb, Database, Radar, Calendar, BookMarked, Sparkles, FileSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 
