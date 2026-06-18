@@ -672,6 +672,28 @@ function WalletPage() {
       </section>
 
       <section className="panel p-5">
+        <h2 className="text-sm font-semibold mb-1 flex items-center gap-2">
+          <DollarSign className="size-4 text-warning" /> Vender tudo (liquidar carteira)
+        </h2>
+        <p className="text-xs text-muted-foreground mb-4">
+          Cancela todas as ordens de compra pendentes e vende todas as posições abertas a preço de mercado
+          com slippage de 0,5%. Ao final, a carteira fica somente em USDT, sem moedas.
+        </p>
+        <Button
+          variant="destructive"
+          onClick={() => {
+            if (confirm("Confirmar liquidação total? Todas as posições abertas serão vendidas a mercado -0,5%.")) {
+              mLiquidate.mutate();
+            }
+          }}
+          disabled={mLiquidate.isPending}
+        >
+          <DollarSign className="size-4 mr-2" />
+          {mLiquidate.isPending ? "Liquidando…" : "Vender tudo agora"}
+        </Button>
+      </section>
+
+      <section className="panel p-5">
         <h2 className="text-sm font-semibold mb-4">Reiniciar carteira</h2>
         <div className="flex items-end gap-3 max-w-md">
           <div className="flex-1">
