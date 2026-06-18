@@ -356,17 +356,15 @@ function WalletPage() {
           }));
           const summary = [
             { Métrica: "Saldo inicial", Valor: initialBalance },
-            { Métrica: "Saldo disponível", Valor: cash },
+            { Métrica: "Caixa atual", Valor: Number(cash.toFixed(2)) },
             { Métrica: "Capital alocado (posições abertas)", Valor: Number(capitalAlocado.toFixed(2)) },
-            { Métrica: "Equity (patrimônio total)", Valor: Number(equity.toFixed(2)) },
+            { Métrica: "Patrimônio total (Equity)", Valor: Number(equity.toFixed(2)) },
             { Métrica: "PnL realizado", Valor: Number(realizedPnl.toFixed(2)) },
             { Métrica: "PnL não realizado", Valor: Number(unrealizedPnl.toFixed(2)) },
-            { Métrica: "PnL total", Valor: Number(totalPnl.toFixed(2)) },
+            { Métrica: "Resultado total (PnL)", Valor: Number(totalPnl.toFixed(2)) },
             { Métrica: "ROI (%)", Valor: Number(roiPct.toFixed(2)) },
-            { Métrica: "Volume comprado (movimentação, não lucro)", Valor: Number(volumeComprado.toFixed(2)) },
-            { Métrica: "Volume vendido (movimentação, não lucro)", Valor: Number(volumeVendido.toFixed(2)) },
+            { Métrica: "Operações abertas", Valor: openBuys.length },
             { Métrica: "Operações encerradas", Valor: closedOps.length },
-            { Métrica: "Posições abertas", Valor: openBuys.length },
             { Métrica: "Movimentos no extrato", Valor: allRowsAsc.length },
           ];
           const audit = closedOps.map((o: any) => ({
@@ -384,9 +382,15 @@ function WalletPage() {
             "ROI (%)": Number(o.roi.toFixed(2)),
             Status: "encerrada",
           }));
+          const volumeAudit = [
+            { Métrica: "Volume comprado (movimentação bruta)", Valor: Number(volumeComprado.toFixed(2)) },
+            { Métrica: "Volume vendido (movimentação bruta)", Valor: Number(volumeVendido.toFixed(2)) },
+            { Métrica: "Volume total movimentado", Valor: Number((volumeComprado + volumeVendido).toFixed(2)) },
+          ];
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Resumo");
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(audit), "Auditoria");
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(volumeAudit), "Volume");
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Extrato");
           XLSX.writeFile(wb, `extrato-carteira-${new Date().toISOString().slice(0, 10)}.xlsx`);
         };
