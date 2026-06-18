@@ -838,8 +838,7 @@ export const liquidateSimulatedWallet = createServerFn({ method: "POST" })
       .update({ quantity: 0, unrealized_pnl: 0 })
       .neq("id", "00000000-0000-0000-0000-000000000000");
 
-    // Pause robot — requires manual reactivation
-    await supabase.from("robot_settings").update({ status: "paused" }).eq("id", 1);
+    // Robot was paused at the start of the handler; emit an alert now.
     await supabase.from("alerts").insert({
       type: "robot_paused",
       message: "Robô pausado após liquidação total",
