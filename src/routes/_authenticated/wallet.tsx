@@ -468,29 +468,63 @@ function WalletPage() {
 
             <div className="mt-3 mb-4 flex items-start gap-2 text-[11px] text-muted-foreground bg-muted/30 border border-border rounded-md p-2">
               <Info className="size-3.5 mt-0.5 shrink-0" />
-              <span>Volume comprado e vendido representam movimentação financeira, não lucro. O resultado real está em PnL realizado / não realizado acima.</span>
+              <span>Visão patrimonial: foco em caixa, capital alocado, patrimônio total e PnL realizado/não realizado. Volume movimentado fica disponível apenas na exportação para auditoria contábil.</span>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 my-4 text-xs">
-              <div className="rounded-md border border-border p-2">
-                <p className="text-[10px] uppercase text-muted-foreground">Volume comprado</p>
-                <p className="font-mono">${volumeComprado.toFixed(2)}</p>
-              </div>
-              <div className="rounded-md border border-border p-2">
-                <p className="text-[10px] uppercase text-muted-foreground">Volume vendido</p>
-                <p className="font-mono">${volumeVendido.toFixed(2)}</p>
-              </div>
-              <div className="rounded-md border border-border p-2">
-                <p className="text-[10px] uppercase text-muted-foreground">PnL realizado</p>
-                <p className={`font-mono ${realizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
-                  {realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}
-                </p>
-              </div>
-              <div className="rounded-md border border-border p-2">
-                <p className="text-[10px] uppercase text-muted-foreground">Movimentos</p>
-                <p className="font-mono">{allRowsAsc.length}</p>
-              </div>
-            </div>
+            {(() => {
+              const wins = closedOps.filter((o: any) => o.pnl > 0).length;
+              const hitRate = closedOps.length > 0 ? (wins / closedOps.length) * 100 : 0;
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2 my-4 text-xs">
+                  <div className="rounded-md border border-border p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">Saldo inicial</p>
+                    <p className="font-mono">${initialBalance.toFixed(2)}</p>
+                  </div>
+                  <div className="rounded-md border border-border p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">Caixa atual</p>
+                    <p className="font-mono">${cash.toFixed(2)}</p>
+                  </div>
+                  <div className="rounded-md border border-border p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">Capital alocado</p>
+                    <p className="font-mono">${capitalAlocado.toFixed(2)}</p>
+                  </div>
+                  <div className="rounded-md border border-border p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">Patrimônio total</p>
+                    <p className="font-mono">${equity.toFixed(2)}</p>
+                  </div>
+                  <div className="rounded-md border border-border p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">Resultado total</p>
+                    <p className={`font-mono ${totalPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                      {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">PnL realizado</p>
+                    <p className={`font-mono ${realizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                      {realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">PnL não realizado</p>
+                    <p className={`font-mono ${unrealizedPnl >= 0 ? "text-success" : "text-destructive"}`}>
+                      {unrealizedPnl >= 0 ? "+" : ""}${unrealizedPnl.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">Ops abertas</p>
+                    <p className="font-mono">{openBuys.length}</p>
+                  </div>
+                  <div className="rounded-md border border-border p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">Ops encerradas</p>
+                    <p className="font-mono">{closedOps.length}</p>
+                  </div>
+                  <div className="rounded-md border border-border p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground">Taxa de acerto</p>
+                    <p className="font-mono">{hitRate.toFixed(1)}% <span className="text-[10px] text-muted-foreground">({wins}/{closedOps.length})</span></p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {!allRows.length ? (
               <p className="text-sm text-muted-foreground">Nenhum movimento registrado.</p>
