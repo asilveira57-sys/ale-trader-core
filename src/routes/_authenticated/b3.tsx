@@ -195,7 +195,6 @@ function B3Page() {
         <TabsContent value="live">
           <SimLiveDashboard />
         </TabsContent>
-        </TabsContent>
         <TabsContent value="report">
           <Report orders={orders} settings={settings} />
         </TabsContent>
