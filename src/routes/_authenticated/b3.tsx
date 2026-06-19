@@ -18,6 +18,7 @@ import {
 import { useServerFn } from "@tanstack/react-start";
 import { runB3Committee, listB3AgentVotes } from "@/lib/b3.functions";
 import { SimComparePanel } from "@/components/b3/SimComparePanel";
+import { SimLiveDashboard } from "@/components/b3/SimLiveDashboard";
 
 export const Route = createFileRoute("/_authenticated/b3")({
   head: () => ({ meta: [{ title: "B3 Day Trade (WIN) — AleTrader AI" }] }),
@@ -167,6 +168,7 @@ function B3Page() {
           <TabsTrigger value="trade"><TrendingUp className="w-4 h-4 mr-1" />Operar (sim.)</TabsTrigger>
           <TabsTrigger value="committee"><Users className="w-4 h-4 mr-1" />Comitê</TabsTrigger>
           <TabsTrigger value="sim3"><Swords className="w-4 h-4 mr-1" />Simulação 3 Modos</TabsTrigger>
+          <TabsTrigger value="live"><Activity className="w-4 h-4 mr-1" />Painel Ao Vivo</TabsTrigger>
           <TabsTrigger value="report"><FileBarChart className="w-4 h-4 mr-1" />Relatório</TabsTrigger>
           <TabsTrigger value="settings"><SettingsIcon className="w-4 h-4 mr-1" />Configurações</TabsTrigger>
         </TabsList>
@@ -189,6 +191,9 @@ function B3Page() {
         </TabsContent>
         <TabsContent value="sim3">
           <SimComparePanel />
+        </TabsContent>
+        <TabsContent value="live">
+          <SimLiveDashboard />
         </TabsContent>
         <TabsContent value="report">
           <Report orders={orders} settings={settings} />
