@@ -1,49 +1,103 @@
 
-# Painel Interativo da Simulação B3 — Gráficos ao Vivo
+## Objetivo
 
-Sim, dá pra montar. Vou adicionar um painel novo na página da simulação 3 Modos com gráficos interativos (Recharts, já usado no app) que mostram em tempo real o que está sendo ofertado, comprado e vendido pelos 3 modos (Conservador, Moderado, Agressivo).
+Resolver 3 problemas reportados:
 
-## O que você vai ver
+1. Hoje, cada modo (conservador / moderado / agressivo) tem regras **fixas em código** (`committeeFor` e `modeProfile` em `src/lib/b3-simulation.functions.ts`). Você não consegue ajustar nada pela tela.
+2. O **limite diário de perda** é calculado dentro do tick (`stop_pts * 0.20 * contratos * 5`). Quando o modo agressivo bate esse teto, ele para de operar até o fim do pregão — e não há como afrouxar sem pedir prompt.
+3. O painel principal "B3 Day Trade — Mini Índice (WIN)" (cards Saldo / Resultado / Status do robô / janela 09:05–17:30) lê de `b3_trading_settings` e não enxerga nada que o simulador 3 modos faz. Ficou "engessado".
 
-1. **Preço do WIN ao vivo** — linha do tempo do mini índice (último preço de cada tick) com marcadores de aberturas (▲ verde para BUY/Long, ▼ vermelho para SELL/Short) e fechamentos (○) dos 3 modos sobrepostos no mesmo gráfico. Hover mostra hora, preço, modo e PnL.
+---
 
-2. **Evolução do patrimônio (3 linhas)** — uma linha por modo (Conservador / Moderado / Agressivo) partindo de R$ 10.000, atualizada a cada ordem fechada. Permite comparar visualmente quem está performando melhor.
+## Parte 1 — Configuração por modo (persistida)
 
-3. **PnL acumulado por modo (barras)** — barras com PnL líquido, bruto e taxas pagas, lado a lado para os 3 modos.
+### Mudança no banco
 
-4. **Distribuição de operações (donut + barras)**:
-   - Donut: % de BUY vs SELL por modo
-   - Barras empilhadas: ganhos × perdas × stop loss × take profit × fechamento manual
+Nova tabela `public.b3_simulation_mode_settings` (1 linha por run × modo). Campos editáveis:
 
-5. **Heatmap de atividade** — quantas ordens foram abertas por hora do pregão (9h–18h), separadas por modo. Mostra em que momento do dia cada modo é mais ativo.
+- `min_approve_votes` (int) — quantos agentes precisam aprovar
+- `min_confidence` (int %) — confiança média mínima
+- `min_score` (int) — score mínimo do comitê
+- `max_contracts` (int) — tamanho da posição
+- `stop_pts` (int) — stop em pontos do WIN
+- `gain_pts` (int) — alvo em pontos do WIN
+- `max_volatility_pct` (numeric) — volatilidade máxima para abrir
+- `daily_loss_limit_brl` (numeric) — **teto de perda diária** (R$, editável livremente)
+- `daily_gain_target_brl` (numeric) — meta diária
+- `trading_start_time` (text "HH:MM")
+- `entry_cutoff_time` (text "HH:MM") — última entrada
+- `force_close_time` (text "HH:MM") — zeragem
+- `enabled` (bool) — se este modo opera nesta run
+- `notes` (text)
 
-6. **Painel "ao vivo agora"** — cards no topo com:
-   - Posições abertas em cada modo (com PnL parcial pulsante)
-   - Último voto do comitê (qual agente votou o quê) com mini-barra de confiança
-   - Próximo tick estimado (contador regressivo até o próximo minuto do cron)
+Defaults populados ao criar a run (mesmos valores hardcoded de hoje, para preservar comportamento). RLS por `user_id`, GRANTs ao `authenticated` e `service_role`.
 
-## Onde fica
+### Mudança no engine
 
-- Nova aba dentro da página `/b3` chamada **"Painel Ao Vivo"**, ao lado das abas já existentes (Comparativo, Histórico).
-- Auto-refresh a cada 15s via TanStack Query (mesmo padrão das outras telas).
-- Botão "Pausar atualização" para inspecionar um momento específico.
-- Filtros: período (últimas 1h / 4h / hoje / desde o início da simulação) e modos visíveis (toggle por linha).
+`src/lib/b3-simulation.functions.ts` (`runB3SimulationTick`):
 
-## Detalhes técnicos (para referência)
+- Carrega `b3_simulation_mode_settings` junto com `b3_simulation_modes`.
+- Substitui `committeeFor(mode)` e `modeProfile(mode)` por leitura dos settings da run.
+- Substitui o cálculo automático de `daily_loss_limit` por `settings.daily_loss_limit_brl` (e idem `daily_gain_target_brl`).
+- Janela de horário (`startMin / cutoffMin / forceMin`) passa a ser **por modo**, não global da run.
+- `enabled === false` → modo é pulado no tick (sem registrar bloqueio).
 
-- **Novo server fn** `getB3SimLiveDashboard` em `src/lib/b3-sim-history.functions.ts` que retorna:
-  - Snapshots de mercado (`b3_simulation_market_snapshots`) das últimas N horas
-  - Ordens (`b3_simulation_orders`) com `created_at`, `updated_at`, `status`, `side`, `entry_price`, `exit_price`, `pnl_net`, `mode_id`
-  - Estado atual dos 3 modos (`b3_simulation_modes`: equity, posição aberta)
-  - Últimos 20 votos (`b3_simulation_agent_votes`) com agente, voto, confiança
-- **Novo componente** `src/components/b3/SimLiveDashboard.tsx` com Recharts (LineChart, BarChart, PieChart) + cards de estado.
-- **Integração** na página `src/routes/_authenticated/b3.tsx` (ou no `SimComparePanel.tsx` se preferir tudo numa aba só) usando o `Tabs` do shadcn.
-- Nenhuma alteração no engine de simulação, no cron ou no histórico — somente leitura.
+### Novos server fns
 
-## Fora do escopo
+Em `src/lib/b3-simulation.functions.ts`:
 
-- Não muda regras de operação, taxas, agentes ou cron.
-- Não cria ordens — é só visualização.
-- Não toca em Binance, Day Trade ou painéis reais.
+- `listB3ModeSettings({ run_id })` → 3 linhas (uma por modo).
+- `updateB3ModeSettings({ run_id, mode, patch })` → aceita qualquer subset dos campos acima e grava direto. Sem validação de "máximo permitido" — você define livremente (incluindo afrouxar perda de 10% para 30%).
+- `resetB3ModeSettingsToDefault({ run_id, mode })` — restaura o profile original.
 
-Quer que eu já implemente assim, ou prefere ajustar algum gráfico antes (ex.: trocar heatmap por candlestick, adicionar profundidade de book — que não temos hoje, exigiria coleta nova)?
+### Mudança na UI do simulador
+
+Em `src/components/b3/SimComparePanel.tsx`, dentro de cada `ModeCard`:
+
+- Botão **"Configurar"** abre um `Dialog` com formulário (todos os campos acima).
+- Switch **"Operar este modo"** liga/desliga `enabled` sem precisar encerrar a run.
+- Badge mostrando regras atuais resumidas ("min votos 5 · stop 150pts · perda diária R$ 300").
+- Botão "Restaurar padrão".
+
+---
+
+## Parte 2 — Painel B3 Day Trade alimentado pelo simulador
+
+O painel da aba **Painel** (a captura que você mandou) hoje só lê `b3_trading_settings`. Vou ligá-lo à run de simulação **ativa**:
+
+### Novo server fn
+
+`getB3PanelOverview()` em `src/lib/b3.functions.ts`:
+
+- Busca a run com `status='running'` mais recente do usuário.
+- Soma `current_balance`, `realized_pnl`, `total_fees`, `points_result`, `contracts_traded`, `total_trades` dos 3 modos (somente os `enabled`).
+- Calcula `operações abertas` (`b3_simulation_orders` com `status='open'`) e `encerradas` (`closed` no dia).
+- Retorna também: modo "vencedor parcial" (maior PnL), janela efetiva (menor `start` / maior `force_close` entre modos habilitados), totais de bloqueios.
+
+### Mudanças visuais em `src/routes/_authenticated/b3.tsx` (aba Painel)
+
+- Cards Saldo / Resultado bruto / Taxas / Líquido / Pontos / Contratos / Ops abertas / Ops encerradas passam a vir de `getB3PanelOverview()`.
+- "Status do robô" mostra: run id resumido, modos ativos (chips com cor), janela efetiva, e link "Configurar modos" que abre a aba Simulação 3 Modos.
+- Quando **não há run ativa**, exibir um CTA: "Nenhuma simulação rodando — Iniciar nova" (mesma ação do `StartForm`).
+
+---
+
+## Parte 3 — Esclarecimentos
+
+- **Não vou** mexer no engine de execução (regras de stop/gain do tick continuam idênticas; só o **input** dos parâmetros mudou).
+- **Não vou** ligar nada na operação real (Binance/B3 broker) — tudo continua sandbox.
+- O `b3_trading_settings` antigo continua existindo para compatibilidade do cron `auto-tick`, mas o painel visual passa a refletir o simulador 3 modos, que é onde a ação realmente acontece hoje.
+
+---
+
+## Arquivos afetados
+
+- **Nova migração**: cria `b3_simulation_mode_settings` + trigger updated_at + GRANTs + RLS + popula defaults para runs existentes em `running`/`paused`.
+- `src/lib/b3-simulation.functions.ts` — usa settings da tabela; novos fns CRUD.
+- `src/lib/b3.functions.ts` — `getB3PanelOverview`.
+- `src/components/b3/SimComparePanel.tsx` — botão Configurar + Dialog por modo + switch enabled.
+- `src/routes/_authenticated/b3.tsx` — aba Painel passa a usar overview do simulador.
+
+Tudo isso em duas etapas (migração primeiro, código depois) porque as migrações exigem sua aprovação antes de rodar.
+
+Posso seguir?
