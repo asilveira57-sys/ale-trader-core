@@ -215,6 +215,7 @@ export function SimComparePanel() {
       {/* Macro events */}
       <MacroEventsCard />
     </div>
+    </TooltipProvider>
   );
 }
 
