@@ -25,6 +25,18 @@ const MODE_DEFAULTS: Record<Mode, ModeDefaults> = {
 
 function hhmmToMin(s: string) { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; }
 
+function saoPauloMinutes(d: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(d);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
+  return hour * 60 + minute;
+}
+
 // ───────────────────── start ─────────────────────
 interface StartInput {
   initial_balance?: number;
@@ -190,7 +202,7 @@ export async function runB3SimulationTick(
 
   for (let i = 0; i < ticks; i++) {
     const now = new Date();
-    const cur = now.getHours() * 60 + now.getMinutes();
+    const cur = saoPauloMinutes(now);
 
     const ctx = buildMockB3Context("WIN", "WINFUT", 130000);
     const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
