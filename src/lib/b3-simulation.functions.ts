@@ -65,6 +65,14 @@ export const startB3Simulation = createServerFn({ method: "POST" })
     }));
     const { error: mErr } = await (supabase as any).from("b3_simulation_modes").insert(modeRows);
     if (mErr) throw mErr;
+
+    const settingRows = MODES.map(m => ({
+      simulation_run_id: run.id, user_id: userId, mode: m, ...MODE_DEFAULTS[m],
+      trading_start_time: run.trading_start_time,
+      entry_cutoff_time: run.entry_cutoff_time,
+      force_close_time: run.force_close_time,
+    }));
+    await (supabase as any).from("b3_simulation_mode_settings").insert(settingRows);
     return run;
   });
 
