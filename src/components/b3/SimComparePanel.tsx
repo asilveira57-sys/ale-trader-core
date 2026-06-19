@@ -232,7 +232,7 @@ export function SimComparePanel() {
   );
 }
 
-function ModeCard({ m, isWinner, onPick }: { m: any; isWinner: boolean; onPick: () => void }) {
+function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWinner: boolean; onPick: () => void }) {
   const trades = Math.max(1, Number(m.total_trades) || 0);
   const acerto = ((Number(m.winning_trades) || 0) / trades) * 100;
   const pnl = Number(m.realized_pnl);
@@ -243,7 +243,10 @@ function ModeCard({ m, isWinner, onPick }: { m: any; isWinner: boolean; onPick: 
           <Badge className={`uppercase ${MODE_COLOR[m.mode as Mode]}`}>{m.mode}</Badge>
           {isWinner && <Trophy className="w-4 h-4 text-amber-400" />}
         </CardTitle>
-        <Button size="sm" variant="ghost" onClick={onPick}><Trophy className="w-4 h-4" /></Button>
+        <div className="flex items-center gap-1">
+          <ModeSettingsDialog runId={runId} mode={m.mode as Mode} />
+          <Button size="sm" variant="ghost" onClick={onPick}><Trophy className="w-4 h-4" /></Button>
+        </div>
       </CardHeader>
       <CardContent className="text-sm space-y-1">
         <Row k="Saldo inicial" v={BRL(m.initial_balance)} />
@@ -260,6 +263,89 @@ function ModeCard({ m, isWinner, onPick }: { m: any; isWinner: boolean; onPick: 
         <Row k="Bloqueios de risco" v={String(m.risk_blocks)} />
       </CardContent>
     </Card>
+  );
+}
+
+function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
+  const qc = useQueryClient();
+  const list = useServerFn(listB3ModeSettings);
+  const upd = useServerFn(updateB3ModeSettings);
+  const reset = useServerFn(resetB3ModeSettings);
+  const [open, setOpen] = useState(false);
+  const q = useQuery({
+    queryKey: ["b3-mode-settings", runId],
+    queryFn: () => list({ data: { run_id: runId } }),
+    enabled: open && !!runId,
+  });
+  const current = (q.data ?? []).find((s: any) => s.mode === mode);
+  const [form, setForm] = useState<any>(null);
+  if (open && current && !form) setForm({ ...current });
+  const f = form ?? current ?? {};
+
+  const saveM = useMutation({
+    mutationFn: () => upd({ data: { run_id: runId, mode, patch: f } }),
+    onSuccess: () => {
+      toast.success(`Configuração de ${mode} salva`);
+      qc.invalidateQueries({ queryKey: ["b3-mode-settings", runId] });
+      qc.invalidateQueries({ queryKey: ["b3-sim-detail", runId] });
+      setOpen(false); setForm(null);
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Erro ao salvar"),
+  });
+  const resetM = useMutation({
+    mutationFn: () => reset({ data: { run_id: runId, mode } }),
+    onSuccess: () => {
+      toast.success("Restaurado para padrão");
+      qc.invalidateQueries({ queryKey: ["b3-mode-settings", runId] });
+      setForm(null);
+    },
+  });
+
+  const set = (k: string, v: any) => setForm({ ...f, [k]: v });
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setForm(null); }}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="ghost" title="Configurar"><SettingsIcon className="w-4 h-4" /></Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="capitalize flex items-center gap-2">
+            <Badge className={`uppercase ${MODE_COLOR[mode]}`}>{mode}</Badge>
+            Configuração do modo
+          </DialogTitle>
+        </DialogHeader>
+        {current ? (
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="col-span-2 flex items-center justify-between rounded border border-border/40 p-2">
+              <span>Operar este modo</span>
+              <Switch checked={f.enabled !== false} onCheckedChange={(v) => set("enabled", v)} />
+            </div>
+            <Field label="Votos mínimos (aprovação)"><Input type="number" value={f.min_approve_votes ?? ""} onChange={(e) => set("min_approve_votes", Number(e.target.value))} /></Field>
+            <Field label="Confiança mínima (%)"><Input type="number" value={f.min_confidence ?? ""} onChange={(e) => set("min_confidence", Number(e.target.value))} /></Field>
+            <Field label="Score mínimo"><Input type="number" value={f.min_score ?? ""} onChange={(e) => set("min_score", Number(e.target.value))} /></Field>
+            <Field label="Máx. contratos"><Input type="number" value={f.max_contracts ?? ""} onChange={(e) => set("max_contracts", Number(e.target.value))} /></Field>
+            <Field label="Stop (pts)"><Input type="number" value={f.stop_pts ?? ""} onChange={(e) => set("stop_pts", Number(e.target.value))} /></Field>
+            <Field label="Alvo / Gain (pts)"><Input type="number" value={f.gain_pts ?? ""} onChange={(e) => set("gain_pts", Number(e.target.value))} /></Field>
+            <Field label="Volatilidade máx. (%)"><Input type="number" step="0.1" value={f.max_volatility_pct ?? ""} onChange={(e) => set("max_volatility_pct", Number(e.target.value))} /></Field>
+            <Field label="Limite diário de perda (R$)"><Input type="number" step="10" value={f.daily_loss_limit_brl ?? ""} onChange={(e) => set("daily_loss_limit_brl", Number(e.target.value))} /></Field>
+            <Field label="Meta diária de ganho (R$)"><Input type="number" step="10" value={f.daily_gain_target_brl ?? ""} onChange={(e) => set("daily_gain_target_brl", Number(e.target.value))} /></Field>
+            <Field label="Início pregão (HH:MM)"><Input value={f.trading_start_time ?? ""} onChange={(e) => set("trading_start_time", e.target.value)} /></Field>
+            <Field label="Corte de entradas"><Input value={f.entry_cutoff_time ?? ""} onChange={(e) => set("entry_cutoff_time", e.target.value)} /></Field>
+            <Field label="Zeragem obrigatória"><Input value={f.force_close_time ?? ""} onChange={(e) => set("force_close_time", e.target.value)} /></Field>
+            <div className="col-span-2 text-xs text-muted-foreground">
+              Sem prompts: ajuste livremente. Ex.: subir o limite de perda de R$ 300 para R$ 900 e clicar em Salvar.
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Carregando…</p>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => resetM.mutate()} disabled={resetM.isPending}>Restaurar padrão</Button>
+          <Button onClick={() => saveM.mutate()} disabled={saveM.isPending || !current}>Salvar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
