@@ -117,3 +117,65 @@ export const listB3AgentVotes = createServerFn({ method: "GET" })
     if (error) throw error;
     return data ?? [];
   });
+
+// Painel principal alimentado pela Simulação 3 Modos (run ativa do usuário)
+export const getB3PanelOverview = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: runs } = await (supabase as any).from("b3_simulation_runs")
+      .select("*").eq("user_id", userId)
+      .in("status", ["running", "paused"])
+      .order("started_at", { ascending: false }).limit(1);
+    const run = runs?.[0] ?? null;
+    if (!run) return { run: null };
+
+    const [{ data: modes }, { data: settings }, { data: openOrders }, { data: closedToday }] = await Promise.all([
+      (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", run.id).eq("user_id", userId),
+      (supabase as any).from("b3_simulation_mode_settings").select("*").eq("simulation_run_id", run.id).eq("user_id", userId),
+      (supabase as any).from("b3_simulation_orders").select("id,mode,side,entry_price,quantity").eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
+      (supabase as any).from("b3_simulation_orders").select("id,mode,net_result_brl,gross_result_brl,fees,gross_result_points,quantity,close_reason,exit_time")
+        .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "closed")
+        .gte("exit_time", new Date(new Date().setHours(0,0,0,0)).toISOString()),
+    ]);
+
+    const enabledModes = (settings ?? []).filter((s: any) => s.enabled !== false).map((s: any) => s.mode);
+    const useModes = (modes ?? []).filter((m: any) => enabledModes.length === 0 || enabledModes.includes(m.mode));
+
+    const initial = useModes.reduce((s: number, m: any) => s + Number(m.initial_balance), 0);
+    const balance = useModes.reduce((s: number, m: any) => s + Number(m.current_balance), 0);
+    const realized = useModes.reduce((s: number, m: any) => s + Number(m.realized_pnl), 0);
+    const fees = useModes.reduce((s: number, m: any) => s + Number(m.total_fees), 0);
+    const points = useModes.reduce((s: number, m: any) => s + Number(m.points_result), 0);
+    const contracts = useModes.reduce((s: number, m: any) => s + Number(m.contracts_traded), 0);
+    const trades = useModes.reduce((s: number, m: any) => s + Number(m.total_trades), 0);
+    const wins = useModes.reduce((s: number, m: any) => s + Number(m.winning_trades), 0);
+    const losses = useModes.reduce((s: number, m: any) => s + Number(m.losing_trades), 0);
+    const blocks = useModes.reduce((s: number, m: any) => s + Number(m.risk_blocks), 0);
+    const grossToday = (closedToday ?? []).reduce((s: number, o: any) => s + Number(o.gross_result_brl ?? 0), 0);
+
+    // janela efetiva (entre modos habilitados)
+    const enabledSettings = (settings ?? []).filter((s: any) => s.enabled !== false);
+    const minStart = enabledSettings.map((s: any) => s.trading_start_time).sort()[0] ?? "09:15";
+    const maxClose = enabledSettings.map((s: any) => s.force_close_time).sort().slice(-1)[0] ?? "16:55";
+    const dailyLossLimit = enabledSettings.reduce((s: number, x: any) => s + Number(x.daily_loss_limit_brl), 0);
+    const dailyGainTarget = enabledSettings.reduce((s: number, x: any) => s + Number(x.daily_gain_target_brl), 0);
+
+    const ranked = useModes.slice().sort((a: any, b: any) => Number(b.realized_pnl) - Number(a.realized_pnl));
+    const leader = ranked[0] ?? null;
+
+    return {
+      run,
+      enabled_modes: enabledModes,
+      totals: {
+        initial_balance: initial, current_balance: balance,
+        realized_pnl: realized, gross_today: grossToday,
+        fees, points, contracts, trades, wins, losses, blocks,
+        open_orders: (openOrders ?? []).length,
+        closed_today: (closedToday ?? []).length,
+      },
+      window: { start: minStart, force_close: maxClose, daily_loss_limit: dailyLossLimit, daily_gain_target: dailyGainTarget },
+      leader: leader ? { mode: leader.mode, realized_pnl: Number(leader.realized_pnl) } : null,
+      modes: useModes, settings: settings ?? [],
+    };
+  });
