@@ -16,7 +16,7 @@ import {
   Clock, PauseCircle, PlayCircle, XCircle, FileBarChart, Settings as SettingsIcon, Users, Swords,
 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
-import { runB3Committee, listB3AgentVotes } from "@/lib/b3.functions";
+import { runB3Committee, listB3AgentVotes, getB3PanelOverview } from "@/lib/b3.functions";
 import { SimComparePanel } from "@/components/b3/SimComparePanel";
 import { SimLiveDashboard } from "@/components/b3/SimLiveDashboard";
 
@@ -212,51 +212,100 @@ function B3Page() {
 
 // ────────────────────────────────────────────────────────────────────
 function Panel({ settings, orders }: { settings: B3Settings; orders: B3Order[] }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const todays = orders.filter(o => o.created_at.slice(0, 10) === today);
-  const closed = todays.filter(o => o.status === "closed");
-  const open = todays.filter(o => o.status === "open");
+  const getOverview = useServerFn(getB3PanelOverview);
+  const ovQ = useQuery({
+    queryKey: ["b3-panel-overview"],
+    queryFn: () => getOverview(),
+    refetchInterval: 10000,
+  });
+  const ov = ovQ.data as any;
 
-  const realizedBRL = closed.reduce((s, o) => s + (o.net_result_brl ?? 0), 0);
-  const realizedPts = closed.reduce((s, o) => s + (o.gross_result_points ?? 0), 0);
-  const grossBRL = closed.reduce((s, o) => s + (o.gross_result_brl ?? 0), 0);
-  const fees = closed.reduce((s, o) => s + (o.fees ?? 0), 0);
-  const contracts = closed.reduce((s, o) => s + o.quantity, 0);
+  // Fallback: usa b3_orders manuais (legado) quando não há simulação ativa
+  if (!ov?.run) {
+    const today = new Date().toISOString().slice(0, 10);
+    const todays = orders.filter(o => o.created_at.slice(0, 10) === today);
+    const closed = todays.filter(o => o.status === "closed");
+    const open = todays.filter(o => o.status === "open");
+    const realizedBRL = closed.reduce((s, o) => s + (o.net_result_brl ?? 0), 0);
+    const realizedPts = closed.reduce((s, o) => s + (o.gross_result_points ?? 0), 0);
+    const grossBRL = closed.reduce((s, o) => s + (o.gross_result_brl ?? 0), 0);
+    const fees = closed.reduce((s, o) => s + (o.fees ?? 0), 0);
+    const contracts = closed.reduce((s, o) => s + o.quantity, 0);
+    return (
+      <div className="grid gap-3 md:grid-cols-4 mt-3">
+        <Card className="md:col-span-4 border-amber-500/40 bg-amber-500/5">
+          <CardContent className="pt-4 text-sm flex items-center justify-between flex-wrap gap-2">
+            <span className="text-amber-300 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" /> Nenhuma Simulação 3 Modos ativa — o painel está mostrando ordens manuais legadas.
+            </span>
+            <span className="text-xs text-muted-foreground">Abra a aba <strong>Simulação 3 Modos</strong> e clique em "Iniciar nova simulação".</span>
+          </CardContent>
+        </Card>
+        <StatCard label="Saldo inicial" value={BRL(settings.capital_allocated)} />
+        <StatCard label="Resultado bruto" value={BRL(grossBRL)} tone={grossBRL >= 0 ? "up" : "down"} />
+        <StatCard label="Taxas" value={BRL(fees)} />
+        <StatCard label="Resultado líquido" value={BRL(realizedBRL)} tone={realizedBRL >= 0 ? "up" : "down"} />
+        <StatCard label="Pontos" value={NUM(realizedPts)} tone={realizedPts >= 0 ? "up" : "down"} />
+        <StatCard label="Contratos operados" value={NUM(contracts)} />
+        <StatCard label="Operações abertas" value={NUM(open.length)} />
+        <StatCard label="Operações encerradas" value={NUM(closed.length)} />
+      </div>
+    );
+  }
 
-  const lossHit = realizedBRL <= -settings.daily_loss_limit;
-  const gainHit = realizedBRL >= settings.daily_gain_target;
-  const status = lossHit ? "stopped_by_loss" : gainHit ? "stopped_by_gain" : "active";
+  const t = ov.totals;
+  const w = ov.window;
+  const lossHit = t.realized_pnl <= -w.daily_loss_limit;
+  const gainHit = t.realized_pnl >= w.daily_gain_target;
+  const status = lossHit ? "stopped_by_loss" : gainHit ? "stopped_by_gain" : ov.run.status;
+  const winRate = t.trades > 0 ? (t.wins / t.trades) * 100 : 0;
 
   return (
     <div className="grid gap-3 md:grid-cols-4 mt-3">
-      <StatCard label="Saldo inicial" value={BRL(settings.capital_allocated)} />
-      <StatCard label="Resultado bruto" value={BRL(grossBRL)} tone={grossBRL >= 0 ? "up" : "down"} />
-      <StatCard label="Taxas" value={BRL(fees)} />
-      <StatCard label="Resultado líquido" value={BRL(realizedBRL)} tone={realizedBRL >= 0 ? "up" : "down"} />
-      <StatCard label="Pontos" value={NUM(realizedPts)} tone={realizedPts >= 0 ? "up" : "down"} />
-      <StatCard label="Contratos operados" value={NUM(contracts)} />
-      <StatCard label="Operações abertas" value={NUM(open.length)} />
-      <StatCard label="Operações encerradas" value={NUM(closed.length)} />
+      <StatCard label="Saldo inicial (somado)" value={BRL(t.initial_balance)} />
+      <StatCard label="Resultado bruto" value={BRL(t.gross_today)} tone={t.gross_today >= 0 ? "up" : "down"} />
+      <StatCard label="Taxas" value={BRL(t.fees)} />
+      <StatCard label="Resultado líquido" value={BRL(t.realized_pnl)} tone={t.realized_pnl >= 0 ? "up" : "down"} />
+      <StatCard label="Pontos" value={NUM(t.points)} tone={t.points >= 0 ? "up" : "down"} />
+      <StatCard label="Contratos operados" value={NUM(t.contracts)} />
+      <StatCard label="Operações abertas" value={NUM(t.open_orders)} />
+      <StatCard label="Operações encerradas" value={NUM(t.closed_today)} />
 
       <Card className="md:col-span-4">
-        <CardHeader className="pb-2"><CardTitle className="text-base">Status do robô</CardTitle></CardHeader>
-        <CardContent className="text-sm space-y-1">
-          <div className="flex items-center gap-2">
-            <Badge variant={status === "active" ? "default" : "destructive"}>{status}</Badge>
-            <span className="text-muted-foreground">
-              Limites diários: perda {BRL(settings.daily_loss_limit)} · ganho {BRL(settings.daily_gain_target)}
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center justify-between flex-wrap gap-2">
+            <span>Status do robô · Simulação 3 Modos</span>
+            <span className="flex gap-1">
+              {(ov.enabled_modes ?? []).map((m: string) => (
+                <Badge key={m} variant="outline" className="capitalize text-[10px]">{m}</Badge>
+              ))}
             </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant={status === "running" ? "default" : "destructive"}>{status}</Badge>
+            <span className="text-muted-foreground">
+              Limite agregado: perda {BRL(w.daily_loss_limit)} · meta {BRL(w.daily_gain_target)}
+            </span>
+            <span className="text-muted-foreground">
+              · Taxa de acerto {NUM(winRate, 1)}% ({t.wins}V/{t.losses}P)
+            </span>
+            <span className="text-muted-foreground">· Bloqueios {t.blocks}</span>
           </div>
-          {lossHit && <p className="text-destructive flex items-center gap-1"><ShieldAlert className="w-4 h-4" /> Perda diária atingida — entradas bloqueadas.</p>}
-          {gainHit && <p className="text-emerald-500 flex items-center gap-1"><TrendingUp className="w-4 h-4" /> Meta diária atingida.</p>}
-          <p className="text-muted-foreground flex items-center gap-1">
-            <Clock className="w-4 h-4" /> Janela: {settings.start_time}–{settings.end_time} · zeragem {settings.force_close_time}
-          </p>
-          {settings.auto_trade_enabled === false && (
-            <p className="text-amber-500 flex items-center gap-1">
-              <AlertTriangle className="w-4 h-4" /> Operação automática desativada — modo manual / alerta.
+          {ov.leader && (
+            <p className="text-emerald-400 text-xs">
+              Líder parcial: <strong className="capitalize">{ov.leader.mode}</strong> ({BRL(ov.leader.realized_pnl)})
             </p>
           )}
+          {lossHit && <p className="text-destructive flex items-center gap-1"><ShieldAlert className="w-4 h-4" /> Perda diária agregada atingida.</p>}
+          {gainHit && <p className="text-emerald-500 flex items-center gap-1"><TrendingUp className="w-4 h-4" /> Meta diária agregada atingida.</p>}
+          <p className="text-muted-foreground flex items-center gap-1">
+            <Clock className="w-4 h-4" /> Janela efetiva: {w.start} · zeragem {w.force_close}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Para alterar votos mínimos, stop, gain ou afrouxar perda diária por modo, abra a aba <strong>Simulação 3 Modos</strong> e clique no ícone de engrenagem em cada card.
+          </p>
         </CardContent>
       </Card>
     </div>

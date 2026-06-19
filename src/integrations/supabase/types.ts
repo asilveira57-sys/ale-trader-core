@@ -948,6 +948,83 @@ export type Database = {
           },
         ]
       }
+      b3_simulation_mode_settings: {
+        Row: {
+          created_at: string
+          daily_gain_target_brl: number
+          daily_loss_limit_brl: number
+          enabled: boolean
+          entry_cutoff_time: string
+          force_close_time: string
+          gain_pts: number
+          id: string
+          max_contracts: number
+          max_volatility_pct: number
+          min_approve_votes: number
+          min_confidence: number
+          min_score: number
+          mode: string
+          notes: string | null
+          simulation_run_id: string
+          stop_pts: number
+          trading_start_time: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          daily_gain_target_brl?: number
+          daily_loss_limit_brl?: number
+          enabled?: boolean
+          entry_cutoff_time?: string
+          force_close_time?: string
+          gain_pts?: number
+          id?: string
+          max_contracts?: number
+          max_volatility_pct?: number
+          min_approve_votes?: number
+          min_confidence?: number
+          min_score?: number
+          mode: string
+          notes?: string | null
+          simulation_run_id: string
+          stop_pts?: number
+          trading_start_time?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          daily_gain_target_brl?: number
+          daily_loss_limit_brl?: number
+          enabled?: boolean
+          entry_cutoff_time?: string
+          force_close_time?: string
+          gain_pts?: number
+          id?: string
+          max_contracts?: number
+          max_volatility_pct?: number
+          min_approve_votes?: number
+          min_confidence?: number
+          min_score?: number
+          mode?: string
+          notes?: string | null
+          simulation_run_id?: string
+          stop_pts?: number
+          trading_start_time?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_simulation_mode_settings_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       b3_simulation_modes: {
         Row: {
           committee_approvals: number

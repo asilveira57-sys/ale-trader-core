@@ -12,17 +12,16 @@ const TICK = 5;
 type Mode = "conservador" | "moderado" | "agressivo";
 const MODES: Mode[] = ["conservador", "moderado", "agressivo"];
 
-function committeeFor(mode: Mode): B3CommitteeSettings {
-  if (mode === "conservador") return { min_approve_votes: 6, min_confidence: 70, min_score: 75 };
-  if (mode === "agressivo")   return { min_approve_votes: 4, min_confidence: 55, min_score: 55 };
-  return { min_approve_votes: 5, min_confidence: 62, min_score: 65 };
+interface ModeDefaults {
+  min_approve_votes: number; min_confidence: number; min_score: number;
+  max_contracts: number; stop_pts: number; gain_pts: number; max_volatility_pct: number;
+  daily_loss_limit_brl: number; daily_gain_target_brl: number;
 }
-
-function modeProfile(mode: Mode) {
-  if (mode === "conservador") return { max_contracts: 1, stop_pts: 100, gain_pts: 200, max_vol: 2.5 };
-  if (mode === "agressivo")   return { max_contracts: 3, stop_pts: 200, gain_pts: 400, max_vol: 4.5 };
-  return { max_contracts: 2, stop_pts: 150, gain_pts: 300, max_vol: 3.5 };
-}
+const MODE_DEFAULTS: Record<Mode, ModeDefaults> = {
+  conservador: { min_approve_votes: 6, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200 },
+  moderado:    { min_approve_votes: 5, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500 },
+  agressivo:   { min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200 },
+};
 
 function hhmmToMin(s: string) { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; }
 
@@ -66,6 +65,14 @@ export const startB3Simulation = createServerFn({ method: "POST" })
     }));
     const { error: mErr } = await (supabase as any).from("b3_simulation_modes").insert(modeRows);
     if (mErr) throw mErr;
+
+    const settingRows = MODES.map(m => ({
+      simulation_run_id: run.id, user_id: userId, mode: m, ...MODE_DEFAULTS[m],
+      trading_start_time: run.trading_start_time,
+      entry_cutoff_time: run.entry_cutoff_time,
+      force_close_time: run.force_close_time,
+    }));
+    await (supabase as any).from("b3_simulation_mode_settings").insert(settingRows);
     return run;
   });
 
@@ -148,9 +155,22 @@ export async function runB3SimulationTick(
   const modeByName: Record<string, any> = {};
   for (const m of modeRows ?? []) { modeById[m.id] = m; modeByName[m.mode] = m; }
 
-  const startMin = hhmmToMin(run.trading_start_time);
-  const cutoffMin = hhmmToMin(run.entry_cutoff_time);
-  const forceMin = hhmmToMin(run.force_close_time);
+  // settings por modo (criadas no start; backfill garante existência em runs antigas)
+  const { data: settingsRows } = await supabase.from("b3_simulation_mode_settings")
+    .select("*").eq("simulation_run_id", runId).eq("user_id", userId);
+  const settingsByMode: Record<string, any> = {};
+  for (const s of settingsRows ?? []) settingsByMode[s.mode] = s;
+  // garante defaults se faltar
+  for (const m of MODES) {
+    if (!settingsByMode[m]) {
+      settingsByMode[m] = {
+        ...MODE_DEFAULTS[m], enabled: true,
+        trading_start_time: run.trading_start_time,
+        entry_cutoff_time: run.entry_cutoff_time,
+        force_close_time: run.force_close_time,
+      };
+    }
+  }
 
   const now0 = new Date();
   const { data: macros } = await supabase.from("b3_macro_events")
@@ -171,8 +191,6 @@ export async function runB3SimulationTick(
   for (let i = 0; i < ticks; i++) {
     const now = new Date();
     const cur = now.getHours() * 60 + now.getMinutes();
-    const insideHours = cur >= startMin && cur <= cutoffMin;
-    const forceClose = cur >= forceMin || cur < startMin;
 
     const ctx = buildMockB3Context("WIN", "WINFUT", 130000);
     const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
@@ -197,15 +215,22 @@ export async function runB3SimulationTick(
     for (const mode of MODES) {
       const m = modeByName[mode];
       if (!m) continue;
-      const prof = modeProfile(mode);
+      const cfg = settingsByMode[mode];
+      if (cfg.enabled === false) { log.push({ mode, action: "skip", reason: "modo_desativado" }); continue; }
+
+      const startMin = hhmmToMin(cfg.trading_start_time);
+      const cutoffMin = hhmmToMin(cfg.entry_cutoff_time);
+      const forceMin = hhmmToMin(cfg.force_close_time);
+      const insideHours = cur >= startMin && cur <= cutoffMin;
+      const forceClose = cur >= forceMin || cur < startMin;
 
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
       if (open) {
         const dirSign = open.side === "buy" ? 1 : -1;
         const movePts = (ctx.price - Number(open.entry_price)) * dirSign;
-        const hitStop = movePts <= -prof.stop_pts;
-        const hitGain = movePts >= prof.gain_pts;
+        const hitStop = movePts <= -Number(cfg.stop_pts);
+        const hitGain = movePts >= Number(cfg.gain_pts);
         if (forceClose || hitStop || hitGain) {
           await closeOrder(supabase, userId, run, m, open, ctx.price, forceClose ? "force_close" : hitStop ? "stop" : "gain");
           openOrdersCache = null;
@@ -228,18 +253,18 @@ export async function runB3SimulationTick(
       if (open) continue;
 
       const risk: B3RiskState = {
-        daily_loss_limit: prof.stop_pts * POINT_VALUE_BRL * prof.max_contracts * 5,
-        daily_gain_target: prof.gain_pts * POINT_VALUE_BRL * prof.max_contracts * 5,
+        daily_loss_limit: Number(cfg.daily_loss_limit_brl),
+        daily_gain_target: Number(cfg.daily_gain_target_brl),
         realized_today_brl: Number(m.realized_pnl) || 0,
         open_contracts: 0,
-        max_contracts: prof.max_contracts,
+        max_contracts: Number(cfg.max_contracts),
         requested_qty: 1,
         inside_hours: insideHours,
         force_close_now: forceClose,
         strategy_mode: mode,
       };
       const localCtx = { ...ctx };
-      if (localCtx.volatility_pct > prof.max_vol) {
+      if (localCtx.volatility_pct > Number(cfg.max_volatility_pct)) {
         await supabase.from("b3_simulation_modes")
           .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
         m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
@@ -248,7 +273,12 @@ export async function runB3SimulationTick(
       }
 
       const votes = runB3Agents(localCtx, intendedSide, risk);
-      const decision = buildB3Decision(votes, intendedSide, committeeFor(mode));
+      const committee: B3CommitteeSettings = {
+        min_approve_votes: Number(cfg.min_approve_votes),
+        min_confidence: Number(cfg.min_confidence),
+        min_score: Number(cfg.min_score),
+      };
+      const decision = buildB3Decision(votes, intendedSide, committee);
 
       const voteRows = votes.map(v => ({
         simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
@@ -398,3 +428,59 @@ export function scoreMode(m: any) {
   const norm = net / Math.max(1000, Number(m.initial_balance) * 0.05);
   return 0.40 * norm + 0.25 * (winRate * 4) + 0.20 * Math.max(-2, Math.min(2, rr)) - 0.10 * (dd / 1000) - 0.05 * (blocks / 10);
 }
+
+// ───────────────────── settings por modo ─────────────────────
+export const listB3ModeSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: rows, error } = await (supabase as any).from("b3_simulation_mode_settings")
+      .select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId);
+    if (error) throw error;
+    // garantir 3 linhas
+    const byMode: Record<string, any> = {};
+    for (const r of rows ?? []) byMode[r.mode] = r;
+    const missing = MODES.filter(m => !byMode[m]);
+    if (missing.length) {
+      const ins = missing.map(m => ({
+        simulation_run_id: data.run_id, user_id: userId, mode: m, ...MODE_DEFAULTS[m],
+      }));
+      const { data: created } = await (supabase as any).from("b3_simulation_mode_settings").insert(ins).select("*");
+      for (const r of created ?? []) byMode[r.mode] = r;
+    }
+    return MODES.map(m => byMode[m]);
+  });
+
+const SETTING_FIELDS = [
+  "enabled","min_approve_votes","min_confidence","min_score","max_contracts",
+  "stop_pts","gain_pts","max_volatility_pct","daily_loss_limit_brl","daily_gain_target_brl",
+  "trading_start_time","entry_cutoff_time","force_close_time","notes",
+] as const;
+
+export const updateB3ModeSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string; mode: Mode; patch: Record<string, any> }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const patch: Record<string, any> = {};
+    for (const k of SETTING_FIELDS) if (k in data.patch) patch[k] = data.patch[k];
+    if (!Object.keys(patch).length) return { ok: true };
+    const { error } = await (supabase as any).from("b3_simulation_mode_settings")
+      .update(patch).eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId);
+    if (error) throw error;
+    return { ok: true };
+  });
+
+export const resetB3ModeSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string; mode: Mode }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const def = MODE_DEFAULTS[data.mode];
+    const { error } = await (supabase as any).from("b3_simulation_mode_settings")
+      .update({ ...def, enabled: true })
+      .eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId);
+    if (error) throw error;
+    return { ok: true };
+  });
