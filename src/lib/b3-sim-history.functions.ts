@@ -1,0 +1,41 @@
+// Histórico completo da simulação 3 modos — leitura
+import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
+export const listAllB3SimOrders = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const [runR, modesR, ordersR] = await Promise.all([
+      (supabase as any).from("b3_simulation_runs").select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle(),
+      (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId),
+      (supabase as any).from("b3_simulation_orders").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: false }).limit(5000),
+    ]);
+    if (runR.error) throw runR.error;
+    if (!runR.data) throw new Error("Run não encontrada");
+    return { run: runR.data, modes: modesR.data ?? [], orders: ordersR.data ?? [] };
+  });
+
+export const listB3SimVotesForOrder = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { order_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    // Os votos são gravados no mesmo tick que abriu a ordem, dentro do mesmo modo.
+    // Buscamos pelo simulation_mode_id próximo do created_at da ordem.
+    const { data: o } = await (supabase as any).from("b3_simulation_orders")
+      .select("simulation_run_id, simulation_mode_id, created_at")
+      .eq("id", data.order_id).eq("user_id", userId).maybeSingle();
+    if (!o) return [];
+    const before = new Date(new Date(o.created_at).getTime() + 2000).toISOString();
+    const after = new Date(new Date(o.created_at).getTime() - 60_000).toISOString();
+    const { data: votes } = await (supabase as any).from("b3_simulation_agent_votes")
+      .select("*")
+      .eq("simulation_run_id", o.simulation_run_id)
+      .eq("simulation_mode_id", o.simulation_mode_id)
+      .eq("user_id", userId)
+      .gte("created_at", after).lte("created_at", before)
+      .order("created_at", { ascending: false });
+    return votes ?? [];
+  });
