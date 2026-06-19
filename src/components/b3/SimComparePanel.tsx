@@ -180,7 +180,15 @@ export function SimComparePanel() {
               <table className="w-full text-xs">
                 <thead className="text-muted-foreground">
                   <tr className="text-left">
-                    <th className="py-1 pr-2">Quando</th><th>Modo</th><th>Lado</th><th>Entrada</th><th>Saída</th>
+                    <th className="py-1 pr-2">Abertura</th>
+                    <th>Fechamento</th>
+                    <th>Modo</th>
+                    <th>
+                      Direção{" "}
+                      <Tooltip><TooltipTrigger asChild><span><Info className="w-3 h-3 inline" /></span></TooltipTrigger>
+                        <TooltipContent className="max-w-xs">BUY = comprado (long) · SELL = vendido (short). Cada linha é uma operação completa: abertura + fechamento.</TooltipContent></Tooltip>
+                    </th>
+                    <th>Preço abertura</th><th>Preço fechamento</th>
                     <th>Pts</th><th>Bruto</th><th>Taxas</th><th>Líquido</th><th>Status</th><th>Motivo</th>
                   </tr>
                 </thead>
@@ -188,8 +196,9 @@ export function SimComparePanel() {
                   {(detail.orders ?? []).slice(0, 60).map((o: any) => (
                     <tr key={o.id} className="border-t border-border/40">
                       <td className="py-1 pr-2">{new Date(o.created_at).toLocaleTimeString("pt-BR")}</td>
+                      <td>{o.exit_time ? new Date(o.exit_time).toLocaleTimeString("pt-BR") : "—"}</td>
                       <td><Badge variant="outline" className={`text-[10px] capitalize ${MODE_COLOR[o.mode as Mode]}`}>{o.mode}</Badge></td>
-                      <td className="uppercase">{o.side}</td>
+                      <td className="uppercase font-medium">{o.side}</td>
                       <td>{NUM(o.entry_price)}</td>
                       <td>{o.exit_price ? NUM(o.exit_price) : "—"}</td>
                       <td>{o.gross_result_points != null ? NUM(o.gross_result_points, 0) : "—"}</td>
