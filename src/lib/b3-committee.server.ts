@@ -52,6 +52,18 @@ const clamp = (n: number, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, n));
 
 function hash(s: string) { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); }
 
+function saoPauloMinutes(d: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(d);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
+  return hour * 60 + minute;
+}
+
 export function buildMockB3Context(symbol = "WIN", contract = "WINFUT", basePrice = 130000): B3Context {
   const now = new Date();
   const seed = ((now.getTime() / 60000) | 0) + hash(symbol);
@@ -82,7 +94,7 @@ export function buildMockB3Context(symbol = "WIN", contract = "WINFUT", basePric
 }
 
 function sessionPhase(d: Date): B3Context["session_phase"] {
-  const m = d.getHours() * 60 + d.getMinutes();
+  const m = saoPauloMinutes(d);
   if (m < 9 * 60 + 5 || m > 17 * 60 + 55) return "fora";
   if (m < 9 * 60 + 30) return "abertura";
   if (m < 12 * 60) return "manha";
