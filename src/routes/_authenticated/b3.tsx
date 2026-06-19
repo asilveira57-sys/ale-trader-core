@@ -16,7 +16,7 @@ import {
   Clock, PauseCircle, PlayCircle, XCircle, FileBarChart, Settings as SettingsIcon, Users, Swords,
 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
-import { runB3Committee, listB3AgentVotes } from "@/lib/b3.functions";
+import { runB3Committee, listB3AgentVotes, getB3PanelOverview } from "@/lib/b3.functions";
 import { SimComparePanel } from "@/components/b3/SimComparePanel";
 import { SimLiveDashboard } from "@/components/b3/SimLiveDashboard";
 
