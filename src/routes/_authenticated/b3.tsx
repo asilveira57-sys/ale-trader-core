@@ -18,6 +18,7 @@ import {
 import { useServerFn } from "@tanstack/react-start";
 import { runB3Committee, listB3AgentVotes } from "@/lib/b3.functions";
 import { SimComparePanel } from "@/components/b3/SimComparePanel";
+import { SimLiveDashboard } from "@/components/b3/SimLiveDashboard";
 
 export const Route = createFileRoute("/_authenticated/b3")({
   head: () => ({ meta: [{ title: "B3 Day Trade (WIN) — AleTrader AI" }] }),
