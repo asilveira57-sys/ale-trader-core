@@ -39,3 +39,30 @@ export const listB3SimVotesForOrder = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false });
     return votes ?? [];
   });
+
+// Painel ao vivo — snapshots de mercado, ordens, modos e últimos votos
+export const getB3SimLiveDashboard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string; hours?: number }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const hours = Math.max(1, Math.min(72, data.hours ?? 6));
+    const since = new Date(Date.now() - hours * 3600_000).toISOString();
+
+    const [runR, modesR, ordersR, snapsR, votesR] = await Promise.all([
+      (supabase as any).from("b3_simulation_runs").select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle(),
+      (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId),
+      (supabase as any).from("b3_simulation_orders").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: true }).limit(5000),
+      (supabase as any).from("b3_simulation_market_snapshots").select("market_time, price, candle_open, candle_high, candle_low, candle_close, volume").eq("simulation_run_id", data.run_id).eq("user_id", userId).gte("market_time", since).order("market_time", { ascending: true }).limit(2000),
+      (supabase as any).from("b3_simulation_agent_votes").select("created_at, mode, agent_name, vote, confidence, reason").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: false }).limit(30),
+    ]);
+    if (runR.error) throw runR.error;
+    if (!runR.data) throw new Error("Run não encontrada");
+    return {
+      run: runR.data,
+      modes: modesR.data ?? [],
+      orders: ordersR.data ?? [],
+      snapshots: snapsR.data ?? [],
+      recent_votes: votesR.data ?? [],
+    };
+  });
