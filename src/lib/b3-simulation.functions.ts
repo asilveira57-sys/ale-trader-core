@@ -428,3 +428,59 @@ export function scoreMode(m: any) {
   const norm = net / Math.max(1000, Number(m.initial_balance) * 0.05);
   return 0.40 * norm + 0.25 * (winRate * 4) + 0.20 * Math.max(-2, Math.min(2, rr)) - 0.10 * (dd / 1000) - 0.05 * (blocks / 10);
 }
+
+// ───────────────────── settings por modo ─────────────────────
+export const listB3ModeSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: rows, error } = await (supabase as any).from("b3_simulation_mode_settings")
+      .select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId);
+    if (error) throw error;
+    // garantir 3 linhas
+    const byMode: Record<string, any> = {};
+    for (const r of rows ?? []) byMode[r.mode] = r;
+    const missing = MODES.filter(m => !byMode[m]);
+    if (missing.length) {
+      const ins = missing.map(m => ({
+        simulation_run_id: data.run_id, user_id: userId, mode: m, ...MODE_DEFAULTS[m],
+      }));
+      const { data: created } = await (supabase as any).from("b3_simulation_mode_settings").insert(ins).select("*");
+      for (const r of created ?? []) byMode[r.mode] = r;
+    }
+    return MODES.map(m => byMode[m]);
+  });
+
+const SETTING_FIELDS = [
+  "enabled","min_approve_votes","min_confidence","min_score","max_contracts",
+  "stop_pts","gain_pts","max_volatility_pct","daily_loss_limit_brl","daily_gain_target_brl",
+  "trading_start_time","entry_cutoff_time","force_close_time","notes",
+] as const;
+
+export const updateB3ModeSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string; mode: Mode; patch: Record<string, any> }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const patch: Record<string, any> = {};
+    for (const k of SETTING_FIELDS) if (k in data.patch) patch[k] = data.patch[k];
+    if (!Object.keys(patch).length) return { ok: true };
+    const { error } = await (supabase as any).from("b3_simulation_mode_settings")
+      .update(patch).eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId);
+    if (error) throw error;
+    return { ok: true };
+  });
+
+export const resetB3ModeSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string; mode: Mode }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const def = MODE_DEFAULTS[data.mode];
+    const { error } = await (supabase as any).from("b3_simulation_mode_settings")
+      .update({ ...def, enabled: true })
+      .eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId);
+    if (error) throw error;
+    return { ok: true };
+  });
