@@ -155,9 +155,22 @@ export async function runB3SimulationTick(
   const modeByName: Record<string, any> = {};
   for (const m of modeRows ?? []) { modeById[m.id] = m; modeByName[m.mode] = m; }
 
-  const startMin = hhmmToMin(run.trading_start_time);
-  const cutoffMin = hhmmToMin(run.entry_cutoff_time);
-  const forceMin = hhmmToMin(run.force_close_time);
+  // settings por modo (criadas no start; backfill garante existência em runs antigas)
+  const { data: settingsRows } = await supabase.from("b3_simulation_mode_settings")
+    .select("*").eq("simulation_run_id", runId).eq("user_id", userId);
+  const settingsByMode: Record<string, any> = {};
+  for (const s of settingsRows ?? []) settingsByMode[s.mode] = s;
+  // garante defaults se faltar
+  for (const m of MODES) {
+    if (!settingsByMode[m]) {
+      settingsByMode[m] = {
+        ...MODE_DEFAULTS[m], enabled: true,
+        trading_start_time: run.trading_start_time,
+        entry_cutoff_time: run.entry_cutoff_time,
+        force_close_time: run.force_close_time,
+      };
+    }
+  }
 
   const now0 = new Date();
   const { data: macros } = await supabase.from("b3_macro_events")
