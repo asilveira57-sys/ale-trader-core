@@ -191,8 +191,6 @@ export async function runB3SimulationTick(
   for (let i = 0; i < ticks; i++) {
     const now = new Date();
     const cur = now.getHours() * 60 + now.getMinutes();
-    const insideHours = cur >= startMin && cur <= cutoffMin;
-    const forceClose = cur >= forceMin || cur < startMin;
 
     const ctx = buildMockB3Context("WIN", "WINFUT", 130000);
     const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
@@ -217,15 +215,22 @@ export async function runB3SimulationTick(
     for (const mode of MODES) {
       const m = modeByName[mode];
       if (!m) continue;
-      const prof = modeProfile(mode);
+      const cfg = settingsByMode[mode];
+      if (cfg.enabled === false) { log.push({ mode, action: "skip", reason: "modo_desativado" }); continue; }
+
+      const startMin = hhmmToMin(cfg.trading_start_time);
+      const cutoffMin = hhmmToMin(cfg.entry_cutoff_time);
+      const forceMin = hhmmToMin(cfg.force_close_time);
+      const insideHours = cur >= startMin && cur <= cutoffMin;
+      const forceClose = cur >= forceMin || cur < startMin;
 
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
       if (open) {
         const dirSign = open.side === "buy" ? 1 : -1;
         const movePts = (ctx.price - Number(open.entry_price)) * dirSign;
-        const hitStop = movePts <= -prof.stop_pts;
-        const hitGain = movePts >= prof.gain_pts;
+        const hitStop = movePts <= -Number(cfg.stop_pts);
+        const hitGain = movePts >= Number(cfg.gain_pts);
         if (forceClose || hitStop || hitGain) {
           await closeOrder(supabase, userId, run, m, open, ctx.price, forceClose ? "force_close" : hitStop ? "stop" : "gain");
           openOrdersCache = null;
@@ -248,18 +253,18 @@ export async function runB3SimulationTick(
       if (open) continue;
 
       const risk: B3RiskState = {
-        daily_loss_limit: prof.stop_pts * POINT_VALUE_BRL * prof.max_contracts * 5,
-        daily_gain_target: prof.gain_pts * POINT_VALUE_BRL * prof.max_contracts * 5,
+        daily_loss_limit: Number(cfg.daily_loss_limit_brl),
+        daily_gain_target: Number(cfg.daily_gain_target_brl),
         realized_today_brl: Number(m.realized_pnl) || 0,
         open_contracts: 0,
-        max_contracts: prof.max_contracts,
+        max_contracts: Number(cfg.max_contracts),
         requested_qty: 1,
         inside_hours: insideHours,
         force_close_now: forceClose,
         strategy_mode: mode,
       };
       const localCtx = { ...ctx };
-      if (localCtx.volatility_pct > prof.max_vol) {
+      if (localCtx.volatility_pct > Number(cfg.max_volatility_pct)) {
         await supabase.from("b3_simulation_modes")
           .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
         m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
@@ -268,7 +273,12 @@ export async function runB3SimulationTick(
       }
 
       const votes = runB3Agents(localCtx, intendedSide, risk);
-      const decision = buildB3Decision(votes, intendedSide, committeeFor(mode));
+      const committee: B3CommitteeSettings = {
+        min_approve_votes: Number(cfg.min_approve_votes),
+        min_confidence: Number(cfg.min_confidence),
+        min_score: Number(cfg.min_score),
+      };
+      const decision = buildB3Decision(votes, intendedSide, committee);
 
       const voteRows = votes.map(v => ({
         simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
