@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Button } from "@/components/ui/button";
@@ -7,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { Trophy, Play, Pause, StopCircle, RotateCcw, ListPlus, Trash2, Activity } from "lucide-react";
+import { Trophy, Play, Pause, StopCircle, RotateCcw, ListPlus, Trash2, Activity, History, Info } from "lucide-react";
 import {
   startB3Simulation, setB3SimulationStatus, setB3SimulationWinner,
   listB3Simulations, getB3SimulationDetail, tickB3Simulation,
@@ -82,7 +84,16 @@ export function SimComparePanel() {
   const winnerCandidate = ranking[0];
 
   return (
+    <TooltipProvider>
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          WIN é contrato futuro — cada linha = uma operação completa (abre e fecha). BUY = comprado · SELL = vendido.
+        </p>
+        <Link to="/b3-sim-history">
+          <Button size="sm" variant="outline"><History className="w-4 h-4 mr-1" />Ver histórico completo</Button>
+        </Link>
+      </div>
       {/* Cabeçalho / controles */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
@@ -169,7 +180,15 @@ export function SimComparePanel() {
               <table className="w-full text-xs">
                 <thead className="text-muted-foreground">
                   <tr className="text-left">
-                    <th className="py-1 pr-2">Quando</th><th>Modo</th><th>Lado</th><th>Entrada</th><th>Saída</th>
+                    <th className="py-1 pr-2">Abertura</th>
+                    <th>Fechamento</th>
+                    <th>Modo</th>
+                    <th>
+                      Direção{" "}
+                      <Tooltip><TooltipTrigger asChild><span><Info className="w-3 h-3 inline" /></span></TooltipTrigger>
+                        <TooltipContent className="max-w-xs">BUY = comprado (long) · SELL = vendido (short). Cada linha é uma operação completa: abertura + fechamento.</TooltipContent></Tooltip>
+                    </th>
+                    <th>Preço abertura</th><th>Preço fechamento</th>
                     <th>Pts</th><th>Bruto</th><th>Taxas</th><th>Líquido</th><th>Status</th><th>Motivo</th>
                   </tr>
                 </thead>
@@ -177,8 +196,9 @@ export function SimComparePanel() {
                   {(detail.orders ?? []).slice(0, 60).map((o: any) => (
                     <tr key={o.id} className="border-t border-border/40">
                       <td className="py-1 pr-2">{new Date(o.created_at).toLocaleTimeString("pt-BR")}</td>
+                      <td>{o.exit_time ? new Date(o.exit_time).toLocaleTimeString("pt-BR") : "—"}</td>
                       <td><Badge variant="outline" className={`text-[10px] capitalize ${MODE_COLOR[o.mode as Mode]}`}>{o.mode}</Badge></td>
-                      <td className="uppercase">{o.side}</td>
+                      <td className="uppercase font-medium">{o.side}</td>
                       <td>{NUM(o.entry_price)}</td>
                       <td>{o.exit_price ? NUM(o.exit_price) : "—"}</td>
                       <td>{o.gross_result_points != null ? NUM(o.gross_result_points, 0) : "—"}</td>
@@ -192,7 +212,7 @@ export function SimComparePanel() {
                     </tr>
                   ))}
                   {(detail.orders ?? []).length === 0 && (
-                    <tr><td colSpan={11} className="text-center text-muted-foreground py-4">Sem operações ainda. Rode alguns ticks.</td></tr>
+                    <tr><td colSpan={12} className="text-center text-muted-foreground py-4">Sem operações ainda. Rode alguns ticks.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -204,6 +224,7 @@ export function SimComparePanel() {
       {/* Macro events */}
       <MacroEventsCard />
     </div>
+    </TooltipProvider>
   );
 }
 

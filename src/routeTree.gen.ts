@@ -43,6 +43,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedCouncilRouteImport } from './routes/_authenticated/council'
 import { Route as AuthenticatedCommitteeRouteImport } from './routes/_authenticated/committee'
 import { Route as AuthenticatedBinanceAuditRouteImport } from './routes/_authenticated/binance-audit'
+import { Route as AuthenticatedB3SimHistoryRouteImport } from './routes/_authenticated/b3-sim-history'
 import { Route as AuthenticatedB3RouteImport } from './routes/_authenticated/b3'
 import { Route as AuthenticatedAutoDashboardRouteImport } from './routes/_authenticated/auto-dashboard'
 import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
@@ -243,6 +244,12 @@ const AuthenticatedBinanceAuditRoute =
     path: '/binance-audit',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedB3SimHistoryRoute =
+  AuthenticatedB3SimHistoryRouteImport.update({
+    id: '/b3-sim-history',
+    path: '/b3-sim-history',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedB3Route = AuthenticatedB3RouteImport.update({
   id: '/b3',
   path: '/b3',
@@ -387,6 +394,7 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuthenticatedAuditRouteWithChildren
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
+  '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/committee': typeof AuthenticatedCommitteeRoute
   '/council': typeof AuthenticatedCouncilRoute
@@ -445,6 +453,7 @@ export interface FileRoutesByTo {
   '/audit': typeof AuthenticatedAuditRouteWithChildren
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
+  '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/committee': typeof AuthenticatedCommitteeRoute
   '/council': typeof AuthenticatedCouncilRoute
@@ -505,6 +514,7 @@ export interface FileRoutesById {
   '/_authenticated/audit': typeof AuthenticatedAuditRouteWithChildren
   '/_authenticated/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/_authenticated/b3': typeof AuthenticatedB3Route
+  '/_authenticated/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/_authenticated/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/_authenticated/committee': typeof AuthenticatedCommitteeRoute
   '/_authenticated/council': typeof AuthenticatedCouncilRoute
@@ -565,6 +575,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/auto-dashboard'
     | '/b3'
+    | '/b3-sim-history'
     | '/binance-audit'
     | '/committee'
     | '/council'
@@ -623,6 +634,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/auto-dashboard'
     | '/b3'
+    | '/b3-sim-history'
     | '/binance-audit'
     | '/committee'
     | '/council'
@@ -682,6 +694,7 @@ export interface FileRouteTypes {
     | '/_authenticated/audit'
     | '/_authenticated/auto-dashboard'
     | '/_authenticated/b3'
+    | '/_authenticated/b3-sim-history'
     | '/_authenticated/binance-audit'
     | '/_authenticated/committee'
     | '/_authenticated/council'
@@ -982,6 +995,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBinanceAuditRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/b3-sim-history': {
+      id: '/_authenticated/b3-sim-history'
+      path: '/b3-sim-history'
+      fullPath: '/b3-sim-history'
+      preLoaderRoute: typeof AuthenticatedB3SimHistoryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/b3': {
       id: '/_authenticated/b3'
       path: '/b3'
@@ -1188,6 +1208,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAuditRoute: typeof AuthenticatedAuditRouteWithChildren
   AuthenticatedAutoDashboardRoute: typeof AuthenticatedAutoDashboardRoute
   AuthenticatedB3Route: typeof AuthenticatedB3Route
+  AuthenticatedB3SimHistoryRoute: typeof AuthenticatedB3SimHistoryRoute
   AuthenticatedBinanceAuditRoute: typeof AuthenticatedBinanceAuditRoute
   AuthenticatedCommitteeRoute: typeof AuthenticatedCommitteeRoute
   AuthenticatedCouncilRoute: typeof AuthenticatedCouncilRoute
@@ -1236,6 +1257,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAuditRoute: AuthenticatedAuditRouteWithChildren,
   AuthenticatedAutoDashboardRoute: AuthenticatedAutoDashboardRoute,
   AuthenticatedB3Route: AuthenticatedB3Route,
+  AuthenticatedB3SimHistoryRoute: AuthenticatedB3SimHistoryRoute,
   AuthenticatedBinanceAuditRoute: AuthenticatedBinanceAuditRoute,
   AuthenticatedCommitteeRoute: AuthenticatedCommitteeRoute,
   AuthenticatedCouncilRoute: AuthenticatedCouncilRoute,
@@ -1293,13 +1315,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
