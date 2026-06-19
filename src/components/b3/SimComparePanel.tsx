@@ -84,7 +84,16 @@ export function SimComparePanel() {
   const winnerCandidate = ranking[0];
 
   return (
+    <TooltipProvider>
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          WIN é contrato futuro — cada linha = uma operação completa (abre e fecha). BUY = comprado · SELL = vendido.
+        </p>
+        <Link to="/b3-sim-history">
+          <Button size="sm" variant="outline"><History className="w-4 h-4 mr-1" />Ver histórico completo</Button>
+        </Link>
+      </div>
       {/* Cabeçalho / controles */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
