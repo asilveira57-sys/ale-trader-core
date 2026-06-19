@@ -143,7 +143,7 @@ export function SimComparePanel() {
       {detail && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           {modes.map((m: any) => (
-            <ModeCard key={m.id} m={m} isWinner={detail.run.winner_mode === m.mode} onPick={() => winnerM.mutate(m.mode)} />
+            <ModeCard key={m.id} m={m} runId={runId!} isWinner={detail.run.winner_mode === m.mode} onPick={() => winnerM.mutate(m.mode)} />
           ))}
         </div>
       )}
