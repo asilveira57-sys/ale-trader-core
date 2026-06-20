@@ -48,7 +48,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      { name: "theme-color", content: "#0b0f17" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "AleTrader" },
       { title: "AleTrader AI" },
       { name: "description", content: "Painel privado de análise de criptomoedas — AleTrader AI." },
       { name: "robots", content: "noindex,nofollow" },
@@ -61,7 +65,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
       { property: "og:type", content: "website" },
     ],
-    links: [{ rel: "stylesheet", href: appCss }],
+    links: [
+      { rel: "stylesheet", href: appCss },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icon-192.png" },
+      { rel: "icon", href: "/icon-192.png", type: "image/png" },
+    ],
   }),
   shellComponent: RootShell,
   component: RootComponent,
