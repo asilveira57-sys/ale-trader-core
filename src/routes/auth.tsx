@@ -8,9 +8,11 @@ import { toast } from "sonner";
 import { ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
-  head: () => ({ meta: [{ title: "Acesso restrito — AleTrader AI" }] }),
+  head: () => ({ meta: [{ title: "Acesso restrito" }, { name: "robots", content: "noindex,nofollow" }] }),
   component: AuthPage,
 });
+
+const ALLOWED_EMAIL = "asilveira57@gmail.com";
 
 function AuthPage() {
   const navigate = useNavigate();
@@ -20,7 +22,12 @@ function AuthPage() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/dashboard", replace: true });
+      if (!data.session) return;
+      if (data.session.user.email?.toLowerCase() === ALLOWED_EMAIL) {
+        navigate({ to: "/dashboard", replace: true });
+      } else {
+        supabase.auth.signOut();
+      }
     });
   }, [navigate]);
 
@@ -28,7 +35,11 @@ function AuthPage() {
     e.preventDefault();
     setBusy(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const normalized = email.trim().toLowerCase();
+      if (normalized !== ALLOWED_EMAIL) {
+        throw new Error("Acesso restrito.");
+      }
+      const { error } = await supabase.auth.signInWithPassword({ email: normalized, password });
       if (error) throw error;
       navigate({ to: "/dashboard", replace: true });
     } catch (err: any) {
@@ -46,8 +57,8 @@ function AuthPage() {
             <ShieldCheck className="size-5" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold tracking-tight">AleTrader AI</h1>
-            <p className="text-xs text-muted-foreground">Painel privado — acesso restrito ao proprietário</p>
+            <h1 className="text-lg font-semibold tracking-tight">Acesso restrito</h1>
+            <p className="text-xs text-muted-foreground">Painel privado</p>
           </div>
         </div>
 
@@ -64,10 +75,6 @@ function AuthPage() {
             {busy ? "Aguarde..." : "Entrar"}
           </Button>
         </form>
-
-        <p className="mt-6 text-xs text-muted-foreground leading-relaxed">
-          Sistema privado. Cadastro e recuperação de senha estão desativados — apenas o proprietário tem acesso.
-        </p>
       </div>
     </main>
   );
