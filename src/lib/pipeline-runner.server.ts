@@ -204,7 +204,16 @@ async function monitorSimulatedOrders(sb: any) {
 }
 
 export async function runPipelineTick(sb: any) {
-  const results: any = { collect: null, committee: [], executed: [], monitor: null };
+  const results: any = { collect: null, committee: [], executed: [], monitor: null, skipped: false };
+
+  // Respect the global Binance pause flag — when paused, no collection, no votes, no execution.
+  const { data: rs } = await sb.from("robot_settings").select("status").eq("id", 1).maybeSingle();
+  if (rs?.status === "paused") {
+    results.skipped = true;
+    results.reason = "robot_paused";
+    return results;
+  }
+
   results.collect = await collectMarketTick(sb);
 
   let { data: session } = await sb.from("trading_sessions").select("*").eq("status", "running").maybeSingle();
