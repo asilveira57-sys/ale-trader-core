@@ -42,6 +42,7 @@ import { Route as AuthenticatedGovernanceRouteImport } from './routes/_authentic
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCouncilRouteImport } from './routes/_authenticated/council'
 import { Route as AuthenticatedCommitteeRouteImport } from './routes/_authenticated/committee'
+import { Route as AuthenticatedBinanceWalletHealthRouteImport } from './routes/_authenticated/binance-wallet-health'
 import { Route as AuthenticatedBinanceAuditRouteImport } from './routes/_authenticated/binance-audit'
 import { Route as AuthenticatedB3SimHistoryRouteImport } from './routes/_authenticated/b3-sim-history'
 import { Route as AuthenticatedB3RouteImport } from './routes/_authenticated/b3'
@@ -238,6 +239,12 @@ const AuthenticatedCommitteeRoute = AuthenticatedCommitteeRouteImport.update({
   path: '/committee',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedBinanceWalletHealthRoute =
+  AuthenticatedBinanceWalletHealthRouteImport.update({
+    id: '/binance-wallet-health',
+    path: '/binance-wallet-health',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedBinanceAuditRoute =
   AuthenticatedBinanceAuditRouteImport.update({
     id: '/binance-audit',
@@ -396,6 +403,7 @@ export interface FileRoutesByFullPath {
   '/b3': typeof AuthenticatedB3Route
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/binance-audit': typeof AuthenticatedBinanceAuditRoute
+  '/binance-wallet-health': typeof AuthenticatedBinanceWalletHealthRoute
   '/committee': typeof AuthenticatedCommitteeRoute
   '/council': typeof AuthenticatedCouncilRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -455,6 +463,7 @@ export interface FileRoutesByTo {
   '/b3': typeof AuthenticatedB3Route
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/binance-audit': typeof AuthenticatedBinanceAuditRoute
+  '/binance-wallet-health': typeof AuthenticatedBinanceWalletHealthRoute
   '/committee': typeof AuthenticatedCommitteeRoute
   '/council': typeof AuthenticatedCouncilRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -516,6 +525,7 @@ export interface FileRoutesById {
   '/_authenticated/b3': typeof AuthenticatedB3Route
   '/_authenticated/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/_authenticated/binance-audit': typeof AuthenticatedBinanceAuditRoute
+  '/_authenticated/binance-wallet-health': typeof AuthenticatedBinanceWalletHealthRoute
   '/_authenticated/committee': typeof AuthenticatedCommitteeRoute
   '/_authenticated/council': typeof AuthenticatedCouncilRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -577,6 +587,7 @@ export interface FileRouteTypes {
     | '/b3'
     | '/b3-sim-history'
     | '/binance-audit'
+    | '/binance-wallet-health'
     | '/committee'
     | '/council'
     | '/dashboard'
@@ -636,6 +647,7 @@ export interface FileRouteTypes {
     | '/b3'
     | '/b3-sim-history'
     | '/binance-audit'
+    | '/binance-wallet-health'
     | '/committee'
     | '/council'
     | '/dashboard'
@@ -696,6 +708,7 @@ export interface FileRouteTypes {
     | '/_authenticated/b3'
     | '/_authenticated/b3-sim-history'
     | '/_authenticated/binance-audit'
+    | '/_authenticated/binance-wallet-health'
     | '/_authenticated/committee'
     | '/_authenticated/council'
     | '/_authenticated/dashboard'
@@ -988,6 +1001,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCommitteeRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/binance-wallet-health': {
+      id: '/_authenticated/binance-wallet-health'
+      path: '/binance-wallet-health'
+      fullPath: '/binance-wallet-health'
+      preLoaderRoute: typeof AuthenticatedBinanceWalletHealthRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/binance-audit': {
       id: '/_authenticated/binance-audit'
       path: '/binance-audit'
@@ -1210,6 +1230,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedB3Route: typeof AuthenticatedB3Route
   AuthenticatedB3SimHistoryRoute: typeof AuthenticatedB3SimHistoryRoute
   AuthenticatedBinanceAuditRoute: typeof AuthenticatedBinanceAuditRoute
+  AuthenticatedBinanceWalletHealthRoute: typeof AuthenticatedBinanceWalletHealthRoute
   AuthenticatedCommitteeRoute: typeof AuthenticatedCommitteeRoute
   AuthenticatedCouncilRoute: typeof AuthenticatedCouncilRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -1259,6 +1280,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedB3Route: AuthenticatedB3Route,
   AuthenticatedB3SimHistoryRoute: AuthenticatedB3SimHistoryRoute,
   AuthenticatedBinanceAuditRoute: AuthenticatedBinanceAuditRoute,
+  AuthenticatedBinanceWalletHealthRoute: AuthenticatedBinanceWalletHealthRoute,
   AuthenticatedCommitteeRoute: AuthenticatedCommitteeRoute,
   AuthenticatedCouncilRoute: AuthenticatedCouncilRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
