@@ -1747,6 +1747,78 @@ export type Database = {
         }
         Relationships: []
       }
+      binance_position_decision_audit: {
+        Row: {
+          approved_capital: number | null
+          committee_score: number | null
+          council_score: number | null
+          created_at: string
+          decision_type: string
+          id: string
+          metadata: Json | null
+          reason: string | null
+          requested_capital: number | null
+          risk_score: number | null
+          symbol: string
+        }
+        Insert: {
+          approved_capital?: number | null
+          committee_score?: number | null
+          council_score?: number | null
+          created_at?: string
+          decision_type: string
+          id?: string
+          metadata?: Json | null
+          reason?: string | null
+          requested_capital?: number | null
+          risk_score?: number | null
+          symbol: string
+        }
+        Update: {
+          approved_capital?: number | null
+          committee_score?: number | null
+          council_score?: number | null
+          created_at?: string
+          decision_type?: string
+          id?: string
+          metadata?: Json | null
+          reason?: string | null
+          requested_capital?: number | null
+          risk_score?: number | null
+          symbol?: string
+        }
+        Relationships: []
+      }
+      binance_wallet_reconciliation_audit: {
+        Row: {
+          affected_symbol: string | null
+          amount: number | null
+          details: Json | null
+          detected_at: string
+          divergence_type: string
+          id: string
+          root_cause: string | null
+        }
+        Insert: {
+          affected_symbol?: string | null
+          amount?: number | null
+          details?: Json | null
+          detected_at?: string
+          divergence_type: string
+          id?: string
+          root_cause?: string | null
+        }
+        Update: {
+          affected_symbol?: string | null
+          amount?: number | null
+          details?: Json | null
+          detected_at?: string
+          divergence_type?: string
+          id?: string
+          root_cause?: string | null
+        }
+        Relationships: []
+      }
       candles: {
         Row: {
           close: number
