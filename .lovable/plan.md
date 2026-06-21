@@ -1,103 +1,84 @@
+# Auditoria & Reconciliação da Carteira Binance
 
 ## Objetivo
+Descobrir por que a exposição caiu de 30–40% para ~15% e eliminar divergência entre saldo, capital alocado, equity e PnL — **sem tocar em nada de B3 / Mini Índice / Day Trade**.
 
-Resolver 3 problemas reportados:
+## Escopo isolado (namespace `binance.*` / `crypto.*`)
+Vou trabalhar APENAS em:
+- `simulated_wallet`, `simulated_orders`, `simulated_positions` (lado cripto)
+- `robot_settings`, `committee_settings` (apenas leitura para auditoria)
+- Novos arquivos sob `src/lib/binance-wallet-audit.*` e nova rota `/_authenticated/binance-wallet-health`
 
-1. Hoje, cada modo (conservador / moderado / agressivo) tem regras **fixas em código** (`committeeFor` e `modeProfile` em `src/lib/b3-simulation.functions.ts`). Você não consegue ajustar nada pela tela.
-2. O **limite diário de perda** é calculado dentro do tick (`stop_pts * 0.20 * contratos * 5`). Quando o modo agressivo bate esse teto, ele para de operar até o fim do pregão — e não há como afrouxar sem pedir prompt.
-3. O painel principal "B3 Day Trade — Mini Índice (WIN)" (cards Saldo / Resultado / Status do robô / janela 09:05–17:30) lê de `b3_trading_settings` e não enxerga nada que o simulador 3 modos faz. Ficou "engessado".
-
----
-
-## Parte 1 — Configuração por modo (persistida)
-
-### Mudança no banco
-
-Nova tabela `public.b3_simulation_mode_settings` (1 linha por run × modo). Campos editáveis:
-
-- `min_approve_votes` (int) — quantos agentes precisam aprovar
-- `min_confidence` (int %) — confiança média mínima
-- `min_score` (int) — score mínimo do comitê
-- `max_contracts` (int) — tamanho da posição
-- `stop_pts` (int) — stop em pontos do WIN
-- `gain_pts` (int) — alvo em pontos do WIN
-- `max_volatility_pct` (numeric) — volatilidade máxima para abrir
-- `daily_loss_limit_brl` (numeric) — **teto de perda diária** (R$, editável livremente)
-- `daily_gain_target_brl` (numeric) — meta diária
-- `trading_start_time` (text "HH:MM")
-- `entry_cutoff_time` (text "HH:MM") — última entrada
-- `force_close_time` (text "HH:MM") — zeragem
-- `enabled` (bool) — se este modo opera nesta run
-- `notes` (text)
-
-Defaults populados ao criar a run (mesmos valores hardcoded de hoje, para preservar comportamento). RLS por `user_id`, GRANTs ao `authenticated` e `service_role`.
-
-### Mudança no engine
-
-`src/lib/b3-simulation.functions.ts` (`runB3SimulationTick`):
-
-- Carrega `b3_simulation_mode_settings` junto com `b3_simulation_modes`.
-- Substitui `committeeFor(mode)` e `modeProfile(mode)` por leitura dos settings da run.
-- Substitui o cálculo automático de `daily_loss_limit` por `settings.daily_loss_limit_brl` (e idem `daily_gain_target_brl`).
-- Janela de horário (`startMin / cutoffMin / forceMin`) passa a ser **por modo**, não global da run.
-- `enabled === false` → modo é pulado no tick (sem registrar bloqueio).
-
-### Novos server fns
-
-Em `src/lib/b3-simulation.functions.ts`:
-
-- `listB3ModeSettings({ run_id })` → 3 linhas (uma por modo).
-- `updateB3ModeSettings({ run_id, mode, patch })` → aceita qualquer subset dos campos acima e grava direto. Sem validação de "máximo permitido" — você define livremente (incluindo afrouxar perda de 10% para 30%).
-- `resetB3ModeSettingsToDefault({ run_id, mode })` — restaura o profile original.
-
-### Mudança na UI do simulador
-
-Em `src/components/b3/SimComparePanel.tsx`, dentro de cada `ModeCard`:
-
-- Botão **"Configurar"** abre um `Dialog` com formulário (todos os campos acima).
-- Switch **"Operar este modo"** liga/desliga `enabled` sem precisar encerrar a run.
-- Badge mostrando regras atuais resumidas ("min votos 5 · stop 150pts · perda diária R$ 300").
-- Botão "Restaurar padrão".
+**Não toco em:** `b3_*`, `b3-committee.server.ts`, `b3-simulation.*`, `b3.functions.ts`, qualquer rota `b3*`.
 
 ---
 
-## Parte 2 — Painel B3 Day Trade alimentado pelo simulador
+## Fase 1 — Auditoria de parâmetros de exposição
+Função `auditBinanceExposureParams()` em `src/lib/binance-wallet-audit.functions.ts`:
+- Lê `robot_settings` + `committee_settings` + `monitored_assets`
+- Retorna lista `{ parameter, current_value, impact_on_exposure, module_source }`
+- Inclui: `max_position_value`, `default_stop_pct`, `default_target_pct`, `min_favor_votes`, `min_confidence`, `min_score`, `binance_mock_mode`, `status`, `mode`, número de ativos ativos
+- Calcula também o cap real usado em `executeSimulated`: `min(max_position_value, current_balance * 0.10)` — esse `* 0.10` hard-coded é o forte suspeito do "15%"
 
-O painel da aba **Painel** (a captura que você mandou) hoje só lê `b3_trading_settings`. Vou ligá-lo à run de simulação **ativa**:
+## Fase 2 — Auditoria de decisões (últimas 72h)
+Nova tabela `binance_position_decision_audit`:
+- `id, symbol, decision_type, requested_capital, approved_capital, committee_score, council_score, risk_score, reason, created_at`
+- Backfill inicial a partir de `committee_decisions` + `simulated_orders` das últimas 72h
+- Função `auditBinanceDecisions72h()` que cruza decisões aprovadas vs ordens executadas e identifica "dinheiro parado" (decisão buy_approved sem ordem)
 
-### Novo server fn
+## Fase 3 — Reconciliação financeira
+Função `recalculateBinancePortfolioState()` (pura, sem cache):
+- `saldo_calculado = saldo_inicial + Σ(vendas) − Σ(compras) − Σ(taxas)`
+- `valor_mercado_posicoes = Σ(qty_aberta × preço_atual_mock)`
+- `equity_calculado = saldo_calculado + valor_mercado_posicoes`
+- Retorna comparação com `simulated_wallet.current_balance` / `equity`
 
-`getB3PanelOverview()` em `src/lib/b3.functions.ts`:
+## Fase 4 — Identificação de divergências
+Nova tabela `binance_wallet_reconciliation_audit`:
+- `id, divergence_type, affected_symbol, amount, root_cause, detected_at`
+- Detectores: ordem duplicada (mesmo decision_id), venda sem compra prévia, compra `open` há >X horas sem fechamento, posição órfã (qty>0 sem buy open), soma de fills ≠ saldo
 
-- Busca a run com `status='running'` mais recente do usuário.
-- Soma `current_balance`, `realized_pnl`, `total_fees`, `points_result`, `contracts_traded`, `total_trades` dos 3 modos (somente os `enabled`).
-- Calcula `operações abertas` (`b3_simulation_orders` com `status='open'`) e `encerradas` (`closed` no dia).
-- Retorna também: modo "vencedor parcial" (maior PnL), janela efetiva (menor `start` / maior `force_close` entre modos habilitados), totais de bloqueios.
+## Fase 5 — Rebuild
+Função `rebuildBinanceWalletFromTrades()`:
+- **Preserva** `simulated_orders` (histórico bruto)
+- **Recalcula** `simulated_positions` e `simulated_wallet` a partir do zero, replayando ordens em ordem cronológica
+- Requer confirmação explícita (botão "Reconstruir carteira") — nunca roda automaticamente
 
-### Mudanças visuais em `src/routes/_authenticated/b3.tsx` (aba Painel)
+## Fase 6 — Validação matemática
+Dentro de `recalculate...`, asserção:
+```
+|saldo_inicial + pnl_realizado + pnl_nao_realizado − taxas − equity_atual| ≤ 0.01
+```
+Se falhar → grava `system_logs` com severity=`critical` e popula `binance_wallet_reconciliation_audit`.
 
-- Cards Saldo / Resultado bruto / Taxas / Líquido / Pontos / Contratos / Ops abertas / Ops encerradas passam a vir de `getB3PanelOverview()`.
-- "Status do robô" mostra: run id resumido, modos ativos (chips com cor), janela efetiva, e link "Configurar modos" que abre a aba Simulação 3 Modos.
-- Quando **não há run ativa**, exibir um CTA: "Nenhuma simulação rodando — Iniciar nova" (mesma ação do `StartForm`).
+## Fase 7 — Painel "Saúde da Carteira Binance"
+Nova rota `/_authenticated/binance-wallet-health`:
+- Cards: saldo, capital alocado, PnL realizado, PnL não realizado, patrimônio, divergência
+- Status 🟢🟡🔴
+- Tabela de divergências detectadas
+- Tabela de decisões 72h (Fase 2)
+- Botões: "Rodar auditoria", "Reconstruir carteira" (com confirmação)
 
 ---
 
-## Parte 3 — Esclarecimentos
+## Migração SQL necessária
+1. `CREATE TABLE binance_position_decision_audit` + GRANTs + RLS (owner-only via `is_owner()`)
+2. `CREATE TABLE binance_wallet_reconciliation_audit` + GRANTs + RLS (owner-only)
 
-- **Não vou** mexer no engine de execução (regras de stop/gain do tick continuam idênticas; só o **input** dos parâmetros mudou).
-- **Não vou** ligar nada na operação real (Binance/B3 broker) — tudo continua sandbox.
-- O `b3_trading_settings` antigo continua existindo para compatibilidade do cron `auto-tick`, mas o painel visual passa a refletir o simulador 3 modos, que é onde a ação realmente acontece hoje.
+## Arquivos novos
+- `src/lib/binance-wallet-audit.functions.ts` — server fns (auditoria, reconciliação, rebuild)
+- `src/lib/binance-wallet-audit.server.ts` — helpers puros
+- `src/routes/_authenticated/binance-wallet-health.tsx` — painel
 
----
+## Arquivos NÃO tocados
+Nenhum arquivo `b3*`, nenhum `pipeline-runner.server.ts`, nenhum `atrader.functions.ts`, nenhum `committee.server.ts` compartilhado. A análise é puramente leitura sobre tabelas existentes do lado cripto; o rebuild só roda quando o usuário clicar no botão.
 
-## Arquivos afetados
+## Hipótese inicial (a confirmar na Fase 1)
+O cap por trade em `pipeline-runner.server.ts:executeSimulated` é:
+```ts
+Math.min(max_position_value, current_balance * 0.10)
+```
+Com 1 a 2 ativos elegíveis por ciclo, isso trava a exposição em ~10–20% — bate com os 15% observados. A auditoria vai confirmar e o painel vai expor isso para você decidir se quer subir o multiplicador (mudança futura, fora desta entrega).
 
-- **Nova migração**: cria `b3_simulation_mode_settings` + trigger updated_at + GRANTs + RLS + popula defaults para runs existentes em `running`/`paused`.
-- `src/lib/b3-simulation.functions.ts` — usa settings da tabela; novos fns CRUD.
-- `src/lib/b3.functions.ts` — `getB3PanelOverview`.
-- `src/components/b3/SimComparePanel.tsx` — botão Configurar + Dialog por modo + switch enabled.
-- `src/routes/_authenticated/b3.tsx` — aba Painel passa a usar overview do simulador.
-
-Tudo isso em duas etapas (migração primeiro, código depois) porque as migrações exigem sua aprovação antes de rodar.
-
-Posso seguir?
+## Entrega
+Pode aprovar que eu sigo direto — migração primeiro, depois código + rota.
