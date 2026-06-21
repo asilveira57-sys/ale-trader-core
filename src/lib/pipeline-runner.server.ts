@@ -137,9 +137,12 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
   }
 
   // BUY = open long, debit cash, lock capital.
+  // Cap por trade: historicamente operava 30-40% de exposição.
+  // Multiplicador subido de 0.10 → 0.35 para destravar a exposição.
+  const perTradeMultiplier = Number(settings?.per_trade_capital_pct ?? 0.35);
   const positionValue = Math.min(
     Number(settings?.max_position_value ?? 1000),
-    Number(wallet?.current_balance ?? 0) * 0.1,
+    Number(wallet?.current_balance ?? 0) * perTradeMultiplier,
   );
   if (positionValue <= 10) return null;
   const qty = Number((positionValue / price).toFixed(6));
