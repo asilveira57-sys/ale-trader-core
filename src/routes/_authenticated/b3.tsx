@@ -502,16 +502,44 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
     [orders, today],
   );
 
+  // Inclui também operações da Simulação 3 Modos do dia
+  const simQ = useQuery({
+    queryKey: ["b3-report-sim-today", today],
+    refetchInterval: 15000,
+    queryFn: async () => {
+      const start = `${today}T00:00:00.000Z`;
+      const end = `${today}T23:59:59.999Z`;
+      const { data, error } = await (supabase as any)
+        .from("b3_simulation_orders")
+        .select("id, mode, side, entry_price, exit_price, gross_result_points, gross_result_brl, fees, net_result_brl, status, close_reason, created_at, exit_time")
+        .gte("created_at", start)
+        .lte("created_at", end)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const simOrders: any[] = simQ.data ?? [];
+  const simClosed = simOrders.filter(o => o.status === "closed");
+
   const closed = todays.filter(o => o.status === "closed");
   const open = todays.filter(o => o.status === "open");
 
-  const realized = closed.reduce((s, o) => s + (o.net_result_brl ?? 0), 0);
-  const grossRealized = closed.reduce((s, o) => s + (o.gross_result_brl ?? 0), 0);
-  const fees = closed.reduce((s, o) => s + (o.fees ?? 0), 0);
+  const realizedReal = closed.reduce((s, o) => s + (o.net_result_brl ?? 0), 0);
+  const realizedSim = simClosed.reduce((s, o) => s + Number(o.net_result_brl ?? 0), 0);
+  const realized = realizedReal + realizedSim;
+  const grossRealReal = closed.reduce((s, o) => s + (o.gross_result_brl ?? 0), 0);
+  const grossRealSim = simClosed.reduce((s, o) => s + Number(o.gross_result_brl ?? 0), 0);
+  const grossRealized = grossRealReal + grossRealSim;
+  const feesReal = closed.reduce((s, o) => s + (o.fees ?? 0), 0);
+  const feesSim = simClosed.reduce((s, o) => s + Number(o.fees ?? 0), 0);
+  const fees = feesReal + feesSim;
   const unrealized = 0; // sem feed de preço atual nesta fase
   const totalBought = closed.filter(o => o.side === "buy").reduce((s, o) => s + o.entry_price * o.quantity * POINT_VALUE_BRL, 0);
   const totalSold = closed.filter(o => o.side === "sell").reduce((s, o) => s + o.entry_price * o.quantity * POINT_VALUE_BRL, 0);
   const equity = settings.capital_allocated + realized + unrealized;
+
 
   return (
     <div className="space-y-3 mt-3">
@@ -585,8 +613,73 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
           </p>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Operações da Simulação 3 Modos (hoje)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground mb-2">
+            O Relatório acima reflete apenas operações reais/manuais. Esta seção mostra as ordens da Simulação 3 Modos
+            executadas hoje (já somadas nos cartões: Resultado realizado, Bruto, Taxas e Patrimônio).
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-left text-muted-foreground border-b">
+                <tr>
+                  <th className="py-1 pr-2">Data/Hora</th>
+                  <th>Modo</th>
+                  <th>Lado</th>
+                  <th className="text-right">Entrada</th>
+                  <th className="text-right">Saída</th>
+                  <th className="text-right">Pts</th>
+                  <th className="text-right">Bruto R$</th>
+                  <th className="text-right">Taxas</th>
+                  <th className="text-right">Líquido R$</th>
+                  <th>Status</th>
+                  <th>Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {simOrders.length === 0 && (
+                  <tr><td colSpan={11} className="py-4 text-center text-muted-foreground">Sem operações simuladas hoje.</td></tr>
+                )}
+                {simOrders.map((o: any) => (
+                  <tr key={o.id} className="border-b last:border-0">
+                    <td className="py-1 pr-2 whitespace-nowrap">{new Date(o.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</td>
+                    <td className="capitalize">{o.mode}</td>
+                    <td className="uppercase">{o.side}</td>
+                    <td className="text-right">{NUM(Number(o.entry_price))}</td>
+                    <td className="text-right">{o.exit_price != null ? NUM(Number(o.exit_price)) : "—"}</td>
+                    <td className={`text-right ${Number(o.gross_result_points ?? 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                      {o.gross_result_points != null ? NUM(Number(o.gross_result_points)) : "—"}
+                    </td>
+                    <td className="text-right">{o.gross_result_brl != null ? BRL(Number(o.gross_result_brl)) : "—"}</td>
+                    <td className="text-right">{BRL(Number(o.fees ?? 0))}</td>
+                    <td className={`text-right ${Number(o.net_result_brl ?? 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                      {o.net_result_brl != null ? BRL(Number(o.net_result_brl)) : "—"}
+                    </td>
+                    <td>{o.status}</td>
+                    <td className="text-muted-foreground">{o.close_reason ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="font-semibold border-t">
+                <tr>
+                  <td colSpan={6} className="py-2 text-right">Totais simulação (encerradas):</td>
+                  <td className="text-right">{BRL(grossRealSim)}</td>
+                  <td className="text-right">{BRL(feesSim)}</td>
+                  <td className={`text-right ${realizedSim >= 0 ? "text-emerald-500" : "text-destructive"}`}>{BRL(realizedSim)}</td>
+                  <td colSpan={2}>{simClosed.length} fech. / {simOrders.length - simClosed.length} ab.</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
+
 }
 
 // ────────────────────────────────────────────────────────────────────
