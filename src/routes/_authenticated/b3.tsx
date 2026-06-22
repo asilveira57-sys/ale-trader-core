@@ -502,16 +502,44 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
     [orders, today],
   );
 
+  // Inclui também operações da Simulação 3 Modos do dia
+  const simQ = useQuery({
+    queryKey: ["b3-report-sim-today", today],
+    refetchInterval: 15000,
+    queryFn: async () => {
+      const start = `${today}T00:00:00.000Z`;
+      const end = `${today}T23:59:59.999Z`;
+      const { data, error } = await (supabase as any)
+        .from("b3_simulation_orders")
+        .select("id, mode, side, entry_price, exit_price, gross_result_points, gross_result_brl, fees, net_result_brl, status, close_reason, created_at, exit_time")
+        .gte("created_at", start)
+        .lte("created_at", end)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const simOrders: any[] = simQ.data ?? [];
+  const simClosed = simOrders.filter(o => o.status === "closed");
+
   const closed = todays.filter(o => o.status === "closed");
   const open = todays.filter(o => o.status === "open");
 
-  const realized = closed.reduce((s, o) => s + (o.net_result_brl ?? 0), 0);
-  const grossRealized = closed.reduce((s, o) => s + (o.gross_result_brl ?? 0), 0);
-  const fees = closed.reduce((s, o) => s + (o.fees ?? 0), 0);
+  const realizedReal = closed.reduce((s, o) => s + (o.net_result_brl ?? 0), 0);
+  const realizedSim = simClosed.reduce((s, o) => s + Number(o.net_result_brl ?? 0), 0);
+  const realized = realizedReal + realizedSim;
+  const grossRealReal = closed.reduce((s, o) => s + (o.gross_result_brl ?? 0), 0);
+  const grossRealSim = simClosed.reduce((s, o) => s + Number(o.gross_result_brl ?? 0), 0);
+  const grossRealized = grossRealReal + grossRealSim;
+  const feesReal = closed.reduce((s, o) => s + (o.fees ?? 0), 0);
+  const feesSim = simClosed.reduce((s, o) => s + Number(o.fees ?? 0), 0);
+  const fees = feesReal + feesSim;
   const unrealized = 0; // sem feed de preço atual nesta fase
   const totalBought = closed.filter(o => o.side === "buy").reduce((s, o) => s + o.entry_price * o.quantity * POINT_VALUE_BRL, 0);
   const totalSold = closed.filter(o => o.side === "sell").reduce((s, o) => s + o.entry_price * o.quantity * POINT_VALUE_BRL, 0);
   const equity = settings.capital_allocated + realized + unrealized;
+
 
   return (
     <div className="space-y-3 mt-3">
