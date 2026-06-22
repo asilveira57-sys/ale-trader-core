@@ -613,8 +613,73 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
           </p>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Operações da Simulação 3 Modos (hoje)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground mb-2">
+            O Relatório acima reflete apenas operações reais/manuais. Esta seção mostra as ordens da Simulação 3 Modos
+            executadas hoje (já somadas nos cartões: Resultado realizado, Bruto, Taxas e Patrimônio).
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-left text-muted-foreground border-b">
+                <tr>
+                  <th className="py-1 pr-2">Data/Hora</th>
+                  <th>Modo</th>
+                  <th>Lado</th>
+                  <th className="text-right">Entrada</th>
+                  <th className="text-right">Saída</th>
+                  <th className="text-right">Pts</th>
+                  <th className="text-right">Bruto R$</th>
+                  <th className="text-right">Taxas</th>
+                  <th className="text-right">Líquido R$</th>
+                  <th>Status</th>
+                  <th>Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {simOrders.length === 0 && (
+                  <tr><td colSpan={11} className="py-4 text-center text-muted-foreground">Sem operações simuladas hoje.</td></tr>
+                )}
+                {simOrders.map((o: any) => (
+                  <tr key={o.id} className="border-b last:border-0">
+                    <td className="py-1 pr-2 whitespace-nowrap">{new Date(o.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</td>
+                    <td className="capitalize">{o.mode}</td>
+                    <td className="uppercase">{o.side}</td>
+                    <td className="text-right">{NUM(Number(o.entry_price))}</td>
+                    <td className="text-right">{o.exit_price != null ? NUM(Number(o.exit_price)) : "—"}</td>
+                    <td className={`text-right ${Number(o.gross_result_points ?? 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                      {o.gross_result_points != null ? NUM(Number(o.gross_result_points)) : "—"}
+                    </td>
+                    <td className="text-right">{o.gross_result_brl != null ? BRL(Number(o.gross_result_brl)) : "—"}</td>
+                    <td className="text-right">{BRL(Number(o.fees ?? 0))}</td>
+                    <td className={`text-right ${Number(o.net_result_brl ?? 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                      {o.net_result_brl != null ? BRL(Number(o.net_result_brl)) : "—"}
+                    </td>
+                    <td>{o.status}</td>
+                    <td className="text-muted-foreground">{o.close_reason ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="font-semibold border-t">
+                <tr>
+                  <td colSpan={6} className="py-2 text-right">Totais simulação (encerradas):</td>
+                  <td className="text-right">{BRL(grossRealSim)}</td>
+                  <td className="text-right">{BRL(feesSim)}</td>
+                  <td className={`text-right ${realizedSim >= 0 ? "text-emerald-500" : "text-destructive"}`}>{BRL(realizedSim)}</td>
+                  <td colSpan={2}>{simClosed.length} fech. / {simOrders.length - simClosed.length} ab.</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
+
 }
 
 // ────────────────────────────────────────────────────────────────────
