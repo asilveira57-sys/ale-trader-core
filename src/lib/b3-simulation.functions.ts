@@ -267,6 +267,7 @@ export async function runB3SimulationTick(
         if (forceClose || hitStop || hitGain) {
           await closeOrder(supabase, userId, run, m, open, ctx.price, forceClose ? "force_close" : hitStop ? "stop" : "gain");
           openOrdersCache = null;
+          realizedTodayByMode = await getRealizedTodayByMode();
           log.push({ mode, action: "close", reason: forceClose ? "force_close" : hitStop ? "stop" : "gain", price: ctx.price });
           continue;
         }
