@@ -199,8 +199,8 @@ export function SimComparePanel() {
                 <tbody>
                   {(detail.orders ?? []).slice(0, 60).map((o: any) => (
                     <tr key={o.id} className="border-t border-border/40">
-                      <td className="py-1 pr-2">{new Date(o.created_at).toLocaleTimeString("pt-BR")}</td>
-                      <td>{o.exit_time ? new Date(o.exit_time).toLocaleTimeString("pt-BR") : "—"}</td>
+                      <td className="py-1 pr-2 whitespace-nowrap">{new Date(o.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</td>
+                      <td className="whitespace-nowrap">{o.exit_time ? new Date(o.exit_time).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"}</td>
                       <td><Badge variant="outline" className={`text-[10px] capitalize ${MODE_COLOR[o.mode as Mode]}`}>{o.mode}</Badge></td>
                       <td className="uppercase font-medium">{o.side}</td>
                       <td>{NUM(o.entry_price)}</td>
