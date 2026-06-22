@@ -200,6 +200,27 @@ export async function runB3SimulationTick(
     return openOrdersCache;
   }
 
+  // PnL realizado SOMENTE no dia de hoje (BRT) — usado para gate de
+  // daily_loss_limit / daily_gain_target. Antes usávamos m.realized_pnl
+  // (cumulativo), o que travava modos que já bateram a meta em dias anteriores.
+  async function getRealizedTodayByMode(): Promise<Record<string, number>> {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    // 00:00 BRT (UTC-3) = 03:00 UTC do mesmo dia
+    const startUtcIso = `${parts}T03:00:00.000Z`;
+    const { data: closedToday } = await supabase.from("b3_simulation_orders")
+      .select("mode, net_result_brl, exit_time")
+      .eq("simulation_run_id", runId).eq("user_id", userId).eq("status", "closed")
+      .gte("exit_time", startUtcIso);
+    const map: Record<string, number> = { conservador: 0, moderado: 0, agressivo: 0 };
+    for (const r of closedToday ?? []) {
+      map[r.mode as string] = (map[r.mode as string] || 0) + Number(r.net_result_brl ?? 0);
+    }
+    return map;
+  }
+  let realizedTodayByMode = await getRealizedTodayByMode();
+
   for (let i = 0; i < ticks; i++) {
     const now = new Date();
     const cur = saoPauloMinutes(now);
@@ -246,6 +267,7 @@ export async function runB3SimulationTick(
         if (forceClose || hitStop || hitGain) {
           await closeOrder(supabase, userId, run, m, open, ctx.price, forceClose ? "force_close" : hitStop ? "stop" : "gain");
           openOrdersCache = null;
+          realizedTodayByMode = await getRealizedTodayByMode();
           log.push({ mode, action: "close", reason: forceClose ? "force_close" : hitStop ? "stop" : "gain", price: ctx.price });
           continue;
         }
@@ -267,7 +289,7 @@ export async function runB3SimulationTick(
       const risk: B3RiskState = {
         daily_loss_limit: Number(cfg.daily_loss_limit_brl),
         daily_gain_target: Number(cfg.daily_gain_target_brl),
-        realized_today_brl: Number(m.realized_pnl) || 0,
+        realized_today_brl: Number(realizedTodayByMode[mode] ?? 0),
         open_contracts: 0,
         max_contracts: Number(cfg.max_contracts),
         requested_qty: 1,
