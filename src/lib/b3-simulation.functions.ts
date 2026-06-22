@@ -288,7 +288,7 @@ export async function runB3SimulationTick(
       const risk: B3RiskState = {
         daily_loss_limit: Number(cfg.daily_loss_limit_brl),
         daily_gain_target: Number(cfg.daily_gain_target_brl),
-        realized_today_brl: Number(m.realized_pnl) || 0,
+        realized_today_brl: Number(realizedTodayByMode[mode] ?? 0),
         open_contracts: 0,
         max_contracts: Number(cfg.max_contracts),
         requested_qty: 1,
