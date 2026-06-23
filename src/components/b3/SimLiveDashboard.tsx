@@ -145,7 +145,11 @@ export function SimLiveDashboard() {
   const activityByHour = useMemo(() => {
     if (!d) return [] as any[];
     const buckets: Record<number, any> = {};
-    for (let h = 9; h <= 18; h++) buckets[h] = { hour: `${String(h).padStart(2, "0")}h`, conservador: 0, moderado: 0, agressivo: 0 };
+    for (let h = 9; h <= 18; h++) {
+      const row: any = { hour: `${String(h).padStart(2, "0")}h` };
+      MODES.forEach(m => { row[m] = 0; });
+      buckets[h] = row;
+    }
     (d.orders ?? []).forEach((o: any) => {
       const mode = (modeById[o.simulation_mode_id]?.mode ?? o.mode) as Mode;
       if (!MODES.includes(mode)) return;
