@@ -4,9 +4,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export type LossSell = {
-  source: "real_positions" | "automated_trades";
+  source: "real_positions" | "automated_trades" | "simulated_orders";
   id: string;
   pair: string;
+  side: "buy" | "sell";
   asset: string;
   opened_at: string;
   closed_at: string;
@@ -99,7 +100,7 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
     const limit = Math.min(Math.max(data.limit ?? 50, 1), 200);
 
     // ===== Coleta vendas em prejuízo do módulo Binance =====
-    const [realPos, autoTrades] = await Promise.all([
+    const [realPos, autoTrades, simOrders] = await Promise.all([
       supabase
         .from("real_positions")
         .select("id, pair, opened_at, closed_at, entry_price, exit_price, pnl, pnl_pct, exit_reason, request_id, side")
@@ -114,14 +115,22 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
         .lt("pnl", 0)
         .order("closed_at", { ascending: false })
         .limit(limit),
+      supabase
+        .from("simulated_orders")
+        .select("id, pair, side, created_at, closed_at, entry_price, closed_price, realized_pnl, net_pnl, gross_pnl, net_roi_pct, gross_roi_pct, decision_id")
+        .eq("status", "closed")
+        .or("net_pnl.lt.0,realized_pnl.lt.0")
+        .order("closed_at", { ascending: false })
+        .limit(limit),
     ]);
 
     // total closed (Binance) para denominador
-    const [realClosed, autoClosed] = await Promise.all([
+    const [realClosed, autoClosed, simClosed] = await Promise.all([
       supabase.from("real_positions").select("id", { count: "exact", head: true }).eq("status", "closed"),
       supabase.from("automated_trades").select("id", { count: "exact", head: true }).eq("status", "closed"),
+      supabase.from("simulated_orders").select("id", { count: "exact", head: true }).eq("status", "closed"),
     ]);
-    const totalClosed = (realClosed.count ?? 0) + (autoClosed.count ?? 0);
+    const totalClosed = (realClosed.count ?? 0) + (autoClosed.count ?? 0) + (simClosed.count ?? 0);
 
     // mapa asset_id -> pair (para automated_trades)
     const assetIds = (autoTrades.data ?? []).map((t) => t.asset_id).filter(Boolean) as string[];
@@ -137,10 +146,12 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
     const losses: LossSell[] = [];
 
     for (const p of realPos.data ?? []) {
+      const sideVal: "buy" | "sell" = ((p.side as string) ?? "buy") === "sell" ? "sell" : "buy";
       losses.push({
         source: "real_positions",
         id: p.id as string,
         pair: p.pair as string,
+        side: sideVal,
         asset: (p.pair as string).replace("USDT", ""),
         opened_at: p.opened_at as string,
         closed_at: p.closed_at as string,
@@ -156,17 +167,18 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
         premature: false,
         votes: [],
         decision: null,
-        // requestId guardado fora do tipo
         ...({ __requestId: p.request_id as string | null } as Record<string, unknown>),
       });
     }
     for (const t of autoTrades.data ?? []) {
       const symbol = (t.asset_id && assetMap.get(t.asset_id as string)) || "";
       if (!symbol) continue;
+      const sideVal: "buy" | "sell" = ((t.side as string) ?? "buy") === "sell" ? "sell" : "buy";
       losses.push({
         source: "automated_trades",
         id: t.id as string,
         pair: symbol,
+        side: sideVal,
         asset: symbol.replace("USDT", ""),
         opened_at: t.opened_at as string,
         closed_at: t.closed_at as string,
@@ -185,6 +197,39 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
         ...({ __requestId: t.request_id as string | null } as Record<string, unknown>),
       });
     }
+    for (const s of simOrders.data ?? []) {
+      const entry = Number(s.entry_price);
+      const exit = Number(s.closed_price);
+      if (!Number.isFinite(entry) || !Number.isFinite(exit) || entry <= 0) continue;
+      const sideVal: "buy" | "sell" = (s.side as string) === "sell" ? "sell" : "buy";
+      const pnl = Number(s.net_pnl ?? s.realized_pnl ?? 0);
+      // drop_pct: variação do preço (negativa se exit<entry); pnl_pct ajustado ao lado
+      const drop_pct = ((exit - entry) / entry) * 100;
+      const pnl_pct = sideVal === "buy" ? drop_pct : -drop_pct;
+      losses.push({
+        source: "simulated_orders",
+        id: s.id as string,
+        pair: s.pair as string,
+        side: sideVal,
+        asset: (s.pair as string).replace("USDT", ""),
+        opened_at: s.created_at as string,
+        closed_at: s.closed_at as string,
+        entry_price: entry,
+        exit_price: exit,
+        pnl,
+        pnl_pct,
+        exit_reason: null,
+        price_1h: null, price_4h: null, price_12h: null, price_24h: null,
+        recovered_1h: false, recovered_4h: false, recovered_12h: false, recovered_24h: false,
+        drop_pct,
+        classification: "RUIDO",
+        premature: false,
+        votes: [],
+        decision: null,
+        ...({ __requestId: null } as Record<string, unknown>),
+      });
+    }
+
 
     // ===== Enriquecimento: comitê (decisão + votos) por request_id =====
     const requestIds = losses
@@ -252,9 +297,10 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
         const key = offsets[i][0];
         l[key] = price;
       });
-      // long = preço futuro > exit é "melhor" (teria sido melhor não vender)
-      // short = preço futuro < exit é "melhor"; mas neste audit consideramos a posição comprada (Binance spot/long).
-      const isBetter = (p: number | null) => (p !== null && p > l.exit_price);
+      // long (buy): recovery se preço futuro > exit (teria sido melhor não vender)
+      // short (sell): recovery se preço futuro < exit (teria sido melhor não cobrir)
+      const isBetter = (p: number | null) =>
+        p !== null && (l.side === "buy" ? p > l.exit_price : p < l.exit_price);
       l.recovered_1h = isBetter(l.price_1h);
       l.recovered_4h = isBetter(l.price_4h);
       l.recovered_12h = isBetter(l.price_12h);
