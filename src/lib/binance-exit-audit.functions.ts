@@ -9,7 +9,6 @@ export type LossSell = {
   pair: string;
   side: "buy" | "sell";
   asset: string;
-  asset: string;
   opened_at: string;
   closed_at: string;
   entry_price: number;
