@@ -341,7 +341,7 @@ export function SimLiveDashboard() {
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-base">Direção das operações</CardTitle></CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {distData.sides.map((s: any) => {
                 const data = [{ name: "LONG", value: s.buy }, { name: "SHORT", value: s.sell }];
                 const total = s.buy + s.sell;
