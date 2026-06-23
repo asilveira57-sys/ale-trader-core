@@ -4,9 +4,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export type LossSell = {
-  source: "real_positions" | "automated_trades";
+  source: "real_positions" | "automated_trades" | "simulated_orders";
   id: string;
   pair: string;
+  side: "buy" | "sell";
+  asset: string;
   asset: string;
   opened_at: string;
   closed_at: string;
