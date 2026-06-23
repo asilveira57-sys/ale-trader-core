@@ -309,24 +309,35 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
     }
 
     // ===== Recovery prices via Binance public klines (apenas N mais recentes) =====
-    const lossesForKlines = losses.slice(0, enrichKlines);
-    for (const l of lossesForKlines) {
-      const t = new Date(l.closed_at).getTime();
-      const offsets: Array<[keyof Pick<LossSell, "price_1h" | "price_4h" | "price_12h" | "price_24h">, number]> = [
-        ["price_1h", 1], ["price_4h", 4], ["price_12h", 12], ["price_24h", 24],
-      ];
-      const results = await Promise.all(offsets.map(([, h]) => fetchKlinePrice(l.pair, t + h * 3600_000)));
-      results.forEach((price, i) => {
-        const key = offsets[i][0];
-        l[key] = price;
-      });
-      const isBetter = (p: number | null) =>
-        p !== null && (l.side === "buy" ? p > l.exit_price : p < l.exit_price);
-      l.recovered_1h = isBetter(l.price_1h);
-      l.recovered_4h = isBetter(l.price_4h);
-      l.recovered_12h = isBetter(l.price_12h);
-      l.recovered_24h = isBetter(l.price_24h);
-      l.premature = l.recovered_1h || l.recovered_4h || l.recovered_12h || l.recovered_24h;
+    // Pula timestamps futuros (klines retornariam null e gastariam tempo/rate-limit).
+    const nowMs = Date.now();
+    const lossesForKlines = losses
+      .filter((l) => {
+        const t = new Date(l.closed_at).getTime();
+        return Number.isFinite(t) && t + 3600_000 <= nowMs;
+      })
+      .slice(0, enrichKlines);
+    // Paraleliza em lotes para não exceder timeout do worker.
+    const BATCH = 10;
+    for (let i = 0; i < lossesForKlines.length; i += BATCH) {
+      const batch = lossesForKlines.slice(i, i + BATCH);
+      await Promise.all(batch.map(async (l) => {
+        const t = new Date(l.closed_at).getTime();
+        const offsets: Array<[keyof Pick<LossSell, "price_1h" | "price_4h" | "price_12h" | "price_24h">, number]> = [
+          ["price_1h", 1], ["price_4h", 4], ["price_12h", 12], ["price_24h", 24],
+        ];
+        const results = await Promise.all(
+          offsets.map(([, h]) => (t + h * 3600_000 <= nowMs ? fetchKlinePrice(l.pair, t + h * 3600_000) : Promise.resolve(null)))
+        );
+        results.forEach((price, idx) => { l[offsets[idx][0]] = price; });
+        const isBetter = (p: number | null) =>
+          p !== null && (l.side === "buy" ? p > l.exit_price : p < l.exit_price);
+        l.recovered_1h = isBetter(l.price_1h);
+        l.recovered_4h = isBetter(l.price_4h);
+        l.recovered_12h = isBetter(l.price_12h);
+        l.recovered_24h = isBetter(l.price_24h);
+        l.premature = l.recovered_1h || l.recovered_4h || l.recovered_12h || l.recovered_24h;
+      }));
     }
     // classify roda em TODAS as perdas (independe de klines)
     for (const l of losses) l.classification = classify(l.drop_pct);
