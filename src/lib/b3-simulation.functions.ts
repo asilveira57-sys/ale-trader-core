@@ -214,7 +214,7 @@ export async function runB3SimulationTick(
       .select("mode, net_result_brl, exit_time")
       .eq("simulation_run_id", runId).eq("user_id", userId).eq("status", "closed")
       .gte("exit_time", startUtcIso);
-    const map: Record<string, number> = { conservador: 0, moderado: 0, agressivo: 0 };
+    const map: Record<string, number> = { conservador: 0, moderado: 0, semi_agressivo: 0, agressivo: 0 };
     for (const r of closedToday ?? []) {
       map[r.mode as string] = (map[r.mode as string] || 0) + Number(r.net_result_brl ?? 0);
     }
