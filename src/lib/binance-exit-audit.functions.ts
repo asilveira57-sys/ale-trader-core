@@ -146,7 +146,6 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
         asset: (p.pair as string).replace("USDT", ""),
         opened_at: p.opened_at as string,
         closed_at: p.closed_at as string,
-        closed_at: p.closed_at as string,
         entry_price: Number(p.entry_price),
         exit_price: Number(p.exit_price),
         pnl: Number(p.pnl),
