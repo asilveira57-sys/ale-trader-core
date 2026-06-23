@@ -112,16 +112,8 @@ export function SimLiveDashboard() {
   // Distribuição BUY x SELL por modo + motivos de fechamento
   const distData = useMemo(() => {
     if (!d) return { sides: [], reasons: [] } as any;
-    const sides: Record<Mode, { mode: Mode; buy: number; sell: number }> = {
-      conservador: { mode: "conservador", buy: 0, sell: 0 },
-      moderado: { mode: "moderado", buy: 0, sell: 0 },
-      agressivo: { mode: "agressivo", buy: 0, sell: 0 },
-    };
-    const reasons: Record<Mode, any> = {
-      conservador: { mode: "conservador", gain: 0, stop: 0, manual: 0, time: 0 },
-      moderado: { mode: "moderado", gain: 0, stop: 0, manual: 0, time: 0 },
-      agressivo: { mode: "agressivo", gain: 0, stop: 0, manual: 0, time: 0 },
-    };
+    const sides = Object.fromEntries(MODES.map(m => [m, { mode: m, buy: 0, sell: 0 }])) as Record<Mode, { mode: Mode; buy: number; sell: number }>;
+    const reasons = Object.fromEntries(MODES.map(m => [m, { mode: m, gain: 0, stop: 0, manual: 0, time: 0 }])) as Record<Mode, any>;
     (d.orders ?? []).forEach((o: any) => {
       const mode = (modeById[o.simulation_mode_id]?.mode ?? o.mode) as Mode;
       if (!MODES.includes(mode)) return;
