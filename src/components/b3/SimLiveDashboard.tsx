@@ -32,7 +32,7 @@ export function SimLiveDashboard() {
   const [runId, setRunId] = useState<string | null>(null);
   const [hours, setHours] = useState<number>(6);
   const [paused, setPaused] = useState(false);
-  const [visible, setVisible] = useState<Record<Mode, boolean>>({ conservador: true, moderado: true, agressivo: true });
+  const [visible, setVisible] = useState<Record<Mode, boolean>>(() => Object.fromEntries(MODES.map(m => [m, true])) as Record<Mode, boolean>);
 
   const listRuns = useServerFn(listB3Simulations);
   const getLive = useServerFn(getB3SimLiveDashboard);
