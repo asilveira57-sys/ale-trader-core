@@ -297,9 +297,10 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
         const key = offsets[i][0];
         l[key] = price;
       });
-      // long = preço futuro > exit é "melhor" (teria sido melhor não vender)
-      // short = preço futuro < exit é "melhor"; mas neste audit consideramos a posição comprada (Binance spot/long).
-      const isBetter = (p: number | null) => (p !== null && p > l.exit_price);
+      // long (buy): recovery se preço futuro > exit (teria sido melhor não vender)
+      // short (sell): recovery se preço futuro < exit (teria sido melhor não cobrir)
+      const isBetter = (p: number | null) =>
+        p !== null && (l.side === "buy" ? p > l.exit_price : p < l.exit_price);
       l.recovered_1h = isBetter(l.price_1h);
       l.recovered_4h = isBetter(l.price_4h);
       l.recovered_12h = isBetter(l.price_12h);
