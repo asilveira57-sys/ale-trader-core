@@ -1789,6 +1789,45 @@ export type Database = {
         }
         Relationships: []
       }
+      binance_trade_block_log: {
+        Row: {
+          created_at: string
+          decision_id: string | null
+          details: Json | null
+          expected_net_profit: number | null
+          expected_roi_pct: number | null
+          id: string
+          pair: string
+          position_value: number | null
+          reason: string
+          total_fees_estimated: number | null
+        }
+        Insert: {
+          created_at?: string
+          decision_id?: string | null
+          details?: Json | null
+          expected_net_profit?: number | null
+          expected_roi_pct?: number | null
+          id?: string
+          pair: string
+          position_value?: number | null
+          reason: string
+          total_fees_estimated?: number | null
+        }
+        Update: {
+          created_at?: string
+          decision_id?: string | null
+          details?: Json | null
+          expected_net_profit?: number | null
+          expected_roi_pct?: number | null
+          id?: string
+          pair?: string
+          position_value?: number | null
+          reason?: string
+          total_fees_estimated?: number | null
+        }
+        Relationships: []
+      }
       binance_wallet_reconciliation_audit: {
         Row: {
           affected_symbol: string | null
@@ -2052,33 +2091,48 @@ export type Database = {
         Row: {
           default_stop_pct: number
           default_target_pct: number
+          fee_coverage_multiplier: number
           id: number
           max_position_value: number
           min_confidence: number
+          min_expected_roi_pct: number
           min_favor_votes: number
+          min_net_profit_usd: number
           min_score: number
+          per_trade_capital_pct: number
+          taker_fee_pct: number
           timeframes: string[]
           updated_at: string
         }
         Insert: {
           default_stop_pct?: number
           default_target_pct?: number
+          fee_coverage_multiplier?: number
           id?: number
           max_position_value?: number
           min_confidence?: number
+          min_expected_roi_pct?: number
           min_favor_votes?: number
+          min_net_profit_usd?: number
           min_score?: number
+          per_trade_capital_pct?: number
+          taker_fee_pct?: number
           timeframes?: string[]
           updated_at?: string
         }
         Update: {
           default_stop_pct?: number
           default_target_pct?: number
+          fee_coverage_multiplier?: number
           id?: number
           max_position_value?: number
           min_confidence?: number
+          min_expected_roi_pct?: number
           min_favor_votes?: number
+          min_net_profit_usd?: number
           min_score?: number
+          per_trade_capital_pct?: number
+          taker_fee_pct?: number
           timeframes?: string[]
           updated_at?: string
         }
@@ -3565,59 +3619,86 @@ export type Database = {
         Row: {
           agents_against: number
           agents_favor: number
+          buy_fee: number
           closed_at: string | null
           closed_price: number | null
           created_at: string
           decision_id: string | null
           entry_price: number
+          expected_net_profit: number | null
+          expected_roi_pct: number | null
+          gross_pnl: number | null
+          gross_roi_pct: number | null
           id: string
           justification: string | null
+          net_pnl: number | null
+          net_roi_pct: number | null
           pair: string
           quantity: number
           realized_pnl: number | null
           score: number
+          sell_fee: number
           side: string
           status: string
           stop_price: number | null
           target_price: number | null
+          total_fees: number
         }
         Insert: {
           agents_against?: number
           agents_favor?: number
+          buy_fee?: number
           closed_at?: string | null
           closed_price?: number | null
           created_at?: string
           decision_id?: string | null
           entry_price: number
+          expected_net_profit?: number | null
+          expected_roi_pct?: number | null
+          gross_pnl?: number | null
+          gross_roi_pct?: number | null
           id?: string
           justification?: string | null
+          net_pnl?: number | null
+          net_roi_pct?: number | null
           pair: string
           quantity: number
           realized_pnl?: number | null
           score?: number
+          sell_fee?: number
           side: string
           status?: string
           stop_price?: number | null
           target_price?: number | null
+          total_fees?: number
         }
         Update: {
           agents_against?: number
           agents_favor?: number
+          buy_fee?: number
           closed_at?: string | null
           closed_price?: number | null
           created_at?: string
           decision_id?: string | null
           entry_price?: number
+          expected_net_profit?: number | null
+          expected_roi_pct?: number | null
+          gross_pnl?: number | null
+          gross_roi_pct?: number | null
           id?: string
           justification?: string | null
+          net_pnl?: number | null
+          net_roi_pct?: number | null
           pair?: string
           quantity?: number
           realized_pnl?: number | null
           score?: number
+          sell_fee?: number
           side?: string
           status?: string
           stop_price?: number | null
           target_price?: number | null
+          total_fees?: number
         }
         Relationships: [
           {
