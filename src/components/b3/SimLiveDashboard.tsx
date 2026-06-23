@@ -209,7 +209,7 @@ export function SimLiveDashboard() {
       </Card>
 
       {/* Cards de estado por modo */}
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {(d?.modes ?? []).map((m: any) => {
           const openOrders = (d?.orders ?? []).filter((o: any) => o.simulation_mode_id === m.id && o.status === "open");
           const pnl = Number(m.realized_pnl ?? 0);
