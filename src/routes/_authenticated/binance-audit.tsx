@@ -22,7 +22,7 @@ function BinanceAuditPage() {
   const fn = useServerFn(auditBinanceExits);
   const [report, setReport] = useState<AuditReport | null>(null);
   const mutation = useMutation({
-    mutationFn: () => fn({ data: { limit: 100 } }),
+    mutationFn: () => fn({ data: {} }),
     onSuccess: (r) => setReport(r),
   });
 

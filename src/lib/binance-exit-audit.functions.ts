@@ -94,35 +94,57 @@ function qualityFromPrematureRate(rate: number) {
 
 export const auditBinanceExits = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { limit?: number } | undefined) => input ?? {})
+  .inputValidator((input: { limit?: number; enrichKlines?: number } | undefined) => input ?? {})
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    const limit = Math.min(Math.max(data.limit ?? 50, 1), 200);
+    // limit ausente OU <=0 => SEM teto (paginação completa).
+    const maxLosses = data.limit && data.limit > 0 ? data.limit : Number.POSITIVE_INFINITY;
+    // Recovery via Binance klines é caro: limita quantas perdas recebem fetch (rate-limit).
+    const enrichKlines = Math.min(Math.max(data.enrichKlines ?? 300, 0), 2000);
+
+    // Paginação para superar o teto default de 1000 do PostgREST.
+    const PAGE = 1000;
+    async function paginate<R>(builder: (from: number, to: number) => any): Promise<R[]> {
+      const out: R[] = [];
+      let from = 0;
+      while (out.length < maxLosses) {
+        const to = from + PAGE - 1;
+        const { data: rows } = await builder(from, to);
+        if (!rows || rows.length === 0) break;
+        out.push(...(rows as R[]));
+        if (rows.length < PAGE) break;
+        from += PAGE;
+      }
+      return Number.isFinite(maxLosses) ? out.slice(0, maxLosses as number) : out;
+    }
 
     // ===== Coleta vendas em prejuízo do módulo Binance =====
-    const [realPos, autoTrades, simOrders] = await Promise.all([
-      supabase
+    const [realPosRows, autoTradesRows, simOrdersRows] = await Promise.all([
+      paginate<any>((f, t) => supabase
         .from("real_positions")
         .select("id, pair, opened_at, closed_at, entry_price, exit_price, pnl, pnl_pct, exit_reason, request_id, side")
         .eq("status", "closed")
         .lt("pnl", 0)
         .order("closed_at", { ascending: false })
-        .limit(limit),
-      supabase
+        .range(f, t)),
+      paginate<any>((f, t) => supabase
         .from("automated_trades")
         .select("id, asset_id, opened_at, closed_at, entry_price, exit_price, pnl, pnl_pct, exit_reason, request_id, side, score, consensus")
         .eq("status", "closed")
         .lt("pnl", 0)
         .order("closed_at", { ascending: false })
-        .limit(limit),
-      supabase
+        .range(f, t)),
+      paginate<any>((f, t) => supabase
         .from("simulated_orders")
         .select("id, pair, side, created_at, closed_at, entry_price, closed_price, realized_pnl, net_pnl, gross_pnl, net_roi_pct, gross_roi_pct, decision_id")
         .eq("status", "closed")
         .or("net_pnl.lt.0,realized_pnl.lt.0")
         .order("closed_at", { ascending: false })
-        .limit(limit),
+        .range(f, t)),
     ]);
+    const realPos = { data: realPosRows };
+    const autoTrades = { data: autoTradesRows };
+    const simOrders = { data: simOrdersRows };
 
     // total closed (Binance) para denominador
     const [realClosed, autoClosed, simClosed] = await Promise.all([
@@ -286,8 +308,9 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
       }
     }
 
-    // ===== Recovery prices via Binance public klines =====
-    for (const l of losses) {
+    // ===== Recovery prices via Binance public klines (apenas N mais recentes) =====
+    const lossesForKlines = losses.slice(0, enrichKlines);
+    for (const l of lossesForKlines) {
       const t = new Date(l.closed_at).getTime();
       const offsets: Array<[keyof Pick<LossSell, "price_1h" | "price_4h" | "price_12h" | "price_24h">, number]> = [
         ["price_1h", 1], ["price_4h", 4], ["price_12h", 12], ["price_24h", 24],
@@ -297,17 +320,16 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
         const key = offsets[i][0];
         l[key] = price;
       });
-      // long (buy): recovery se preço futuro > exit (teria sido melhor não vender)
-      // short (sell): recovery se preço futuro < exit (teria sido melhor não cobrir)
       const isBetter = (p: number | null) =>
         p !== null && (l.side === "buy" ? p > l.exit_price : p < l.exit_price);
       l.recovered_1h = isBetter(l.price_1h);
       l.recovered_4h = isBetter(l.price_4h);
       l.recovered_12h = isBetter(l.price_12h);
       l.recovered_24h = isBetter(l.price_24h);
-      l.classification = classify(l.drop_pct);
       l.premature = l.recovered_1h || l.recovered_4h || l.recovered_12h || l.recovered_24h;
     }
+    // classify roda em TODAS as perdas (independe de klines)
+    for (const l of losses) l.classification = classify(l.drop_pct);
 
     // limpa marker interno
     for (const l of losses) delete (l as unknown as { __requestId?: unknown }).__requestId;
