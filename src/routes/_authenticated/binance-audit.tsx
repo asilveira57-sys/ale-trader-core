@@ -21,10 +21,14 @@ const pct = (n: number) => `${fmt(n, 1)}%`;
 function BinanceAuditPage() {
   const fn = useServerFn(auditBinanceExits);
   const [report, setReport] = useState<AuditReport | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 100;
   const mutation = useMutation({
     mutationFn: () => fn({ data: {} }),
-    onSuccess: (r) => setReport(r),
+    onSuccess: (r) => { setReport(r); setPage(1); },
   });
+  const totalPages = report ? Math.max(1, Math.ceil(report.losses.length / PAGE_SIZE)) : 1;
+  const pagedLosses = report ? report.losses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : [];
 
   return (
     <div className="p-6 space-y-6 max-w-7xl">
@@ -107,6 +111,7 @@ function BinanceAuditPage() {
               {report.losses.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhuma venda em prejuízo registrada no módulo Binance.</p>
               ) : (
+                <>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -126,7 +131,7 @@ function BinanceAuditPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {report.losses.map((l) => (
+                    {pagedLosses.map((l) => (
                       <TableRow key={`${l.source}-${l.id}`}>
                         <TableCell className="font-mono">{l.pair}</TableCell>
                         <TableCell className="text-xs">{new Date(l.closed_at).toLocaleString("pt-BR")}</TableCell>
@@ -151,6 +156,17 @@ function BinanceAuditPage() {
                     ))}
                   </TableBody>
                 </Table>
+                <div className="flex items-center justify-between mt-3 text-sm">
+                  <span className="text-muted-foreground">
+                    Mostrando {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, report.losses.length)} de {report.losses.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Anterior</Button>
+                    <span className="text-xs text-muted-foreground">Página {page} / {totalPages}</span>
+                    <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Próxima</Button>
+                  </div>
+                </div>
+                </>
               )}
             </CardContent>
           </Card>
