@@ -73,7 +73,7 @@ export const updateBinanceProfitGuard = createServerFn({ method: "POST" })
       if (data[k] !== undefined && Number.isFinite(Number(data[k]))) patch[k] = Number(data[k]);
     }
     if (!Object.keys(patch).length) return { updated: false };
-    const { error } = await context.supabase.from("committee_settings").update(patch).eq("id", 1);
+    const { error } = await context.supabase.from("committee_settings").update(patch as never).eq("id", 1);
     if (error) throw new Error(error.message);
     return { updated: true, patch };
   });
