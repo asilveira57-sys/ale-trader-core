@@ -21,10 +21,14 @@ const pct = (n: number) => `${fmt(n, 1)}%`;
 function BinanceAuditPage() {
   const fn = useServerFn(auditBinanceExits);
   const [report, setReport] = useState<AuditReport | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 100;
   const mutation = useMutation({
     mutationFn: () => fn({ data: {} }),
-    onSuccess: (r) => setReport(r),
+    onSuccess: (r) => { setReport(r); setPage(1); },
   });
+  const totalPages = report ? Math.max(1, Math.ceil(report.losses.length / PAGE_SIZE)) : 1;
+  const pagedLosses = report ? report.losses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : [];
 
   return (
     <div className="p-6 space-y-6 max-w-7xl">
