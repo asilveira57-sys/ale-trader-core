@@ -9,8 +9,8 @@ import {
 const POINT_VALUE_BRL = 0.2;
 const TICK = 5;
 
-type Mode = "conservador" | "moderado" | "agressivo";
-const MODES: Mode[] = ["conservador", "moderado", "agressivo"];
+type Mode = "conservador" | "moderado" | "semi_agressivo" | "agressivo";
+const MODES: Mode[] = ["conservador", "moderado", "semi_agressivo", "agressivo"];
 
 interface ModeDefaults {
   min_approve_votes: number; min_confidence: number; min_score: number;
@@ -18,9 +18,10 @@ interface ModeDefaults {
   daily_loss_limit_brl: number; daily_gain_target_brl: number;
 }
 const MODE_DEFAULTS: Record<Mode, ModeDefaults> = {
-  conservador: { min_approve_votes: 6, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200 },
-  moderado:    { min_approve_votes: 5, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500 },
-  agressivo:   { min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200 },
+  conservador:    { min_approve_votes: 6, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200 },
+  moderado:       { min_approve_votes: 5, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500 },
+  semi_agressivo: { min_approve_votes: 5, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000 },
+  agressivo:      { min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200 },
 };
 
 function hhmmToMin(s: string) { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; }
