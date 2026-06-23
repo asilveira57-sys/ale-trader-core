@@ -15,12 +15,13 @@ import {
 import { listB3Simulations } from "@/lib/b3-simulation.functions";
 import { getB3SimLiveDashboard } from "@/lib/b3-sim-history.functions";
 
-const MODES = ["conservador", "moderado", "agressivo"] as const;
+const MODES = ["conservador", "moderado", "semi_agressivo", "agressivo"] as const;
 type Mode = typeof MODES[number];
 
 const COLOR: Record<Mode, string> = {
   conservador: "#10b981",
   moderado: "#0ea5e9",
+  semi_agressivo: "#f59e0b",
   agressivo: "#f43f5e",
 };
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -31,7 +32,7 @@ export function SimLiveDashboard() {
   const [runId, setRunId] = useState<string | null>(null);
   const [hours, setHours] = useState<number>(6);
   const [paused, setPaused] = useState(false);
-  const [visible, setVisible] = useState<Record<Mode, boolean>>({ conservador: true, moderado: true, agressivo: true });
+  const [visible, setVisible] = useState<Record<Mode, boolean>>(() => Object.fromEntries(MODES.map(m => [m, true])) as Record<Mode, boolean>);
 
   const listRuns = useServerFn(listB3Simulations);
   const getLive = useServerFn(getB3SimLiveDashboard);
@@ -80,12 +81,12 @@ export function SimLiveDashboard() {
   // Curvas de patrimônio por modo
   const equitySeries = useMemo(() => {
     if (!d) return [] as any[];
-    const byMode: Record<Mode, { t: number; equity: number }[]> = { conservador: [], moderado: [], agressivo: [] };
+    const byMode = Object.fromEntries(MODES.map(m => [m, [] as { t: number; equity: number }[]])) as Record<Mode, { t: number; equity: number }[]>;
     const initial = Number(d.run?.initial_balance ?? 10000);
     MODES.forEach((m) => byMode[m].push({ t: new Date(d.run.started_at).getTime(), equity: initial }));
     const sorted = [...(d.orders ?? [])].filter((o) => o.status === "closed" && o.exit_time)
       .sort((a, b) => new Date(a.exit_time).getTime() - new Date(b.exit_time).getTime());
-    const acc: Record<Mode, number> = { conservador: initial, moderado: initial, agressivo: initial };
+    const acc = Object.fromEntries(MODES.map(m => [m, initial])) as Record<Mode, number>;
     sorted.forEach((o) => {
       const mode = (modeById[o.simulation_mode_id]?.mode ?? o.mode) as Mode;
       if (!MODES.includes(mode)) return;
@@ -96,8 +97,8 @@ export function SimLiveDashboard() {
     const ts = new Set<number>();
     MODES.forEach((m) => byMode[m].forEach((p) => ts.add(p.t)));
     const allT = [...ts].sort((a, b) => a - b);
-    const last: Record<Mode, number> = { conservador: initial, moderado: initial, agressivo: initial };
-    const idx: Record<Mode, number> = { conservador: 0, moderado: 0, agressivo: 0 };
+    const last = Object.fromEntries(MODES.map(m => [m, initial])) as Record<Mode, number>;
+    const idx = Object.fromEntries(MODES.map(m => [m, 0])) as Record<Mode, number>;
     return allT.map((t) => {
       const row: any = { t };
       MODES.forEach((m) => {
@@ -111,16 +112,8 @@ export function SimLiveDashboard() {
   // Distribuição BUY x SELL por modo + motivos de fechamento
   const distData = useMemo(() => {
     if (!d) return { sides: [], reasons: [] } as any;
-    const sides: Record<Mode, { mode: Mode; buy: number; sell: number }> = {
-      conservador: { mode: "conservador", buy: 0, sell: 0 },
-      moderado: { mode: "moderado", buy: 0, sell: 0 },
-      agressivo: { mode: "agressivo", buy: 0, sell: 0 },
-    };
-    const reasons: Record<Mode, any> = {
-      conservador: { mode: "conservador", gain: 0, stop: 0, manual: 0, time: 0 },
-      moderado: { mode: "moderado", gain: 0, stop: 0, manual: 0, time: 0 },
-      agressivo: { mode: "agressivo", gain: 0, stop: 0, manual: 0, time: 0 },
-    };
+    const sides = Object.fromEntries(MODES.map(m => [m, { mode: m, buy: 0, sell: 0 }])) as Record<Mode, { mode: Mode; buy: number; sell: number }>;
+    const reasons = Object.fromEntries(MODES.map(m => [m, { mode: m, gain: 0, stop: 0, manual: 0, time: 0 }])) as Record<Mode, any>;
     (d.orders ?? []).forEach((o: any) => {
       const mode = (modeById[o.simulation_mode_id]?.mode ?? o.mode) as Mode;
       if (!MODES.includes(mode)) return;
@@ -152,7 +145,11 @@ export function SimLiveDashboard() {
   const activityByHour = useMemo(() => {
     if (!d) return [] as any[];
     const buckets: Record<number, any> = {};
-    for (let h = 9; h <= 18; h++) buckets[h] = { hour: `${String(h).padStart(2, "0")}h`, conservador: 0, moderado: 0, agressivo: 0 };
+    for (let h = 9; h <= 18; h++) {
+      const row: any = { hour: `${String(h).padStart(2, "0")}h` };
+      MODES.forEach(m => { row[m] = 0; });
+      buckets[h] = row;
+    }
     (d.orders ?? []).forEach((o: any) => {
       const mode = (modeById[o.simulation_mode_id]?.mode ?? o.mode) as Mode;
       if (!MODES.includes(mode)) return;
@@ -212,7 +209,7 @@ export function SimLiveDashboard() {
       </Card>
 
       {/* Cards de estado por modo */}
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {(d?.modes ?? []).map((m: any) => {
           const openOrders = (d?.orders ?? []).filter((o: any) => o.simulation_mode_id === m.id && o.status === "open");
           const pnl = Number(m.realized_pnl ?? 0);
@@ -344,7 +341,7 @@ export function SimLiveDashboard() {
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-base">Direção das operações</CardTitle></CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {distData.sides.map((s: any) => {
                 const data = [{ name: "LONG", value: s.buy }, { name: "SHORT", value: s.sell }];
                 const total = s.buy + s.sell;

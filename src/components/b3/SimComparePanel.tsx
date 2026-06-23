@@ -24,11 +24,12 @@ import {
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const NUM = (v: number, d = 0) => Number(v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
-const MODES = ["conservador", "moderado", "agressivo"] as const;
+const MODES = ["conservador", "moderado", "semi_agressivo", "agressivo"] as const;
 type Mode = typeof MODES[number];
 const MODE_COLOR: Record<Mode, string> = {
   conservador: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
   moderado: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+  semi_agressivo: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   agressivo: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
 
@@ -141,7 +142,7 @@ export function SimComparePanel() {
 
       {/* Painel comparativo */}
       {detail && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           {modes.map((m: any) => (
             <ModeCard key={m.id} m={m} runId={runId!} isWinner={detail.run.winner_mode === m.mode} onPick={() => winnerM.mutate(m.mode)} />
           ))}
@@ -249,6 +250,11 @@ function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWin
         </div>
       </CardHeader>
       <CardContent className="text-sm space-y-1">
+        {Number(m.total_trades ?? 0) < 100 && (
+          <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[10px] mb-1">
+            AMOSTRA INSUFICIENTE PARA VALIDAÇÃO ESTATÍSTICA
+          </Badge>
+        )}
         <Row k="Saldo inicial" v={BRL(m.initial_balance)} />
         <Row k="Saldo atual" v={BRL(m.current_balance)} />
         <Row k="PnL realizado" v={BRL(pnl)} accent={pnl > 0 ? "pos" : pnl < 0 ? "neg" : undefined} />
