@@ -250,6 +250,11 @@ function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWin
         </div>
       </CardHeader>
       <CardContent className="text-sm space-y-1">
+        {Number(m.total_trades ?? 0) < 100 && (
+          <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[10px] mb-1">
+            AMOSTRA INSUFICIENTE PARA VALIDAÇÃO ESTATÍSTICA
+          </Badge>
+        )}
         <Row k="Saldo inicial" v={BRL(m.initial_balance)} />
         <Row k="Saldo atual" v={BRL(m.current_balance)} />
         <Row k="PnL realizado" v={BRL(pnl)} accent={pnl > 0 ? "pos" : pnl < 0 ? "neg" : undefined} />
