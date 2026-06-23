@@ -308,8 +308,9 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
       }
     }
 
-    // ===== Recovery prices via Binance public klines =====
-    for (const l of losses) {
+    // ===== Recovery prices via Binance public klines (apenas N mais recentes) =====
+    const lossesForKlines = losses.slice(0, enrichKlines);
+    for (const l of lossesForKlines) {
       const t = new Date(l.closed_at).getTime();
       const offsets: Array<[keyof Pick<LossSell, "price_1h" | "price_4h" | "price_12h" | "price_24h">, number]> = [
         ["price_1h", 1], ["price_4h", 4], ["price_12h", 12], ["price_24h", 24],
@@ -319,17 +320,16 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
         const key = offsets[i][0];
         l[key] = price;
       });
-      // long (buy): recovery se preço futuro > exit (teria sido melhor não vender)
-      // short (sell): recovery se preço futuro < exit (teria sido melhor não cobrir)
       const isBetter = (p: number | null) =>
         p !== null && (l.side === "buy" ? p > l.exit_price : p < l.exit_price);
       l.recovered_1h = isBetter(l.price_1h);
       l.recovered_4h = isBetter(l.price_4h);
       l.recovered_12h = isBetter(l.price_12h);
       l.recovered_24h = isBetter(l.price_24h);
-      l.classification = classify(l.drop_pct);
       l.premature = l.recovered_1h || l.recovered_4h || l.recovered_12h || l.recovered_24h;
     }
+    // classify roda em TODAS as perdas (independe de klines)
+    for (const l of losses) l.classification = classify(l.drop_pct);
 
     // limpa marker interno
     for (const l of losses) delete (l as unknown as { __requestId?: unknown }).__requestId;
