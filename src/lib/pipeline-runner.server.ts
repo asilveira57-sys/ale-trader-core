@@ -104,6 +104,8 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
   const { data: pos } = await sb.from("simulated_positions").select("*").eq("pair", asset.pair).maybeSingle();
   const price = Number(ctx.price);
 
+  const feePct = Number(settings?.taker_fee_pct ?? 0.1) / 100;
+
   // SELL = close existing long. Skip if no long position.
   if (side === "sell") {
     const longQty = Number(pos?.quantity ?? 0);
@@ -115,39 +117,78 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
     const avg = Number(pos!.avg_price);
     const proceeds = qty * price;
     const cost = qty * avg;
-    const pnl = proceeds - cost;
+    const grossPnl = proceeds - cost;
+    const { data: openBuys } = await sb.from("simulated_orders")
+      .select("buy_fee").eq("pair", asset.pair).eq("side", "buy").eq("status", "open");
+    const buyFee = (openBuys ?? []).reduce((s: number, o: any) => s + Number(o.buy_fee ?? 0), 0);
+    const sellFee = proceeds * feePct;
+    const totalFees = buyFee + sellFee;
+    const netPnl = grossPnl - totalFees;
+    const grossRoi = cost > 0 ? (grossPnl / cost) * 100 : 0;
+    const netRoi = cost > 0 ? (netPnl / cost) * 100 : 0;
     const closedAt = new Date().toISOString();
     await sb.from("simulated_orders").insert({
       decision_id: decision.id, pair: asset.pair, side: "sell", quantity: qty,
-      entry_price: avg, closed_price: price, realized_pnl: pnl,
+      entry_price: avg, closed_price: price, realized_pnl: netPnl,
       stop_price: price * 0.97, target_price: price * 1.03, score: decision.score,
       agents_favor: decision.votes_sell, agents_against: decision.votes_buy,
       justification: decision.consolidated_justification,
       status: "closed", closed_at: closedAt,
+      buy_fee: buyFee, sell_fee: sellFee, total_fees: totalFees,
+      gross_pnl: grossPnl, net_pnl: netPnl,
+      gross_roi_pct: grossRoi, net_roi_pct: netRoi,
     });
-    // Close the matching open buy order(s) so they don't reappear as ghost positions
     await sb.from("simulated_orders")
-      .update({ status: "closed", closed_price: price, realized_pnl: pnl, closed_at: closedAt })
+      .update({ status: "closed", closed_price: price, realized_pnl: netPnl, closed_at: closedAt,
+        sell_fee: sellFee, total_fees: totalFees, gross_pnl: grossPnl, net_pnl: netPnl,
+        gross_roi_pct: grossRoi, net_roi_pct: netRoi })
       .eq("pair", asset.pair).eq("side", "buy").eq("status", "open");
     await sb.from("simulated_positions").update({ quantity: 0, unrealized_pnl: 0 }).eq("pair", asset.pair);
-    const newBalance = Number(wallet?.current_balance ?? 0) + proceeds;
+    const newBalance = Number(wallet?.current_balance ?? 0) + proceeds - sellFee;
     await sb.from("simulated_wallet").update({ current_balance: newBalance, equity: newBalance }).eq("id", 1);
-    await log(sb, "Execução", "sim", `[cron] SELL ${asset.pair} qty=${qty} @ ${price.toFixed(2)} pnl=${pnl.toFixed(2)}`, "info");
-    return { pair: asset.pair, side, qty, price, pnl };
+    await log(sb, "Execução", "sim", `[cron] SELL ${asset.pair} qty=${qty} @ ${price.toFixed(2)} netPnl=${netPnl.toFixed(2)} fees=${totalFees.toFixed(2)}`, "info");
+    return { pair: asset.pair, side, qty, price, netPnl, totalFees };
   }
 
-  // BUY = open long, debit cash, lock capital.
-  // Cap por trade: historicamente operava 30-40% de exposição.
-  // Multiplicador subido de 0.10 → 0.35 para destravar a exposição.
+  // BUY = open long.
   const perTradeMultiplier = Number(settings?.per_trade_capital_pct ?? 0.35);
   const positionValue = Math.min(
     Number(settings?.max_position_value ?? 1000),
     Number(wallet?.current_balance ?? 0) * perTradeMultiplier,
   );
   if (positionValue <= 10) return null;
-  const qty = Number((positionValue / price).toFixed(6));
-  const stopPct = Number(settings?.default_stop_pct ?? 3) / 100;
+
+  // ===== Profit guard =====
   const targetPct = Number(settings?.default_target_pct ?? 6) / 100;
+  const stopPct = Number(settings?.default_stop_pct ?? 3) / 100;
+  const expectedExitPrice = price * (1 + targetPct);
+  const expectedGrossPnl = (expectedExitPrice - price) * (positionValue / price);
+  const buyFeeEst = positionValue * feePct;
+  const sellFeeEst = (positionValue + expectedGrossPnl) * feePct;
+  const totalFeesEst = buyFeeEst + sellFeeEst;
+  const expectedNetPnl = expectedGrossPnl - totalFeesEst;
+  const expectedRoi = (expectedNetPnl / positionValue) * 100;
+  const minRoi = Number(settings?.min_expected_roi_pct ?? 0.5);
+  const minNetUsd = Number(settings?.min_net_profit_usd ?? 5);
+  const feeMult = Number(settings?.fee_coverage_multiplier ?? 3);
+
+  const blockReasons: string[] = [];
+  if (expectedNetPnl < feeMult * totalFeesEst) blockReasons.push(`Lucro líquido esperado (${expectedNetPnl.toFixed(2)}) < ${feeMult}× taxas (${(feeMult * totalFeesEst).toFixed(2)})`);
+  if (expectedRoi < minRoi) blockReasons.push(`ROI esperado abaixo do mínimo operacional (${expectedRoi.toFixed(3)}% < ${minRoi}%)`);
+  if (expectedNetPnl < minNetUsd) blockReasons.push(`Lucro líquido previsto insuficiente (${expectedNetPnl.toFixed(2)} < ${minNetUsd})`);
+
+  if (blockReasons.length) {
+    await sb.from("binance_trade_block_log").insert({
+      pair: asset.pair, decision_id: decision.id, reason: blockReasons.join(" | "),
+      expected_net_profit: expectedNetPnl, expected_roi_pct: expectedRoi,
+      total_fees_estimated: totalFeesEst, position_value: positionValue,
+      details: { price, expectedExitPrice, targetPct, stopPct, feePct, buyFeeEst, sellFeeEst, minRoi, minNetUsd, feeMult },
+    });
+    await log(sb, "Execução", "sim", `[cron] BUY ${asset.pair} BLOQUEADO: ${blockReasons.join("; ")}`, "warning");
+    return null;
+  }
+
+  const qty = Number((positionValue / price).toFixed(6));
   const stop = price * (1 - stopPct);
   const target = price * (1 + targetPct);
 
@@ -155,11 +196,14 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
     .select("id").eq("pair", asset.pair).eq("side", "buy").eq("status", "open").limit(1);
   if (existing && existing.length) return null;
 
+  const buyFee = positionValue * feePct;
   await sb.from("simulated_orders").insert({
     decision_id: decision.id, pair: asset.pair, side: "buy", quantity: qty, entry_price: price,
     stop_price: stop, target_price: target, score: decision.score,
     agents_favor: decision.votes_buy, agents_against: decision.votes_sell,
     justification: decision.consolidated_justification, status: "open",
+    buy_fee: buyFee, total_fees: buyFee,
+    expected_net_profit: expectedNetPnl, expected_roi_pct: expectedRoi,
   });
   const newQty = Number(pos?.quantity ?? 0) + qty;
   const newAvg = newQty > 0
@@ -168,14 +212,16 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
   await sb.from("simulated_positions").upsert({
     pair: asset.pair, quantity: newQty, avg_price: newAvg, unrealized_pnl: 0,
   }, { onConflict: "pair" });
-  const newBalance = Number(wallet?.current_balance ?? 0) - positionValue;
+  const newBalance = Number(wallet?.current_balance ?? 0) - positionValue - buyFee;
   await sb.from("simulated_wallet").update({ current_balance: newBalance, equity: newBalance }).eq("id", 1);
-  await log(sb, "Execução", "sim", `[cron] BUY ${asset.pair} qty=${qty} @ ${price.toFixed(2)}`, "info");
-  return { pair: asset.pair, side, qty, price };
+  await log(sb, "Execução", "sim", `[cron] BUY ${asset.pair} qty=${qty} @ ${price.toFixed(2)} fee=${buyFee.toFixed(2)} expROI=${expectedRoi.toFixed(2)}%`, "info");
+  return { pair: asset.pair, side, qty, price, buyFee };
 }
 
 async function monitorSimulatedOrders(sb: any) {
   const { data: open } = await sb.from("simulated_orders").select("*").eq("status", "open");
+  const { data: cs } = await sb.from("committee_settings").select("taker_fee_pct").eq("id", 1).maybeSingle();
+  const feePct = Number(cs?.taker_fee_pct ?? 0.1) / 100;
   let closed = 0;
   for (const o of open ?? []) {
     const price = mockPrice(o.pair);
@@ -187,20 +233,30 @@ async function monitorSimulatedOrders(sb: any) {
       continue;
     }
     const exitPrice = hitTarget ? Number(o.target_price) : Number(o.stop_price);
-    const pnl = (exitPrice - Number(o.entry_price)) * Number(o.quantity) * (o.side === "buy" ? 1 : -1);
+    const grossPnl = (exitPrice - Number(o.entry_price)) * Number(o.quantity) * (o.side === "buy" ? 1 : -1);
+    const sellProceeds = exitPrice * Number(o.quantity);
+    const sellFee = sellProceeds * feePct;
+    const buyFee = Number(o.buy_fee ?? 0);
+    const totalFees = buyFee + sellFee;
+    const netPnl = grossPnl - totalFees;
+    const cost = Number(o.entry_price) * Number(o.quantity);
+    const grossRoi = cost > 0 ? (grossPnl / cost) * 100 : 0;
+    const netRoi = cost > 0 ? (netPnl / cost) * 100 : 0;
     await sb.from("simulated_orders").update({
-      status: "closed", closed_price: exitPrice, realized_pnl: pnl, closed_at: new Date().toISOString(),
+      status: "closed", closed_price: exitPrice, realized_pnl: netPnl, closed_at: new Date().toISOString(),
+      sell_fee: sellFee, total_fees: totalFees, gross_pnl: grossPnl, net_pnl: netPnl,
+      gross_roi_pct: grossRoi, net_roi_pct: netRoi,
     }).eq("id", o.id);
-    const positionValue = Number(o.entry_price) * Number(o.quantity);
+    const positionValue = cost;
     const { data: wallet } = await sb.from("simulated_wallet").select("*").eq("id", 1).maybeSingle();
-    const newBalance = Number(wallet?.current_balance ?? 0) + (o.side === "buy" ? positionValue + pnl : -positionValue + pnl);
+    const newBalance = Number(wallet?.current_balance ?? 0) + (o.side === "buy" ? positionValue + grossPnl - sellFee : -positionValue + grossPnl - sellFee);
     await sb.from("simulated_wallet").update({ current_balance: newBalance, equity: newBalance }).eq("id", 1);
     const { data: pos } = await sb.from("simulated_positions").select("*").eq("pair", o.pair).maybeSingle();
     if (pos) {
       const newQty = Number(pos.quantity) - (o.side === "buy" ? Number(o.quantity) : -Number(o.quantity));
       await sb.from("simulated_positions").update({ quantity: newQty, unrealized_pnl: 0 }).eq("pair", o.pair);
     }
-    await log(sb, "Execução", "sim", `[cron] CLOSE ${o.pair} ${hitTarget ? "TP" : "SL"} pnl=${pnl.toFixed(2)}`, "info");
+    await log(sb, "Execução", "sim", `[cron] CLOSE ${o.pair} ${hitTarget ? "TP" : "SL"} netPnl=${netPnl.toFixed(2)} fees=${totalFees.toFixed(2)}`, "info");
     closed++;
   }
   return { closed };
