@@ -15,12 +15,13 @@ import {
 import { listB3Simulations } from "@/lib/b3-simulation.functions";
 import { getB3SimLiveDashboard } from "@/lib/b3-sim-history.functions";
 
-const MODES = ["conservador", "moderado", "agressivo"] as const;
+const MODES = ["conservador", "moderado", "semi_agressivo", "agressivo"] as const;
 type Mode = typeof MODES[number];
 
 const COLOR: Record<Mode, string> = {
   conservador: "#10b981",
   moderado: "#0ea5e9",
+  semi_agressivo: "#f59e0b",
   agressivo: "#f43f5e",
 };
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
