@@ -81,12 +81,12 @@ export function SimLiveDashboard() {
   // Curvas de patrimônio por modo
   const equitySeries = useMemo(() => {
     if (!d) return [] as any[];
-    const byMode: Record<Mode, { t: number; equity: number }[]> = { conservador: [], moderado: [], agressivo: [] };
+    const byMode = Object.fromEntries(MODES.map(m => [m, [] as { t: number; equity: number }[]])) as Record<Mode, { t: number; equity: number }[]>;
     const initial = Number(d.run?.initial_balance ?? 10000);
     MODES.forEach((m) => byMode[m].push({ t: new Date(d.run.started_at).getTime(), equity: initial }));
     const sorted = [...(d.orders ?? [])].filter((o) => o.status === "closed" && o.exit_time)
       .sort((a, b) => new Date(a.exit_time).getTime() - new Date(b.exit_time).getTime());
-    const acc: Record<Mode, number> = { conservador: initial, moderado: initial, agressivo: initial };
+    const acc = Object.fromEntries(MODES.map(m => [m, initial])) as Record<Mode, number>;
     sorted.forEach((o) => {
       const mode = (modeById[o.simulation_mode_id]?.mode ?? o.mode) as Mode;
       if (!MODES.includes(mode)) return;
@@ -97,8 +97,8 @@ export function SimLiveDashboard() {
     const ts = new Set<number>();
     MODES.forEach((m) => byMode[m].forEach((p) => ts.add(p.t)));
     const allT = [...ts].sort((a, b) => a - b);
-    const last: Record<Mode, number> = { conservador: initial, moderado: initial, agressivo: initial };
-    const idx: Record<Mode, number> = { conservador: 0, moderado: 0, agressivo: 0 };
+    const last = Object.fromEntries(MODES.map(m => [m, initial])) as Record<Mode, number>;
+    const idx = Object.fromEntries(MODES.map(m => [m, 0])) as Record<Mode, number>;
     return allT.map((t) => {
       const row: any = { t };
       MODES.forEach((m) => {
