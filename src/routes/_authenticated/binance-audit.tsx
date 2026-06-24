@@ -7,7 +7,104 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertTriangle, FileSearch } from "lucide-react";
+import { AlertTriangle, FileSearch, FileSpreadsheet, FileText } from "lucide-react";
+
+const COLS = [
+  "Ativo","Saida","Entrada","Saida_Preco","PnL_Pct","PnL_USDT","Motivo","Classificacao",
+  "Preco_1h","Preco_4h","Preco_12h","Preco_24h","Diagnostico",
+];
+
+function toCSV(losses: AuditReport["losses"]): string {
+  const rows = losses.map((l) => [
+    l.pair,
+    new Date(l.closed_at).toLocaleString("pt-BR"),
+    l.entry_price, l.exit_price, l.pnl_pct, l.pnl,
+    (l.exit_reason ?? "").replace(/[;\n\r]/g, " "),
+    l.classification,
+    l.price_1h ?? "", l.price_4h ?? "", l.price_12h ?? "", l.price_24h ?? "",
+    l.premature ? "Prematura" : "Correta",
+  ].join(";"));
+  return "\uFEFF" + [COLS.join(";"), ...rows].join("\n");
+}
+
+function download(filename: string, content: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportCSV(report: AuditReport) {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  download(`binance-auditoria-${stamp}.csv`, toCSV(report.losses), "text/csv;charset=utf-8");
+}
+
+function exportPDF(report: AuditReport) {
+  const stamp = new Date().toLocaleString("pt-BR");
+  const fmtN = (n: number | null, d = 2) => n === null ? "—" : n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const rows = report.losses.map((l) => `
+    <tr>
+      <td>${l.pair}</td>
+      <td>${new Date(l.closed_at).toLocaleString("pt-BR")}</td>
+      <td style="text-align:right">${fmtN(l.entry_price, 4)}</td>
+      <td style="text-align:right">${fmtN(l.exit_price, 4)}</td>
+      <td style="text-align:right;color:#c00">${fmtN(l.pnl_pct, 1)}%</td>
+      <td style="text-align:right;color:#c00">${fmtN(l.pnl)}</td>
+      <td>${l.exit_reason ?? "—"}</td>
+      <td>${l.classification}</td>
+      <td style="text-align:right">${fmtN(l.price_1h, 4)}</td>
+      <td style="text-align:right">${fmtN(l.price_4h, 4)}</td>
+      <td style="text-align:right">${fmtN(l.price_12h, 4)}</td>
+      <td style="text-align:right">${fmtN(l.price_24h, 4)}</td>
+      <td>${l.premature ? "Prematura" : "Correta"}</td>
+    </tr>`).join("");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Auditoria Binance — ${stamp}</title>
+<style>
+  body{font-family:Arial,sans-serif;color:#111;margin:24px;font-size:11px}
+  h1{font-size:18px;margin:0 0 4px}
+  h2{font-size:13px;margin:18px 0 6px}
+  .muted{color:#666;font-size:10px}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+  .card{border:1px solid #ddd;border-radius:6px;padding:8px}
+  .card .l{font-size:10px;color:#666}
+  .card .v{font-size:14px;font-weight:600;margin-top:2px}
+  table{width:100%;border-collapse:collapse;font-size:10px}
+  th,td{border:1px solid #ddd;padding:4px 6px;text-align:left}
+  th{background:#f3f4f6}
+  @media print{ @page{size:A4 landscape;margin:10mm} }
+</style></head><body>
+<h1>Auditoria de Saídas — Binance</h1>
+<div class="muted">Gerado em ${stamp}</div>
+<div class="grid">
+  <div class="card"><div class="l">Fechadas</div><div class="v">${report.total_closed}</div></div>
+  <div class="card"><div class="l">Em prejuízo</div><div class="v">${report.total_losses}</div></div>
+  <div class="card"><div class="l">Early Exit Score</div><div class="v">${report.early_exit_score.toFixed(1)}%</div></div>
+  <div class="card"><div class="l">Qualidade</div><div class="v">${report.quality.label}</div></div>
+  <div class="card"><div class="l">Recovery 1h</div><div class="v">${report.recovery_rate_1h.toFixed(1)}%</div></div>
+  <div class="card"><div class="l">Recovery 4h</div><div class="v">${report.recovery_rate_4h.toFixed(1)}%</div></div>
+  <div class="card"><div class="l">Recovery 12h</div><div class="v">${report.recovery_rate_12h.toFixed(1)}%</div></div>
+  <div class="card"><div class="l">Recovery 24h</div><div class="v">${report.recovery_rate_24h.toFixed(1)}%</div></div>
+  <div class="card"><div class="l">Prematuras</div><div class="v">${report.premature_count}</div></div>
+  <div class="card"><div class="l">Corretas</div><div class="v">${report.correct_count}</div></div>
+  <div class="card"><div class="l">Prej. evitável</div><div class="v">${fmtN(report.avoidable_loss_usdt)}</div></div>
+  <div class="card"><div class="l">Prej. inevitável</div><div class="v">${fmtN(report.unavoidable_loss_usdt)}</div></div>
+</div>
+<h2>Vendas em prejuízo (${report.losses.length})</h2>
+<table>
+  <thead><tr>
+    <th>Ativo</th><th>Saída</th><th>Entrada</th><th>Saída ($)</th><th>PnL%</th><th>PnL USDT</th>
+    <th>Motivo</th><th>Classe</th><th>+1h</th><th>+4h</th><th>+12h</th><th>+24h</th><th>Diagnóstico</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<script>window.onload=()=>{setTimeout(()=>window.print(),300)}</script>
+</body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) return;
+  w.document.write(html);
+  w.document.close();
+}
 
 export const Route = createFileRoute("/_authenticated/binance-audit")({
   component: BinanceAuditPage,
