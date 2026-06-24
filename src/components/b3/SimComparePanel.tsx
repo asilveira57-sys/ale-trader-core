@@ -65,7 +65,7 @@ export function SimComparePanel() {
   const startM = useMutation({
     mutationFn: (input: any) => start({ data: input }),
     onSuccess: (run: any) => {
-      toast.success("Simulação iniciada nos 3 modos");
+      toast.success("Simulação iniciada nos 5 modos");
       setSelectedRun(run.id);
       qc.invalidateQueries({ queryKey: ["b3-sim-runs"] });
     },
@@ -110,7 +110,7 @@ export function SimComparePanel() {
       {/* Cabeçalho / controles */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2"><Activity className="w-4 h-4" /> Simulação 3 Modos (sandbox)</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Activity className="w-4 h-4" /> Simulação 5 Modos (sandbox)</CardTitle>
           <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30">somente simulação</Badge>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -150,7 +150,7 @@ export function SimComparePanel() {
 
       {/* Painel comparativo */}
       {detail && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
           {modes.map((m: any) => (
             <ModeCard key={m.id} m={m} runId={runId!} isWinner={detail.run.winner_mode === m.mode} onPick={() => winnerM.mutate(m.mode)} />
           ))}
@@ -258,11 +258,10 @@ function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWin
         </div>
       </CardHeader>
       <CardContent className="text-sm space-y-1">
-        {Number(m.total_trades ?? 0) < 100 && (
-          <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[10px] mb-1">
-            AMOSTRA INSUFICIENTE PARA VALIDAÇÃO ESTATÍSTICA
-          </Badge>
-        )}
+        {(() => {
+          const s = sampleStatus(Number(m.total_trades ?? 0));
+          return s ? <Badge variant="outline" className={`${s.cls} text-[10px] mb-1`}>{s.label}</Badge> : null;
+        })()}
         <Row k="Saldo inicial" v={BRL(m.initial_balance)} />
         <Row k="Saldo atual" v={BRL(m.current_balance)} />
         <Row k="PnL realizado" v={BRL(pnl)} accent={pnl > 0 ? "pos" : pnl < 0 ? "neg" : undefined} />
