@@ -45,7 +45,7 @@ export interface B3RiskState {
   requested_qty: number;
   inside_hours: boolean;
   force_close_now: boolean;
-  strategy_mode: "conservador" | "moderado" | "semi_agressivo" | "agressivo";
+  strategy_mode: "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agressivo";
 }
 
 const clamp = (n: number, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, n));

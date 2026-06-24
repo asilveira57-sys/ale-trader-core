@@ -15,12 +15,13 @@ import {
 import { listB3Simulations } from "@/lib/b3-simulation.functions";
 import { getB3SimLiveDashboard } from "@/lib/b3-sim-history.functions";
 
-const MODES = ["conservador", "moderado", "semi_agressivo", "agressivo"] as const;
+const MODES = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
 type Mode = typeof MODES[number];
 
 const COLOR: Record<Mode, string> = {
   conservador: "#10b981",
   moderado: "#0ea5e9",
+  equilibrado: "#8b5cf6",
   semi_agressivo: "#f59e0b",
   agressivo: "#f43f5e",
 };
@@ -209,7 +210,7 @@ export function SimLiveDashboard() {
       </Card>
 
       {/* Cards de estado por modo */}
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {(d?.modes ?? []).map((m: any) => {
           const openOrders = (d?.orders ?? []).filter((o: any) => o.simulation_mode_id === m.id && o.status === "open");
           const pnl = Number(m.realized_pnl ?? 0);
