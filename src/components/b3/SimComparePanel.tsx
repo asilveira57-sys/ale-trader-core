@@ -24,14 +24,22 @@ import {
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const NUM = (v: number, d = 0) => Number(v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
-const MODES = ["conservador", "moderado", "semi_agressivo", "agressivo"] as const;
+const MODES = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
 type Mode = typeof MODES[number];
 const MODE_COLOR: Record<Mode, string> = {
   conservador: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
   moderado: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+  equilibrado: "bg-violet-500/15 text-violet-300 border-violet-500/30",
   semi_agressivo: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   agressivo: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
+
+function sampleStatus(trades: number): { label: string; cls: string } | null {
+  if (trades < 100) return { label: "AMOSTRA INSUFICIENTE PARA VALIDAÇÃO ESTATÍSTICA", cls: "bg-amber-500/10 text-amber-300 border-amber-500/30" };
+  if (trades < 300) return { label: "Amostra inicial em formação", cls: "bg-sky-500/10 text-sky-300 border-sky-500/30" };
+  if (trades < 500) return { label: "Amostra relevante", cls: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" };
+  return { label: "Amostra estatística robusta", cls: "bg-emerald-500/20 text-emerald-200 border-emerald-500/40" };
+}
 
 export function SimComparePanel() {
   const qc = useQueryClient();
