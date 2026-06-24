@@ -142,6 +142,16 @@ function BinanceAuditPage() {
         <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
           {mutation.isPending ? "Auditando..." : "Rodar auditoria"}
         </Button>
+        {report && report.losses.length > 0 && (
+          <>
+            <Button variant="outline" onClick={() => exportCSV(report)}>
+              <FileSpreadsheet className="size-4 mr-1" /> XLS / CSV
+            </Button>
+            <Button variant="outline" onClick={() => exportPDF(report)}>
+              <FileText className="size-4 mr-1" /> PDF
+            </Button>
+          </>
+        )}
       </header>
 
       {mutation.isError && <p className="text-sm text-red-400">Falha: {(mutation.error as Error).message}</p>}
