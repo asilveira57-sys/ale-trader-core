@@ -182,14 +182,56 @@ export function SimComparePanel() {
         </CardContent>
       </Card>
 
-      {/* Painel comparativo */}
-      {detail && (
+      {/* Filtro de período */}
+      <Card>
+        <CardContent className="pt-4 flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Período do relatório</Label>
+            <Select value={period} onValueChange={(v: any) => setPeriod(v)}>
+              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Hoje (pregão atual)</SelectItem>
+                <SelectItem value="all">Acumulado</SelectItem>
+                <SelectItem value="custom">Personalizado</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {period === "custom" && (
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs">De</Label>
+                <Input type="datetime-local" value={fromInput} onChange={(e) => setFromInput(e.target.value)} className="w-[200px]" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Até</Label>
+                <Input type="datetime-local" value={toInput} onChange={(e) => setToInput(e.target.value)} className="w-[200px]" />
+              </div>
+            </>
+          )}
+          <div className="ml-auto text-xs text-muted-foreground">
+            {period === "today" && "Mostrando apenas operações encerradas no pregão de hoje (00:00 BRT)."}
+            {period === "all" && "Mostrando o resultado acumulado desde o início da simulação."}
+            {period === "custom" && "Janela personalizada baseada no horário de fechamento das operações."}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Painel comparativo (período selecionado) */}
+      {reportQ.data && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-          {modes.map((m: any) => (
-            <ModeCard key={m.id} m={m} runId={runId!} isWinner={detail.run.winner_mode === m.mode} onPick={() => winnerM.mutate(m.mode)} />
+          {reportQ.data.modes.map((mm: any) => (
+            <ModeReportCard key={mm.mode} mm={mm} period={period} runId={runId!}
+              isWinner={detail?.run.winner_mode === mm.mode}
+              onPick={() => winnerM.mutate(mm.mode)} />
           ))}
         </div>
       )}
+
+      {/* Painel de Stops e Bloqueios */}
+      {reportQ.data && (
+        <StopsAndBlocksPanel data={reportQ.data} />
+      )}
+
 
       {/* Ranking + sugestão */}
       {detail && winnerCandidate && (
