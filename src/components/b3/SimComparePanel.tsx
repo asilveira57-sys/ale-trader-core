@@ -540,3 +540,149 @@ function MacroEventsCard() {
     </Card>
   );
 }
+
+function ModeReportCard({ mm, period, runId, isWinner, onPick }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void }) {
+  const status = STATUS_META[mm.current_status] ?? STATUS_META.operando;
+  const pnl = Number(mm.pnl_periodo ?? 0);
+  return (
+    <Card className={isWinner ? "ring-2 ring-amber-400/60" : ""}>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="flex items-center gap-2">
+          <Badge className={`uppercase ${MODE_COLOR[mm.mode as Mode]}`}>{mm.mode}</Badge>
+          {isWinner && <Trophy className="w-4 h-4 text-amber-400" />}
+        </CardTitle>
+        <div className="flex items-center gap-1">
+          <ModeSettingsDialog runId={runId} mode={mm.mode as Mode} />
+          <Button size="sm" variant="ghost" onClick={onPick}><Trophy className="w-4 h-4" /></Button>
+        </div>
+      </CardHeader>
+      <CardContent className="text-sm space-y-1">
+        <Badge variant="outline" className={`${status.cls} text-[10px] mb-1`}>
+          {status.type === "stop_dia" || status.type === "meta" || status.type === "zeragem" ? <ShieldAlert className="w-3 h-3 mr-1 inline" /> : null}
+          {status.label}
+        </Badge>
+        {mm.status_reason && <p className="text-[10px] text-muted-foreground italic">{mm.status_reason}</p>}
+        {(() => {
+          const s = sampleStatus(Number(mm.cumulative?.total_trades ?? 0));
+          return s ? <Badge variant="outline" className={`${s.cls} text-[10px] mb-1`}>{s.label}</Badge> : null;
+        })()}
+        <p className="text-[10px] uppercase text-muted-foreground pt-1">
+          {period === "today" ? "Hoje" : period === "all" ? "Acumulado" : "Personalizado"}
+        </p>
+        <Row k="Saldo inicial (período)" v={BRL(mm.saldo_inicial_periodo)} />
+        <Row k="Saldo final (período)" v={BRL(mm.saldo_final_periodo)} />
+        <Row k="PnL do período" v={BRL(pnl)} accent={pnl > 0 ? "pos" : pnl < 0 ? "neg" : undefined} />
+        <Row k="Taxas" v={BRL(mm.taxas)} />
+        <Row k="Trades" v={`${mm.trades} (${mm.vitorias}V / ${mm.perdas}P)`} />
+        <Row k="Taxa de acerto" v={`${NUM(mm.taxa_acerto, 1)}%`} />
+        <Row k="Maior ganho" v={BRL(mm.maior_ganho)} />
+        <Row k="Maior perda" v={BRL(mm.maior_perda)} />
+        <Row k="Drawdown máx." v={BRL(mm.drawdown_maximo)} />
+        <Row k="Pontos líquidos" v={NUM(mm.pontos_liquidos, 0)} />
+        <Row k="Comitê aprov./rejei." v={`${mm.comite_aprovou} / ${mm.comite_rejeitou}`} />
+        <Row k="Bloqueios de risco" v={String(mm.bloqueios_risco)} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function StopsAndBlocksPanel({ data }: { data: any }) {
+  const modes = data.modes ?? [];
+  const events = (data.block_events ?? []).filter((e: any) => e.new_status !== "operando").slice(0, 100);
+  return (
+    <div className="space-y-3">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShieldAlert className="w-4 h-4 text-amber-400" /> Stops e Bloqueios — situação atual por robô
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-muted-foreground border-b border-border/40">
+                <tr className="text-left">
+                  <th className="py-1 pr-2">Modo</th>
+                  <th>Status atual</th>
+                  <th>Último gatilho</th>
+                  <th>Horário</th>
+                  <th>Motivo</th>
+                  <th className="text-right">PnL no momento</th>
+                  <th>Volta a operar?</th>
+                </tr>
+              </thead>
+              <tbody>
+                {modes.map((mm: any) => {
+                  const st = STATUS_META[mm.current_status] ?? STATUS_META.operando;
+                  const ev = mm.ultimo_evento;
+                  return (
+                    <tr key={mm.mode} className="border-b border-border/20">
+                      <td className="py-1 pr-2"><Badge variant="outline" className={`text-[10px] capitalize ${MODE_COLOR[mm.mode as Mode]}`}>{mm.mode}</Badge></td>
+                      <td><Badge variant="outline" className={`text-[10px] ${st.cls}`}>{st.label}</Badge></td>
+                      <td className="text-muted-foreground">{ev?.trigger ?? mm.last_trigger ?? "—"}</td>
+                      <td className="font-mono text-[10px]">{ev?.occurred_at ? new Date(ev.occurred_at).toLocaleString("pt-BR") : (mm.status_changed_at ? new Date(mm.status_changed_at).toLocaleString("pt-BR") : "—")}</td>
+                      <td className="text-muted-foreground max-w-[280px] truncate">{ev?.message ?? mm.status_reason ?? "—"}</td>
+                      <td className="text-right">{ev?.pnl_at_moment != null ? BRL(Number(ev.pnl_at_moment)) : "—"}</td>
+                      <td className="text-[10px]">
+                        {st.canResumeToday
+                          ? <span className="text-emerald-300">Pode voltar ainda hoje</span>
+                          : <span className="text-rose-300">Apenas no próximo pregão</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Clock className="w-4 h-4" /> Histórico de paradas no período
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {events.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nenhuma parada registrada no período selecionado.</p>
+          ) : (
+            <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="text-muted-foreground border-b border-border/40 sticky top-0 bg-background">
+                  <tr className="text-left">
+                    <th className="py-1 pr-2">Quando</th>
+                    <th>Modo</th>
+                    <th>De</th>
+                    <th>Para</th>
+                    <th>Gatilho</th>
+                    <th className="text-right">Valor obs.</th>
+                    <th className="text-right">Limite</th>
+                    <th className="text-right">PnL</th>
+                    <th>Mensagem</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((e: any) => (
+                    <tr key={e.id} className="border-b border-border/20">
+                      <td className="py-1 pr-2 font-mono text-[10px] whitespace-nowrap">{new Date(e.occurred_at).toLocaleString("pt-BR")}</td>
+                      <td><Badge variant="outline" className={`text-[10px] capitalize ${MODE_COLOR[e.mode as Mode]}`}>{e.mode}</Badge></td>
+                      <td className="text-muted-foreground">{e.prev_status ?? "—"}</td>
+                      <td>{e.new_status}</td>
+                      <td><Badge variant="outline" className="text-[10px]">{e.trigger}</Badge></td>
+                      <td className="text-right font-mono">{e.observed_value != null ? NUM(Number(e.observed_value), 2) : "—"}</td>
+                      <td className="text-right font-mono">{e.limit_value != null ? NUM(Number(e.limit_value), 2) : "—"}</td>
+                      <td className="text-right font-mono">{e.pnl_at_moment != null ? BRL(Number(e.pnl_at_moment)) : "—"}</td>
+                      <td className="text-muted-foreground max-w-[300px] truncate">{e.message ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
