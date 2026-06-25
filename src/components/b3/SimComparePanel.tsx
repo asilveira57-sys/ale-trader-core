@@ -13,13 +13,14 @@ import { toast } from "sonner";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Trophy, Play, Pause, StopCircle, RotateCcw, ListPlus, Trash2, Activity, History, Info, Settings as SettingsIcon } from "lucide-react";
+import { Trophy, Play, Pause, StopCircle, RotateCcw, ListPlus, Trash2, Activity, History, Info, Settings as SettingsIcon, ShieldAlert, Clock } from "lucide-react";
 import {
   startB3Simulation, setB3SimulationStatus, setB3SimulationWinner,
   listB3Simulations, getB3SimulationDetail, tickB3Simulation,
   listB3MacroEvents, upsertB3MacroEvent, deleteB3MacroEvent, scoreMode,
   listB3ModeSettings, updateB3ModeSettings, resetB3ModeSettings,
 } from "@/lib/b3-simulation.functions";
+import { getB3SimulationReport } from "@/lib/b3-reports.functions";
 
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const NUM = (v: number, d = 0) => Number(v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -34,12 +35,26 @@ const MODE_COLOR: Record<Mode, string> = {
   agressivo: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
 
+const STATUS_META: Record<string, { label: string; cls: string; canResumeToday: boolean; type: "operando" | "pausa" | "stop_op" | "stop_dia" | "meta" | "risco" | "horario" | "zeragem" | "erro" }> = {
+  operando: { label: "Operando", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", canResumeToday: true, type: "operando" },
+  pausado: { label: "Pausado", cls: "bg-slate-500/15 text-slate-300 border-slate-500/30", canResumeToday: true, type: "pausa" },
+  stop_operacao: { label: "Stop da operação", cls: "bg-rose-500/15 text-rose-300 border-rose-500/30", canResumeToday: true, type: "stop_op" },
+  bloqueado_perda_diaria: { label: "Bloqueado · limite diário de perda", cls: "bg-rose-600/20 text-rose-200 border-rose-600/40", canResumeToday: false, type: "stop_dia" },
+  bloqueado_meta_diaria: { label: "Bloqueado · meta diária atingida", cls: "bg-emerald-600/20 text-emerald-200 border-emerald-600/40", canResumeToday: false, type: "meta" },
+  bloqueado_volatilidade: { label: "Bloqueado · volatilidade", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", canResumeToday: true, type: "risco" },
+  bloqueado_horario: { label: "Bloqueado · fora do horário", cls: "bg-slate-500/15 text-slate-300 border-slate-500/30", canResumeToday: true, type: "horario" },
+  bloqueado_zeragem: { label: "Bloqueado · zeragem obrigatória", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", canResumeToday: false, type: "zeragem" },
+  bloqueado_risco: { label: "Bloqueado · risco macro", cls: "bg-rose-500/15 text-rose-300 border-rose-500/30", canResumeToday: true, type: "risco" },
+  erro_tecnico: { label: "Erro técnico", cls: "bg-rose-600/30 text-rose-100 border-rose-600/50", canResumeToday: true, type: "erro" },
+};
+
 function sampleStatus(trades: number): { label: string; cls: string } | null {
   if (trades < 100) return { label: "AMOSTRA INSUFICIENTE PARA VALIDAÇÃO ESTATÍSTICA", cls: "bg-amber-500/10 text-amber-300 border-amber-500/30" };
   if (trades < 300) return { label: "Amostra inicial em formação", cls: "bg-sky-500/10 text-sky-300 border-sky-500/30" };
   if (trades < 500) return { label: "Amostra relevante", cls: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" };
   return { label: "Amostra estatística robusta", cls: "bg-emerald-500/20 text-emerald-200 border-emerald-500/40" };
 }
+
 
 export function SimComparePanel() {
   const qc = useQueryClient();
