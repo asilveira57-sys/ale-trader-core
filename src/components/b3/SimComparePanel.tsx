@@ -60,6 +60,12 @@ export function SimComparePanel() {
   const qc = useQueryClient();
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [ticks, setTicks] = useState(10);
+  const [period, setPeriod] = useState<"today" | "all" | "custom">("today");
+  const todayLocalStart = () => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString().slice(0, 16);
+  };
+  const [fromInput, setFromInput] = useState<string>(todayLocalStart());
+  const [toInput, setToInput] = useState<string>(new Date().toISOString().slice(0, 16));
 
   const listRuns = useServerFn(listB3Simulations);
   const getDetail = useServerFn(getB3SimulationDetail);
@@ -67,6 +73,7 @@ export function SimComparePanel() {
   const setStatus = useServerFn(setB3SimulationStatus);
   const setWinner = useServerFn(setB3SimulationWinner);
   const tick = useServerFn(tickB3Simulation);
+  const getReport = useServerFn(getB3SimulationReport);
 
   const runsQ = useQuery({ queryKey: ["b3-sim-runs"], queryFn: () => listRuns() });
   const runId = selectedRun ?? runsQ.data?.[0]?.id ?? null;
@@ -76,6 +83,18 @@ export function SimComparePanel() {
     enabled: !!runId,
     refetchInterval: 4000,
   });
+
+  const reportQ = useQuery({
+    queryKey: ["b3-sim-report", runId, period, fromInput, toInput],
+    queryFn: () => getReport({ data: {
+      run_id: runId!, period,
+      from: period === "custom" ? new Date(fromInput).toISOString() : undefined,
+      to: period === "custom" ? new Date(toInput).toISOString() : undefined,
+    }}),
+    enabled: !!runId,
+    refetchInterval: 8000,
+  });
+
 
   const startM = useMutation({
     mutationFn: (input: any) => start({ data: input }),
