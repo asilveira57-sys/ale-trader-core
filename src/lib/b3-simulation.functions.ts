@@ -278,7 +278,14 @@ export async function runB3SimulationTick(
       const m = modeByName[mode];
       if (!m) continue;
       const cfg = settingsByMode[mode];
-      if (cfg.enabled === false) { log.push({ mode, action: "skip", reason: "modo_desativado" }); continue; }
+      const realizedToday = Number(realizedTodayByMode[mode] ?? 0);
+
+      if (cfg.enabled === false) {
+        await recordStatusIfChanged(mode, m, "pausado", "paused",
+          { pnl: realizedToday, message: "Modo desativado nas configurações." });
+        log.push({ mode, action: "skip", reason: "modo_desativado" });
+        continue;
+      }
 
       const startMin = hhmmToMin(cfg.trading_start_time);
       const cutoffMin = hhmmToMin(cfg.entry_cutoff_time);
@@ -294,12 +301,47 @@ export async function runB3SimulationTick(
         const hitStop = movePts <= -Number(cfg.stop_pts);
         const hitGain = movePts >= Number(cfg.gain_pts);
         if (forceClose || hitStop || hitGain) {
-          await closeOrder(supabase, userId, run, m, open, ctx.price, forceClose ? "force_close" : hitStop ? "stop" : "gain");
+          const reason = forceClose ? "force_close" : hitStop ? "stop" : "gain";
+          await closeOrder(supabase, userId, run, m, open, ctx.price, reason);
           openOrdersCache = null;
           realizedTodayByMode = await getRealizedTodayByMode();
-          log.push({ mode, action: "close", reason: forceClose ? "force_close" : hitStop ? "stop" : "gain", price: ctx.price });
+          if (reason === "stop") {
+            await recordStatusIfChanged(mode, m, "stop_operacao", "stop_trade",
+              { observed: movePts, limit: -Number(cfg.stop_pts), pnl: realizedTodayByMode[mode] ?? 0,
+                related_order_id: open.id, message: `Stop da operação atingido (${movePts.toFixed(0)} pts).` });
+          }
+          log.push({ mode, action: "close", reason, price: ctx.price });
           continue;
         }
+      }
+
+      // Diagnóstico de paradas — registra status operacional sem alterar lógica
+      const lossHit = realizedToday <= -Number(cfg.daily_loss_limit_brl);
+      const gainHit = realizedToday >= Number(cfg.daily_gain_target_brl);
+      if (lossHit) {
+        await recordStatusIfChanged(mode, m, "bloqueado_perda_diaria", "daily_loss",
+          { observed: realizedToday, limit: -Number(cfg.daily_loss_limit_brl), pnl: realizedToday,
+            message: `Limite diário de perda atingido (${realizedToday.toFixed(2)} BRL).` });
+      } else if (gainHit) {
+        await recordStatusIfChanged(mode, m, "bloqueado_meta_diaria", "daily_gain",
+          { observed: realizedToday, limit: Number(cfg.daily_gain_target_brl), pnl: realizedToday,
+            message: `Meta diária atingida (${realizedToday.toFixed(2)} BRL).` });
+      } else if (forceClose) {
+        await recordStatusIfChanged(mode, m, "bloqueado_zeragem", "force_close",
+          { pnl: realizedToday, message: "Janela de zeragem obrigatória." });
+      } else if (!insideHours) {
+        await recordStatusIfChanged(mode, m, "bloqueado_horario", "time",
+          { pnl: realizedToday, message: "Fora da janela operacional." });
+      } else if (macroBlock) {
+        await recordStatusIfChanged(mode, m, "bloqueado_risco", "macro_risk",
+          { pnl: realizedToday, message: `Evento macro: ${macroBlock.name}.` });
+      } else if (ctx.volatility_pct > Number(cfg.max_volatility_pct)) {
+        await recordStatusIfChanged(mode, m, "bloqueado_volatilidade", "volatility",
+          { observed: ctx.volatility_pct, limit: Number(cfg.max_volatility_pct), pnl: realizedToday,
+            message: `Volatilidade ${ctx.volatility_pct.toFixed(2)}% acima do limite.` });
+      } else {
+        await recordStatusIfChanged(mode, m, "operando", "ok",
+          { pnl: realizedToday, message: "Operando normalmente." });
       }
 
       if (!insideHours || forceClose) {
@@ -318,7 +360,7 @@ export async function runB3SimulationTick(
       const risk: B3RiskState = {
         daily_loss_limit: Number(cfg.daily_loss_limit_brl),
         daily_gain_target: Number(cfg.daily_gain_target_brl),
-        realized_today_brl: Number(realizedTodayByMode[mode] ?? 0),
+        realized_today_brl: realizedToday,
         open_contracts: 0,
         max_contracts: Number(cfg.max_contracts),
         requested_qty: 1,
@@ -334,6 +376,7 @@ export async function runB3SimulationTick(
         log.push({ mode, action: "skip", reason: "volatilidade" });
         continue;
       }
+
 
       const votes = runB3Agents(localCtx, intendedSide, risk);
       const committee: B3CommitteeSettings = {
