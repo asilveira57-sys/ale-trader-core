@@ -886,6 +886,75 @@ export type Database = {
           },
         ]
       }
+      b3_simulation_block_events: {
+        Row: {
+          created_at: string
+          id: string
+          limit_value: number | null
+          message: string | null
+          mode: string
+          new_status: string
+          observed_value: number | null
+          occurred_at: string
+          pnl_at_moment: number | null
+          prev_status: string | null
+          related_order_id: string | null
+          simulation_mode_id: string | null
+          simulation_run_id: string
+          trigger: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          limit_value?: number | null
+          message?: string | null
+          mode: string
+          new_status: string
+          observed_value?: number | null
+          occurred_at?: string
+          pnl_at_moment?: number | null
+          prev_status?: string | null
+          related_order_id?: string | null
+          simulation_mode_id?: string | null
+          simulation_run_id: string
+          trigger: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          limit_value?: number | null
+          message?: string | null
+          mode?: string
+          new_status?: string
+          observed_value?: number | null
+          occurred_at?: string
+          pnl_at_moment?: number | null
+          prev_status?: string | null
+          related_order_id?: string | null
+          simulation_mode_id?: string | null
+          simulation_run_id?: string
+          trigger?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_simulation_block_events_simulation_mode_id_fkey"
+            columns: ["simulation_mode_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_modes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_simulation_block_events_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       b3_simulation_market_snapshots: {
         Row: {
           candle_close: number | null
@@ -1032,8 +1101,10 @@ export type Database = {
           contracts_traded: number
           created_at: string
           current_balance: number
+          current_status: string
           id: string
           initial_balance: number
+          last_trigger: string | null
           losing_trades: number
           max_drawdown: number
           max_gain: number
@@ -1044,6 +1115,8 @@ export type Database = {
           risk_blocks: number
           simulation_run_id: string
           status: string
+          status_changed_at: string | null
+          status_reason: string | null
           total_fees: number
           total_trades: number
           unrealized_pnl: number
@@ -1057,8 +1130,10 @@ export type Database = {
           contracts_traded?: number
           created_at?: string
           current_balance?: number
+          current_status?: string
           id?: string
           initial_balance?: number
+          last_trigger?: string | null
           losing_trades?: number
           max_drawdown?: number
           max_gain?: number
@@ -1069,6 +1144,8 @@ export type Database = {
           risk_blocks?: number
           simulation_run_id: string
           status?: string
+          status_changed_at?: string | null
+          status_reason?: string | null
           total_fees?: number
           total_trades?: number
           unrealized_pnl?: number
@@ -1082,8 +1159,10 @@ export type Database = {
           contracts_traded?: number
           created_at?: string
           current_balance?: number
+          current_status?: string
           id?: string
           initial_balance?: number
+          last_trigger?: string | null
           losing_trades?: number
           max_drawdown?: number
           max_gain?: number
@@ -1094,6 +1173,8 @@ export type Database = {
           risk_blocks?: number
           simulation_run_id?: string
           status?: string
+          status_changed_at?: string | null
+          status_reason?: string | null
           total_fees?: number
           total_trades?: number
           unrealized_pnl?: number
