@@ -223,6 +223,33 @@ export async function runB3SimulationTick(
   }
   let realizedTodayByMode = await getRealizedTodayByMode();
 
+  // Helper: registra mudança de status operacional (parou de operar / voltou)
+  async function recordStatusIfChanged(
+    mode: string, m: any, newStatus: string, trigger: string,
+    opts: { observed?: number; limit?: number; pnl?: number; related_order_id?: string; message?: string } = {},
+  ) {
+    const prev = m.current_status ?? "operando";
+    if (prev === newStatus) return;
+    await supabase.from("b3_simulation_block_events").insert({
+      simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
+      mode, prev_status: prev, new_status: newStatus, trigger,
+      observed_value: opts.observed ?? null,
+      limit_value: opts.limit ?? null,
+      pnl_at_moment: opts.pnl ?? null,
+      related_order_id: opts.related_order_id ?? null,
+      message: opts.message ?? null,
+    });
+    await supabase.from("b3_simulation_modes").update({
+      current_status: newStatus, status_reason: opts.message ?? null,
+      status_changed_at: new Date().toISOString(), last_trigger: trigger,
+    }).eq("id", m.id);
+    m.current_status = newStatus;
+    m.status_reason = opts.message ?? null;
+    m.status_changed_at = new Date().toISOString();
+    m.last_trigger = trigger;
+  }
+
+
   for (let i = 0; i < ticks; i++) {
     const now = new Date();
     const cur = saoPauloMinutes(now);
