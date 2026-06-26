@@ -44,6 +44,7 @@ import { Route as AuthenticatedCouncilRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedCommitteeRouteImport } from './routes/_authenticated/committee'
 import { Route as AuthenticatedBinanceWalletHealthRouteImport } from './routes/_authenticated/binance-wallet-health'
 import { Route as AuthenticatedBinanceFeeAuditRouteImport } from './routes/_authenticated/binance-fee-audit'
+import { Route as AuthenticatedBinanceBrainRouteImport } from './routes/_authenticated/binance-brain'
 import { Route as AuthenticatedBinanceAuditRouteImport } from './routes/_authenticated/binance-audit'
 import { Route as AuthenticatedB3SimHistoryRouteImport } from './routes/_authenticated/b3-sim-history'
 import { Route as AuthenticatedB3RouteImport } from './routes/_authenticated/b3'
@@ -252,6 +253,12 @@ const AuthenticatedBinanceFeeAuditRoute =
     path: '/binance-fee-audit',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedBinanceBrainRoute =
+  AuthenticatedBinanceBrainRouteImport.update({
+    id: '/binance-brain',
+    path: '/binance-brain',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedBinanceAuditRoute =
   AuthenticatedBinanceAuditRouteImport.update({
     id: '/binance-audit',
@@ -410,6 +417,7 @@ export interface FileRoutesByFullPath {
   '/b3': typeof AuthenticatedB3Route
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/binance-audit': typeof AuthenticatedBinanceAuditRoute
+  '/binance-brain': typeof AuthenticatedBinanceBrainRoute
   '/binance-fee-audit': typeof AuthenticatedBinanceFeeAuditRoute
   '/binance-wallet-health': typeof AuthenticatedBinanceWalletHealthRoute
   '/committee': typeof AuthenticatedCommitteeRoute
@@ -471,6 +479,7 @@ export interface FileRoutesByTo {
   '/b3': typeof AuthenticatedB3Route
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/binance-audit': typeof AuthenticatedBinanceAuditRoute
+  '/binance-brain': typeof AuthenticatedBinanceBrainRoute
   '/binance-fee-audit': typeof AuthenticatedBinanceFeeAuditRoute
   '/binance-wallet-health': typeof AuthenticatedBinanceWalletHealthRoute
   '/committee': typeof AuthenticatedCommitteeRoute
@@ -534,6 +543,7 @@ export interface FileRoutesById {
   '/_authenticated/b3': typeof AuthenticatedB3Route
   '/_authenticated/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/_authenticated/binance-audit': typeof AuthenticatedBinanceAuditRoute
+  '/_authenticated/binance-brain': typeof AuthenticatedBinanceBrainRoute
   '/_authenticated/binance-fee-audit': typeof AuthenticatedBinanceFeeAuditRoute
   '/_authenticated/binance-wallet-health': typeof AuthenticatedBinanceWalletHealthRoute
   '/_authenticated/committee': typeof AuthenticatedCommitteeRoute
@@ -597,6 +607,7 @@ export interface FileRouteTypes {
     | '/b3'
     | '/b3-sim-history'
     | '/binance-audit'
+    | '/binance-brain'
     | '/binance-fee-audit'
     | '/binance-wallet-health'
     | '/committee'
@@ -658,6 +669,7 @@ export interface FileRouteTypes {
     | '/b3'
     | '/b3-sim-history'
     | '/binance-audit'
+    | '/binance-brain'
     | '/binance-fee-audit'
     | '/binance-wallet-health'
     | '/committee'
@@ -720,6 +732,7 @@ export interface FileRouteTypes {
     | '/_authenticated/b3'
     | '/_authenticated/b3-sim-history'
     | '/_authenticated/binance-audit'
+    | '/_authenticated/binance-brain'
     | '/_authenticated/binance-fee-audit'
     | '/_authenticated/binance-wallet-health'
     | '/_authenticated/committee'
@@ -1028,6 +1041,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBinanceFeeAuditRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/binance-brain': {
+      id: '/_authenticated/binance-brain'
+      path: '/binance-brain'
+      fullPath: '/binance-brain'
+      preLoaderRoute: typeof AuthenticatedBinanceBrainRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/binance-audit': {
       id: '/_authenticated/binance-audit'
       path: '/binance-audit'
@@ -1250,6 +1270,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedB3Route: typeof AuthenticatedB3Route
   AuthenticatedB3SimHistoryRoute: typeof AuthenticatedB3SimHistoryRoute
   AuthenticatedBinanceAuditRoute: typeof AuthenticatedBinanceAuditRoute
+  AuthenticatedBinanceBrainRoute: typeof AuthenticatedBinanceBrainRoute
   AuthenticatedBinanceFeeAuditRoute: typeof AuthenticatedBinanceFeeAuditRoute
   AuthenticatedBinanceWalletHealthRoute: typeof AuthenticatedBinanceWalletHealthRoute
   AuthenticatedCommitteeRoute: typeof AuthenticatedCommitteeRoute
@@ -1301,6 +1322,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedB3Route: AuthenticatedB3Route,
   AuthenticatedB3SimHistoryRoute: AuthenticatedB3SimHistoryRoute,
   AuthenticatedBinanceAuditRoute: AuthenticatedBinanceAuditRoute,
+  AuthenticatedBinanceBrainRoute: AuthenticatedBinanceBrainRoute,
   AuthenticatedBinanceFeeAuditRoute: AuthenticatedBinanceFeeAuditRoute,
   AuthenticatedBinanceWalletHealthRoute: AuthenticatedBinanceWalletHealthRoute,
   AuthenticatedCommitteeRoute: AuthenticatedCommitteeRoute,
