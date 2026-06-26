@@ -1801,6 +1801,135 @@ export type Database = {
           },
         ]
       }
+      binance_brain_audit: {
+        Row: {
+          approve_count: number | null
+          brain_recommendation: string
+          classification: string | null
+          created_at: string
+          dominant_trend: string | null
+          expected_gross: number | null
+          expected_net: number | null
+          fee_buy: number | null
+          fee_gate_passed: boolean | null
+          fee_sell: number | null
+          fib_levels: Json | null
+          flex_mode: boolean | null
+          id: string
+          indicator_votes: Json
+          neutral_count: number | null
+          notional: number | null
+          price: number
+          qty: number | null
+          rationale: string | null
+          reject_count: number | null
+          related_decision_id: string | null
+          related_order_id: string | null
+          sample_size: number | null
+          score: number
+          side: string
+          slippage_pct: number | null
+          spread_pct: number | null
+          symbol: string
+          timeframe_conflict: boolean | null
+          trend_15d: string | null
+          trend_15m: string | null
+          trend_1d: string | null
+          trend_1h: string | null
+          trend_1m: string | null
+          trend_30d: string | null
+          trend_4h: string | null
+          trend_5m: string | null
+          trend_7d: string | null
+          volatility_class: string | null
+          volume_signal: string | null
+        }
+        Insert: {
+          approve_count?: number | null
+          brain_recommendation: string
+          classification?: string | null
+          created_at?: string
+          dominant_trend?: string | null
+          expected_gross?: number | null
+          expected_net?: number | null
+          fee_buy?: number | null
+          fee_gate_passed?: boolean | null
+          fee_sell?: number | null
+          fib_levels?: Json | null
+          flex_mode?: boolean | null
+          id?: string
+          indicator_votes?: Json
+          neutral_count?: number | null
+          notional?: number | null
+          price: number
+          qty?: number | null
+          rationale?: string | null
+          reject_count?: number | null
+          related_decision_id?: string | null
+          related_order_id?: string | null
+          sample_size?: number | null
+          score?: number
+          side: string
+          slippage_pct?: number | null
+          spread_pct?: number | null
+          symbol: string
+          timeframe_conflict?: boolean | null
+          trend_15d?: string | null
+          trend_15m?: string | null
+          trend_1d?: string | null
+          trend_1h?: string | null
+          trend_1m?: string | null
+          trend_30d?: string | null
+          trend_4h?: string | null
+          trend_5m?: string | null
+          trend_7d?: string | null
+          volatility_class?: string | null
+          volume_signal?: string | null
+        }
+        Update: {
+          approve_count?: number | null
+          brain_recommendation?: string
+          classification?: string | null
+          created_at?: string
+          dominant_trend?: string | null
+          expected_gross?: number | null
+          expected_net?: number | null
+          fee_buy?: number | null
+          fee_gate_passed?: boolean | null
+          fee_sell?: number | null
+          fib_levels?: Json | null
+          flex_mode?: boolean | null
+          id?: string
+          indicator_votes?: Json
+          neutral_count?: number | null
+          notional?: number | null
+          price?: number
+          qty?: number | null
+          rationale?: string | null
+          reject_count?: number | null
+          related_decision_id?: string | null
+          related_order_id?: string | null
+          sample_size?: number | null
+          score?: number
+          side?: string
+          slippage_pct?: number | null
+          spread_pct?: number | null
+          symbol?: string
+          timeframe_conflict?: boolean | null
+          trend_15d?: string | null
+          trend_15m?: string | null
+          trend_1d?: string | null
+          trend_1h?: string | null
+          trend_1m?: string | null
+          trend_30d?: string | null
+          trend_4h?: string | null
+          trend_5m?: string | null
+          trend_7d?: string | null
+          volatility_class?: string | null
+          volume_signal?: string | null
+        }
+        Relationships: []
+      }
       binance_connection_status: {
         Row: {
           account_type: string | null
@@ -1825,6 +1954,45 @@ export type Database = {
           last_check?: string | null
           last_error?: string | null
           permissions?: string[] | null
+        }
+        Relationships: []
+      }
+      binance_indicator_performance: {
+        Row: {
+          hit_rate: number | null
+          hits: number | null
+          id: string
+          indicator: string
+          last_updated: string
+          misses: number | null
+          votes_approve: number | null
+          votes_reject: number | null
+          votes_total: number | null
+          weight: number | null
+        }
+        Insert: {
+          hit_rate?: number | null
+          hits?: number | null
+          id?: string
+          indicator: string
+          last_updated?: string
+          misses?: number | null
+          votes_approve?: number | null
+          votes_reject?: number | null
+          votes_total?: number | null
+          weight?: number | null
+        }
+        Update: {
+          hit_rate?: number | null
+          hits?: number | null
+          id?: string
+          indicator?: string
+          last_updated?: string
+          misses?: number | null
+          votes_approve?: number | null
+          votes_reject?: number | null
+          votes_total?: number | null
+          weight?: number | null
         }
         Relationships: []
       }
