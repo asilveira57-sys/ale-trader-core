@@ -256,7 +256,8 @@ function riskAgent(c: MarketContext, maxPositionValue: number, walletBalance: nu
   const targetPct = 6;
   const rr = targetPct / stopPct;
   const tooVolatile = c.volatility_pct > 6;
-  const tooExposed = exposurePct > 25;
+  // Per-trade cap now allows up to 40% of wallet (aligned with plan/`per_trade_capital_pct=0.35`).
+  const tooExposed = exposurePct > 40;
   const block = tooVolatile || tooExposed || c.data_quality < 50;
   return {
     agent: "Agente de Risco",
