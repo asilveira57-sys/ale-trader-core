@@ -157,11 +157,11 @@ export const listBrainSymbols = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async () => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data = [] } = await supabaseAdmin
+    const { data } = await supabaseAdmin
       .from("monitored_assets")
-      .select("symbol")
+      .select("pair")
       .eq("active", true);
     const fallback = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
-    const got = (data ?? []).map((d) => d.symbol).filter(Boolean);
+    const got = (data ?? []).map((d) => (d.pair ?? "").replace("/", "").toUpperCase()).filter(Boolean);
     return got.length ? got : fallback;
   });
