@@ -333,7 +333,19 @@ function classifyScore(score: number): { classification: string; recommendation:
 }
 
 // -------------- Análise principal --------------
-export async function analyzeBrain(symbol: string, opts?: { side?: "buy" | "sell"; notional?: number; sampleSize?: number }): Promise<BrainAnalysis> {
+export async function loadIndicatorWeights(): Promise<Record<string, number>> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await supabaseAdmin.from("binance_indicator_performance").select("indicator,weight");
+    const map: Record<string, number> = {};
+    for (const r of data ?? []) map[r.indicator] = Number(r.weight ?? 1.0);
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+export async function analyzeBrain(symbol: string, opts?: { side?: "buy" | "sell"; notional?: number; sampleSize?: number; weights?: Record<string, number> }): Promise<BrainAnalysis> {
   const intervals: { tf: string; iv: string; limit: number }[] = [
     { tf: "1m", iv: "1m", limit: 60 },
     { tf: "5m", iv: "5m", limit: 60 },
