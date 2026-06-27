@@ -106,6 +106,68 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
 
   const feePct = Number(settings?.taker_fee_pct ?? 0.1) / 100;
 
+  // ===== Fase 2A: Brain gate (analyzeBrain) — bloqueia execução com base no score, taxa e conflito multitemporal =====
+  try {
+    const symbol = String(asset.pair).replace("/", "").toUpperCase();
+    const { analyzeBrain } = await import("./binance-brain.server");
+    const positionValueGuess = Math.min(
+      Number(settings?.max_position_value ?? 1000),
+      Number(wallet?.current_balance ?? 0) * Number(settings?.per_trade_capital_pct ?? 0.35),
+    );
+    const brain = await analyzeBrain(symbol, { side, notional: positionValueGuess > 0 ? positionValueGuess : 100 });
+
+    const { count: sampleCount } = await sb.from("binance_brain_audit").select("id", { count: "exact", head: true });
+    const sample = sampleCount ?? 0;
+    const flexMode = sample < 300;
+    const minScore = flexMode ? 45 : 51;
+
+    const brainBlockReasons: string[] = [];
+    if (!brain.feeGatePassed) brainBlockReasons.push(`Cérebro: lucro líquido esperado (${brain.expectedNet.toFixed(4)}) não cobre 3× taxas (${(brain.feeBuy + brain.feeSell).toFixed(4)})`);
+    if (brain.score < minScore) brainBlockReasons.push(`Cérebro: score ${brain.score.toFixed(0)} < mínimo ${minScore}${flexMode ? " (flex)" : ""}`);
+    if (brain.timeframeConflict && !flexMode) brainBlockReasons.push(`Cérebro: conflito multitemporal (tendência dominante ${brain.dominantTrend})`);
+    if (side === "buy" && brain.dominantTrend.startsWith("Baixa")) brainBlockReasons.push(`Cérebro: BUY contra tendência dominante (${brain.dominantTrend})`);
+    if (side === "sell" && brain.dominantTrend.startsWith("Alta")) brainBlockReasons.push(`Cérebro: SELL contra tendência dominante (${brain.dominantTrend})`);
+
+    // Sempre persiste o áudito da análise — independente de aprovação
+    const votesObj: Record<string, { vote: string; detail: string; value?: number }> = {};
+    for (const v of brain.indicators) votesObj[v.indicator] = { vote: v.vote, detail: v.detail, value: v.value };
+    await sb.from("binance_brain_audit").insert({
+      symbol: brain.symbol, side: brain.side, price: brain.price, notional: positionValueGuess,
+      trend_1m: brain.timeframes.find((t) => t.tf === "1m")?.trend ?? null,
+      trend_5m: brain.timeframes.find((t) => t.tf === "5m")?.trend ?? null,
+      trend_15m: brain.timeframes.find((t) => t.tf === "15m")?.trend ?? null,
+      trend_1h: brain.timeframes.find((t) => t.tf === "1h")?.trend ?? null,
+      trend_4h: brain.timeframes.find((t) => t.tf === "4h")?.trend ?? null,
+      trend_1d: brain.timeframes.find((t) => t.tf === "1d")?.trend ?? null,
+      trend_7d: brain.timeframes.find((t) => t.tf === "7d")?.trend ?? null,
+      trend_15d: brain.timeframes.find((t) => t.tf === "15d")?.trend ?? null,
+      trend_30d: brain.timeframes.find((t) => t.tf === "30d")?.trend ?? null,
+      dominant_trend: brain.dominantTrend, timeframe_conflict: brain.timeframeConflict,
+      indicator_votes: votesObj, approve_count: brain.approve, reject_count: brain.reject, neutral_count: brain.neutral,
+      score: brain.score, classification: brain.classification,
+      fee_buy: brain.feeBuy, fee_sell: brain.feeSell, spread_pct: brain.spreadPct, slippage_pct: brain.slippagePct,
+      expected_gross: brain.expectedGross, expected_net: brain.expectedNet, fee_gate_passed: brain.feeGatePassed,
+      volatility_class: brain.volatilityClass, volume_signal: brain.volumeSignal, fib_levels: brain.fibLevels,
+      rationale: brain.rationale, brain_recommendation: brainBlockReasons.length ? "BLOCKED" : brain.recommendation,
+      flex_mode: flexMode, sample_size: sample,
+    });
+
+    if (brainBlockReasons.length) {
+      await sb.from("binance_trade_block_log").insert({
+        pair: asset.pair, decision_id: decision.id, reason: brainBlockReasons.join(" | "),
+        expected_net_profit: brain.expectedNet, expected_roi_pct: 0,
+        total_fees_estimated: brain.feeBuy + brain.feeSell, position_value: positionValueGuess,
+        details: { brain_score: brain.score, classification: brain.classification, dominant_trend: brain.dominantTrend, flex_mode: flexMode, sample },
+      });
+      await log(sb, "Execução", "sim", `[cron] ${side.toUpperCase()} ${asset.pair} BLOQUEADO pelo Cérebro: ${brainBlockReasons.join("; ")}`, "warning");
+      return null;
+    }
+  } catch (err: any) {
+    // Falha do cérebro não deve quebrar o ciclo — apenas registra e segue.
+    await log(sb, "Execução", "sim", `[cron] Cérebro indisponível para ${asset.pair}: ${err?.message ?? err}`, "warning");
+  }
+  // ===== fim do brain gate =====
+
   // SELL = close existing long. Skip if no long position.
   if (side === "sell") {
     const longQty = Number(pos?.quantity ?? 0);
