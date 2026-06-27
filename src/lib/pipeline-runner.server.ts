@@ -109,12 +109,13 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
   // ===== Fase 2A: Brain gate (analyzeBrain) — bloqueia execução com base no score, taxa e conflito multitemporal =====
   try {
     const symbol = String(asset.pair).replace("/", "").toUpperCase();
-    const { analyzeBrain } = await import("./binance-brain.server");
+    const { analyzeBrain, loadIndicatorWeights } = await import("./binance-brain.server");
     const positionValueGuess = Math.min(
       Number(settings?.max_position_value ?? 1000),
       Number(wallet?.current_balance ?? 0) * Number(settings?.per_trade_capital_pct ?? 0.35),
     );
-    const brain = await analyzeBrain(symbol, { side, notional: positionValueGuess > 0 ? positionValueGuess : 100 });
+    const indWeights = await loadIndicatorWeights();
+    const brain = await analyzeBrain(symbol, { side, notional: positionValueGuess > 0 ? positionValueGuess : 100, weights: indWeights });
 
     const { count: sampleCount } = await sb.from("binance_brain_audit").select("id", { count: "exact", head: true });
     const sample = sampleCount ?? 0;
@@ -150,6 +151,7 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
       volatility_class: brain.volatilityClass, volume_signal: brain.volumeSignal, fib_levels: brain.fibLevels,
       rationale: brain.rationale, brain_recommendation: brainBlockReasons.length ? "BLOCKED" : brain.recommendation,
       flex_mode: flexMode, sample_size: sample,
+      related_decision_id: decision.id,
     });
 
     if (brainBlockReasons.length) {
@@ -181,7 +183,7 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
     const cost = qty * avg;
     const grossPnl = proceeds - cost;
     const { data: openBuys } = await sb.from("simulated_orders")
-      .select("buy_fee").eq("pair", asset.pair).eq("side", "buy").eq("status", "open");
+      .select("buy_fee, decision_id").eq("pair", asset.pair).eq("side", "buy").eq("status", "open");
     const buyFee = (openBuys ?? []).reduce((s: number, o: any) => s + Number(o.buy_fee ?? 0), 0);
     const sellFee = proceeds * feePct;
     const totalFees = buyFee + sellFee;
@@ -209,6 +211,14 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
     const newBalance = Number(wallet?.current_balance ?? 0) + proceeds - sellFee;
     await sb.from("simulated_wallet").update({ current_balance: newBalance, equity: newBalance }).eq("id", 1);
     await log(sb, "Execução", "sim", `[cron] SELL ${asset.pair} qty=${qty} @ ${price.toFixed(2)} netPnl=${netPnl.toFixed(2)} fees=${totalFees.toFixed(2)}`, "info");
+    // Fase 2B — feedback pós-trade para o Cérebro
+    try {
+      const { applyBrainFeedbackForDecision } = await import("./binance-brain-feedback.server");
+      const decisionIds = Array.from(new Set((openBuys ?? []).map((o: any) => o.decision_id).filter(Boolean) as string[]));
+      for (const did of decisionIds) await applyBrainFeedbackForDecision(did, netPnl);
+    } catch (err: any) {
+      await log(sb, "Cérebro", "sim", `[feedback] falha ao atualizar accuracy: ${err?.message ?? err}`, "warning");
+    }
     return { pair: asset.pair, side, qty, price, netPnl, totalFees };
   }
 
