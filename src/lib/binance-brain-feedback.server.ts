@@ -121,11 +121,11 @@ export async function runBrainSelfAudit(hours = 24): Promise<SelfAuditReport> {
   };
 
   await supabaseAdmin.from("system_logs").insert({
-    category: "Cérebro",
-    pair: null,
+    event_type: "brain_self_audit",
+    source: "Cérebro",
     message: `[autoauditoria] ${report.totalAnalyses} análises / ${report.totalFeedback} feedbacks · ${suggestions.length} sugestões`,
-    level: "info",
-    details: report as any,
+    severity: "info",
+    technical_data: report as any,
   });
 
   return report;
