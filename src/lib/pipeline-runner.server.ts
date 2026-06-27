@@ -183,7 +183,7 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
     const cost = qty * avg;
     const grossPnl = proceeds - cost;
     const { data: openBuys } = await sb.from("simulated_orders")
-      .select("buy_fee").eq("pair", asset.pair).eq("side", "buy").eq("status", "open");
+      .select("buy_fee, decision_id").eq("pair", asset.pair).eq("side", "buy").eq("status", "open");
     const buyFee = (openBuys ?? []).reduce((s: number, o: any) => s + Number(o.buy_fee ?? 0), 0);
     const sellFee = proceeds * feePct;
     const totalFees = buyFee + sellFee;
