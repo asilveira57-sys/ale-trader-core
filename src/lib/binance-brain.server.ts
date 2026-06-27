@@ -394,9 +394,18 @@ export async function analyzeBrain(symbol: string, opts?: { side?: "buy" | "sell
   const reject = indicators.filter((i) => i.vote === "reject").length;
   const neutral = indicators.filter((i) => i.vote === "neutral").length;
 
-  // Score 0-100
-  const total = indicators.length;
-  const consensusPct = (approve / total) * 100;
+  // Score 0-100 — ponderado por accuracy histórica de cada indicador (Fase 2B)
+  const indWeights = opts?.weights ?? {};
+  const wOf = (name: string) => Math.max(0.1, Number(indWeights[name] ?? 1.0));
+  let wSumApprove = 0, wSumReject = 0, wSumAll = 0;
+  for (const v of indicators) {
+    const w = wOf(v.indicator);
+    wSumAll += w;
+    if (v.vote === "approve") wSumApprove += w;
+    else if (v.vote === "reject") wSumReject += w;
+  }
+  const consensusPct = wSumAll > 0 ? (wSumApprove / wSumAll) * 100 : 0;
+  const rejectPct = wSumAll > 0 ? (wSumReject / wSumAll) * 100 : 0;
   const trendAlignment = dominantTrend.startsWith("Alta") ? 100 : dominantTrend === "Lateral" ? 50 : 0;
   const bb = bollinger(byTf["1h"].closes);
   const vol = classifyVolatility(bb.width);
@@ -404,7 +413,7 @@ export async function analyzeBrain(symbol: string, opts?: { side?: "buy" | "sell
   let finalScore =
     0.45 * consensusPct +
     0.30 * trendAlignment +
-    0.15 * (100 - (reject / total) * 100) +
+    0.15 * (100 - rejectPct) +
     0.10 * (conflict ? 40 : 90) - volPenalty;
   finalScore = Math.max(0, Math.min(100, finalScore));
 
