@@ -109,12 +109,13 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
   // ===== Fase 2A: Brain gate (analyzeBrain) — bloqueia execução com base no score, taxa e conflito multitemporal =====
   try {
     const symbol = String(asset.pair).replace("/", "").toUpperCase();
-    const { analyzeBrain } = await import("./binance-brain.server");
+    const { analyzeBrain, loadIndicatorWeights } = await import("./binance-brain.server");
     const positionValueGuess = Math.min(
       Number(settings?.max_position_value ?? 1000),
       Number(wallet?.current_balance ?? 0) * Number(settings?.per_trade_capital_pct ?? 0.35),
     );
-    const brain = await analyzeBrain(symbol, { side, notional: positionValueGuess > 0 ? positionValueGuess : 100 });
+    const indWeights = await loadIndicatorWeights();
+    const brain = await analyzeBrain(symbol, { side, notional: positionValueGuess > 0 ? positionValueGuess : 100, weights: indWeights });
 
     const { count: sampleCount } = await sb.from("binance_brain_audit").select("id", { count: "exact", head: true });
     const sample = sampleCount ?? 0;
