@@ -211,6 +211,14 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
     const newBalance = Number(wallet?.current_balance ?? 0) + proceeds - sellFee;
     await sb.from("simulated_wallet").update({ current_balance: newBalance, equity: newBalance }).eq("id", 1);
     await log(sb, "Execução", "sim", `[cron] SELL ${asset.pair} qty=${qty} @ ${price.toFixed(2)} netPnl=${netPnl.toFixed(2)} fees=${totalFees.toFixed(2)}`, "info");
+    // Fase 2B — feedback pós-trade para o Cérebro
+    try {
+      const { applyBrainFeedbackForDecision } = await import("./binance-brain-feedback.server");
+      const decisionIds = Array.from(new Set((openBuys ?? []).map((o: any) => o.decision_id).filter(Boolean) as string[]));
+      for (const did of decisionIds) await applyBrainFeedbackForDecision(did, netPnl);
+    } catch (err: any) {
+      await log(sb, "Cérebro", "sim", `[feedback] falha ao atualizar accuracy: ${err?.message ?? err}`, "warning");
+    }
     return { pair: asset.pair, side, qty, price, netPnl, totalFees };
   }
 
