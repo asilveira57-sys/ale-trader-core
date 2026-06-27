@@ -151,6 +151,7 @@ async function executeSimulated(sb: any, decision: any, ctx: any, asset: any, se
       volatility_class: brain.volatilityClass, volume_signal: brain.volumeSignal, fib_levels: brain.fibLevels,
       rationale: brain.rationale, brain_recommendation: brainBlockReasons.length ? "BLOCKED" : brain.recommendation,
       flex_mode: flexMode, sample_size: sample,
+      related_decision_id: decision.id,
     });
 
     if (brainBlockReasons.length) {
