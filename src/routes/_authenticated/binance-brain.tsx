@@ -161,22 +161,55 @@ function BinanceBrainPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-base">Ranking de indicadores</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center justify-between">
+              <span>Ranking de indicadores (accuracy ponderada)</span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => replayMut.mutate()} disabled={replayMut.isPending}>
+                  {replayMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Recalcular 7d"}
+                </Button>
+                <Button size="sm" onClick={() => auditMut.mutate()} disabled={auditMut.isPending}>
+                  {auditMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Autoauditoria"}
+                </Button>
+              </div>
+            </CardTitle>
+          </CardHeader>
           <CardContent>
             <Table>
-              <TableHeader><TableRow><TableHead>Indicador</TableHead><TableHead className="text-right">Votos</TableHead><TableHead className="text-right">% aprov.</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Indicador</TableHead><TableHead className="text-right">Votos</TableHead><TableHead className="text-right">Hits</TableHead><TableHead className="text-right">Misses</TableHead><TableHead className="text-right">Accuracy</TableHead><TableHead className="text-right">Peso</TableHead></TableRow></TableHeader>
               <TableBody>
-                {(report?.indicators ?? []).map((i) => {
+                {(report?.indicators ?? []).map((i: any) => {
                   const total = Number(i.votes_total ?? 0);
-                  const ap = Number(i.votes_approve ?? 0);
-                  const pct = total ? (ap / total) * 100 : 0;
+                  const hits = Number(i.hits ?? 0);
+                  const misses = Number(i.misses ?? 0);
+                  const acc = Number(i.hit_rate ?? 0) * 100;
+                  const weight = Number(i.weight ?? 1.0);
+                  const accColor = hits + misses < 5 ? "text-muted-foreground" : acc >= 60 ? "text-emerald-500" : acc >= 45 ? "text-amber-500" : "text-red-500";
                   return (
-                    <TableRow key={i.id}><TableCell>{i.indicator}</TableCell><TableCell className="text-right">{total}</TableCell><TableCell className="text-right">{pct.toFixed(0)}%</TableCell></TableRow>
+                    <TableRow key={i.id}>
+                      <TableCell>{i.indicator}</TableCell>
+                      <TableCell className="text-right">{total}</TableCell>
+                      <TableCell className="text-right text-emerald-500">{hits}</TableCell>
+                      <TableCell className="text-right text-red-500">{misses}</TableCell>
+                      <TableCell className={"text-right font-semibold " + accColor}>{hits + misses ? acc.toFixed(0) + "%" : "—"}</TableCell>
+                      <TableCell className="text-right"><Badge variant={weight >= 1.2 ? "default" : weight <= 0.7 ? "destructive" : "outline"}>{weight.toFixed(2)}</Badge></TableCell>
+                    </TableRow>
                   );
                 })}
-                {!report?.indicators?.length && <TableRow><TableCell colSpan={3} className="text-muted-foreground text-center">rode uma análise pra popular</TableCell></TableRow>}
+                {!report?.indicators?.length && <TableRow><TableCell colSpan={6} className="text-muted-foreground text-center">rode uma análise pra popular</TableCell></TableRow>}
               </TableBody>
             </Table>
+            {auditMut.data && (
+              <div className="mt-3 text-xs space-y-1">
+                <div className="font-semibold">Sugestões da autoauditoria:</div>
+                {auditMut.data.suggestions.map((s: string, idx: number) => (
+                  <div key={idx} className="text-muted-foreground">• {s}</div>
+                ))}
+              </div>
+            )}
+            {replayMut.data && (
+              <div className="mt-3 text-xs text-muted-foreground">Recalculados {replayMut.data.processed} trades · {replayMut.data.matchedAudits} análises do cérebro vinculadas.</div>
+            )}
           </CardContent>
         </Card>
       </div>
