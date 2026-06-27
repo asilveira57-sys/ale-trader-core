@@ -28,6 +28,8 @@ function BinanceBrainPage() {
   const listSymbolsFn = useServerFn(listBrainSymbols);
   const runFn = useServerFn(runBrainAnalysis);
   const reportFn = useServerFn(getBrainReport);
+  const auditFn = useServerFn(runSelfAudit);
+  const replayFn = useServerFn(replayClosedTradesFeedback);
 
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [hours, setHours] = useState(24);
@@ -37,6 +39,14 @@ function BinanceBrainPage() {
 
   const runMut = useMutation({
     mutationFn: () => runFn({ data: { symbol, notional: 100, persist: true } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["brain-report"] }),
+  });
+  const auditMut = useMutation({
+    mutationFn: () => auditFn({ data: { hours: 24 } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["brain-report"] }),
+  });
+  const replayMut = useMutation({
+    mutationFn: () => replayFn({ data: { hours: 168 } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["brain-report"] }),
   });
 
