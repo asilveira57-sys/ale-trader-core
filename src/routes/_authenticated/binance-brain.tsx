@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Brain, Loader2, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
-import { runBrainAnalysis, getBrainReport, listBrainSymbols } from "@/lib/binance-brain.functions";
+import { runBrainAnalysis, getBrainReport, listBrainSymbols, runSelfAudit, replayClosedTradesFeedback } from "@/lib/binance-brain.functions";
 
 export const Route = createFileRoute("/_authenticated/binance-brain")({
   component: BinanceBrainPage,
