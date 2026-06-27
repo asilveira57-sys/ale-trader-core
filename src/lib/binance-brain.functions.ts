@@ -165,3 +165,35 @@ export const listBrainSymbols = createServerFn({ method: "GET" })
     const got = (data ?? []).map((d) => (d.pair ?? "").replace("/", "").toUpperCase()).filter(Boolean);
     return got.length ? got : fallback;
   });
+
+// Fase 2B — autoauditoria e feedback manual
+export const runSelfAudit = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { hours?: number } = {}) => d)
+  .handler(async ({ data }) => {
+    const { runBrainSelfAudit } = await import("./binance-brain-feedback.server");
+    return runBrainSelfAudit(data.hours ?? 24);
+  });
+
+export const replayClosedTradesFeedback = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { hours?: number } = {}) => d)
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { applyBrainFeedbackForDecision } = await import("./binance-brain-feedback.server");
+    const since = new Date(Date.now() - (data.hours ?? 168) * 3600 * 1000).toISOString();
+    const { data: orders } = await supabaseAdmin
+      .from("simulated_orders")
+      .select("decision_id, net_pnl, side, status")
+      .eq("status", "closed")
+      .eq("side", "buy")
+      .gte("closed_at", since)
+      .not("decision_id", "is", null);
+    let processed = 0, matched = 0;
+    for (const o of orders ?? []) {
+      const r = await applyBrainFeedbackForDecision(o.decision_id as string, Number(o.net_pnl ?? 0));
+      processed++;
+      matched += r.matched;
+    }
+    return { processed, matchedAudits: matched };
+  });
