@@ -1801,6 +1801,111 @@ export type Database = {
           },
         ]
       }
+      binance_audit_learning: {
+        Row: {
+          avoidable: boolean | null
+          candles_available: boolean | null
+          classification: string | null
+          created_at: string
+          diagnosis: string | null
+          drawdown_avoided: number | null
+          entry_price: number
+          exit_price: number
+          exit_time: string
+          high_12h: number | null
+          high_1h: number | null
+          high_24h: number | null
+          high_4h: number | null
+          id: string
+          low_12h: number | null
+          low_1h: number | null
+          low_24h: number | null
+          low_4h: number | null
+          pnl: number | null
+          pnl_pct: number | null
+          premature: boolean | null
+          recovery_12h: number | null
+          recovery_1h: number | null
+          recovery_24h: number | null
+          recovery_4h: number | null
+          recovery_max: number | null
+          score: number | null
+          side: string
+          source: string
+          symbol: string
+          trade_id: string
+          updated_at: string
+        }
+        Insert: {
+          avoidable?: boolean | null
+          candles_available?: boolean | null
+          classification?: string | null
+          created_at?: string
+          diagnosis?: string | null
+          drawdown_avoided?: number | null
+          entry_price: number
+          exit_price: number
+          exit_time: string
+          high_12h?: number | null
+          high_1h?: number | null
+          high_24h?: number | null
+          high_4h?: number | null
+          id?: string
+          low_12h?: number | null
+          low_1h?: number | null
+          low_24h?: number | null
+          low_4h?: number | null
+          pnl?: number | null
+          pnl_pct?: number | null
+          premature?: boolean | null
+          recovery_12h?: number | null
+          recovery_1h?: number | null
+          recovery_24h?: number | null
+          recovery_4h?: number | null
+          recovery_max?: number | null
+          score?: number | null
+          side: string
+          source: string
+          symbol: string
+          trade_id: string
+          updated_at?: string
+        }
+        Update: {
+          avoidable?: boolean | null
+          candles_available?: boolean | null
+          classification?: string | null
+          created_at?: string
+          diagnosis?: string | null
+          drawdown_avoided?: number | null
+          entry_price?: number
+          exit_price?: number
+          exit_time?: string
+          high_12h?: number | null
+          high_1h?: number | null
+          high_24h?: number | null
+          high_4h?: number | null
+          id?: string
+          low_12h?: number | null
+          low_1h?: number | null
+          low_24h?: number | null
+          low_4h?: number | null
+          pnl?: number | null
+          pnl_pct?: number | null
+          premature?: boolean | null
+          recovery_12h?: number | null
+          recovery_1h?: number | null
+          recovery_24h?: number | null
+          recovery_4h?: number | null
+          recovery_max?: number | null
+          score?: number | null
+          side?: string
+          source?: string
+          symbol?: string
+          trade_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       binance_brain_audit: {
         Row: {
           approve_count: number | null

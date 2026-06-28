@@ -119,11 +119,27 @@ function BinanceAuditPage() {
   const fn = useServerFn(auditBinanceExits);
   const [report, setReport] = useState<AuditReport | null>(null);
   const [page, setPage] = useState(1);
+  const [autoRunning, setAutoRunning] = useState(false);
   const PAGE_SIZE = 100;
   const mutation = useMutation({
-    mutationFn: () => fn({ data: {} }),
-    onSuccess: (r) => { setReport(r); setPage(1); },
+    mutationFn: () => fn({ data: { batchSize: 600 } }),
+    onSuccess: async (r) => {
+      setReport(r); setPage(1);
+      if (r.has_more) {
+        setAutoRunning(true);
+        let cur = r;
+        try {
+          while (cur.has_more) {
+            cur = await fn({ data: { batchSize: 600 } });
+            setReport(cur);
+          }
+        } finally {
+          setAutoRunning(false);
+        }
+      }
+    },
   });
+  const busy = mutation.isPending || autoRunning;
   const totalPages = report ? Math.max(1, Math.ceil(report.losses.length / PAGE_SIZE)) : 1;
   const pagedLosses = report ? report.losses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : [];
 
@@ -139,8 +155,10 @@ function BinanceAuditPage() {
             Não altera estratégia, não cria ordens.
           </p>
         </div>
-        <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-          {mutation.isPending ? "Auditando..." : "Rodar auditoria"}
+        <Button onClick={() => mutation.mutate()} disabled={busy}>
+          {busy
+            ? (report ? `Auditando... ${report.audited}/${report.total_losses}` : "Auditando...")
+            : "Rodar auditoria"}
         </Button>
         {report && report.losses.length > 0 && (
           <>
@@ -248,15 +266,17 @@ function BinanceAuditPage() {
                         <TableCell className="text-right text-red-400">{fmt(l.pnl)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{l.exit_reason ?? "—"}</TableCell>
                         <TableCell><Badge variant="outline">{l.classification}</Badge></TableCell>
-                        <RecCell price={l.price_1h} exit={l.exit_price} />
-                        <RecCell price={l.price_4h} exit={l.exit_price} />
-                        <RecCell price={l.price_12h} exit={l.exit_price} />
-                        <RecCell price={l.price_24h} exit={l.exit_price} />
+                        <RecCell price={l.price_1h} rec={l.recovery_1h} />
+                        <RecCell price={l.price_4h} rec={l.recovery_4h} />
+                        <RecCell price={l.price_12h} rec={l.recovery_12h} />
+                        <RecCell price={l.price_24h} rec={l.recovery_24h} />
                         <TableCell>
-                          {l.premature ? (
-                            <Badge className="bg-red-500/20 text-red-300 border-red-500/40">Prematura</Badge>
+                          {!l.candles_available ? (
+                            <Badge variant="outline" className="text-muted-foreground">Aguardando</Badge>
+                          ) : l.premature ? (
+                            <Badge className="bg-red-500/20 text-red-300 border-red-500/40" title={l.diagnosis}>Prematura</Badge>
                           ) : (
-                            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40">Correta</Badge>
+                            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40" title={l.diagnosis}>Correta</Badge>
                           )}
                         </TableCell>
                       </TableRow>
@@ -298,13 +318,12 @@ function Stat({ label, value, valueClass }: { label: string; value: string; valu
   );
 }
 
-function RecCell({ price, exit }: { price: number | null; exit: number }) {
-  if (price === null) return <TableCell className="text-right text-muted-foreground">—</TableCell>;
-  const diff = ((price - exit) / exit) * 100;
-  const better = price > exit;
+function RecCell({ price, rec }: { price: number | null; rec: number | null }) {
+  if (price === null || rec === null) return <TableCell className="text-right text-muted-foreground">—</TableCell>;
+  const better = rec > 0;
   return (
     <TableCell className={`text-right font-mono text-xs ${better ? "text-emerald-400" : "text-muted-foreground"}`}>
-      {fmt(price, 4)} <span className="opacity-70">({diff >= 0 ? "+" : ""}{fmt(diff, 1)}%)</span>
+      {fmt(price, 4)} <span className="opacity-70">({rec >= 0 ? "+" : ""}{fmt(rec, 1)}%)</span>
     </TableCell>
   );
 }
