@@ -318,13 +318,12 @@ function Stat({ label, value, valueClass }: { label: string; value: string; valu
   );
 }
 
-function RecCell({ price, exit }: { price: number | null; exit: number }) {
-  if (price === null) return <TableCell className="text-right text-muted-foreground">—</TableCell>;
-  const diff = ((price - exit) / exit) * 100;
-  const better = price > exit;
+function RecCell({ price, rec }: { price: number | null; rec: number | null }) {
+  if (price === null || rec === null) return <TableCell className="text-right text-muted-foreground">—</TableCell>;
+  const better = rec > 0;
   return (
     <TableCell className={`text-right font-mono text-xs ${better ? "text-emerald-400" : "text-muted-foreground"}`}>
-      {fmt(price, 4)} <span className="opacity-70">({diff >= 0 ? "+" : ""}{fmt(diff, 1)}%)</span>
+      {fmt(price, 4)} <span className="opacity-70">({rec >= 0 ? "+" : ""}{fmt(rec, 1)}%)</span>
     </TableCell>
   );
 }
