@@ -266,15 +266,17 @@ function BinanceAuditPage() {
                         <TableCell className="text-right text-red-400">{fmt(l.pnl)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{l.exit_reason ?? "—"}</TableCell>
                         <TableCell><Badge variant="outline">{l.classification}</Badge></TableCell>
-                        <RecCell price={l.price_1h} exit={l.exit_price} />
-                        <RecCell price={l.price_4h} exit={l.exit_price} />
-                        <RecCell price={l.price_12h} exit={l.exit_price} />
-                        <RecCell price={l.price_24h} exit={l.exit_price} />
+                        <RecCell price={l.price_1h} rec={l.recovery_1h} />
+                        <RecCell price={l.price_4h} rec={l.recovery_4h} />
+                        <RecCell price={l.price_12h} rec={l.recovery_12h} />
+                        <RecCell price={l.price_24h} rec={l.recovery_24h} />
                         <TableCell>
-                          {l.premature ? (
-                            <Badge className="bg-red-500/20 text-red-300 border-red-500/40">Prematura</Badge>
+                          {!l.candles_available ? (
+                            <Badge variant="outline" className="text-muted-foreground">Aguardando</Badge>
+                          ) : l.premature ? (
+                            <Badge className="bg-red-500/20 text-red-300 border-red-500/40" title={l.diagnosis}>Prematura</Badge>
                           ) : (
-                            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40">Correta</Badge>
+                            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40" title={l.diagnosis}>Correta</Badge>
                           )}
                         </TableCell>
                       </TableRow>
