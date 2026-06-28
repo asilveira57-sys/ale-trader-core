@@ -119,11 +119,27 @@ function BinanceAuditPage() {
   const fn = useServerFn(auditBinanceExits);
   const [report, setReport] = useState<AuditReport | null>(null);
   const [page, setPage] = useState(1);
+  const [autoRunning, setAutoRunning] = useState(false);
   const PAGE_SIZE = 100;
   const mutation = useMutation({
-    mutationFn: () => fn({ data: {} }),
-    onSuccess: (r) => { setReport(r); setPage(1); },
+    mutationFn: () => fn({ data: { batchSize: 600 } }),
+    onSuccess: async (r) => {
+      setReport(r); setPage(1);
+      if (r.has_more) {
+        setAutoRunning(true);
+        let cur = r;
+        try {
+          while (cur.has_more) {
+            cur = await fn({ data: { batchSize: 600 } });
+            setReport(cur);
+          }
+        } finally {
+          setAutoRunning(false);
+        }
+      }
+    },
   });
+  const busy = mutation.isPending || autoRunning;
   const totalPages = report ? Math.max(1, Math.ceil(report.losses.length / PAGE_SIZE)) : 1;
   const pagedLosses = report ? report.losses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : [];
 
