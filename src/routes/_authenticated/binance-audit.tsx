@@ -155,8 +155,10 @@ function BinanceAuditPage() {
             Não altera estratégia, não cria ordens.
           </p>
         </div>
-        <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-          {mutation.isPending ? "Auditando..." : "Rodar auditoria"}
+        <Button onClick={() => mutation.mutate()} disabled={busy}>
+          {busy
+            ? (report ? `Auditando... ${report.audited}/${report.total_losses}` : "Auditando...")
+            : "Rodar auditoria"}
         </Button>
         {report && report.losses.length > 0 && (
           <>
