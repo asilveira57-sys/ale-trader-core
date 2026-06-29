@@ -551,17 +551,22 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
     }
 
     const losses: LossSell[] = [];
-    const baseEmpty = {
-      price_1h: null, price_4h: null, price_12h: null, price_24h: null,
-      recovery_1h: null, recovery_4h: null, recovery_12h: null, recovery_24h: null, recovery_max: null,
+    const makeBase = () => ({
+      price_1h: null as number | null, price_4h: null as number | null,
+      price_12h: null as number | null, price_24h: null as number | null,
+      recovery_1h: null as number | null, recovery_4h: null as number | null,
+      recovery_12h: null as number | null, recovery_24h: null as number | null,
+      recovery_max: null as number | null,
       recovered_1h: false, recovered_4h: false, recovered_12h: false, recovered_24h: false,
       classification: "Sem dados", diagnosis: "Aguardando análise.",
       premature: false, avoidable: false, score: 50, candles_available: false,
-      votes: [], decision: null,
-      confidence: 0, motivos: [], recommendation: null,
-      recovery_lost_pct: null, recovery_lost_usdt: null,
-      indicators: null, pattern_key: null, duplicate: false,
-    } as const;
+      votes: [] as Array<{ agent: string; vote: string; confidence: number }>,
+      decision: null as LossSell["decision"],
+      confidence: 0, motivos: [] as string[], recommendation: null as string | null,
+      recovery_lost_pct: null as number | null, recovery_lost_usdt: null as number | null,
+      indicators: null as Record<string, any> | null, pattern_key: null as string | null,
+      duplicate: false,
+    });
 
     for (const p of realPosRows ?? []) {
       const side: "buy" | "sell" = ((p.side as string) ?? "buy") === "sell" ? "sell" : "buy";
