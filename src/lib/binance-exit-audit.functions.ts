@@ -570,7 +570,7 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
 
     for (const p of realPosRows ?? []) {
       const side: "buy" | "sell" = ((p.side as string) ?? "buy") === "sell" ? "sell" : "buy";
-      losses.push({ ...baseEmpty, source: "real_positions", id: p.id, pair: p.pair, side,
+      losses.push({ ...makeBase(), source: "real_positions", id: p.id, pair: p.pair, side,
         asset: (p.pair as string).replace("USDT", ""), opened_at: p.opened_at, closed_at: p.closed_at,
         entry_price: Number(p.entry_price), exit_price: Number(p.exit_price),
         pnl: Number(p.pnl), pnl_pct: Number(p.pnl_pct), exit_reason: (p.exit_reason as string | null) ?? null,
@@ -581,7 +581,7 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
       const symbol = (t.asset_id && assetMap.get(t.asset_id)) || "";
       if (!symbol) continue;
       const side: "buy" | "sell" = ((t.side as string) ?? "buy") === "sell" ? "sell" : "buy";
-      losses.push({ ...baseEmpty, source: "automated_trades", id: t.id, pair: symbol, side,
+      losses.push({ ...makeBase(), source: "automated_trades", id: t.id, pair: symbol, side,
         asset: symbol.replace("USDT", ""), opened_at: t.opened_at, closed_at: t.closed_at,
         entry_price: Number(t.entry_price), exit_price: Number(t.exit_price),
         pnl: Number(t.pnl), pnl_pct: Number(t.pnl_pct), exit_reason: (t.exit_reason as string | null) ?? null,
@@ -595,7 +595,7 @@ export const auditBinanceExits = createServerFn({ method: "POST" })
       const pnl = Number(s.net_pnl ?? s.realized_pnl ?? 0);
       const drop_pct = ((exit - entry) / entry) * 100;
       const pnl_pct = side === "buy" ? drop_pct : -drop_pct;
-      losses.push({ ...baseEmpty, source: "simulated_orders", id: s.id, pair: s.pair, side,
+      losses.push({ ...makeBase(), source: "simulated_orders", id: s.id, pair: s.pair, side,
         asset: (s.pair as string).replace("USDT", ""), opened_at: s.created_at, closed_at: s.closed_at,
         entry_price: entry, exit_price: exit, pnl, pnl_pct, exit_reason: null, drop_pct });
     }
