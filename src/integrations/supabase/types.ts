@@ -1806,9 +1806,11 @@ export type Database = {
           avoidable: boolean | null
           candles_available: boolean | null
           classification: string | null
+          confidence: number | null
           created_at: string
           diagnosis: string | null
           drawdown_avoided: number | null
+          duplicate_of: string | null
           entry_price: number
           exit_price: number
           exit_time: string
@@ -1817,17 +1819,24 @@ export type Database = {
           high_24h: number | null
           high_4h: number | null
           id: string
+          indicators: Json | null
           low_12h: number | null
           low_1h: number | null
           low_24h: number | null
           low_4h: number | null
+          motivos: Json | null
+          pattern_key: string | null
           pnl: number | null
           pnl_pct: number | null
+          position_size: number | null
           premature: boolean | null
+          recommendation: string | null
           recovery_12h: number | null
           recovery_1h: number | null
           recovery_24h: number | null
           recovery_4h: number | null
+          recovery_lost_pct: number | null
+          recovery_lost_usdt: number | null
           recovery_max: number | null
           score: number | null
           side: string
@@ -1840,9 +1849,11 @@ export type Database = {
           avoidable?: boolean | null
           candles_available?: boolean | null
           classification?: string | null
+          confidence?: number | null
           created_at?: string
           diagnosis?: string | null
           drawdown_avoided?: number | null
+          duplicate_of?: string | null
           entry_price: number
           exit_price: number
           exit_time: string
@@ -1851,17 +1862,24 @@ export type Database = {
           high_24h?: number | null
           high_4h?: number | null
           id?: string
+          indicators?: Json | null
           low_12h?: number | null
           low_1h?: number | null
           low_24h?: number | null
           low_4h?: number | null
+          motivos?: Json | null
+          pattern_key?: string | null
           pnl?: number | null
           pnl_pct?: number | null
+          position_size?: number | null
           premature?: boolean | null
+          recommendation?: string | null
           recovery_12h?: number | null
           recovery_1h?: number | null
           recovery_24h?: number | null
           recovery_4h?: number | null
+          recovery_lost_pct?: number | null
+          recovery_lost_usdt?: number | null
           recovery_max?: number | null
           score?: number | null
           side: string
@@ -1874,9 +1892,11 @@ export type Database = {
           avoidable?: boolean | null
           candles_available?: boolean | null
           classification?: string | null
+          confidence?: number | null
           created_at?: string
           diagnosis?: string | null
           drawdown_avoided?: number | null
+          duplicate_of?: string | null
           entry_price?: number
           exit_price?: number
           exit_time?: string
@@ -1885,17 +1905,24 @@ export type Database = {
           high_24h?: number | null
           high_4h?: number | null
           id?: string
+          indicators?: Json | null
           low_12h?: number | null
           low_1h?: number | null
           low_24h?: number | null
           low_4h?: number | null
+          motivos?: Json | null
+          pattern_key?: string | null
           pnl?: number | null
           pnl_pct?: number | null
+          position_size?: number | null
           premature?: boolean | null
+          recommendation?: string | null
           recovery_12h?: number | null
           recovery_1h?: number | null
           recovery_24h?: number | null
           recovery_4h?: number | null
+          recovery_lost_pct?: number | null
+          recovery_lost_usdt?: number | null
           recovery_max?: number | null
           score?: number | null
           side?: string
