@@ -422,6 +422,17 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
             <Field label="Início pregão (HH:MM)"><Input value={f.trading_start_time ?? ""} onChange={(e) => set("trading_start_time", e.target.value)} /></Field>
             <Field label="Corte de entradas"><Input value={f.entry_cutoff_time ?? ""} onChange={(e) => set("entry_cutoff_time", e.target.value)} /></Field>
             <Field label="Zeragem obrigatória"><Input value={f.force_close_time ?? ""} onChange={(e) => set("force_close_time", e.target.value)} /></Field>
+
+            <div className="col-span-2 pt-2 border-t border-border/40 text-xs uppercase tracking-wide text-muted-foreground">
+              Flexibilização inteligente (pós-meta)
+            </div>
+            <Field label="Mín. operações antes do lock"><Input type="number" value={f.minimum_trades_before_profit_lock ?? 15} onChange={(e) => set("minimum_trades_before_profit_lock", Number(e.target.value))} /></Field>
+            <Field label="Tempo mín. operando (min)"><Input type="number" value={f.minimum_operating_minutes ?? 90} onChange={(e) => set("minimum_operating_minutes", Number(e.target.value))} /></Field>
+            <Field label="Multiplicador da meta (teto)"><Input type="number" step="0.1" value={f.profit_multiplier_before_lock ?? 2.0} onChange={(e) => set("profit_multiplier_before_lock", Number(e.target.value))} /></Field>
+            <Field label="Devolução permitida pós-meta (0-1)"><Input type="number" step="0.05" value={f.post_target_allowed_retracement ?? 0.30} onChange={(e) => set("post_target_allowed_retracement", Number(e.target.value))} /></Field>
+            <Field label="Perdas consecutivas pós-meta"><Input type="number" value={f.consecutive_loss_after_target ?? 2} onChange={(e) => set("consecutive_loss_after_target", Number(e.target.value))} /></Field>
+            <Field label="Redução de size pós-meta (0-1)"><Input type="number" step="0.05" value={f.post_target_size_reduction ?? 0.50} onChange={(e) => set("post_target_size_reduction", Number(e.target.value))} /></Field>
+
             <div className="col-span-2 text-xs text-muted-foreground">
               Sem prompts: ajuste livremente. Ex.: subir o limite de perda de R$ 300 para R$ 900 e clicar em Salvar.
             </div>
