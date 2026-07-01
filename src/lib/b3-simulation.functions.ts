@@ -537,10 +537,12 @@ export async function runB3SimulationTick(
       if (decision.final === "approved") {
         const slip = Number(run.simulated_slippage_pts) || 0;
         const entry = intendedSide === "buy" ? ctx.price + slip : ctx.price - slip;
+        const baseQty = 1;
+        const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
         const { error: oErr } = await supabase.from("b3_simulation_orders").insert({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, symbol: "WIN", contract_code: "WINFUT", side: intendedSide,
-          entry_price: Math.round(entry / TICK) * TICK, quantity: 1,
+          entry_price: Math.round(entry / TICK) * TICK, quantity: qty,
           fees: Number(run.simulated_fee_brl) || 0, status: "open",
         });
         if (oErr) throw oErr;
