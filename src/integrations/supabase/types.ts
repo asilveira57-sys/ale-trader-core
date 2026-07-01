@@ -660,6 +660,75 @@ export type Database = {
           },
         ]
       }
+      b3_daily_protection_history: {
+        Row: {
+          block_at: string | null
+          block_reason: string | null
+          created_at: string
+          day_key: string
+          drawdown_after_target_brl: number | null
+          final_status: string | null
+          given_back_brl: number | null
+          id: string
+          mode: string
+          peak_profit_after_target_brl: number | null
+          profit_after_target_brl: number | null
+          profit_at_close_brl: number | null
+          profit_at_target_brl: number | null
+          simulation_mode_id: string | null
+          simulation_run_id: string | null
+          target_reached_at: string | null
+          trades_after_target: number | null
+          trades_total: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          block_at?: string | null
+          block_reason?: string | null
+          created_at?: string
+          day_key: string
+          drawdown_after_target_brl?: number | null
+          final_status?: string | null
+          given_back_brl?: number | null
+          id?: string
+          mode: string
+          peak_profit_after_target_brl?: number | null
+          profit_after_target_brl?: number | null
+          profit_at_close_brl?: number | null
+          profit_at_target_brl?: number | null
+          simulation_mode_id?: string | null
+          simulation_run_id?: string | null
+          target_reached_at?: string | null
+          trades_after_target?: number | null
+          trades_total?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          block_at?: string | null
+          block_reason?: string | null
+          created_at?: string
+          day_key?: string
+          drawdown_after_target_brl?: number | null
+          final_status?: string | null
+          given_back_brl?: number | null
+          id?: string
+          mode?: string
+          peak_profit_after_target_brl?: number | null
+          profit_after_target_brl?: number | null
+          profit_at_close_brl?: number | null
+          profit_at_target_brl?: number | null
+          simulation_mode_id?: string | null
+          simulation_run_id?: string | null
+          target_reached_at?: string | null
+          trades_after_target?: number | null
+          trades_total?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_daily_report: {
         Row: {
           closed_positions: number
@@ -1019,6 +1088,7 @@ export type Database = {
       }
       b3_simulation_mode_settings: {
         Row: {
+          consecutive_loss_after_target: number
           created_at: string
           daily_gain_target_brl: number
           daily_loss_limit_brl: number
@@ -1032,8 +1102,13 @@ export type Database = {
           min_approve_votes: number
           min_confidence: number
           min_score: number
+          minimum_operating_minutes: number
+          minimum_trades_before_profit_lock: number
           mode: string
           notes: string | null
+          post_target_allowed_retracement: number
+          post_target_size_reduction: number
+          profit_multiplier_before_lock: number
           simulation_run_id: string
           stop_pts: number
           trading_start_time: string
@@ -1041,6 +1116,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          consecutive_loss_after_target?: number
           created_at?: string
           daily_gain_target_brl?: number
           daily_loss_limit_brl?: number
@@ -1054,8 +1130,13 @@ export type Database = {
           min_approve_votes?: number
           min_confidence?: number
           min_score?: number
+          minimum_operating_minutes?: number
+          minimum_trades_before_profit_lock?: number
           mode: string
           notes?: string | null
+          post_target_allowed_retracement?: number
+          post_target_size_reduction?: number
+          profit_multiplier_before_lock?: number
           simulation_run_id: string
           stop_pts?: number
           trading_start_time?: string
@@ -1063,6 +1144,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          consecutive_loss_after_target?: number
           created_at?: string
           daily_gain_target_brl?: number
           daily_loss_limit_brl?: number
@@ -1076,8 +1158,13 @@ export type Database = {
           min_approve_votes?: number
           min_confidence?: number
           min_score?: number
+          minimum_operating_minutes?: number
+          minimum_trades_before_profit_lock?: number
           mode?: string
           notes?: string | null
+          post_target_allowed_retracement?: number
+          post_target_size_reduction?: number
+          profit_multiplier_before_lock?: number
           simulation_run_id?: string
           stop_pts?: number
           trading_start_time?: string
@@ -1098,6 +1185,7 @@ export type Database = {
         Row: {
           committee_approvals: number
           committee_rejections: number
+          consecutive_losses_after_target: number
           contracts_traded: number
           created_at: string
           current_balance: number
@@ -1110,15 +1198,24 @@ export type Database = {
           max_gain: number
           max_loss: number
           mode: string
+          peak_profit_after_target_brl: number
           points_result: number
+          profit_after_target_brl: number
+          profit_at_target_brl: number | null
+          protection_block_reason: string | null
+          protection_day_key: string | null
+          protection_state: string
           realized_pnl: number
           risk_blocks: number
           simulation_run_id: string
           status: string
           status_changed_at: string | null
           status_reason: string | null
+          target_reached_at: string | null
           total_fees: number
           total_trades: number
+          trades_after_target: number
+          trades_at_target: number | null
           unrealized_pnl: number
           updated_at: string
           user_id: string
@@ -1127,6 +1224,7 @@ export type Database = {
         Insert: {
           committee_approvals?: number
           committee_rejections?: number
+          consecutive_losses_after_target?: number
           contracts_traded?: number
           created_at?: string
           current_balance?: number
@@ -1139,15 +1237,24 @@ export type Database = {
           max_gain?: number
           max_loss?: number
           mode: string
+          peak_profit_after_target_brl?: number
           points_result?: number
+          profit_after_target_brl?: number
+          profit_at_target_brl?: number | null
+          protection_block_reason?: string | null
+          protection_day_key?: string | null
+          protection_state?: string
           realized_pnl?: number
           risk_blocks?: number
           simulation_run_id: string
           status?: string
           status_changed_at?: string | null
           status_reason?: string | null
+          target_reached_at?: string | null
           total_fees?: number
           total_trades?: number
+          trades_after_target?: number
+          trades_at_target?: number | null
           unrealized_pnl?: number
           updated_at?: string
           user_id: string
@@ -1156,6 +1263,7 @@ export type Database = {
         Update: {
           committee_approvals?: number
           committee_rejections?: number
+          consecutive_losses_after_target?: number
           contracts_traded?: number
           created_at?: string
           current_balance?: number
@@ -1168,15 +1276,24 @@ export type Database = {
           max_gain?: number
           max_loss?: number
           mode?: string
+          peak_profit_after_target_brl?: number
           points_result?: number
+          profit_after_target_brl?: number
+          profit_at_target_brl?: number | null
+          protection_block_reason?: string | null
+          protection_day_key?: string | null
+          protection_state?: string
           realized_pnl?: number
           risk_blocks?: number
           simulation_run_id?: string
           status?: string
           status_changed_at?: string | null
           status_reason?: string | null
+          target_reached_at?: string | null
           total_fees?: number
           total_trades?: number
+          trades_after_target?: number
+          trades_at_target?: number | null
           unrealized_pnl?: number
           updated_at?: string
           user_id?: string
