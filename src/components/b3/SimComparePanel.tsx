@@ -48,6 +48,26 @@ const STATUS_META: Record<string, { label: string; cls: string; canResumeToday: 
   erro_tecnico: { label: "Erro técnico", cls: "bg-rose-600/30 text-rose-100 border-rose-600/50", canResumeToday: true, type: "erro" },
 };
 
+const PROT_LABEL: Record<string, string> = {
+  operating_normal: "Operando normal",
+  target_reached_observing: "Meta atingida · em observação",
+  profit_protected: "Lucro protegido",
+  blocked_stop: "Bloqueado · stop diário",
+  blocked_drawdown: "Bloqueado · drawdown",
+  blocked_volatility: "Bloqueado · volatilidade",
+  blocked_ops_failure: "Bloqueado · falha operacional",
+  blocked_post_target_loss: "Bloqueado · perda pós-meta",
+};
+const PROT_COLOR: Record<string, string> = {
+  target_reached_observing: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  profit_protected: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  blocked_stop: "bg-rose-600/20 text-rose-200 border-rose-600/40",
+  blocked_drawdown: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  blocked_volatility: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  blocked_ops_failure: "bg-rose-600/30 text-rose-100 border-rose-600/50",
+  blocked_post_target_loss: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+};
+
 function sampleStatus(trades: number): { label: string; cls: string } | null {
   if (trades < 100) return { label: "AMOSTRA INSUFICIENTE PARA VALIDAÇÃO ESTATÍSTICA", cls: "bg-amber-500/10 text-amber-300 border-amber-500/30" };
   if (trades < 300) return { label: "Amostra inicial em formação", cls: "bg-sky-500/10 text-sky-300 border-sky-500/30" };
