@@ -5,6 +5,10 @@ import {
   buildMockB3Context, runB3Agents, buildB3Decision,
   type B3Side, type B3RiskState, type B3CommitteeSettings,
 } from "./b3-committee.server";
+import {
+  evaluateB3Protection, resetB3ProtectionForNewDay, b3DayKeyBRT,
+  type B3ProtectionRuntime, type B3ProtectionSettings,
+} from "./b3-protection.server";
 
 const POINT_VALUE_BRL = 0.2;
 const TICK = 5;
@@ -280,6 +284,127 @@ export async function runB3SimulationTick(
       const cfg = settingsByMode[mode];
       const realizedToday = Number(realizedTodayByMode[mode] ?? 0);
 
+      // ─────────── B3 Protection (Flexibilização Inteligente) ───────────
+      const todayKey = b3DayKeyBRT(now);
+      // Reset diário se virou o dia.
+      if (m.protection_day_key && m.protection_day_key !== todayKey) {
+        try {
+          await supabase.from("b3_daily_protection_history").upsert({
+            user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+            day_key: m.protection_day_key,
+            target_reached_at: m.target_reached_at,
+            block_at: m.protection_state?.startsWith("blocked_") ? m.status_changed_at : null,
+            profit_at_target_brl: m.profit_at_target_brl,
+            peak_profit_after_target_brl: m.peak_profit_after_target_brl,
+            profit_after_target_brl: m.profit_after_target_brl,
+            given_back_brl: Math.max(0, Number(m.peak_profit_after_target_brl ?? 0) - Number(m.profit_at_target_brl ?? 0) - Number(m.profit_after_target_brl ?? 0)),
+            profit_at_close_brl: null,
+            trades_total: m.total_trades,
+            trades_after_target: m.trades_after_target,
+            drawdown_after_target_brl: Math.max(0, Number(m.peak_profit_after_target_brl ?? 0) - (Number(m.profit_at_target_brl ?? 0) + Number(m.profit_after_target_brl ?? 0))),
+            block_reason: m.protection_block_reason,
+            final_status: m.protection_state,
+          }, { onConflict: "user_id,simulation_run_id,mode,day_key" });
+        } catch { /* histórico é best-effort */ }
+        const reset = resetB3ProtectionForNewDay();
+        Object.assign(m, reset);
+      }
+
+      // Deriva trades/consecutive losses pós-meta a partir das ordens fechadas.
+      let tradesAfterTarget = Number(m.trades_after_target ?? 0);
+      let consecLosses = Number(m.consecutive_losses_after_target ?? 0);
+      if (m.target_reached_at) {
+        const { data: post } = await supabase.from("b3_simulation_orders")
+          .select("net_result_brl, exit_time")
+          .eq("simulation_run_id", runId).eq("simulation_mode_id", m.id)
+          .eq("status", "closed").gte("exit_time", m.target_reached_at)
+          .order("exit_time", { ascending: true });
+        tradesAfterTarget = (post ?? []).length;
+        consecLosses = 0;
+        for (let k = (post ?? []).length - 1; k >= 0; k--) {
+          if (Number(post![k].net_result_brl ?? 0) < 0) consecLosses++; else break;
+        }
+      }
+
+      // Tempo operando hoje (BRT) — a partir das 09:00.
+      const opMinutes = Math.max(0, saoPauloMinutes(now) - hhmmToMin(cfg.trading_start_time));
+
+      const protCfg: B3ProtectionSettings = {
+        minimum_trades_before_profit_lock: Number(cfg.minimum_trades_before_profit_lock ?? 15),
+        minimum_operating_minutes: Number(cfg.minimum_operating_minutes ?? 90),
+        profit_multiplier_before_lock: Number(cfg.profit_multiplier_before_lock ?? 2.0),
+        post_target_allowed_retracement: Number(cfg.post_target_allowed_retracement ?? 0.30),
+        consecutive_loss_after_target: Number(cfg.consecutive_loss_after_target ?? 2),
+        post_target_size_reduction: Number(cfg.post_target_size_reduction ?? 0.50),
+        daily_loss_limit_brl: Number(cfg.daily_loss_limit_brl),
+        daily_gain_target_brl: Number(cfg.daily_gain_target_brl),
+        max_volatility_pct: Number(cfg.max_volatility_pct),
+      };
+
+      const protCur: B3ProtectionRuntime = {
+        protection_state: (m.protection_state as any) ?? "operating_normal",
+        target_reached_at: m.target_reached_at ?? null,
+        profit_at_target_brl: m.profit_at_target_brl != null ? Number(m.profit_at_target_brl) : null,
+        trades_at_target: m.trades_at_target != null ? Number(m.trades_at_target) : null,
+        peak_profit_after_target_brl: Number(m.peak_profit_after_target_brl ?? 0),
+        profit_after_target_brl: Number(m.profit_after_target_brl ?? 0),
+        trades_after_target: tradesAfterTarget,
+        consecutive_losses_after_target: consecLosses,
+        protection_block_reason: m.protection_block_reason ?? null,
+      };
+
+      const protDec = evaluateB3Protection(protCur, protCfg, {
+        realized_today_brl: realizedToday,
+        total_trades_today: Number(m.total_trades ?? 0),
+        operating_minutes_today: opMinutes,
+        volatility_pct: ctx.volatility_pct,
+        drawdown_hit: false,
+        now_iso: now.toISOString(),
+      });
+
+      // Persistir runtime de proteção.
+      await supabase.from("b3_simulation_modes").update({
+        protection_state: protDec.next.protection_state,
+        target_reached_at: protDec.next.target_reached_at,
+        profit_at_target_brl: protDec.next.profit_at_target_brl,
+        trades_at_target: protDec.next.trades_at_target,
+        peak_profit_after_target_brl: protDec.next.peak_profit_after_target_brl,
+        profit_after_target_brl: protDec.next.profit_after_target_brl,
+        trades_after_target: protDec.next.trades_after_target,
+        consecutive_losses_after_target: protDec.next.consecutive_losses_after_target,
+        protection_block_reason: protDec.next.protection_block_reason,
+        protection_day_key: todayKey,
+      }).eq("id", m.id);
+      Object.assign(m, {
+        protection_state: protDec.next.protection_state,
+        target_reached_at: protDec.next.target_reached_at,
+        profit_at_target_brl: protDec.next.profit_at_target_brl,
+        trades_at_target: protDec.next.trades_at_target,
+        peak_profit_after_target_brl: protDec.next.peak_profit_after_target_brl,
+        profit_after_target_brl: protDec.next.profit_after_target_brl,
+        trades_after_target: protDec.next.trades_after_target,
+        consecutive_losses_after_target: protDec.next.consecutive_losses_after_target,
+        protection_block_reason: protDec.next.protection_block_reason,
+        protection_day_key: todayKey,
+      });
+
+      if (protDec.transition) {
+        try {
+          await supabase.from("b3_simulation_block_events").insert({
+            simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
+            mode,
+            prev_status: protDec.transition.from,
+            new_status: protDec.transition.to,
+            trigger: `protection:${protDec.transition.to}`,
+            observed_value: realizedToday,
+            limit_value: protCfg.daily_gain_target_brl,
+            pnl_at_moment: realizedToday,
+            message: protDec.transition.reason,
+          });
+        } catch { /* best-effort */ }
+      }
+      // ────────────────── fim B3 Protection ──────────────────
+
       if (cfg.enabled === false) {
         await recordStatusIfChanged(mode, m, "pausado", "paused",
           { pnl: realizedToday, message: "Modo desativado nas configurações." });
@@ -315,17 +440,20 @@ export async function runB3SimulationTick(
         }
       }
 
-      // Diagnóstico de paradas — registra status operacional sem alterar lógica
+      // Bloqueio de proteção B3 substitui o antigo gate "meta atingida".
+      if (!protDec.allow_new_entry) {
+        await recordStatusIfChanged(mode, m, protDec.next.protection_state, `protection:${protDec.next.protection_state}`,
+          { pnl: realizedToday, message: protDec.next.protection_block_reason ?? "Bloqueio pós-meta." });
+        log.push({ mode, action: "skip", reason: protDec.next.protection_state });
+        continue;
+      }
+
+      // Diagnóstico visual: rotula o estado atual (sem bloquear gainHit).
       const lossHit = realizedToday <= -Number(cfg.daily_loss_limit_brl);
-      const gainHit = realizedToday >= Number(cfg.daily_gain_target_brl);
       if (lossHit) {
         await recordStatusIfChanged(mode, m, "bloqueado_perda_diaria", "daily_loss",
           { observed: realizedToday, limit: -Number(cfg.daily_loss_limit_brl), pnl: realizedToday,
             message: `Limite diário de perda atingido (${realizedToday.toFixed(2)} BRL).` });
-      } else if (gainHit) {
-        await recordStatusIfChanged(mode, m, "bloqueado_meta_diaria", "daily_gain",
-          { observed: realizedToday, limit: Number(cfg.daily_gain_target_brl), pnl: realizedToday,
-            message: `Meta diária atingida (${realizedToday.toFixed(2)} BRL).` });
       } else if (forceClose) {
         await recordStatusIfChanged(mode, m, "bloqueado_zeragem", "force_close",
           { pnl: realizedToday, message: "Janela de zeragem obrigatória." });
@@ -339,6 +467,12 @@ export async function runB3SimulationTick(
         await recordStatusIfChanged(mode, m, "bloqueado_volatilidade", "volatility",
           { observed: ctx.volatility_pct, limit: Number(cfg.max_volatility_pct), pnl: realizedToday,
             message: `Volatilidade ${ctx.volatility_pct.toFixed(2)}% acima do limite.` });
+      } else if (protDec.next.protection_state === "target_reached_observing") {
+        await recordStatusIfChanged(mode, m, "target_reached_observing", "protection",
+          { pnl: realizedToday, message: "Meta atingida — em observação (size reduzido)." });
+      } else if (protDec.next.protection_state === "profit_protected") {
+        await recordStatusIfChanged(mode, m, "profit_protected", "protection",
+          { pnl: realizedToday, message: "Lucro protegido (size reduzido)." });
       } else {
         await recordStatusIfChanged(mode, m, "operando", "ok",
           { pnl: realizedToday, message: "Operando normalmente." });
@@ -357,9 +491,13 @@ export async function runB3SimulationTick(
       }
       if (open) continue;
 
+      // Se protegido/observando, elevamos o daily_gain_target passado ao Risco
+      // para não bloquear por "meta atingida" — a decisão de continuar já foi tomada aqui.
+      const inProtectionRun = protDec.next.protection_state === "target_reached_observing"
+        || protDec.next.protection_state === "profit_protected";
       const risk: B3RiskState = {
         daily_loss_limit: Number(cfg.daily_loss_limit_brl),
-        daily_gain_target: Number(cfg.daily_gain_target_brl),
+        daily_gain_target: inProtectionRun ? Number.MAX_SAFE_INTEGER : Number(cfg.daily_gain_target_brl),
         realized_today_brl: realizedToday,
         open_contracts: 0,
         max_contracts: Number(cfg.max_contracts),
@@ -399,10 +537,12 @@ export async function runB3SimulationTick(
       if (decision.final === "approved") {
         const slip = Number(run.simulated_slippage_pts) || 0;
         const entry = intendedSide === "buy" ? ctx.price + slip : ctx.price - slip;
+        const baseQty = 1;
+        const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
         const { error: oErr } = await supabase.from("b3_simulation_orders").insert({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, symbol: "WIN", contract_code: "WINFUT", side: intendedSide,
-          entry_price: Math.round(entry / TICK) * TICK, quantity: 1,
+          entry_price: Math.round(entry / TICK) * TICK, quantity: qty,
           fees: Number(run.simulated_fee_brl) || 0, status: "open",
         });
         if (oErr) throw oErr;
@@ -562,6 +702,9 @@ const SETTING_FIELDS = [
   "enabled","min_approve_votes","min_confidence","min_score","max_contracts",
   "stop_pts","gain_pts","max_volatility_pct","daily_loss_limit_brl","daily_gain_target_brl",
   "trading_start_time","entry_cutoff_time","force_close_time","notes",
+  // B3 Protection
+  "minimum_trades_before_profit_lock","minimum_operating_minutes","profit_multiplier_before_lock",
+  "post_target_allowed_retracement","consecutive_loss_after_target","post_target_size_reduction",
 ] as const;
 
 export const updateB3ModeSettings = createServerFn({ method: "POST" })
@@ -589,4 +732,35 @@ export const resetB3ModeSettings = createServerFn({ method: "POST" })
       .eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId);
     if (error) throw error;
     return { ok: true };
+  });
+
+// ───────────────────── B3 Protection: state & history ─────────────────────
+export const getB3ProtectionState = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: rows, error } = await (supabase as any).from("b3_simulation_modes")
+      .select("id, mode, protection_state, target_reached_at, profit_at_target_brl, trades_at_target, peak_profit_after_target_brl, profit_after_target_brl, trades_after_target, consecutive_losses_after_target, protection_block_reason, protection_day_key, total_trades, realized_pnl")
+      .eq("simulation_run_id", data.run_id).eq("user_id", userId);
+    if (error) throw error;
+    return rows ?? [];
+  });
+
+export const listB3ProtectionHistory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { from?: string; to?: string; mode?: Mode; run_id?: string; limit?: number }) => d ?? {})
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    let q = (supabase as any).from("b3_daily_protection_history")
+      .select("*").eq("user_id", userId)
+      .order("day_key", { ascending: false })
+      .limit(Math.min(500, Math.max(1, Number(data.limit ?? 200))));
+    if (data.from) q = q.gte("day_key", data.from);
+    if (data.to) q = q.lte("day_key", data.to);
+    if (data.mode) q = q.eq("mode", data.mode);
+    if (data.run_id) q = q.eq("simulation_run_id", data.run_id);
+    const { data: rows, error } = await q;
+    if (error) throw error;
+    return rows ?? [];
   });

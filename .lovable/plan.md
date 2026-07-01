@@ -1,84 +1,78 @@
-# Auditoria & Reconciliação da Carteira Binance
+# Flexibilização Inteligente dos Bloqueios Diários — B3
 
-## Objetivo
-Descobrir por que a exposição caiu de 30–40% para ~15% e eliminar divergência entre saldo, capital alocado, equity e PnL — **sem tocar em nada de B3 / Mini Índice / Day Trade**.
+Escopo isolado 100% no módulo B3. Nenhum arquivo Binance (`binance-*`, `pipeline-runner.server.ts`, `committee.server.ts`, `binance-brain*`) é tocado.
 
-## Escopo isolado (namespace `binance.*` / `crypto.*`)
-Vou trabalhar APENAS em:
-- `simulated_wallet`, `simulated_orders`, `simulated_positions` (lado cripto)
-- `robot_settings`, `committee_settings` (apenas leitura para auditoria)
-- Novos arquivos sob `src/lib/binance-wallet-audit.*` e nova rota `/_authenticated/binance-wallet-health`
+## 1. Banco de dados (migration única)
 
-**Não toco em:** `b3_*`, `b3-committee.server.ts`, `b3-simulation.*`, `b3.functions.ts`, qualquer rota `b3*`.
+**Novas colunas em `b3_simulation_mode_settings`** (parâmetros por modo, editáveis no painel):
+- `minimum_trades_before_profit_lock` int default 15
+- `minimum_operating_minutes` int default 90
+- `profit_multiplier_before_lock` numeric default 2.0
+- `post_target_allowed_retracement` numeric default 0.30
+- `consecutive_loss_after_target` int default 2
+- `post_target_size_reduction` numeric default 0.50 (redução automática do size em observação)
 
----
+**Novas colunas em `b3_simulation_modes`** (estado runtime por modo/run):
+- `protection_state` text default 'operating_normal' — enum livre: `operating_normal | target_reached_observing | profit_protected | blocked_stop | blocked_drawdown | blocked_volatility | blocked_ops_failure | blocked_post_target_loss`
+- `target_reached_at` timestamptz
+- `profit_at_target_brl` numeric
+- `trades_at_target` int
+- `peak_profit_after_target_brl` numeric default 0
+- `profit_after_target_brl` numeric default 0
+- `trades_after_target` int default 0
+- `consecutive_losses_after_target` int default 0
+- `block_reason` text
 
-## Fase 1 — Auditoria de parâmetros de exposição
-Função `auditBinanceExposureParams()` em `src/lib/binance-wallet-audit.functions.ts`:
-- Lê `robot_settings` + `committee_settings` + `monitored_assets`
-- Retorna lista `{ parameter, current_value, impact_on_exposure, module_source }`
-- Inclui: `max_position_value`, `default_stop_pct`, `default_target_pct`, `min_favor_votes`, `min_confidence`, `min_score`, `binance_mock_mode`, `status`, `mode`, número de ativos ativos
-- Calcula também o cap real usado em `executeSimulated`: `min(max_position_value, current_balance * 0.10)` — esse `* 0.10` hard-coded é o forte suspeito do "15%"
+**Nova tabela `b3_daily_protection_history`** — snapshot diário (data, mode_id, user_id + colunas de auditoria pedidas: profit_at_target, profit_at_block, profit_at_close, extra_profit, given_back, trades, trades_after_target, target_time, block_time, reason, final_status). RLS por user_id; grants padrão.
 
-## Fase 2 — Auditoria de decisões (últimas 72h)
-Nova tabela `binance_position_decision_audit`:
-- `id, symbol, decision_type, requested_capital, approved_capital, committee_score, council_score, risk_score, reason, created_at`
-- Backfill inicial a partir de `committee_decisions` + `simulated_orders` das últimas 72h
-- Função `auditBinanceDecisions72h()` que cruza decisões aprovadas vs ordens executadas e identifica "dinheiro parado" (decisão buy_approved sem ordem)
+Nenhuma tabela Binance é alterada.
 
-## Fase 3 — Reconciliação financeira
-Função `recalculateBinancePortfolioState()` (pura, sem cache):
-- `saldo_calculado = saldo_inicial + Σ(vendas) − Σ(compras) − Σ(taxas)`
-- `valor_mercado_posicoes = Σ(qty_aberta × preço_atual_mock)`
-- `equity_calculado = saldo_calculado + valor_mercado_posicoes`
-- Retorna comparação com `simulated_wallet.current_balance` / `equity`
+## 2. Motor B3 — novo módulo isolado
 
-## Fase 4 — Identificação de divergências
-Nova tabela `binance_wallet_reconciliation_audit`:
-- `id, divergence_type, affected_symbol, amount, root_cause, detected_at`
-- Detectores: ordem duplicada (mesmo decision_id), venda sem compra prévia, compra `open` há >X horas sem fechamento, posição órfã (qty>0 sem buy open), soma de fills ≠ saldo
+Criar `src/lib/b3-protection.server.ts` com:
+- `evaluateProtectionState(mode, settings, dayStats)` — decide transição de estado, retorna `{ state, block_reason?, size_multiplier }`.
+- `applyPostTargetSizing(baseQty, state, settings)` — reduz size em observação.
+- Regras:
+  1. Se `realized_today <= -daily_loss_limit` → `blocked_stop` (soberano, imediato).
+  2. Falha operacional / erro API / rejeição → `blocked_ops_failure`.
+  3. Volatilidade extrema → `blocked_volatility`.
+  4. Meta atingida (profit ≥ target) **E** trades ≥ min **E** minutos ≥ min → transição para `target_reached_observing` (não bloqueia).
+  5. Se profit ≥ target × multiplier → `profit_protected` (continua operando com size reduzido).
+  6. Em observação/protegido: bloquear se `(peak_after_target - current_after_target) / peak_after_target > retracement` → `blocked_post_target_loss`; ou `consecutive_losses ≥ N` → mesmo; ou drawdown máximo.
 
-## Fase 5 — Rebuild
-Função `rebuildBinanceWalletFromTrades()`:
-- **Preserva** `simulated_orders` (histórico bruto)
-- **Recalcula** `simulated_positions` e `simulated_wallet` a partir do zero, replayando ordens em ordem cronológica
-- Requer confirmação explícita (botão "Reconstruir carteira") — nunca roda automaticamente
+Integrar em `src/lib/b3-simulation.functions.ts` (`runB3SimulationTick`) substituindo o gate atual de "meta atingida = bloqueia": chamar `evaluateProtectionState`, aplicar `size_multiplier` no cálculo de qty, gravar estado + block_reason em `b3_simulation_modes`, e ao fim do dia snapshot para `b3_daily_protection_history`.
 
-## Fase 6 — Validação matemática
-Dentro de `recalculate...`, asserção:
-```
-|saldo_inicial + pnl_realizado + pnl_nao_realizado − taxas − equity_atual| ≤ 0.01
-```
-Se falhar → grava `system_logs` com severity=`critical` e popula `binance_wallet_reconciliation_audit`.
+Log em `b3_simulation_block_events` já existente para cada transição (reaproveita infraestrutura B3 atual, sem tocar Binance).
 
-## Fase 7 — Painel "Saúde da Carteira Binance"
-Nova rota `/_authenticated/binance-wallet-health`:
-- Cards: saldo, capital alocado, PnL realizado, PnL não realizado, patrimônio, divergência
-- Status 🟢🟡🔴
-- Tabela de divergências detectadas
-- Tabela de decisões 72h (Fase 2)
-- Botões: "Rodar auditoria", "Reconstruir carteira" (com confirmação)
+## 3. UI (painel B3 apenas)
 
----
+`src/components/b3/SimComparePanel.tsx`:
+- Badge de estado com cores (verde operando, amarelo observando, azul protegido, vermelho bloqueado + motivo).
+- Bloco "Proteção pós-meta" por modo: horário da meta, lucro na meta, lucro atual, extra, devolvido, trades pós-meta, drawdown pós-meta, tempo desde a meta.
+- Modal de settings (engrenagem já existente) ganha os 6 novos campos configuráveis por modo.
 
-## Migração SQL necessária
-1. `CREATE TABLE binance_position_decision_audit` + GRANTs + RLS (owner-only via `is_owner()`)
-2. `CREATE TABLE binance_wallet_reconciliation_audit` + GRANTs + RLS (owner-only)
+`src/routes/_authenticated/b3.tsx` (aba Relatório): tabela lendo `b3_daily_protection_history` — colunas conforme "HISTÓRICO" do prompt, com filtro por data/modo e export CSV.
 
-## Arquivos novos
-- `src/lib/binance-wallet-audit.functions.ts` — server fns (auditoria, reconciliação, rebuild)
-- `src/lib/binance-wallet-audit.server.ts` — helpers puros
-- `src/routes/_authenticated/binance-wallet-health.tsx` — painel
+## 4. Server functions B3
 
-## Arquivos NÃO tocados
-Nenhum arquivo `b3*`, nenhum `pipeline-runner.server.ts`, nenhum `atrader.functions.ts`, nenhum `committee.server.ts` compartilhado. A análise é puramente leitura sobre tabelas existentes do lado cripto; o rebuild só roda quando o usuário clicar no botão.
+`src/lib/b3-simulation.functions.ts`:
+- Estender `updateModeSettings` para aceitar os 6 novos parâmetros.
+- Novo `getProtectionHistory({ from, to, mode })` — lê `b3_daily_protection_history`.
+- Novo `getProtectionState({ run_id })` — lê estado corrente por modo.
 
-## Hipótese inicial (a confirmar na Fase 1)
-O cap por trade em `pipeline-runner.server.ts:executeSimulated` é:
-```ts
-Math.min(max_position_value, current_balance * 0.10)
-```
-Com 1 a 2 ativos elegíveis por ciclo, isso trava a exposição em ~10–20% — bate com os 15% observados. A auditoria vai confirmar e o painel vai expor isso para você decidir se quer subir o multiplicador (mudança futura, fora desta entrega).
+## 5. Compatibilidade
 
-## Entrega
-Pode aprovar que eu sigo direto — migração primeiro, depois código + rota.
+- Operação Real B3 (`b3.functions.ts`, `atrader.functions.ts`) recebe o mesmo helper `evaluateProtectionState` importado do novo `b3-protection.server.ts` — sem duplicação, mas 100% B3.
+- Comparação Simulado × Real continua idêntica (mesmo shape de dados).
+- Cron `b3-simulation-tick` inalterado.
+
+## Detalhes técnicos
+
+- Estado persistido em DB (não em memória) para sobreviver a reinícios.
+- Reset diário: primeiro tick após 00:00 BRT zera `target_reached_at`, contadores pós-meta e `protection_state='operating_normal'` — antes disso grava snapshot do dia anterior.
+- `size_multiplier` default: 1.0 operando, 0.5 observando, 0.35 protegido (via `post_target_size_reduction`).
+- Stop diário mantém a lógica atual de `daily_loss_limit` — não flexibilizado.
+
+## Fora de escopo (não tocar)
+
+`binance-*.ts`, `pipeline-runner.server.ts`, `committee.server.ts`, `binance-brain*`, tabelas `binance_*`, rota `/binance-*`.

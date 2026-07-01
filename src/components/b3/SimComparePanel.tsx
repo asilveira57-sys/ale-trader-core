@@ -48,6 +48,26 @@ const STATUS_META: Record<string, { label: string; cls: string; canResumeToday: 
   erro_tecnico: { label: "Erro técnico", cls: "bg-rose-600/30 text-rose-100 border-rose-600/50", canResumeToday: true, type: "erro" },
 };
 
+const PROT_LABEL: Record<string, string> = {
+  operating_normal: "Operando normal",
+  target_reached_observing: "Meta atingida · em observação",
+  profit_protected: "Lucro protegido",
+  blocked_stop: "Bloqueado · stop diário",
+  blocked_drawdown: "Bloqueado · drawdown",
+  blocked_volatility: "Bloqueado · volatilidade",
+  blocked_ops_failure: "Bloqueado · falha operacional",
+  blocked_post_target_loss: "Bloqueado · perda pós-meta",
+};
+const PROT_COLOR: Record<string, string> = {
+  target_reached_observing: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  profit_protected: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  blocked_stop: "bg-rose-600/20 text-rose-200 border-rose-600/40",
+  blocked_drawdown: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  blocked_volatility: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  blocked_ops_failure: "bg-rose-600/30 text-rose-100 border-rose-600/50",
+  blocked_post_target_loss: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+};
+
 function sampleStatus(trades: number): { label: string; cls: string } | null {
   if (trades < 100) return { label: "AMOSTRA INSUFICIENTE PARA VALIDAÇÃO ESTATÍSTICA", cls: "bg-amber-500/10 text-amber-300 border-amber-500/30" };
   if (trades < 300) return { label: "Amostra inicial em formação", cls: "bg-sky-500/10 text-sky-300 border-sky-500/30" };
@@ -338,6 +358,11 @@ function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWin
           const s = sampleStatus(Number(m.total_trades ?? 0));
           return s ? <Badge variant="outline" className={`${s.cls} text-[10px] mb-1`}>{s.label}</Badge> : null;
         })()}
+        {m.protection_state && m.protection_state !== "operating_normal" && (
+          <Badge variant="outline" className={`${PROT_COLOR[m.protection_state] ?? ""} text-[10px] mb-1 ml-1`}>
+            {PROT_LABEL[m.protection_state] ?? m.protection_state}
+          </Badge>
+        )}
         <Row k="Saldo inicial" v={BRL(m.initial_balance)} />
         <Row k="Saldo atual" v={BRL(m.current_balance)} />
         <Row k="PnL realizado" v={BRL(pnl)} accent={pnl > 0 ? "pos" : pnl < 0 ? "neg" : undefined} />
@@ -350,6 +375,17 @@ function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWin
         <Row k="Pontos" v={NUM(m.points_result, 0)} />
         <Row k="Comitê aprov./rejei." v={`${m.committee_approvals} / ${m.committee_rejections}`} />
         <Row k="Bloqueios de risco" v={String(m.risk_blocks)} />
+        {m.target_reached_at && (
+          <>
+            <div className="pt-1 mt-1 border-t border-border/40 text-[11px] uppercase tracking-wide text-muted-foreground">Pós-meta</div>
+            <Row k="Horário da meta" v={new Date(m.target_reached_at).toLocaleTimeString("pt-BR")} />
+            <Row k="Lucro na meta" v={BRL(m.profit_at_target_brl)} />
+            <Row k="Lucro pós-meta" v={BRL(m.profit_after_target_brl)} accent={Number(m.profit_after_target_brl) > 0 ? "pos" : Number(m.profit_after_target_brl) < 0 ? "neg" : undefined} />
+            <Row k="Pico pós-meta" v={BRL(m.peak_profit_after_target_brl)} />
+            <Row k="Ops pós-meta" v={String(m.trades_after_target ?? 0)} />
+            {m.protection_block_reason && <Row k="Motivo bloqueio" v={String(m.protection_block_reason)} />}
+          </>
+        )}
       </CardContent>
     </Card>
   );
@@ -422,6 +458,17 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
             <Field label="Início pregão (HH:MM)"><Input value={f.trading_start_time ?? ""} onChange={(e) => set("trading_start_time", e.target.value)} /></Field>
             <Field label="Corte de entradas"><Input value={f.entry_cutoff_time ?? ""} onChange={(e) => set("entry_cutoff_time", e.target.value)} /></Field>
             <Field label="Zeragem obrigatória"><Input value={f.force_close_time ?? ""} onChange={(e) => set("force_close_time", e.target.value)} /></Field>
+
+            <div className="col-span-2 pt-2 border-t border-border/40 text-xs uppercase tracking-wide text-muted-foreground">
+              Flexibilização inteligente (pós-meta)
+            </div>
+            <Field label="Mín. operações antes do lock"><Input type="number" value={f.minimum_trades_before_profit_lock ?? 15} onChange={(e) => set("minimum_trades_before_profit_lock", Number(e.target.value))} /></Field>
+            <Field label="Tempo mín. operando (min)"><Input type="number" value={f.minimum_operating_minutes ?? 90} onChange={(e) => set("minimum_operating_minutes", Number(e.target.value))} /></Field>
+            <Field label="Multiplicador da meta (teto)"><Input type="number" step="0.1" value={f.profit_multiplier_before_lock ?? 2.0} onChange={(e) => set("profit_multiplier_before_lock", Number(e.target.value))} /></Field>
+            <Field label="Devolução permitida pós-meta (0-1)"><Input type="number" step="0.05" value={f.post_target_allowed_retracement ?? 0.30} onChange={(e) => set("post_target_allowed_retracement", Number(e.target.value))} /></Field>
+            <Field label="Perdas consecutivas pós-meta"><Input type="number" value={f.consecutive_loss_after_target ?? 2} onChange={(e) => set("consecutive_loss_after_target", Number(e.target.value))} /></Field>
+            <Field label="Redução de size pós-meta (0-1)"><Input type="number" step="0.05" value={f.post_target_size_reduction ?? 0.50} onChange={(e) => set("post_target_size_reduction", Number(e.target.value))} /></Field>
+
             <div className="col-span-2 text-xs text-muted-foreground">
               Sem prompts: ajuste livremente. Ex.: subir o limite de perda de R$ 300 para R$ 900 e clicar em Salvar.
             </div>
