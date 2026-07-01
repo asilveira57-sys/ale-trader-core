@@ -733,3 +733,34 @@ export const resetB3ModeSettings = createServerFn({ method: "POST" })
     if (error) throw error;
     return { ok: true };
   });
+
+// ───────────────────── B3 Protection: state & history ─────────────────────
+export const getB3ProtectionState = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: rows, error } = await (supabase as any).from("b3_simulation_modes")
+      .select("id, mode, protection_state, target_reached_at, profit_at_target_brl, trades_at_target, peak_profit_after_target_brl, profit_after_target_brl, trades_after_target, consecutive_losses_after_target, protection_block_reason, protection_day_key, total_trades, realized_pnl")
+      .eq("simulation_run_id", data.run_id).eq("user_id", userId);
+    if (error) throw error;
+    return rows ?? [];
+  });
+
+export const listB3ProtectionHistory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { from?: string; to?: string; mode?: Mode; run_id?: string; limit?: number }) => d ?? {})
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    let q = (supabase as any).from("b3_daily_protection_history")
+      .select("*").eq("user_id", userId)
+      .order("day_key", { ascending: false })
+      .limit(Math.min(500, Math.max(1, Number(data.limit ?? 200))));
+    if (data.from) q = q.gte("day_key", data.from);
+    if (data.to) q = q.lte("day_key", data.to);
+    if (data.mode) q = q.eq("mode", data.mode);
+    if (data.run_id) q = q.eq("simulation_run_id", data.run_id);
+    const { data: rows, error } = await q;
+    if (error) throw error;
+    return rows ?? [];
+  });
