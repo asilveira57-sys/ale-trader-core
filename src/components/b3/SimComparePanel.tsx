@@ -338,6 +338,11 @@ function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWin
           const s = sampleStatus(Number(m.total_trades ?? 0));
           return s ? <Badge variant="outline" className={`${s.cls} text-[10px] mb-1`}>{s.label}</Badge> : null;
         })()}
+        {m.protection_state && m.protection_state !== "operating_normal" && (
+          <Badge variant="outline" className={`${PROT_COLOR[m.protection_state] ?? ""} text-[10px] mb-1 ml-1`}>
+            {PROT_LABEL[m.protection_state] ?? m.protection_state}
+          </Badge>
+        )}
         <Row k="Saldo inicial" v={BRL(m.initial_balance)} />
         <Row k="Saldo atual" v={BRL(m.current_balance)} />
         <Row k="PnL realizado" v={BRL(pnl)} accent={pnl > 0 ? "pos" : pnl < 0 ? "neg" : undefined} />
@@ -350,6 +355,17 @@ function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWin
         <Row k="Pontos" v={NUM(m.points_result, 0)} />
         <Row k="Comitê aprov./rejei." v={`${m.committee_approvals} / ${m.committee_rejections}`} />
         <Row k="Bloqueios de risco" v={String(m.risk_blocks)} />
+        {m.target_reached_at && (
+          <>
+            <div className="pt-1 mt-1 border-t border-border/40 text-[11px] uppercase tracking-wide text-muted-foreground">Pós-meta</div>
+            <Row k="Horário da meta" v={new Date(m.target_reached_at).toLocaleTimeString("pt-BR")} />
+            <Row k="Lucro na meta" v={BRL(m.profit_at_target_brl)} />
+            <Row k="Lucro pós-meta" v={BRL(m.profit_after_target_brl)} accent={Number(m.profit_after_target_brl) > 0 ? "pos" : Number(m.profit_after_target_brl) < 0 ? "neg" : undefined} />
+            <Row k="Pico pós-meta" v={BRL(m.peak_profit_after_target_brl)} />
+            <Row k="Ops pós-meta" v={String(m.trades_after_target ?? 0)} />
+            {m.protection_block_reason && <Row k="Motivo bloqueio" v={String(m.protection_block_reason)} />}
+          </>
+        )}
       </CardContent>
     </Card>
   );
