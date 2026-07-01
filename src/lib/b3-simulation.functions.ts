@@ -5,6 +5,10 @@ import {
   buildMockB3Context, runB3Agents, buildB3Decision,
   type B3Side, type B3RiskState, type B3CommitteeSettings,
 } from "./b3-committee.server";
+import {
+  evaluateB3Protection, resetB3ProtectionForNewDay, b3DayKeyBRT,
+  type B3ProtectionRuntime, type B3ProtectionSettings,
+} from "./b3-protection.server";
 
 const POINT_VALUE_BRL = 0.2;
 const TICK = 5;
