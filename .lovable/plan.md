@@ -1,78 +1,86 @@
-# Flexibilização Inteligente dos Bloqueios Diários — B3
 
-Escopo isolado 100% no módulo B3. Nenhum arquivo Binance (`binance-*`, `pipeline-runner.server.ts`, `committee.server.ts`, `binance-brain*`) é tocado.
+# Simulação Local MT5 XP — WINQ26 (módulo B3)
 
-## 1. Banco de dados (migration única)
+Modo novo, isolado, que roda todos os robôs B3 sobre o WINQ26 usando **cotação real do MetaTrader 5 (XPMT5-PRD)** mas **sem enviar nenhuma ordem real**. Serve para comparar entradas, saídas, travas, PnL teórico, drawdown e conflitos entre robôs antes de qualquer execução real.
 
-**Novas colunas em `b3_simulation_mode_settings`** (parâmetros por modo, editáveis no painel):
-- `minimum_trades_before_profit_lock` int default 15
-- `minimum_operating_minutes` int default 90
-- `profit_multiplier_before_lock` numeric default 2.0
-- `post_target_allowed_retracement` numeric default 0.30
-- `consecutive_loss_after_target` int default 2
-- `post_target_size_reduction` numeric default 0.50 (redução automática do size em observação)
+## Escopo e isolamento
 
-**Novas colunas em `b3_simulation_modes`** (estado runtime por modo/run):
-- `protection_state` text default 'operating_normal' — enum livre: `operating_normal | target_reached_observing | profit_protected | blocked_stop | blocked_drawdown | blocked_volatility | blocked_ops_failure | blocked_post_target_loss`
-- `target_reached_at` timestamptz
-- `profit_at_target_brl` numeric
-- `trades_at_target` int
-- `peak_profit_after_target_brl` numeric default 0
-- `profit_after_target_brl` numeric default 0
-- `trades_after_target` int default 0
-- `consecutive_losses_after_target` int default 0
-- `block_reason` text
+- Tudo novo com prefixo `b3_mt5sim_*` (tabelas, rotas, arquivos, componentes).
+- **Não altero**: qualquer módulo Binance, `pipeline-runner`, `committee`, `binance-*`, `b3-protection`, `b3-simulation-*` já existentes, `atrader.functions.ts`, `b3.functions.ts`.
+- O B3 clássico e a Flexibilização de Bloqueios continuam funcionando como estão.
 
-**Nova tabela `b3_daily_protection_history`** — snapshot diário (data, mode_id, user_id + colunas de auditoria pedidas: profit_at_target, profit_at_block, profit_at_close, extra_profit, given_back, trades, trades_after_target, target_time, block_time, reason, final_status). RLS por user_id; grants padrão.
+## Banco de dados (uma migration)
 
-Nenhuma tabela Binance é alterada.
+Todas as tabelas em `public`, com GRANT, RLS por `user_id` (`auth.uid()`), `service_role` full, `updated_at` trigger onde aplicável.
 
-## 2. Motor B3 — novo módulo isolado
+- `b3_mt5sim_settings` — 1 linha por user: `market` (WIN), `mt5_symbol` (WINQ26), `server` (XPMT5-PRD), `tick_size` (5), `tick_value` (1.00), `point_value` (0.20), `default_volume` (1), `price_source` (`last`|`bid_ask`|`bid_ask_slip`), `slippage_ticks`, `fee_per_contract_brl`, `use_spread`, `poll_interval_ms`, `session_start`, `session_end`, `kill_switch_real` (default true), `allow_long`, `allow_short`, `allow_reverse`, promotion criteria (`min_trades_per_robot`, `min_days`, `max_price_divergence_pts`, `max_drawdown_brl`, `min_hit_rate`, `min_net_pnl`).
+- `b3_mt5sim_robots` — 1 linha por robô participante (`profile` enum: conservador|moderado|equilibrado|semi_agressivo|agressivo), com travas independentes: `daily_loss_limit_brl`, `daily_gain_limit_brl`, `max_trades_day`, `max_drawdown_brl`, `max_consec_losses`, `min_score`, `signal_ttl_s`, `max_spread_ticks`, `volatility_block_atr`, `enabled`, `initial_balance_brl`.
+- `b3_mt5sim_wallet_daily` — carteira simulada por robô/dia: saldo inicial, PnL bruto, PnL líquido, taxas, trades, wins/losses, hit_rate, best/worst, drawdown, points_net, current_position_side/qty/avg, status.
+- `b3_mt5sim_quotes` — ticks capturados (bid, ask, last, spread, ts, volume, symbol_status, mt5_connected, server, account_masked).
+- `b3_mt5sim_signals` — sinais gerados por robô (side, price_signal, score, motivo, ts, expires_at, status).
+- `b3_mt5sim_trades` — operações simuladas completas com todos os campos de auditoria do prompt (simulation_id, robot_id, signal_id, símbolo lógico/MT5, side, volume, price_signal, price_entry_sim, price_exit_sim, ts_signal/entry/exit, spread, slippage_ticks, fee_brl, points_result, gross_brl, net_brl, entry_reason, exit_reason, locks_triggered jsonb, status, observations).
+- `b3_mt5sim_blocks` — sinais bloqueados por travas (robot, lock_kind, observed, limit, signal_id, motivo, ts).
+- `b3_mt5sim_conflicts` — snapshots de conflito entre robôs (ts, robots jsonb, sides, prices, outcome_delta).
+- `b3_mt5sim_order_attempts` — log de qualquer tentativa (interna) de enviar ordem real enquanto o modo está ativo (erro crítico).
 
-Criar `src/lib/b3-protection.server.ts` com:
-- `evaluateProtectionState(mode, settings, dayStats)` — decide transição de estado, retorna `{ state, block_reason?, size_multiplier }`.
-- `applyPostTargetSizing(baseQty, state, settings)` — reduz size em observação.
-- Regras:
-  1. Se `realized_today <= -daily_loss_limit` → `blocked_stop` (soberano, imediato).
-  2. Falha operacional / erro API / rejeição → `blocked_ops_failure`.
-  3. Volatilidade extrema → `blocked_volatility`.
-  4. Meta atingida (profit ≥ target) **E** trades ≥ min **E** minutos ≥ min → transição para `target_reached_observing` (não bloqueia).
-  5. Se profit ≥ target × multiplier → `profit_protected` (continua operando com size reduzido).
-  6. Em observação/protegido: bloquear se `(peak_after_target - current_after_target) / peak_after_target > retracement` → `blocked_post_target_loss`; ou `consecutive_losses ≥ N` → mesmo; ou drawdown máximo.
+## Ponte MT5 (cotação real, sem ordens)
 
-Integrar em `src/lib/b3-simulation.functions.ts` (`runB3SimulationTick`) substituindo o gate atual de "meta atingida = bloqueia": chamar `evaluateProtectionState`, aplicar `size_multiplier` no cálculo de qty, gravar estado + block_reason em `b3_simulation_modes`, e ao fim do dia snapshot para `b3_daily_protection_history`.
+Não há SDK do MT5 no Worker. Uso um **puller local** externo (script Python no PC do usuário rodando junto com o MT5 XP) que faz POST periódico de ticks para um endpoint público protegido por HMAC. Não escrevo o script agora; entrego o endpoint e a documentação inline.
 
-Log em `b3_simulation_block_events` já existente para cada transição (reaproveita infraestrutura B3 atual, sem tocar Binance).
+- `src/routes/api/public/hooks/b3-mt5sim-tick-ingest.ts` — POST `{symbol, bid, ask, last, spread, ts, volume, symbol_status, server, account_masked}` assinado com `B3_MT5SIM_INGEST_SECRET` (HMAC-SHA256 do corpo, header `x-mt5-signature`, timing-safe). Grava em `b3_mt5sim_quotes` via `supabaseAdmin`. Rejeita se `symbol != settings.mt5_symbol` do owner-alvo (pass user_id no payload ou via secret dedicado por user na v1: um user apenas).
+- `src/routes/api/public/hooks/b3-mt5sim-tick.ts` — cron a cada minuto durante pregão: para cada `b3_mt5sim_runs` ativa chama `runMt5SimTick`.
+- Secret: peço `B3_MT5SIM_INGEST_SECRET` via `generate_secret` na fase de execução.
 
-## 3. UI (painel B3 apenas)
+## Engine (`src/lib/b3-mt5sim.server.ts`)
 
-`src/components/b3/SimComparePanel.tsx`:
-- Badge de estado com cores (verde operando, amarelo observando, azul protegido, vermelho bloqueado + motivo).
-- Bloco "Proteção pós-meta" por modo: horário da meta, lucro na meta, lucro atual, extra, devolvido, trades pós-meta, drawdown pós-meta, tempo desde a meta.
-- Modal de settings (engrenagem já existente) ganha os 6 novos campos configuráveis por modo.
+Puro server, sem tocar em outros módulos:
 
-`src/routes/_authenticated/b3.tsx` (aba Relatório): tabela lendo `b3_daily_protection_history` — colunas conforme "HISTÓRICO" do prompt, com filtro por data/modo e export CSV.
+- `getLatestQuote(userId)` — última linha de `b3_mt5sim_quotes` dentro do TTL; se stale → status `quote_stale`, pausa tick.
+- `generateSignalsForRobots(userId, quote)` — chama estratégias locais leves por perfil (conservador→agressivo) usando janela recente de ticks/últimos preços. Implementação inicial: 5 estratégias determinísticas parametrizadas (SMA fast/slow + threshold + cooldown), suficiente para gerar sinais divergentes por perfil. Ganchos para plugar comitê B3 depois, mas **sem importar** `b3-committee` nesta fase.
+- `evaluateRobotLocks(robot, wallet, signal, quote)` — aplica todas as travas do prompt; retorna `{allow, lock?}`. Bloqueios são gravados em `b3_mt5sim_blocks`.
+- `openSimTrade` / `manageOpenTrades` / `closeSimTrade` — simulação de execução, stop, alvo, sinal contrário, zeragem por horário, fim de pregão, kill switch. Preço de entrada/saída por `price_source`. Cálculo: `points = (exit - entry) * sideSign / tick_size * tick_size`; `gross = points * point_value * volume`; `fee = fee_per_contract_brl * volume * 2`; `net = gross - fee - slippage_brl`.
+- `recordConflicts(userId, ts)` — detecta robôs com posições/sinais opostos no mesmo minuto e persiste em `b3_mt5sim_conflicts`.
+- `assertNoRealOrder(ctx)` — helper exportado: se alguém chamar rota real (`atrader`/`b3` real) enquanto `b3_mt5sim_runs.status='running'` e `kill_switch_real=true`, grava em `b3_mt5sim_order_attempts` e lança. **Não** conecto isso automaticamente em código Binance/B3 existente — apenas exponho para uso futuro (o kill switch real já bloqueia envio real por padrão via flag).
 
-## 4. Server functions B3
+## Server functions (`src/lib/b3-mt5sim.functions.ts`)
 
-`src/lib/b3-simulation.functions.ts`:
-- Estender `updateModeSettings` para aceitar os 6 novos parâmetros.
-- Novo `getProtectionHistory({ from, to, mode })` — lê `b3_daily_protection_history`.
-- Novo `getProtectionState({ run_id })` — lê estado corrente por modo.
+Todas com `requireSupabaseAuth`:
 
-## 5. Compatibilidade
+- `getMt5SimDashboard` — settings, run atual, quote atual, wallets por robô, últimas trades, últimos blocks, últimos conflicts, ranking, contadores (ordens reais enviadas = 0 fixo).
+- `updateMt5SimSettings`, `upsertMt5SimRobot`, `toggleMt5SimRobot`.
+- `startMt5SimRun`, `stopMt5SimRun`, `resetMt5SimDay`.
+- `listMt5SimTrades`, `listMt5SimBlocks`, `listMt5SimConflicts`, `getMt5SimRanking`, `getMt5SimPromotionStatus`.
 
-- Operação Real B3 (`b3.functions.ts`, `atrader.functions.ts`) recebe o mesmo helper `evaluateProtectionState` importado do novo `b3-protection.server.ts` — sem duplicação, mas 100% B3.
-- Comparação Simulado × Real continua idêntica (mesmo shape de dados).
-- Cron `b3-simulation-tick` inalterado.
+## UI (rota nova)
 
-## Detalhes técnicos
+`src/routes/_authenticated/b3-mt5sim.tsx` — painel único, sem tocar em telas B3 existentes:
 
-- Estado persistido em DB (não em memória) para sobreviver a reinícios.
-- Reset diário: primeiro tick após 00:00 BRT zera `target_reached_at`, contadores pós-meta e `protection_state='operating_normal'` — antes disso grava snapshot do dia anterior.
-- `size_multiplier` default: 1.0 operando, 0.5 observando, 0.35 protegido (via `post_target_size_reduction`).
-- Stop diário mantém a lógica atual de `daily_loss_limit` — não flexibilizado.
+- Header destacado: **"SIMULAÇÃO LOCAL — USANDO COTAÇÃO REAL DO PRD — SEM ENVIO DE ORDEM"**, servidor, símbolo, última cotação, robôs ativos, "Ordens reais enviadas: 0".
+- Card **Configuração** (edita `b3_mt5sim_settings`).
+- Grid **Robôs Participantes** (por perfil, com travas e volume).
+- Grid **Carteira simulada por robô** (todas as métricas do prompt).
+- **Ranking** dos robôs.
+- Abas: Trades simuladas · Sinais bloqueados · Conflitos entre robôs · Auditoria.
+- Bloco **Critério para próxima fase** com status ou "Execução real bloqueada — simulação ainda insuficiente".
 
-## Fora de escopo (não tocar)
+Link no menu B3 (uma linha no layout B3 se existir, senão só via URL).
 
-`binance-*.ts`, `pipeline-runner.server.ts`, `committee.server.ts`, `binance-brain*`, tabelas `binance_*`, rota `/binance-*`.
+## Instruções ao usuário (no painel, texto)
+
+Como o Worker não fala MT5 diretamente, o painel exibirá as credenciais do ingest endpoint e um snippet Python de ~40 linhas usando `MetaTrader5` para bombear ticks do WINQ26 para o endpoint. Sem esse puller local rodando, o painel mostra `Cotação inválida ou desatualizada — simulação pausada`.
+
+## Fora de escopo
+
+- Não implemento o script Python neste ciclo (só documento e mostro no painel).
+- Não pluggo comitê B3 aqui; estratégias iniciais são locais e substituíveis.
+- Não altero nada fora dos arquivos/tabelas `b3_mt5sim_*` + a nova rota.
+
+## Ordem de execução
+
+1. Migration (todas as tabelas + GRANT + RLS + triggers).
+2. `generate_secret` `B3_MT5SIM_INGEST_SECRET`.
+3. Engine + server functions + rotas API (ingest + tick cron).
+4. Rota UI `b3-mt5sim.tsx`.
+5. Verificação de build.
+
+Confirma para eu executar?

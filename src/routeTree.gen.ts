@@ -47,6 +47,7 @@ import { Route as AuthenticatedBinanceFeeAuditRouteImport } from './routes/_auth
 import { Route as AuthenticatedBinanceBrainRouteImport } from './routes/_authenticated/binance-brain'
 import { Route as AuthenticatedBinanceAuditRouteImport } from './routes/_authenticated/binance-audit'
 import { Route as AuthenticatedB3SimHistoryRouteImport } from './routes/_authenticated/b3-sim-history'
+import { Route as AuthenticatedB3Mt5simRouteImport } from './routes/_authenticated/b3-mt5sim'
 import { Route as AuthenticatedB3RouteImport } from './routes/_authenticated/b3'
 import { Route as AuthenticatedAutoDashboardRouteImport } from './routes/_authenticated/auto-dashboard'
 import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
@@ -69,6 +70,8 @@ import { Route as ApiPublicHooksPipelineTickRouteImport } from './routes/api/pub
 import { Route as ApiPublicHooksDailyReportRouteImport } from './routes/api/public/hooks/daily-report'
 import { Route as ApiPublicHooksConfidenceRecomputeRouteImport } from './routes/api/public/hooks/confidence-recompute'
 import { Route as ApiPublicHooksB3SimulationTickRouteImport } from './routes/api/public/hooks/b3-simulation-tick'
+import { Route as ApiPublicHooksB3Mt5simTickIngestRouteImport } from './routes/api/public/hooks/b3-mt5sim-tick-ingest'
+import { Route as ApiPublicHooksB3Mt5simTickRouteImport } from './routes/api/public/hooks/b3-mt5sim-tick'
 import { Route as ApiPublicHooksAutoTickRouteImport } from './routes/api/public/hooks/auto-tick'
 
 const AuthRoute = AuthRouteImport.update({
@@ -271,6 +274,11 @@ const AuthenticatedB3SimHistoryRoute =
     path: '/b3-sim-history',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedB3Mt5simRoute = AuthenticatedB3Mt5simRouteImport.update({
+  id: '/b3-mt5sim',
+  path: '/b3-mt5sim',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedB3Route = AuthenticatedB3RouteImport.update({
   id: '/b3',
   path: '/b3',
@@ -398,6 +406,18 @@ const ApiPublicHooksB3SimulationTickRoute =
     path: '/api/public/hooks/b3-simulation-tick',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksB3Mt5simTickIngestRoute =
+  ApiPublicHooksB3Mt5simTickIngestRouteImport.update({
+    id: '/api/public/hooks/b3-mt5sim-tick-ingest',
+    path: '/api/public/hooks/b3-mt5sim-tick-ingest',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksB3Mt5simTickRoute =
+  ApiPublicHooksB3Mt5simTickRouteImport.update({
+    id: '/api/public/hooks/b3-mt5sim-tick',
+    path: '/api/public/hooks/b3-mt5sim-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksAutoTickRoute = ApiPublicHooksAutoTickRouteImport.update({
   id: '/api/public/hooks/auto-tick',
   path: '/api/public/hooks/auto-tick',
@@ -415,6 +435,7 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuthenticatedAuditRouteWithChildren
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
+  '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/binance-brain': typeof AuthenticatedBinanceBrainRoute
@@ -460,6 +481,8 @@ export interface FileRoutesByFullPath {
   '/reports/$reportId': typeof AuthenticatedReportsReportIdRoute
   '/backtest/': typeof AuthenticatedBacktestIndexRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
+  '/api/public/hooks/b3-mt5sim-tick': typeof ApiPublicHooksB3Mt5simTickRoute
+  '/api/public/hooks/b3-mt5sim-tick-ingest': typeof ApiPublicHooksB3Mt5simTickIngestRoute
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
   '/api/public/hooks/confidence-recompute': typeof ApiPublicHooksConfidenceRecomputeRoute
   '/api/public/hooks/daily-report': typeof ApiPublicHooksDailyReportRoute
@@ -477,6 +500,7 @@ export interface FileRoutesByTo {
   '/audit': typeof AuthenticatedAuditRouteWithChildren
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
+  '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/binance-brain': typeof AuthenticatedBinanceBrainRoute
@@ -522,6 +546,8 @@ export interface FileRoutesByTo {
   '/reports/$reportId': typeof AuthenticatedReportsReportIdRoute
   '/backtest': typeof AuthenticatedBacktestIndexRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
+  '/api/public/hooks/b3-mt5sim-tick': typeof ApiPublicHooksB3Mt5simTickRoute
+  '/api/public/hooks/b3-mt5sim-tick-ingest': typeof ApiPublicHooksB3Mt5simTickIngestRoute
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
   '/api/public/hooks/confidence-recompute': typeof ApiPublicHooksConfidenceRecomputeRoute
   '/api/public/hooks/daily-report': typeof ApiPublicHooksDailyReportRoute
@@ -541,6 +567,7 @@ export interface FileRoutesById {
   '/_authenticated/audit': typeof AuthenticatedAuditRouteWithChildren
   '/_authenticated/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/_authenticated/b3': typeof AuthenticatedB3Route
+  '/_authenticated/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/_authenticated/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/_authenticated/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/_authenticated/binance-brain': typeof AuthenticatedBinanceBrainRoute
@@ -586,6 +613,8 @@ export interface FileRoutesById {
   '/_authenticated/reports/$reportId': typeof AuthenticatedReportsReportIdRoute
   '/_authenticated/backtest/': typeof AuthenticatedBacktestIndexRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
+  '/api/public/hooks/b3-mt5sim-tick': typeof ApiPublicHooksB3Mt5simTickRoute
+  '/api/public/hooks/b3-mt5sim-tick-ingest': typeof ApiPublicHooksB3Mt5simTickIngestRoute
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
   '/api/public/hooks/confidence-recompute': typeof ApiPublicHooksConfidenceRecomputeRoute
   '/api/public/hooks/daily-report': typeof ApiPublicHooksDailyReportRoute
@@ -605,6 +634,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/auto-dashboard'
     | '/b3'
+    | '/b3-mt5sim'
     | '/b3-sim-history'
     | '/binance-audit'
     | '/binance-brain'
@@ -650,6 +680,8 @@ export interface FileRouteTypes {
     | '/reports/$reportId'
     | '/backtest/'
     | '/api/public/hooks/auto-tick'
+    | '/api/public/hooks/b3-mt5sim-tick'
+    | '/api/public/hooks/b3-mt5sim-tick-ingest'
     | '/api/public/hooks/b3-simulation-tick'
     | '/api/public/hooks/confidence-recompute'
     | '/api/public/hooks/daily-report'
@@ -667,6 +699,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/auto-dashboard'
     | '/b3'
+    | '/b3-mt5sim'
     | '/b3-sim-history'
     | '/binance-audit'
     | '/binance-brain'
@@ -712,6 +745,8 @@ export interface FileRouteTypes {
     | '/reports/$reportId'
     | '/backtest'
     | '/api/public/hooks/auto-tick'
+    | '/api/public/hooks/b3-mt5sim-tick'
+    | '/api/public/hooks/b3-mt5sim-tick-ingest'
     | '/api/public/hooks/b3-simulation-tick'
     | '/api/public/hooks/confidence-recompute'
     | '/api/public/hooks/daily-report'
@@ -730,6 +765,7 @@ export interface FileRouteTypes {
     | '/_authenticated/audit'
     | '/_authenticated/auto-dashboard'
     | '/_authenticated/b3'
+    | '/_authenticated/b3-mt5sim'
     | '/_authenticated/b3-sim-history'
     | '/_authenticated/binance-audit'
     | '/_authenticated/binance-brain'
@@ -775,6 +811,8 @@ export interface FileRouteTypes {
     | '/_authenticated/reports/$reportId'
     | '/_authenticated/backtest/'
     | '/api/public/hooks/auto-tick'
+    | '/api/public/hooks/b3-mt5sim-tick'
+    | '/api/public/hooks/b3-mt5sim-tick-ingest'
     | '/api/public/hooks/b3-simulation-tick'
     | '/api/public/hooks/confidence-recompute'
     | '/api/public/hooks/daily-report'
@@ -787,6 +825,8 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   ApiPublicHooksAutoTickRoute: typeof ApiPublicHooksAutoTickRoute
+  ApiPublicHooksB3Mt5simTickRoute: typeof ApiPublicHooksB3Mt5simTickRoute
+  ApiPublicHooksB3Mt5simTickIngestRoute: typeof ApiPublicHooksB3Mt5simTickIngestRoute
   ApiPublicHooksB3SimulationTickRoute: typeof ApiPublicHooksB3SimulationTickRoute
   ApiPublicHooksConfidenceRecomputeRoute: typeof ApiPublicHooksConfidenceRecomputeRoute
   ApiPublicHooksDailyReportRoute: typeof ApiPublicHooksDailyReportRoute
@@ -1062,6 +1102,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedB3SimHistoryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/b3-mt5sim': {
+      id: '/_authenticated/b3-mt5sim'
+      path: '/b3-mt5sim'
+      fullPath: '/b3-mt5sim'
+      preLoaderRoute: typeof AuthenticatedB3Mt5simRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/b3': {
       id: '/_authenticated/b3'
       path: '/b3'
@@ -1216,6 +1263,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksB3SimulationTickRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/b3-mt5sim-tick-ingest': {
+      id: '/api/public/hooks/b3-mt5sim-tick-ingest'
+      path: '/api/public/hooks/b3-mt5sim-tick-ingest'
+      fullPath: '/api/public/hooks/b3-mt5sim-tick-ingest'
+      preLoaderRoute: typeof ApiPublicHooksB3Mt5simTickIngestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/b3-mt5sim-tick': {
+      id: '/api/public/hooks/b3-mt5sim-tick'
+      path: '/api/public/hooks/b3-mt5sim-tick'
+      fullPath: '/api/public/hooks/b3-mt5sim-tick'
+      preLoaderRoute: typeof ApiPublicHooksB3Mt5simTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/auto-tick': {
       id: '/api/public/hooks/auto-tick'
       path: '/api/public/hooks/auto-tick'
@@ -1268,6 +1329,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAuditRoute: typeof AuthenticatedAuditRouteWithChildren
   AuthenticatedAutoDashboardRoute: typeof AuthenticatedAutoDashboardRoute
   AuthenticatedB3Route: typeof AuthenticatedB3Route
+  AuthenticatedB3Mt5simRoute: typeof AuthenticatedB3Mt5simRoute
   AuthenticatedB3SimHistoryRoute: typeof AuthenticatedB3SimHistoryRoute
   AuthenticatedBinanceAuditRoute: typeof AuthenticatedBinanceAuditRoute
   AuthenticatedBinanceBrainRoute: typeof AuthenticatedBinanceBrainRoute
@@ -1320,6 +1382,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAuditRoute: AuthenticatedAuditRouteWithChildren,
   AuthenticatedAutoDashboardRoute: AuthenticatedAutoDashboardRoute,
   AuthenticatedB3Route: AuthenticatedB3Route,
+  AuthenticatedB3Mt5simRoute: AuthenticatedB3Mt5simRoute,
   AuthenticatedB3SimHistoryRoute: AuthenticatedB3SimHistoryRoute,
   AuthenticatedBinanceAuditRoute: AuthenticatedBinanceAuditRoute,
   AuthenticatedBinanceBrainRoute: AuthenticatedBinanceBrainRoute,
@@ -1371,6 +1434,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   ApiPublicHooksAutoTickRoute: ApiPublicHooksAutoTickRoute,
+  ApiPublicHooksB3Mt5simTickRoute: ApiPublicHooksB3Mt5simTickRoute,
+  ApiPublicHooksB3Mt5simTickIngestRoute: ApiPublicHooksB3Mt5simTickIngestRoute,
   ApiPublicHooksB3SimulationTickRoute: ApiPublicHooksB3SimulationTickRoute,
   ApiPublicHooksConfidenceRecomputeRoute:
     ApiPublicHooksConfidenceRecomputeRoute,
@@ -1381,13 +1446,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
