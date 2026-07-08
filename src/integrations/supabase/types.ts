@@ -822,6 +822,622 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_mt5sim_blocks: {
+        Row: {
+          id: string
+          limit_value: number | null
+          lock_kind: string
+          observed: number | null
+          reason: string | null
+          robot_id: string | null
+          signal_id: string | null
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          limit_value?: number | null
+          lock_kind: string
+          observed?: number | null
+          reason?: string | null
+          robot_id?: string | null
+          signal_id?: string | null
+          ts?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          limit_value?: number | null
+          lock_kind?: string
+          observed?: number | null
+          reason?: string | null
+          robot_id?: string | null
+          signal_id?: string | null
+          ts?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_mt5sim_blocks_robot_id_fkey"
+            columns: ["robot_id"]
+            isOneToOne: false
+            referencedRelation: "b3_mt5sim_robots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_mt5sim_blocks_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "b3_mt5sim_signals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      b3_mt5sim_conflicts: {
+        Row: {
+          id: string
+          outcome: Json | null
+          prices: Json
+          robots: Json
+          sides: Json
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          outcome?: Json | null
+          prices: Json
+          robots: Json
+          sides: Json
+          ts?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          outcome?: Json | null
+          prices?: Json
+          robots?: Json
+          sides?: Json
+          ts?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      b3_mt5sim_order_attempts: {
+        Row: {
+          action: string
+          blocked: boolean
+          id: string
+          message: string | null
+          payload: Json | null
+          source: string
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          blocked?: boolean
+          id?: string
+          message?: string | null
+          payload?: Json | null
+          source: string
+          ts?: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          blocked?: boolean
+          id?: string
+          message?: string | null
+          payload?: Json | null
+          source?: string
+          ts?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      b3_mt5sim_quotes: {
+        Row: {
+          account_masked: string | null
+          ask: number | null
+          bid: number | null
+          id: number
+          last: number | null
+          mt5_connected: boolean | null
+          received_at: string
+          server: string | null
+          spread: number | null
+          symbol: string
+          symbol_status: string | null
+          tick_ts: string
+          user_id: string
+          volume: number | null
+        }
+        Insert: {
+          account_masked?: string | null
+          ask?: number | null
+          bid?: number | null
+          id?: number
+          last?: number | null
+          mt5_connected?: boolean | null
+          received_at?: string
+          server?: string | null
+          spread?: number | null
+          symbol: string
+          symbol_status?: string | null
+          tick_ts: string
+          user_id: string
+          volume?: number | null
+        }
+        Update: {
+          account_masked?: string | null
+          ask?: number | null
+          bid?: number | null
+          id?: number
+          last?: number | null
+          mt5_connected?: boolean | null
+          received_at?: string
+          server?: string | null
+          spread?: number | null
+          symbol?: string
+          symbol_status?: string | null
+          tick_ts?: string
+          user_id?: string
+          volume?: number | null
+        }
+        Relationships: []
+      }
+      b3_mt5sim_robots: {
+        Row: {
+          created_at: string
+          daily_gain_limit_brl: number
+          daily_loss_limit_brl: number
+          enabled: boolean
+          id: string
+          initial_balance_brl: number
+          max_consec_losses: number
+          max_drawdown_brl: number
+          max_spread_ticks: number
+          max_trades_day: number
+          min_score: number
+          profile: string
+          signal_ttl_s: number
+          strategy_params: Json
+          updated_at: string
+          user_id: string
+          volume: number
+        }
+        Insert: {
+          created_at?: string
+          daily_gain_limit_brl?: number
+          daily_loss_limit_brl?: number
+          enabled?: boolean
+          id?: string
+          initial_balance_brl?: number
+          max_consec_losses?: number
+          max_drawdown_brl?: number
+          max_spread_ticks?: number
+          max_trades_day?: number
+          min_score?: number
+          profile: string
+          signal_ttl_s?: number
+          strategy_params?: Json
+          updated_at?: string
+          user_id: string
+          volume?: number
+        }
+        Update: {
+          created_at?: string
+          daily_gain_limit_brl?: number
+          daily_loss_limit_brl?: number
+          enabled?: boolean
+          id?: string
+          initial_balance_brl?: number
+          max_consec_losses?: number
+          max_drawdown_brl?: number
+          max_spread_ticks?: number
+          max_trades_day?: number
+          min_score?: number
+          profile?: string
+          signal_ttl_s?: number
+          strategy_params?: Json
+          updated_at?: string
+          user_id?: string
+          volume?: number
+        }
+        Relationships: []
+      }
+      b3_mt5sim_runs: {
+        Row: {
+          created_at: string
+          id: string
+          note: string | null
+          started_at: string
+          status: string
+          stopped_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          started_at?: string
+          status?: string
+          stopped_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          started_at?: string
+          status?: string
+          stopped_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      b3_mt5sim_settings: {
+        Row: {
+          account_masked: string | null
+          allow_long: boolean
+          allow_reverse: boolean
+          allow_short: boolean
+          created_at: string
+          default_volume: number
+          fee_per_contract_brl: number
+          id: string
+          kill_switch_real: boolean
+          market: string
+          max_drawdown_brl: number
+          max_price_divergence_pts: number
+          min_days: number
+          min_hit_rate: number
+          min_net_pnl_brl: number
+          min_trades_per_robot: number
+          mt5_symbol: string
+          point_value_brl: number
+          poll_interval_ms: number
+          price_source: string
+          quote_ttl_seconds: number
+          server: string
+          session_end: string
+          session_start: string
+          slippage_ticks: number
+          tick_size: number
+          tick_value_brl: number
+          updated_at: string
+          use_spread: boolean
+          user_id: string
+        }
+        Insert: {
+          account_masked?: string | null
+          allow_long?: boolean
+          allow_reverse?: boolean
+          allow_short?: boolean
+          created_at?: string
+          default_volume?: number
+          fee_per_contract_brl?: number
+          id?: string
+          kill_switch_real?: boolean
+          market?: string
+          max_drawdown_brl?: number
+          max_price_divergence_pts?: number
+          min_days?: number
+          min_hit_rate?: number
+          min_net_pnl_brl?: number
+          min_trades_per_robot?: number
+          mt5_symbol?: string
+          point_value_brl?: number
+          poll_interval_ms?: number
+          price_source?: string
+          quote_ttl_seconds?: number
+          server?: string
+          session_end?: string
+          session_start?: string
+          slippage_ticks?: number
+          tick_size?: number
+          tick_value_brl?: number
+          updated_at?: string
+          use_spread?: boolean
+          user_id: string
+        }
+        Update: {
+          account_masked?: string | null
+          allow_long?: boolean
+          allow_reverse?: boolean
+          allow_short?: boolean
+          created_at?: string
+          default_volume?: number
+          fee_per_contract_brl?: number
+          id?: string
+          kill_switch_real?: boolean
+          market?: string
+          max_drawdown_brl?: number
+          max_price_divergence_pts?: number
+          min_days?: number
+          min_hit_rate?: number
+          min_net_pnl_brl?: number
+          min_trades_per_robot?: number
+          mt5_symbol?: string
+          point_value_brl?: number
+          poll_interval_ms?: number
+          price_source?: string
+          quote_ttl_seconds?: number
+          server?: string
+          session_end?: string
+          session_start?: string
+          slippage_ticks?: number
+          tick_size?: number
+          tick_value_brl?: number
+          updated_at?: string
+          use_spread?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
+      b3_mt5sim_signals: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          price_signal: number
+          reason: string | null
+          robot_id: string
+          score: number
+          side: string
+          status: string
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          price_signal: number
+          reason?: string | null
+          robot_id: string
+          score?: number
+          side: string
+          status?: string
+          ts?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          price_signal?: number
+          reason?: string | null
+          robot_id?: string
+          score?: number
+          side?: string
+          status?: string
+          ts?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_mt5sim_signals_robot_id_fkey"
+            columns: ["robot_id"]
+            isOneToOne: false
+            referencedRelation: "b3_mt5sim_robots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      b3_mt5sim_trades: {
+        Row: {
+          created_at: string
+          entry_reason: string | null
+          exit_reason: string | null
+          fee_brl: number
+          gross_brl: number | null
+          id: string
+          locks_triggered: Json
+          logical_symbol: string
+          market: string
+          mt5_symbol: string
+          net_brl: number | null
+          observations: string | null
+          points_result: number | null
+          price_entry_sim: number
+          price_exit_sim: number | null
+          price_signal: number | null
+          robot_id: string
+          session_date: string
+          side: string
+          signal_id: string | null
+          slippage_ticks: number | null
+          spread: number | null
+          status: string
+          ts_entry: string
+          ts_exit: string | null
+          ts_signal: string | null
+          updated_at: string
+          user_id: string
+          volume: number
+        }
+        Insert: {
+          created_at?: string
+          entry_reason?: string | null
+          exit_reason?: string | null
+          fee_brl?: number
+          gross_brl?: number | null
+          id?: string
+          locks_triggered?: Json
+          logical_symbol?: string
+          market?: string
+          mt5_symbol: string
+          net_brl?: number | null
+          observations?: string | null
+          points_result?: number | null
+          price_entry_sim: number
+          price_exit_sim?: number | null
+          price_signal?: number | null
+          robot_id: string
+          session_date?: string
+          side: string
+          signal_id?: string | null
+          slippage_ticks?: number | null
+          spread?: number | null
+          status?: string
+          ts_entry?: string
+          ts_exit?: string | null
+          ts_signal?: string | null
+          updated_at?: string
+          user_id: string
+          volume?: number
+        }
+        Update: {
+          created_at?: string
+          entry_reason?: string | null
+          exit_reason?: string | null
+          fee_brl?: number
+          gross_brl?: number | null
+          id?: string
+          locks_triggered?: Json
+          logical_symbol?: string
+          market?: string
+          mt5_symbol?: string
+          net_brl?: number | null
+          observations?: string | null
+          points_result?: number | null
+          price_entry_sim?: number
+          price_exit_sim?: number | null
+          price_signal?: number | null
+          robot_id?: string
+          session_date?: string
+          side?: string
+          signal_id?: string | null
+          slippage_ticks?: number | null
+          spread?: number | null
+          status?: string
+          ts_entry?: string
+          ts_exit?: string | null
+          ts_signal?: string | null
+          updated_at?: string
+          user_id?: string
+          volume?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_mt5sim_trades_robot_id_fkey"
+            columns: ["robot_id"]
+            isOneToOne: false
+            referencedRelation: "b3_mt5sim_robots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_mt5sim_trades_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "b3_mt5sim_signals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      b3_mt5sim_wallet_daily: {
+        Row: {
+          best_trade_brl: number
+          blocks_count: number
+          consec_losses: number
+          created_at: string
+          current_balance_brl: number
+          drawdown_brl: number
+          fees_brl: number
+          hit_rate: number
+          id: string
+          last_block_reason: string | null
+          last_signal_at: string | null
+          losses: number
+          peak_balance_brl: number
+          pnl_gross_brl: number
+          pnl_net_brl: number
+          points_net: number
+          position_avg_price: number | null
+          position_qty: number | null
+          position_side: string | null
+          robot_id: string
+          session_date: string
+          starting_balance_brl: number
+          status: string
+          trades_count: number
+          updated_at: string
+          user_id: string
+          wins: number
+          worst_trade_brl: number
+        }
+        Insert: {
+          best_trade_brl?: number
+          blocks_count?: number
+          consec_losses?: number
+          created_at?: string
+          current_balance_brl?: number
+          drawdown_brl?: number
+          fees_brl?: number
+          hit_rate?: number
+          id?: string
+          last_block_reason?: string | null
+          last_signal_at?: string | null
+          losses?: number
+          peak_balance_brl?: number
+          pnl_gross_brl?: number
+          pnl_net_brl?: number
+          points_net?: number
+          position_avg_price?: number | null
+          position_qty?: number | null
+          position_side?: string | null
+          robot_id: string
+          session_date: string
+          starting_balance_brl?: number
+          status?: string
+          trades_count?: number
+          updated_at?: string
+          user_id: string
+          wins?: number
+          worst_trade_brl?: number
+        }
+        Update: {
+          best_trade_brl?: number
+          blocks_count?: number
+          consec_losses?: number
+          created_at?: string
+          current_balance_brl?: number
+          drawdown_brl?: number
+          fees_brl?: number
+          hit_rate?: number
+          id?: string
+          last_block_reason?: string | null
+          last_signal_at?: string | null
+          losses?: number
+          peak_balance_brl?: number
+          pnl_gross_brl?: number
+          pnl_net_brl?: number
+          points_net?: number
+          position_avg_price?: number | null
+          position_qty?: number | null
+          position_side?: string | null
+          robot_id?: string
+          session_date?: string
+          starting_balance_brl?: number
+          status?: string
+          trades_count?: number
+          updated_at?: string
+          user_id?: string
+          wins?: number
+          worst_trade_brl?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_mt5sim_wallet_daily_robot_id_fkey"
+            columns: ["robot_id"]
+            isOneToOne: false
+            referencedRelation: "b3_mt5sim_robots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       b3_orders: {
         Row: {
           close_reason: string | null
