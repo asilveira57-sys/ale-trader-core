@@ -70,6 +70,7 @@ import { Route as ApiPublicHooksDailyReportRouteImport } from './routes/api/publ
 import { Route as ApiPublicHooksConfidenceRecomputeRouteImport } from './routes/api/public/hooks/confidence-recompute'
 import { Route as ApiPublicHooksB3SimulationTickRouteImport } from './routes/api/public/hooks/b3-simulation-tick'
 import { Route as ApiPublicHooksB3Mt5simTickIngestRouteImport } from './routes/api/public/hooks/b3-mt5sim-tick-ingest'
+import { Route as ApiPublicHooksB3Mt5simTickRouteImport } from './routes/api/public/hooks/b3-mt5sim-tick'
 import { Route as ApiPublicHooksAutoTickRouteImport } from './routes/api/public/hooks/auto-tick'
 
 const AuthRoute = AuthRouteImport.update({
@@ -405,6 +406,12 @@ const ApiPublicHooksB3Mt5simTickIngestRoute =
     path: '/api/public/hooks/b3-mt5sim-tick-ingest',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksB3Mt5simTickRoute =
+  ApiPublicHooksB3Mt5simTickRouteImport.update({
+    id: '/api/public/hooks/b3-mt5sim-tick',
+    path: '/api/public/hooks/b3-mt5sim-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksAutoTickRoute = ApiPublicHooksAutoTickRouteImport.update({
   id: '/api/public/hooks/auto-tick',
   path: '/api/public/hooks/auto-tick',
@@ -467,6 +474,7 @@ export interface FileRoutesByFullPath {
   '/reports/$reportId': typeof AuthenticatedReportsReportIdRoute
   '/backtest/': typeof AuthenticatedBacktestIndexRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
+  '/api/public/hooks/b3-mt5sim-tick': typeof ApiPublicHooksB3Mt5simTickRoute
   '/api/public/hooks/b3-mt5sim-tick-ingest': typeof ApiPublicHooksB3Mt5simTickIngestRoute
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
   '/api/public/hooks/confidence-recompute': typeof ApiPublicHooksConfidenceRecomputeRoute
@@ -530,6 +538,7 @@ export interface FileRoutesByTo {
   '/reports/$reportId': typeof AuthenticatedReportsReportIdRoute
   '/backtest': typeof AuthenticatedBacktestIndexRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
+  '/api/public/hooks/b3-mt5sim-tick': typeof ApiPublicHooksB3Mt5simTickRoute
   '/api/public/hooks/b3-mt5sim-tick-ingest': typeof ApiPublicHooksB3Mt5simTickIngestRoute
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
   '/api/public/hooks/confidence-recompute': typeof ApiPublicHooksConfidenceRecomputeRoute
@@ -595,6 +604,7 @@ export interface FileRoutesById {
   '/_authenticated/reports/$reportId': typeof AuthenticatedReportsReportIdRoute
   '/_authenticated/backtest/': typeof AuthenticatedBacktestIndexRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
+  '/api/public/hooks/b3-mt5sim-tick': typeof ApiPublicHooksB3Mt5simTickRoute
   '/api/public/hooks/b3-mt5sim-tick-ingest': typeof ApiPublicHooksB3Mt5simTickIngestRoute
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
   '/api/public/hooks/confidence-recompute': typeof ApiPublicHooksConfidenceRecomputeRoute
@@ -660,6 +670,7 @@ export interface FileRouteTypes {
     | '/reports/$reportId'
     | '/backtest/'
     | '/api/public/hooks/auto-tick'
+    | '/api/public/hooks/b3-mt5sim-tick'
     | '/api/public/hooks/b3-mt5sim-tick-ingest'
     | '/api/public/hooks/b3-simulation-tick'
     | '/api/public/hooks/confidence-recompute'
@@ -723,6 +734,7 @@ export interface FileRouteTypes {
     | '/reports/$reportId'
     | '/backtest'
     | '/api/public/hooks/auto-tick'
+    | '/api/public/hooks/b3-mt5sim-tick'
     | '/api/public/hooks/b3-mt5sim-tick-ingest'
     | '/api/public/hooks/b3-simulation-tick'
     | '/api/public/hooks/confidence-recompute'
@@ -787,6 +799,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports/$reportId'
     | '/_authenticated/backtest/'
     | '/api/public/hooks/auto-tick'
+    | '/api/public/hooks/b3-mt5sim-tick'
     | '/api/public/hooks/b3-mt5sim-tick-ingest'
     | '/api/public/hooks/b3-simulation-tick'
     | '/api/public/hooks/confidence-recompute'
@@ -800,6 +813,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   ApiPublicHooksAutoTickRoute: typeof ApiPublicHooksAutoTickRoute
+  ApiPublicHooksB3Mt5simTickRoute: typeof ApiPublicHooksB3Mt5simTickRoute
   ApiPublicHooksB3Mt5simTickIngestRoute: typeof ApiPublicHooksB3Mt5simTickIngestRoute
   ApiPublicHooksB3SimulationTickRoute: typeof ApiPublicHooksB3SimulationTickRoute
   ApiPublicHooksConfidenceRecomputeRoute: typeof ApiPublicHooksConfidenceRecomputeRoute
@@ -1237,6 +1251,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksB3Mt5simTickIngestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/b3-mt5sim-tick': {
+      id: '/api/public/hooks/b3-mt5sim-tick'
+      path: '/api/public/hooks/b3-mt5sim-tick'
+      fullPath: '/api/public/hooks/b3-mt5sim-tick'
+      preLoaderRoute: typeof ApiPublicHooksB3Mt5simTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/auto-tick': {
       id: '/api/public/hooks/auto-tick'
       path: '/api/public/hooks/auto-tick'
@@ -1392,6 +1413,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   ApiPublicHooksAutoTickRoute: ApiPublicHooksAutoTickRoute,
+  ApiPublicHooksB3Mt5simTickRoute: ApiPublicHooksB3Mt5simTickRoute,
   ApiPublicHooksB3Mt5simTickIngestRoute: ApiPublicHooksB3Mt5simTickIngestRoute,
   ApiPublicHooksB3SimulationTickRoute: ApiPublicHooksB3SimulationTickRoute,
   ApiPublicHooksConfidenceRecomputeRoute:
