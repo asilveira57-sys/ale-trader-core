@@ -63,11 +63,13 @@ export const runB3Committee = createServerFn({ method: "POST" })
       strategy_mode: settings.strategy_mode as any,
     };
 
-    const ctx = buildMockB3Context(
-      data.symbol ?? "WIN",
-      data.contract_code ?? "WINFUT",
-      data.base_price ?? 130000,
-    );
+    const priceSrc = await getB3PriceContext(supabase, userId, {
+      symbol: data.symbol ?? "WIN",
+      contract: data.contract_code ?? "WINFUT",
+      base: data.base_price ?? 130000,
+    });
+    const ctx = priceSrc.ctx;
+
 
     // settings de consenso por modo
     const mode = settings.strategy_mode as string;
