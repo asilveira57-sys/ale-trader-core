@@ -2,9 +2,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
-  buildMockB3Context, runB3Agents, buildB3Decision,
+  runB3Agents, buildB3Decision,
   type B3Side, type B3RiskState, type B3CommitteeSettings,
 } from "./b3-committee.server";
+import { getB3PriceContext, type B3PriceSource } from "./b3-price-source.server";
+
 
 interface Input {
   side: B3Side;
