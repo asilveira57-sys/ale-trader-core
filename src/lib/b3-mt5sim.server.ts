@@ -528,3 +528,93 @@ export async function assertNoRealOrderIfSimActive(sb: SupabaseClient, userId: s
     throw new Error("Tentativa de ordem real bloqueada — modo Simulação Local ativo");
   }
 }
+
+// ---------------- Controle manual simulado ----------------
+
+async function loadContext(sb: SupabaseClient, userId: string, robotId: string) {
+  const [{ data: settings }, { data: robot }] = await Promise.all([
+    (sb as any).from("b3_mt5sim_settings").select("*").eq("user_id", userId).maybeSingle(),
+    (sb as any).from("b3_mt5sim_robots").select("*").eq("id", robotId).eq("user_id", userId).maybeSingle(),
+  ]);
+  if (!settings) throw new Error("configuração de simulação ausente");
+  if (!robot) throw new Error("robô não encontrado");
+  const { data: quote } = await (sb as any)
+    .from("b3_mt5sim_quotes")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("symbol", (settings as Settings).mt5_symbol)
+    .order("received_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!quote) throw new Error("sem cotação disponível");
+  const age = (Date.now() - new Date((quote as any).received_at).getTime()) / 1000;
+  return { settings: settings as Settings, robot: robot as Robot, quote: quote as Quote, age };
+}
+
+async function findOpenTrade(sb: SupabaseClient, userId: string, robotId: string) {
+  const { data } = await (sb as any)
+    .from("b3_mt5sim_trades")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("robot_id", robotId)
+    .eq("status", "open")
+    .limit(1)
+    .maybeSingle();
+  return data as any;
+}
+
+async function registerConflictOnManual(sb: SupabaseClient, userId: string, robot: Robot, side: SimSide, price: number) {
+  const { data: others } = await (sb as any)
+    .from("b3_mt5sim_wallet_daily")
+    .select("robot_id, position_side, position_avg_price")
+    .eq("user_id", userId)
+    .eq("session_date", new Date().toISOString().slice(0, 10))
+    .not("position_side", "is", null);
+  const opposite = ((others as any[]) ?? []).filter((w) => w.robot_id !== robot.id && w.position_side && w.position_side !== side);
+  if (!opposite.length) return;
+  await (sb as any).from("b3_mt5sim_conflicts").insert({
+    user_id: userId,
+    robots: [{ id: robot.id, profile: robot.profile }, ...opposite.map((o) => ({ id: o.robot_id }))],
+    sides: [side, ...opposite.map((o) => o.position_side)],
+    prices: [price, ...opposite.map((o) => Number(o.position_avg_price))],
+  });
+}
+
+export async function manualOpenSimTrade(
+  sb: SupabaseClient,
+  userId: string,
+  robotId: string,
+  side: SimSide,
+) {
+  const { settings, robot, quote, age } = await loadContext(sb, userId, robotId);
+  if (age > TICK_PAUSE_AGE_S) throw new Error(`tick vencido (${age.toFixed(1)}s) — simulação pausada`);
+  const existing = await findOpenTrade(sb, userId, robotId);
+  if (existing) {
+    if (existing.side === side) {
+      throw new Error(side === "buy" ? "Robô já possui compra simulada aberta" : "Robô já possui venda simulada aberta");
+    }
+    // lado oposto → só vira se permitido
+    if (!settings.allow_reverse) {
+      throw new Error(existing.side === "buy" ? "Robô comprado — virada não permitida" : "Robô vendido — vire mão não permitido");
+    }
+    await closeSimTrade(sb, userId, settings, robot, existing, quote, "sinal_manual_contrario");
+    const opened = await openSimTrade(sb, userId, settings, robot, null, side, quote, Number(quote.last ?? (side === "buy" ? quote.ask : quote.bid) ?? 0), side === "buy" ? "manual_reverse_to_buy" : "manual_reverse_to_sell");
+    await registerConflictOnManual(sb, userId, robot, side, Number(quote.last ?? 0));
+    return opened;
+  }
+  const opened = await openSimTrade(sb, userId, settings, robot, null, side, quote, Number(quote.last ?? (side === "buy" ? quote.ask : quote.bid) ?? 0), side === "buy" ? "manual_buy" : "manual_sell");
+  await registerConflictOnManual(sb, userId, robot, side, Number(quote.last ?? 0));
+  return opened;
+}
+
+export async function manualReverseSimTrade(sb: SupabaseClient, userId: string, robotId: string) {
+  const { settings, robot, quote, age } = await loadContext(sb, userId, robotId);
+  if (age > TICK_PAUSE_AGE_S) throw new Error(`tick vencido (${age.toFixed(1)}s) — simulação pausada`);
+  const existing = await findOpenTrade(sb, userId, robotId);
+  if (!existing) throw new Error("Robô sem posição aberta para virar mão");
+  const newSide: SimSide = existing.side === "buy" ? "sell" : "buy";
+  await closeSimTrade(sb, userId, settings, robot, existing, quote, "manual_reverse");
+  const opened = await openSimTrade(sb, userId, settings, robot, null, newSide, quote, Number(quote.last ?? 0), newSide === "buy" ? "manual_reverse_to_buy" : "manual_reverse_to_sell");
+  return opened;
+}
+
