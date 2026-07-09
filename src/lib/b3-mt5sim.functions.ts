@@ -106,6 +106,8 @@ export const updateMt5SimSettings = createServerFn({ method: "POST" })
 const robotSchema = z.object({
   id: z.string().uuid(),
   enabled: z.boolean().optional(),
+  mode: z.enum(["manual", "auto", "paused"]).optional(),
+  cooldown_s: z.number().int().min(0).max(3600).optional(),
   volume: z.number().int().min(1).max(50).optional(),
   daily_loss_limit_brl: z.number().min(0).optional(),
   daily_gain_limit_brl: z.number().min(0).optional(),
@@ -119,6 +121,7 @@ const robotSchema = z.object({
   stop_loss_points: z.number().min(0).optional(),
   take_profit_points: z.number().min(0).optional(),
 });
+
 
 export const upsertMt5SimRobot = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
