@@ -116,6 +116,8 @@ const robotSchema = z.object({
   signal_ttl_s: z.number().int().min(1).max(600).optional(),
   max_spread_ticks: z.number().min(0).optional(),
   initial_balance_brl: z.number().min(0).optional(),
+  stop_loss_points: z.number().min(0).optional(),
+  take_profit_points: z.number().min(0).optional(),
 });
 
 export const upsertMt5SimRobot = createServerFn({ method: "POST" })
