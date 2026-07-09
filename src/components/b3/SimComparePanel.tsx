@@ -433,13 +433,14 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
       <DialogTrigger asChild>
         <Button size="sm" variant="ghost" title="Configurar"><SettingsIcon className="w-4 h-4" /></Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6">
           <DialogTitle className="capitalize flex items-center gap-2">
             <Badge className={`uppercase ${MODE_COLOR[mode]}`}>{mode}</Badge>
             Configuração do modo
           </DialogTitle>
         </DialogHeader>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
         {current ? (
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="col-span-2 flex items-center justify-between rounded border border-border/40 p-2">
@@ -476,7 +477,9 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
         ) : (
           <p className="text-sm text-muted-foreground">Carregando…</p>
         )}
-        <DialogFooter>
+        </div>
+        <DialogFooter className="px-6 pb-6 pt-2 border-t border-border/40">
+
           <Button variant="outline" onClick={() => resetM.mutate()} disabled={resetM.isPending}>Restaurar padrão</Button>
           <Button onClick={() => saveM.mutate()} disabled={saveM.isPending || !current}>Salvar</Button>
         </DialogFooter>
