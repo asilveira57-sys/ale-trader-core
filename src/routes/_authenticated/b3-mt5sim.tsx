@@ -124,9 +124,11 @@ function Mt5SimPage() {
       </div>
 
 
-      <Tabs defaultValue="painel">
-        <TabsList>
+      <Tabs defaultValue={s.engine === "legacy_b3" ? "legacy" : "painel"}>
+        <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="painel"><Activity className="size-4 mr-1" /> Painel</TabsTrigger>
+          <TabsTrigger value="legacy">Motor legado B3</TabsTrigger>
+          <TabsTrigger value="comparativo">Comparativo Legado × MT5</TabsTrigger>
           <TabsTrigger value="manual">Controle manual</TabsTrigger>
           <TabsTrigger value="robos">Robôs & Travas</TabsTrigger>
           <TabsTrigger value="config">Configuração</TabsTrigger>
@@ -135,6 +137,138 @@ function Mt5SimPage() {
           <TabsTrigger value="conflicts">Conflitos</TabsTrigger>
           <TabsTrigger value="ingest">Ponte MT5</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="legacy" className="space-y-3">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Motor legado B3 Day Trade WIN sobre MT5 XP {isDemo ? "DEMO" : isPrd ? "PRD" : feedingServer}</CardTitle>
+              <Button size="sm" variant="outline" onClick={() => mTickLegacy.mutate()} disabled={mTickLegacy.isPending}><RefreshCw className="size-4 mr-1" />Tick legado agora</Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-xs text-muted-foreground">
+                Fonte de dados: <span className="font-mono">MT5 XP {isDemo ? "DEMO" : isPrd ? "PRD" : feedingServer}</span> · Motor ativo: <span className="font-mono">B3 Day Trade WIN legado</span> · Símbolo: <span className="font-mono">{s.mt5_symbol}</span> · Modo: <span className="font-mono">simulação</span> · Ordens reais enviadas: <span className="font-mono text-emerald-400">0</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                {(legacy?.ranking ?? []).map((r: any) => (
+                  <div key={r.mode} className="panel p-3">
+                    <div className="text-xs uppercase text-muted-foreground">{r.mode}</div>
+                    <div className={`text-xl font-mono ${r.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>{BRL(r.net)}</div>
+                    <div className="text-xs text-muted-foreground">Trades {r.trades} · Acerto {(r.hit_rate * 100).toFixed(0)}% · Pts {Number(r.gross_pts).toFixed(0)}</div>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="text-sm font-medium mb-1">Candles M1 recentes (agregados dos ticks)</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="text-muted-foreground border-b border-border"><tr><th className="text-left py-1">Horário</th><th className="text-right">Abertura</th><th className="text-right">Máx</th><th className="text-right">Mín</th><th className="text-right">Fech.</th><th className="text-right">Ticks</th></tr></thead>
+                    <tbody>
+                      {(legacy?.candles ?? []).slice(-10).reverse().map((c: any) => (
+                        <tr key={c.minute_ts} className="border-b border-border/40">
+                          <td className="font-mono">{new Date(c.minute_ts).toLocaleTimeString("pt-BR")}</td>
+                          <td className="text-right font-mono">{Number(c.open).toFixed(0)}</td>
+                          <td className="text-right font-mono">{Number(c.high).toFixed(0)}</td>
+                          <td className="text-right font-mono">{Number(c.low).toFixed(0)}</td>
+                          <td className="text-right font-mono">{Number(c.close).toFixed(0)}</td>
+                          <td className="text-right font-mono">{c.tick_count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div>
+                <div className="text-sm font-medium mb-1">Trades simuladas do motor legado</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="text-muted-foreground border-b border-border"><tr><th className="text-left py-1">Robô</th><th>Lado</th><th className="text-right">Entrada</th><th className="text-right">Saída</th><th className="text-right">Pts</th><th className="text-right">Líq.</th><th>Motivo</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {(legacy?.trades ?? []).slice(0, 30).map((t: any) => (
+                        <tr key={t.id} className="border-b border-border/40">
+                          <td>{t.mode}</td>
+                          <td>{t.side}</td>
+                          <td className="text-right font-mono">{Number(t.entry_price).toFixed(0)}</td>
+                          <td className="text-right font-mono">{t.exit_price != null ? Number(t.exit_price).toFixed(0) : "—"}</td>
+                          <td className="text-right font-mono">{t.gross_pts != null ? Number(t.gross_pts).toFixed(0) : "—"}</td>
+                          <td className={`text-right font-mono ${Number(t.net_brl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>{t.net_brl != null ? BRL(Number(t.net_brl)) : "—"}</td>
+                          <td>{t.close_reason ?? "—"}</td>
+                          <td>{t.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div>
+                <div className="text-sm font-medium mb-1">Últimos sinais / bloqueios</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="text-muted-foreground border-b border-border"><tr><th className="text-left py-1">Hora</th><th>Robô</th><th>Lado</th><th>Decisão</th><th className="text-right">Score</th><th>Motivo</th></tr></thead>
+                    <tbody>
+                      {(legacy?.signals ?? []).slice(0, 20).map((sig: any) => (
+                        <tr key={sig.id} className="border-b border-border/40">
+                          <td className="font-mono">{new Date(sig.ts).toLocaleTimeString("pt-BR")}</td>
+                          <td>{sig.mode}</td>
+                          <td>{sig.intended_side}</td>
+                          <td className={sig.decision === "approved" ? "text-emerald-400" : "text-red-400"}>{sig.decision}</td>
+                          <td className="text-right font-mono">{sig.score != null ? Number(sig.score).toFixed(0) : "—"}</td>
+                          <td>{sig.blocked_reason ?? sig.reason ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="comparativo" className="space-y-3">
+          <Card>
+            <CardHeader><CardTitle>Comparativo Motor Legado × MT5 (WINQ26)</CardTitle></CardHeader>
+            <CardContent className="p-0 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="text-muted-foreground border-b border-border">
+                  <tr>
+                    <th className="text-left py-2 pl-3">Robô</th>
+                    <th>Lado legado</th>
+                    <th className="text-right">Entrada leg.</th>
+                    <th className="text-right">Saída leg.</th>
+                    <th className="text-right">Líq. leg.</th>
+                    <th>Saída leg. motivo</th>
+                    <th>Lado MT5</th>
+                    <th className="text-right">Entrada MT5</th>
+                    <th className="text-right">Saída MT5</th>
+                    <th className="text-right">Líq. MT5</th>
+                    <th className="text-right">Δ</th>
+                    <th className="pr-3">Motivo divergência</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(cmp?.rows ?? []).map((r: any, i: number) => (
+                    <tr key={i} className="border-b border-border/40">
+                      <td className="py-1 pl-3">{r.robot}</td>
+                      <td>{r.legacy_side}</td>
+                      <td className="text-right font-mono">{Number(r.entry_legacy ?? 0).toFixed(0)}</td>
+                      <td className="text-right font-mono">{r.exit_legacy != null ? Number(r.exit_legacy).toFixed(0) : "—"}</td>
+                      <td className={`text-right font-mono ${r.net_legacy >= 0 ? "text-emerald-400" : "text-red-400"}`}>{BRL(r.net_legacy)}</td>
+                      <td>{r.close_reason_legacy ?? "—"}</td>
+                      <td>{r.new_side ?? "—"}</td>
+                      <td className="text-right font-mono">{r.entry_new != null ? Number(r.entry_new).toFixed(0) : "—"}</td>
+                      <td className="text-right font-mono">{r.exit_new != null ? Number(r.exit_new).toFixed(0) : "—"}</td>
+                      <td className={`text-right font-mono ${(r.net_new ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>{r.net_new != null ? BRL(r.net_new) : "—"}</td>
+                      <td className="text-right font-mono">{r.diff != null ? BRL(r.diff) : "—"}</td>
+                      <td className="pr-3">{r.motivo ?? "—"}</td>
+                    </tr>
+                  ))}
+                  {(!cmp?.rows || cmp.rows.length === 0) && (
+                    <tr><td colSpan={12} className="py-6 text-center text-muted-foreground">Ainda sem dados comparativos. Rode o motor legado com ticks reais para gerar as linhas.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="manual" className="space-y-3">
           <Card>
