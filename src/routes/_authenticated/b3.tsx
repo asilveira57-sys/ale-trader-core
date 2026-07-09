@@ -162,7 +162,10 @@ function B3Page() {
         </div>
       </header>
 
+      <PriceSourceCard />
+
       <Tabs defaultValue="panel">
+
         <TabsList>
           <TabsTrigger value="panel"><Activity className="w-4 h-4 mr-1" />Painel</TabsTrigger>
           <TabsTrigger value="trade"><TrendingUp className="w-4 h-4 mr-1" />Operar (sim.)</TabsTrigger>
