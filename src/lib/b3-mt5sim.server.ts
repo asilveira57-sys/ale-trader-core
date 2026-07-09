@@ -269,7 +269,7 @@ export async function closeSimTrade(
 }
 
 
-async function openTrade(sb: SupabaseClient, userId: string, settings: Settings, robot: Robot, signalId: string, side: SimSide, quote: Quote, priceSignal: number, reason: string) {
+export async function openSimTrade(sb: SupabaseClient, userId: string, settings: Settings, robot: Robot, signalId: string | null, side: SimSide, quote: Quote, priceSignal: number, reason: string) {
   const px = priceForSide(quote, settings, side);
   if (px == null) return null;
   const stopPx = side === "buy" ? px - robot.stop_loss_points : px + robot.stop_loss_points;
