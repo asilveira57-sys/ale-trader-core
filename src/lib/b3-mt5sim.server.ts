@@ -411,12 +411,15 @@ export async function runMt5SimTick(sb: SupabaseClient, userId: string, opts: { 
     }
   }
 
-  // 2) Gerar sinais e abrir/fechar por sinal contrário
+  // 2) Gerar sinais e abrir/fechar por sinal contrário — apenas robôs em modo automático
   for (const robot of list) {
+    if ((robot.mode ?? "manual") !== "auto") continue;
+    if (robot.cooldown_until && new Date(robot.cooldown_until).getTime() > Date.now()) continue;
     const wallet = await ensureWallet(sb, userId, robot, today);
     const sig = await generateSignal(sb, userId, robot, q, s.mt5_symbol);
     if (!sig) continue;
     res.signals++;
+
 
     const { data: sigRow } = await (sb as any)
       .from("b3_mt5sim_signals")
