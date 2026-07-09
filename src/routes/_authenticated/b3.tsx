@@ -960,3 +960,86 @@ function CommitteePanel({ settings }: { settings: B3Settings }) {
     </div>
   );
 }
+
+// ────────────────────────────────────────────────────────────────────
+// Fonte de cotação: CSV (mock legado) vs MT5 XP DEMO (ponte real).
+// O motor B3 continua idêntico — apenas o preço de entrada muda.
+// ────────────────────────────────────────────────────────────────────
+function PriceSourceCard() {
+  const getStatus = useServerFn(getB3PriceSourceStatus);
+  const setSource = useServerFn(setB3PriceSource);
+  const qc = useQueryClient();
+  const statusQ = useQuery({
+    queryKey: ["b3-price-source"],
+    queryFn: () => getStatus(),
+    refetchInterval: 5000,
+  });
+  const mut = useMutation({
+    mutationFn: (source: "csv" | "mt5_xp_demo") => setSource({ data: { source } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["b3-price-source"] }); toast.success("Fonte de cotação atualizada"); },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao atualizar fonte"),
+  });
+  const st = statusQ.data as any;
+  const isMt5 = st?.source === "mt5_xp_demo";
+  const stale = st?.quote_age_s != null && st.quote_age_s > 5;
+  const dead = st?.quote_age_s != null && st.quote_age_s > 30;
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center justify-between flex-wrap gap-2">
+          <span>Fonte de cotação do motor B3</span>
+          {isMt5 ? (
+            <Badge variant={dead ? "destructive" : stale ? "outline" : "default"}>
+              {st?.live ? `MT5 XP DEMO · ${st?.server ?? "—"}` : "MT5 XP DEMO · sem tick"}
+            </Badge>
+          ) : (
+            <Badge variant="secondary">CSV (mock legado)</Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant={!isMt5 ? "default" : "outline"} disabled={mut.isPending}
+            onClick={() => mut.mutate("csv")}>CSV (legado)</Button>
+          <Button size="sm" variant={isMt5 ? "default" : "outline"} disabled={mut.isPending}
+            onClick={() => mut.mutate("mt5_xp_demo")}>MT5 XP DEMO</Button>
+          <span className="text-xs text-muted-foreground">
+            O cérebro dos robôs, comitê, ranking, bloqueios e PnL não mudam — só a origem do preço.
+          </span>
+        </div>
+        {isMt5 && (
+          <div className="grid gap-2 md:grid-cols-5 text-xs">
+            <Metric label="Bid" value={st?.bid != null ? Number(st.bid).toFixed(3) : "—"} />
+            <Metric label="Ask" value={st?.ask != null ? Number(st.ask).toFixed(3) : "—"} />
+            <Metric label="Último" value={st?.last != null ? Number(st.last).toFixed(3) : "—"} />
+            <Metric label="Spread" value={st?.spread != null ? String(st.spread) : "—"} />
+            <Metric label="Idade do tick"
+              value={st?.quote_age_s != null ? `${st.quote_age_s}s` : "—"}
+              tone={dead ? "danger" : stale ? "warn" : "ok"} />
+          </div>
+        )}
+        {isMt5 && dead && (
+          <p className="text-xs text-destructive flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" /> Tick MT5 vencido (&gt; 30s). O motor pode operar com preço defasado até o ingest voltar.
+          </p>
+        )}
+        {isMt5 && !st?.live && !dead && (
+          <p className="text-xs text-muted-foreground">
+            Aguardando primeiro tick da ponte MT5 XP DEMO. Enquanto isso, o motor usa fallback para não travar.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Metric({ label, value, tone }: { label: string; value: string; tone?: "ok" | "warn" | "danger" }) {
+  const color = tone === "danger" ? "text-destructive" : tone === "warn" ? "text-amber-500" : "";
+  return (
+    <div className="rounded-md border p-2">
+      <div className="text-[10px] uppercase text-muted-foreground">{label}</div>
+      <div className={`font-mono ${color}`}>{value}</div>
+    </div>
+  );
+}
+
