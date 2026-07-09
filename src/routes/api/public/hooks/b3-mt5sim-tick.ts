@@ -15,8 +15,16 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5sim-tick")({
         const results: any[] = [];
         for (const r of (runs as any[]) ?? []) {
           try {
-            const res = await runMt5SimTick(supabaseAdmin as any, r.user_id, { force });
-            results.push({ run_id: r.id, ...res });
+            const { data: settings } = await (supabaseAdmin as any).from("b3_mt5sim_settings").select("engine").eq("user_id", r.user_id).maybeSingle();
+            const engine = settings?.engine ?? "legacy_b3";
+            if (engine === "legacy_b3") {
+              const { runLegacyMt5Tick } = await import("@/lib/b3-legacy-mt5-adapter.server");
+              const res = await runLegacyMt5Tick(supabaseAdmin as any, r.user_id, { force });
+              results.push({ run_id: r.id, engine, ...res });
+            } else {
+              const res = await runMt5SimTick(supabaseAdmin as any, r.user_id, { force });
+              results.push({ run_id: r.id, engine, ...res });
+            }
           } catch (e) {
             results.push({ run_id: r.id, error: (e as Error).message });
           }
