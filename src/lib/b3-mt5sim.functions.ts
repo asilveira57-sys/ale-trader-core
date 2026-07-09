@@ -176,7 +176,12 @@ export const closeMt5SimTrade = createServerFn({ method: "POST" })
     const { data: robot } = await supabase.from("b3_mt5sim_robots").select("*").eq("id", t.robot_id).eq("user_id", userId).maybeSingle();
     if (!robot) throw new Error("robô não encontrado");
     const { closeSimTrade } = await import("./b3-mt5sim.server");
-    const result = await closeSimTrade(supabase, userId, settings, robot, t, quote, "manual");
+    // Fechamento manual: compra fecha no Bid, venda fecha no Ask.
+    const exitPx = t.side === "buy"
+      ? Number(quote.bid ?? quote.last ?? quote.ask)
+      : Number(quote.ask ?? quote.last ?? quote.bid);
+    const result = await closeSimTrade(supabase, userId, settings, robot, t, quote, "manual", exitPx);
+
     return { ok: true, ...(result ?? {}) };
   });
 
