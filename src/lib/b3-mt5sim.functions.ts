@@ -116,6 +116,8 @@ const robotSchema = z.object({
   signal_ttl_s: z.number().int().min(1).max(600).optional(),
   max_spread_ticks: z.number().min(0).optional(),
   initial_balance_brl: z.number().min(0).optional(),
+  stop_loss_points: z.number().min(0).optional(),
+  take_profit_points: z.number().min(0).optional(),
 });
 
 export const upsertMt5SimRobot = createServerFn({ method: "POST" })
@@ -164,20 +166,13 @@ export const closeMt5SimTrade = createServerFn({ method: "POST" })
     const { supabase, userId } = context as any;
     const { data: t } = await supabase.from("b3_mt5sim_trades").select("*").eq("id", data.trade_id).eq("user_id", userId).maybeSingle();
     if (!t) throw new Error("trade não encontrada");
+    if (t.status !== "open") throw new Error("trade já encerrada");
     const { data: settings } = await supabase.from("b3_mt5sim_settings").select("*").eq("user_id", userId).maybeSingle();
     const { data: quote } = await supabase.from("b3_mt5sim_quotes").select("*").eq("user_id", userId).eq("symbol", settings.mt5_symbol).order("received_at", { ascending: false }).limit(1).maybeSingle();
     if (!quote) throw new Error("sem cotação");
-    const { data: robot } = await supabase.from("b3_mt5sim_robots").select("*").eq("id", t.robot_id).maybeSingle();
-    const mod = await import("./b3-mt5sim.server");
-    // reusa closeTrade indiretamente via runMt5SimTick não é ideal; inline aqui:
-    const side = t.side as "buy" | "sell";
-    const opp = side === "buy" ? "sell" : "buy";
-    const px = opp === "buy" ? Number(quote.ask ?? quote.last) : Number(quote.bid ?? quote.last);
-    const points = Math.round(((px - Number(t.price_entry_sim)) * (side === "buy" ? 1 : -1)) / settings.tick_size) * settings.tick_size;
-    const gross = points * Number(settings.point_value_brl) * Number(t.volume);
-    const fee = Number(settings.fee_per_contract_brl) * Number(t.volume) * 2;
-    const net = gross - fee;
-    await supabase.from("b3_mt5sim_trades").update({ price_exit_sim: px, ts_exit: new Date().toISOString(), points_result: points, gross_brl: gross, fee_brl: fee, net_brl: net, exit_reason: "manual", status: "closed" }).eq("id", t.id);
-    void robot; void mod;
-    return { ok: true, net };
+    const { data: robot } = await supabase.from("b3_mt5sim_robots").select("*").eq("id", t.robot_id).eq("user_id", userId).maybeSingle();
+    if (!robot) throw new Error("robô não encontrado");
+    const { closeSimTrade } = await import("./b3-mt5sim.server");
+    const result = await closeSimTrade(supabase, userId, settings, robot, t, quote, "manual");
+    return { ok: true, ...(result ?? {}) };
   });
