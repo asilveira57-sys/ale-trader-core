@@ -2316,6 +2316,7 @@ export type Database = {
           gain_points: number
           id: string
           max_contracts: number
+          price_source: string
           start_time: string
           stop_points: number
           strategy_mode: string
@@ -2337,6 +2338,7 @@ export type Database = {
           gain_points?: number
           id?: string
           max_contracts?: number
+          price_source?: string
           start_time?: string
           stop_points?: number
           strategy_mode?: string
@@ -2358,6 +2360,7 @@ export type Database = {
           gain_points?: number
           id?: string
           max_contracts?: number
+          price_source?: string
           start_time?: string
           stop_points?: number
           strategy_mode?: string

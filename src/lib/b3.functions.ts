@@ -2,9 +2,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
-  buildMockB3Context, runB3Agents, buildB3Decision,
+  runB3Agents, buildB3Decision,
   type B3Side, type B3RiskState, type B3CommitteeSettings,
 } from "./b3-committee.server";
+import { getB3PriceContext, type B3PriceSource } from "./b3-price-source.server";
+
 
 interface Input {
   side: B3Side;
@@ -61,11 +63,13 @@ export const runB3Committee = createServerFn({ method: "POST" })
       strategy_mode: settings.strategy_mode as any,
     };
 
-    const ctx = buildMockB3Context(
-      data.symbol ?? "WIN",
-      data.contract_code ?? "WINFUT",
-      data.base_price ?? 130000,
-    );
+    const priceSrc = await getB3PriceContext(supabase, userId, {
+      symbol: data.symbol ?? "WIN",
+      contract: data.contract_code ?? "WINFUT",
+      base: data.base_price ?? 130000,
+    });
+    const ctx = priceSrc.ctx;
+
 
     // settings de consenso por modo
     const mode = settings.strategy_mode as string;
@@ -179,3 +183,47 @@ export const getB3PanelOverview = createServerFn({ method: "GET" })
       modes: useModes, settings: settings ?? [],
     };
   });
+
+// Fonte de cotação (CSV vs MT5 XP DEMO) — leitura e escrita.
+export const getB3PriceSourceStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context as any;
+    const info = await getB3PriceContext(supabase, userId);
+    return {
+      source: info.source,
+      live: info.live,
+      quote_age_s: info.quote_age_s,
+      server: info.server,
+      quote_symbol: info.quote_symbol,
+      bid: info.raw?.bid ?? null,
+      ask: info.raw?.ask ?? null,
+      last: info.raw?.last ?? null,
+      spread: info.raw?.spread ?? null,
+      ctx_price: info.ctx.price,
+    };
+  });
+
+export const setB3PriceSource = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { source: B3PriceSource }) => {
+    if (!d || (d.source !== "csv" && d.source !== "mt5_xp_demo")) throw new Error("source inválido");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    // upsert seguro caso o usuário ainda não tenha b3_trading_settings.
+    const { data: existing } = await supabase.from("b3_trading_settings")
+      .select("id").eq("user_id", userId).maybeSingle();
+    if (existing) {
+      const { error } = await supabase.from("b3_trading_settings")
+        .update({ price_source: data.source }).eq("user_id", userId);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from("b3_trading_settings")
+        .insert({ user_id: userId, price_source: data.source });
+      if (error) throw error;
+    }
+    return { ok: true, source: data.source };
+  });
+
