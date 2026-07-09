@@ -179,3 +179,44 @@ export const closeMt5SimTrade = createServerFn({ method: "POST" })
     const result = await closeSimTrade(supabase, userId, settings, robot, t, quote, "manual");
     return { ok: true, ...(result ?? {}) };
   });
+
+export const manualBuyMt5Sim = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ robot_id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const { manualOpenSimTrade } = await import("./b3-mt5sim.server");
+    const t = await manualOpenSimTrade(supabase, userId, data.robot_id, "buy");
+    return { ok: true, trade: t };
+  });
+
+export const manualSellMt5Sim = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ robot_id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const { manualOpenSimTrade } = await import("./b3-mt5sim.server");
+    const t = await manualOpenSimTrade(supabase, userId, data.robot_id, "sell");
+    return { ok: true, trade: t };
+  });
+
+export const manualReverseMt5Sim = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ robot_id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const { manualReverseSimTrade } = await import("./b3-mt5sim.server");
+    const t = await manualReverseSimTrade(supabase, userId, data.robot_id);
+    return { ok: true, trade: t };
+  });
+
+export const setMt5SimRobotMode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ robot_id: z.string().uuid(), mode: z.enum(["manual", "auto", "paused"]) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const { error } = await supabase.from("b3_mt5sim_robots").update({ mode: data.mode }).eq("id", data.robot_id).eq("user_id", userId);
+    if (error) throw error;
+    return { ok: true };
+  });
+
