@@ -35,13 +35,21 @@ function Mt5SimPage() {
   const sellFn = useServerFn(manualSellMt5Sim);
   const reverseFn = useServerFn(manualReverseMt5Sim);
   const modeFn = useServerFn(setMt5SimRobotMode);
+  const engineFn = useServerFn(setMt5SimEngine);
+  const legacyFetch = useServerFn(getLegacyMt5Dashboard);
+  const cmpFetch = useServerFn(getLegacyVsMt5Comparative);
+  const tickLegacyFn = useServerFn(tickLegacyMt5Now);
 
   const { data, isLoading } = useQuery({ queryKey: ["b3-mt5sim"], queryFn: () => fetchFn({}), refetchInterval: 3000 });
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["b3-mt5sim"] });
+  const { data: legacy } = useQuery({ queryKey: ["b3-mt5sim-legacy"], queryFn: () => legacyFetch({}), refetchInterval: 4000 });
+  const { data: cmp } = useQuery({ queryKey: ["b3-mt5sim-cmp"], queryFn: () => cmpFetch({}), refetchInterval: 8000 });
+  const invalidate = () => { qc.invalidateQueries({ queryKey: ["b3-mt5sim"] }); qc.invalidateQueries({ queryKey: ["b3-mt5sim-legacy"] }); qc.invalidateQueries({ queryKey: ["b3-mt5sim-cmp"] }); };
 
   const mStart = useMutation({ mutationFn: () => startFn({}), onSuccess: () => { toast.success("Simulação iniciada"); invalidate(); } });
   const mStop = useMutation({ mutationFn: () => stopFn({}), onSuccess: () => { toast.success("Simulação parada"); invalidate(); } });
-  const mTick = useMutation({ mutationFn: () => tickFn({}), onSuccess: (r: any) => { toast.success(`Tick: ${r.status} · sinais ${r.signals} · abertas ${r.opened} · fechadas ${r.closed}`); invalidate(); }, onError: (e: any) => toast.error(e.message) });
+  const mTick = useMutation({ mutationFn: () => tickFn({}), onSuccess: (r: any) => { toast.success(`Tick [${r.engine}]: ${r.status} · sinais ${r.signals ?? 0} · abertas ${r.opened ?? 0} · fechadas ${r.closed ?? 0}`); invalidate(); }, onError: (e: any) => toast.error(e.message) });
+  const mTickLegacy = useMutation({ mutationFn: () => tickLegacyFn({}), onSuccess: (r: any) => { toast.success(`Tick legado: ${r.status} · sinais ${r.signals} · abertas ${r.opened} · fechadas ${r.closed}`); invalidate(); }, onError: (e: any) => toast.error(e.message) });
+  const mEngine = useMutation({ mutationFn: (engine: "legacy_b3" | "new_mt5") => engineFn({ data: { engine } }), onSuccess: (r: any) => { toast.success(`Motor: ${r.engine === "legacy_b3" ? "B3 Day Trade WIN legado" : "MT5 novo"}`); invalidate(); } });
   const mSettings = useMutation({ mutationFn: (d: any) => updSettings({ data: d }), onSuccess: () => { toast.success("Configuração salva"); invalidate(); } });
   const mRobot = useMutation({ mutationFn: (d: any) => updRobot({ data: d }), onSuccess: () => { toast.success("Robô salvo"); invalidate(); } });
   const mClose = useMutation({ mutationFn: (id: string) => closeFn({ data: { trade_id: id } }), onSuccess: () => { toast.success("Trade fechada"); invalidate(); }, onError: (e: any) => toast.error(e.message) });
