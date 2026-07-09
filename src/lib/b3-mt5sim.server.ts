@@ -43,6 +43,9 @@ interface Robot {
   user_id: string;
   profile: RobotProfile;
   enabled: boolean;
+  mode: "manual" | "auto" | "paused";
+  cooldown_s: number;
+  cooldown_until: string | null;
   volume: number;
   initial_balance_brl: number;
   daily_loss_limit_brl: number;
@@ -56,6 +59,7 @@ interface Robot {
   stop_loss_points: number;
   take_profit_points: number;
 }
+
 
 interface Quote {
   bid: number | null;
