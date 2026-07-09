@@ -47,19 +47,34 @@ function Mt5SimPage() {
   const running = data.run?.status === "running";
   const staleQuote = data.quote_age_s == null || data.quote_age_s > (s.quote_ttl_seconds ?? 15);
 
+  // Servidor que está de fato alimentando a simulação: prioridade para o servidor do último tick.
+  const feedingServer = (quote?.server ?? s.server ?? "XPMT5-DEMO").toUpperCase();
+  const isDemo = feedingServer === "XPMT5-DEMO";
+  const isPrd = feedingServer === "XPMT5-PRD";
+  const bannerText = isDemo
+    ? "Simulação Local — Cotação MT5 XP DEMO — Sem envio de ordem"
+    : isPrd
+      ? "Simulação Local — Cotação MT5 XP PRD — Sem envio de ordem"
+      : `Simulação Local — Servidor ${feedingServer || "desconhecido"} — Sem envio de ordem`;
+  const bannerAccent = isDemo
+    ? "border-sky-500/40 bg-sky-500/10"
+    : "border-orange-500/40 bg-orange-500/10";
+  const bannerIconColor = isDemo ? "text-sky-400" : "text-orange-400";
+  const bannerTagColor = isDemo ? "text-sky-300" : "text-orange-300";
+
   return (
     <div className="p-6 space-y-6 max-w-[1400px]">
       {/* Header destaque */}
-      <div className="panel p-5 border-2 border-orange-500/40 bg-orange-500/10">
+      <div className={`panel p-5 border-2 ${bannerAccent}`}>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <div className="text-xs uppercase tracking-wider text-orange-300">Modo</div>
+            <div className={`text-xs uppercase tracking-wider ${bannerTagColor}`}>Modo · Servidor ativo: {feedingServer}</div>
             <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <ShieldAlert className="size-6 text-orange-400" />
-              SIMULAÇÃO LOCAL — USANDO COTAÇÃO REAL DO PRD — SEM ENVIO DE ORDEM
+              <ShieldAlert className={`size-6 ${bannerIconColor}`} />
+              {bannerText}
             </h1>
             <div className="text-sm text-muted-foreground mt-1">
-              Servidor <span className="font-mono">{s.server}</span> · Símbolo <span className="font-mono">{s.mt5_symbol}</span> · Robôs ativos: {(data.robots as any[]).filter(r => r.enabled).length} · Ordens reais enviadas: <span className="font-mono text-emerald-400">0</span>
+              Servidor configurado <span className="font-mono">{s.server}</span> · Alimentando <span className="font-mono">{feedingServer}</span> · Símbolo <span className="font-mono">{s.mt5_symbol}</span> · Robôs ativos: {(data.robots as any[]).filter(r => r.enabled).length} · Ordens reais enviadas: <span className="font-mono text-emerald-400">0</span>
             </div>
           </div>
           <div className="flex gap-2">
@@ -78,10 +93,11 @@ function Mt5SimPage() {
         </div>
         {staleQuote && (
           <div className="mt-3 text-sm text-red-300 border border-red-500/40 bg-red-500/10 rounded p-2">
-            Cotação inválida ou desatualizada — simulação pausada. Verifique o puller local do MT5.
+            Cotação inválida ou desatualizada — simulação pausada. Verifique o puller local do MT5 ({feedingServer}).
           </div>
         )}
       </div>
+
 
       <Tabs defaultValue="painel">
         <TabsList>
