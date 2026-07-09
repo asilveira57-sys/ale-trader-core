@@ -259,8 +259,15 @@ export async function closeSimTrade(
       position_avg_price: null,
     })
     .eq("id", wallet.id);
+  // cooldown do robô após qualquer fechamento (auto ou manual)
+  const cd = Math.max(0, Number((robot as any).cooldown_s ?? 30));
+  await (sb as any)
+    .from("b3_mt5sim_robots")
+    .update({ cooldown_until: new Date(Date.now() + cd * 1000).toISOString() })
+    .eq("id", robot.id);
   return { points, gross, fee, net };
 }
+
 
 async function openTrade(sb: SupabaseClient, userId: string, settings: Settings, robot: Robot, signalId: string, side: SimSide, quote: Quote, priceSignal: number, reason: string) {
   const px = priceForSide(quote, settings, side);
