@@ -780,6 +780,204 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_legacy_mt5_candles: {
+        Row: {
+          close: number
+          high: number
+          id: string
+          low: number
+          minute_ts: string
+          open: number
+          server: string | null
+          symbol: string
+          tick_count: number
+          updated_at: string
+          user_id: string
+          volume: number
+        }
+        Insert: {
+          close: number
+          high: number
+          id?: string
+          low: number
+          minute_ts: string
+          open: number
+          server?: string | null
+          symbol: string
+          tick_count?: number
+          updated_at?: string
+          user_id: string
+          volume?: number
+        }
+        Update: {
+          close?: number
+          high?: number
+          id?: string
+          low?: number
+          minute_ts?: string
+          open?: number
+          server?: string | null
+          symbol?: string
+          tick_count?: number
+          updated_at?: string
+          user_id?: string
+          volume?: number
+        }
+        Relationships: []
+      }
+      b3_legacy_mt5_signals: {
+        Row: {
+          blocked_reason: string | null
+          decision: string
+          id: string
+          intended_side: string
+          mode: string
+          price_ask: number | null
+          price_bid: number | null
+          price_last: number | null
+          reason: string | null
+          score: number | null
+          server: string | null
+          spread: number | null
+          symbol: string
+          tick_age_s: number | null
+          ts: string
+          user_id: string
+          votes: Json | null
+        }
+        Insert: {
+          blocked_reason?: string | null
+          decision: string
+          id?: string
+          intended_side: string
+          mode: string
+          price_ask?: number | null
+          price_bid?: number | null
+          price_last?: number | null
+          reason?: string | null
+          score?: number | null
+          server?: string | null
+          spread?: number | null
+          symbol: string
+          tick_age_s?: number | null
+          ts?: string
+          user_id: string
+          votes?: Json | null
+        }
+        Update: {
+          blocked_reason?: string | null
+          decision?: string
+          id?: string
+          intended_side?: string
+          mode?: string
+          price_ask?: number | null
+          price_bid?: number | null
+          price_last?: number | null
+          reason?: string | null
+          score?: number | null
+          server?: string | null
+          spread?: number | null
+          symbol?: string
+          tick_age_s?: number | null
+          ts?: string
+          user_id?: string
+          votes?: Json | null
+        }
+        Relationships: []
+      }
+      b3_legacy_mt5_trades: {
+        Row: {
+          close_reason: string | null
+          closed_at: string | null
+          created_at: string
+          entry_ask: number | null
+          entry_bid: number | null
+          entry_price: number
+          exit_ask: number | null
+          exit_bid: number | null
+          exit_price: number | null
+          fees_brl: number | null
+          gain_pts: number | null
+          gross_brl: number | null
+          gross_pts: number | null
+          id: string
+          legacy_mode_snapshot: Json | null
+          legacy_signal_id: string | null
+          mode: string
+          net_brl: number | null
+          opened_at: string
+          quantity: number
+          quote_server: string | null
+          side: string
+          slippage_pts: number | null
+          source_engine: string
+          status: string
+          stop_pts: number | null
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          close_reason?: string | null
+          closed_at?: string | null
+          created_at?: string
+          entry_ask?: number | null
+          entry_bid?: number | null
+          entry_price: number
+          exit_ask?: number | null
+          exit_bid?: number | null
+          exit_price?: number | null
+          fees_brl?: number | null
+          gain_pts?: number | null
+          gross_brl?: number | null
+          gross_pts?: number | null
+          id?: string
+          legacy_mode_snapshot?: Json | null
+          legacy_signal_id?: string | null
+          mode: string
+          net_brl?: number | null
+          opened_at?: string
+          quantity?: number
+          quote_server?: string | null
+          side: string
+          slippage_pts?: number | null
+          source_engine?: string
+          status?: string
+          stop_pts?: number | null
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          close_reason?: string | null
+          closed_at?: string | null
+          created_at?: string
+          entry_ask?: number | null
+          entry_bid?: number | null
+          entry_price?: number
+          exit_ask?: number | null
+          exit_bid?: number | null
+          exit_price?: number | null
+          fees_brl?: number | null
+          gain_pts?: number | null
+          gross_brl?: number | null
+          gross_pts?: number | null
+          id?: string
+          legacy_mode_snapshot?: Json | null
+          legacy_signal_id?: string | null
+          mode?: string
+          net_brl?: number | null
+          opened_at?: string
+          quantity?: number
+          quote_server?: string | null
+          side?: string
+          slippage_pts?: number | null
+          source_engine?: string
+          status?: string
+          stop_pts?: number | null
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_macro_events: {
         Row: {
           active: boolean
@@ -1100,6 +1298,7 @@ export type Database = {
           allow_short: boolean
           created_at: string
           default_volume: number
+          engine: string
           fee_per_contract_brl: number
           id: string
           kill_switch_real: boolean
@@ -1132,6 +1331,7 @@ export type Database = {
           allow_short?: boolean
           created_at?: string
           default_volume?: number
+          engine?: string
           fee_per_contract_brl?: number
           id?: string
           kill_switch_real?: boolean
@@ -1164,6 +1364,7 @@ export type Database = {
           allow_short?: boolean
           created_at?: string
           default_volume?: number
+          engine?: string
           fee_per_contract_brl?: number
           id?: string
           kill_switch_real?: boolean
