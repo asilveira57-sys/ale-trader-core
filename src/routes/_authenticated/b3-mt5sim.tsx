@@ -300,14 +300,30 @@ function Mt5SimPage() {
 
         <TabsContent value="trades">
           <Card><CardContent className="overflow-x-auto p-0">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b border-border"><tr><th className="text-left py-2 pl-3">Robô</th><th>Side</th><th className="text-right">Vol</th><th className="text-right">Entrada</th><th className="text-right">Saída</th><th className="text-right">Pts</th><th className="text-right">Bruto</th><th className="text-right">Líq.</th><th>Motivo saída</th><th>Status</th><th></th></tr></thead>
+            <table className="w-full text-sm border-separate border-spacing-x-3">
+              <thead className="text-xs text-muted-foreground border-b border-border">
+                <tr className="[&>th]:py-2 [&>th]:whitespace-nowrap">
+                  <th className="text-left pl-3">Robô</th>
+                  <th className="text-left">Motivo entrada</th>
+                  <th>Side</th>
+                  <th className="text-right">Vol</th>
+                  <th className="text-right">Entrada</th>
+                  <th className="text-right">Saída</th>
+                  <th className="text-right">Pts</th>
+                  <th className="text-right">Bruto</th>
+                  <th className="text-right">Líq.</th>
+                  <th className="text-left">Motivo saída</th>
+                  <th className="text-left">Status</th>
+                  <th className="pr-3"></th>
+                </tr>
+              </thead>
               <tbody>
                 {(data.trades as any[]).map((t) => {
                   const r = (data.robots as any[]).find((x) => x.id === t.robot_id);
                   return (
-                    <tr key={t.id} className="border-b border-border/40">
-                      <td className="py-2 pl-3">{r?.profile}</td>
+                    <tr key={t.id} className="border-b border-border/40 [&>td]:py-2 [&>td]:whitespace-nowrap">
+                      <td className="pl-3">{r?.profile}</td>
+                      <td className="text-xs text-muted-foreground">{t.entry_reason ?? "—"}</td>
                       <td><Badge className={t.side === "buy" ? "bg-emerald-600" : "bg-red-600"}>{t.side}</Badge></td>
                       <td className="text-right font-mono">{t.volume}</td>
                       <td className="text-right font-mono">{Number(t.price_entry_sim).toLocaleString("pt-BR")}</td>
@@ -321,11 +337,13 @@ function Mt5SimPage() {
                     </tr>
                   );
                 })}
-                {(data.trades as any[]).length === 0 && <tr><td colSpan={11} className="py-4 text-muted-foreground text-center">Sem trades simuladas ainda.</td></tr>}
+                {(data.trades as any[]).length === 0 && <tr><td colSpan={12} className="py-4 text-muted-foreground text-center">Sem trades simuladas ainda.</td></tr>}
               </tbody>
             </table>
           </CardContent></Card>
         </TabsContent>
+
+
 
         <TabsContent value="blocks">
           <Card><CardContent className="p-0">
