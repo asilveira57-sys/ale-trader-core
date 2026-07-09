@@ -2,13 +2,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
-  buildMockB3Context, runB3Agents, buildB3Decision,
+  runB3Agents, buildB3Decision,
   type B3Side, type B3RiskState, type B3CommitteeSettings,
 } from "./b3-committee.server";
 import {
   evaluateB3Protection, resetB3ProtectionForNewDay, b3DayKeyBRT,
   type B3ProtectionRuntime, type B3ProtectionSettings,
 } from "./b3-protection.server";
+import { getB3PriceContext } from "./b3-price-source.server";
+
 
 const POINT_VALUE_BRL = 0.2;
 const TICK = 5;
