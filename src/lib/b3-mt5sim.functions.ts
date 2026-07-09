@@ -106,6 +106,8 @@ export const updateMt5SimSettings = createServerFn({ method: "POST" })
 const robotSchema = z.object({
   id: z.string().uuid(),
   enabled: z.boolean().optional(),
+  mode: z.enum(["manual", "auto", "paused"]).optional(),
+  cooldown_s: z.number().int().min(0).max(3600).optional(),
   volume: z.number().int().min(1).max(50).optional(),
   daily_loss_limit_brl: z.number().min(0).optional(),
   daily_gain_limit_brl: z.number().min(0).optional(),
@@ -119,6 +121,7 @@ const robotSchema = z.object({
   stop_loss_points: z.number().min(0).optional(),
   take_profit_points: z.number().min(0).optional(),
 });
+
 
 export const upsertMt5SimRobot = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -173,6 +176,52 @@ export const closeMt5SimTrade = createServerFn({ method: "POST" })
     const { data: robot } = await supabase.from("b3_mt5sim_robots").select("*").eq("id", t.robot_id).eq("user_id", userId).maybeSingle();
     if (!robot) throw new Error("robô não encontrado");
     const { closeSimTrade } = await import("./b3-mt5sim.server");
-    const result = await closeSimTrade(supabase, userId, settings, robot, t, quote, "manual");
+    // Fechamento manual: compra fecha no Bid, venda fecha no Ask.
+    const exitPx = t.side === "buy"
+      ? Number(quote.bid ?? quote.last ?? quote.ask)
+      : Number(quote.ask ?? quote.last ?? quote.bid);
+    const result = await closeSimTrade(supabase, userId, settings, robot, t, quote, "manual", exitPx);
+
     return { ok: true, ...(result ?? {}) };
   });
+
+export const manualBuyMt5Sim = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ robot_id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const { manualOpenSimTrade } = await import("./b3-mt5sim.server");
+    const t = await manualOpenSimTrade(supabase, userId, data.robot_id, "buy");
+    return { ok: true, trade: t };
+  });
+
+export const manualSellMt5Sim = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ robot_id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const { manualOpenSimTrade } = await import("./b3-mt5sim.server");
+    const t = await manualOpenSimTrade(supabase, userId, data.robot_id, "sell");
+    return { ok: true, trade: t };
+  });
+
+export const manualReverseMt5Sim = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ robot_id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const { manualReverseSimTrade } = await import("./b3-mt5sim.server");
+    const t = await manualReverseSimTrade(supabase, userId, data.robot_id);
+    return { ok: true, trade: t };
+  });
+
+export const setMt5SimRobotMode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ robot_id: z.string().uuid(), mode: z.enum(["manual", "auto", "paused"]) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const { error } = await supabase.from("b3_mt5sim_robots").update({ mode: data.mode }).eq("id", data.robot_id).eq("user_id", userId);
+    if (error) throw error;
+    return { ok: true };
+  });
+

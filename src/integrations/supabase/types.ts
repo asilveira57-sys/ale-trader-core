@@ -989,6 +989,8 @@ export type Database = {
       }
       b3_mt5sim_robots: {
         Row: {
+          cooldown_s: number
+          cooldown_until: string | null
           created_at: string
           daily_gain_limit_brl: number
           daily_loss_limit_brl: number
@@ -1000,6 +1002,7 @@ export type Database = {
           max_spread_ticks: number
           max_trades_day: number
           min_score: number
+          mode: string
           profile: string
           signal_ttl_s: number
           stop_loss_points: number
@@ -1010,6 +1013,8 @@ export type Database = {
           volume: number
         }
         Insert: {
+          cooldown_s?: number
+          cooldown_until?: string | null
           created_at?: string
           daily_gain_limit_brl?: number
           daily_loss_limit_brl?: number
@@ -1021,6 +1026,7 @@ export type Database = {
           max_spread_ticks?: number
           max_trades_day?: number
           min_score?: number
+          mode?: string
           profile: string
           signal_ttl_s?: number
           stop_loss_points?: number
@@ -1031,6 +1037,8 @@ export type Database = {
           volume?: number
         }
         Update: {
+          cooldown_s?: number
+          cooldown_until?: string | null
           created_at?: string
           daily_gain_limit_brl?: number
           daily_loss_limit_brl?: number
@@ -1042,6 +1050,7 @@ export type Database = {
           max_spread_ticks?: number
           max_trades_day?: number
           min_score?: number
+          mode?: string
           profile?: string
           signal_ttl_s?: number
           stop_loss_points?: number

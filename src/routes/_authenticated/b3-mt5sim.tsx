@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getMt5SimDashboard, updateMt5SimSettings, upsertMt5SimRobot, startMt5SimRun, stopMt5SimRun, tickMt5SimNow, closeMt5SimTrade } from "@/lib/b3-mt5sim.functions";
+import { getMt5SimDashboard, updateMt5SimSettings, upsertMt5SimRobot, startMt5SimRun, stopMt5SimRun, tickMt5SimNow, closeMt5SimTrade, manualBuyMt5Sim, manualSellMt5Sim, manualReverseMt5Sim, setMt5SimRobotMode } from "@/lib/b3-mt5sim.functions";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -29,8 +30,12 @@ function Mt5SimPage() {
   const stopFn = useServerFn(stopMt5SimRun);
   const tickFn = useServerFn(tickMt5SimNow);
   const closeFn = useServerFn(closeMt5SimTrade);
+  const buyFn = useServerFn(manualBuyMt5Sim);
+  const sellFn = useServerFn(manualSellMt5Sim);
+  const reverseFn = useServerFn(manualReverseMt5Sim);
+  const modeFn = useServerFn(setMt5SimRobotMode);
 
-  const { data, isLoading } = useQuery({ queryKey: ["b3-mt5sim"], queryFn: () => fetchFn({}), refetchInterval: 5000 });
+  const { data, isLoading } = useQuery({ queryKey: ["b3-mt5sim"], queryFn: () => fetchFn({}), refetchInterval: 3000 });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["b3-mt5sim"] });
 
   const mStart = useMutation({ mutationFn: () => startFn({}), onSuccess: () => { toast.success("Simulação iniciada"); invalidate(); } });
@@ -38,7 +43,12 @@ function Mt5SimPage() {
   const mTick = useMutation({ mutationFn: () => tickFn({}), onSuccess: (r: any) => { toast.success(`Tick: ${r.status} · sinais ${r.signals} · abertas ${r.opened} · fechadas ${r.closed}`); invalidate(); }, onError: (e: any) => toast.error(e.message) });
   const mSettings = useMutation({ mutationFn: (d: any) => updSettings({ data: d }), onSuccess: () => { toast.success("Configuração salva"); invalidate(); } });
   const mRobot = useMutation({ mutationFn: (d: any) => updRobot({ data: d }), onSuccess: () => { toast.success("Robô salvo"); invalidate(); } });
-  const mClose = useMutation({ mutationFn: (id: string) => closeFn({ data: { trade_id: id } }), onSuccess: () => { toast.success("Trade fechada"); invalidate(); } });
+  const mClose = useMutation({ mutationFn: (id: string) => closeFn({ data: { trade_id: id } }), onSuccess: () => { toast.success("Trade fechada"); invalidate(); }, onError: (e: any) => toast.error(e.message) });
+  const mBuy = useMutation({ mutationFn: (id: string) => buyFn({ data: { robot_id: id } }), onSuccess: () => { toast.success("Compra simulada aberta"); invalidate(); }, onError: (e: any) => toast.error(e.message) });
+  const mSell = useMutation({ mutationFn: (id: string) => sellFn({ data: { robot_id: id } }), onSuccess: () => { toast.success("Venda simulada aberta"); invalidate(); }, onError: (e: any) => toast.error(e.message) });
+  const mReverse = useMutation({ mutationFn: (id: string) => reverseFn({ data: { robot_id: id } }), onSuccess: () => { toast.success("Virada simulada aplicada"); invalidate(); }, onError: (e: any) => toast.error(e.message) });
+  const mMode = useMutation({ mutationFn: (p: { robot_id: string; mode: "manual"|"auto"|"paused" }) => modeFn({ data: p }), onSuccess: () => { toast.success("Modo do robô atualizado"); invalidate(); } });
+
 
   if (isLoading || !data) return <div className="p-8 text-muted-foreground">Carregando…</div>;
 
@@ -102,6 +112,7 @@ function Mt5SimPage() {
       <Tabs defaultValue="painel">
         <TabsList>
           <TabsTrigger value="painel"><Activity className="size-4 mr-1" /> Painel</TabsTrigger>
+          <TabsTrigger value="manual">Controle manual</TabsTrigger>
           <TabsTrigger value="robos">Robôs & Travas</TabsTrigger>
           <TabsTrigger value="config">Configuração</TabsTrigger>
           <TabsTrigger value="trades">Trades simuladas</TabsTrigger>
@@ -109,6 +120,99 @@ function Mt5SimPage() {
           <TabsTrigger value="conflicts">Conflitos</TabsTrigger>
           <TabsTrigger value="ingest">Ponte MT5</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="manual" className="space-y-3">
+          <Card>
+            <CardHeader><CardTitle>Controle manual simulado — {s.mt5_symbol}</CardTitle></CardHeader>
+            <CardContent className="p-0 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-muted-foreground border-b border-border">
+                  <tr>
+                    <th className="text-left py-2 pl-3">Robô</th>
+                    <th>Modo</th>
+                    <th>Status</th>
+                    <th className="text-right">Posição</th>
+                    <th className="text-right">Marcação</th>
+                    <th className="text-right">Pts flut.</th>
+                    <th className="text-right">Líq. flut.</th>
+                    <th className="text-right pr-3">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.robots as any[]).map((r) => {
+                    const openT = (data.trades as any[]).find((t) => t.robot_id === r.id && t.status === "open");
+                    const w = (data.wallets as any[]).find((x) => x.robot_id === r.id) ?? {};
+                    const bid = quote?.bid != null ? Number(quote.bid) : null;
+                    const ask = quote?.ask != null ? Number(quote.ask) : null;
+                    const pointValue = Number(s.point_value_brl ?? 0.2);
+                    const fee = Number(s.fee_per_contract_brl ?? 0);
+                    let mark: number | null = null;
+                    let pts: number | null = null;
+                    let netFloat: number | null = null;
+                    if (openT) {
+                      mark = openT.side === "buy" ? bid : ask;
+                      if (mark != null) {
+                        pts = openT.side === "buy" ? mark - Number(openT.price_entry_sim) : Number(openT.price_entry_sim) - mark;
+                        const gross = pts * pointValue * Number(openT.volume);
+                        netFloat = gross - fee * Number(openT.volume) * 2;
+                      }
+                    }
+                    const mode: "manual"|"auto"|"paused" = (r.mode ?? "manual");
+                    const staleEntry = data.quote_age_s != null && data.quote_age_s > 5;
+                    const cooldown = r.cooldown_until && new Date(r.cooldown_until).getTime() > Date.now();
+                    let statusLabel = "aguardando sinal";
+                    let statusColor = "";
+                    if (!r.enabled) { statusLabel = "desligado"; statusColor = "text-muted-foreground"; }
+                    else if (mode === "paused") { statusLabel = "pausado"; statusColor = "text-orange-300"; }
+                    else if (openT) { statusLabel = openT.side === "buy" ? "comprado" : "vendido"; statusColor = openT.side === "buy" ? "text-emerald-400" : "text-red-400"; }
+                    else if (staleQuote) { statusLabel = "tick vencido"; statusColor = "text-red-400"; }
+                    else if (staleEntry) { statusLabel = "tick > 5s"; statusColor = "text-orange-300"; }
+                    else if (cooldown) { statusLabel = "em cooldown"; statusColor = "text-orange-300"; }
+                    else if (mode === "auto") { statusLabel = "auto — aguardando sinal"; }
+                    else { statusLabel = "manual — zerado"; }
+                    return (
+                      <tr key={r.id} className="border-b border-border/40 align-middle">
+                        <td className="py-2 pl-3 font-medium">{r.profile}</td>
+                        <td>
+                          <select
+                            className="bg-background border rounded px-2 py-1 text-xs"
+                            value={mode}
+                            onChange={(e) => mMode.mutate({ robot_id: r.id, mode: e.target.value as any })}
+                          >
+                            <option value="manual">Manual</option>
+                            <option value="auto">Auto simulado</option>
+                            <option value="paused">Pausado</option>
+                          </select>
+                        </td>
+                        <td className={`text-xs ${statusColor}`}>{statusLabel}</td>
+                        <td className="text-right font-mono text-xs">
+                          {openT
+                            ? `${openT.side} ${openT.volume}@${Number(openT.price_entry_sim).toLocaleString("pt-BR")}`
+                            : (w.position_side ? `${w.position_side} ${w.position_qty}` : "—")}
+                        </td>
+                        <td className="text-right font-mono">{mark != null ? mark.toLocaleString("pt-BR") : "—"}</td>
+                        <td className={`text-right font-mono ${pts != null ? (pts >= 0 ? "text-emerald-400" : "text-red-400") : ""}`}>{pts != null ? pts.toFixed(1) : "—"}</td>
+                        <td className={`text-right font-mono ${netFloat != null ? (netFloat >= 0 ? "text-emerald-400" : "text-red-400") : ""}`}>{netFloat != null ? BRL(netFloat) : "—"}</td>
+                        <td className="text-right pr-3 space-x-1 whitespace-nowrap">
+                          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" disabled={mBuy.isPending || !r.enabled || mode === "paused"} onClick={() => mBuy.mutate(r.id)}>Buy</Button>
+                          <Button size="sm" className="bg-red-600 hover:bg-red-700" disabled={mSell.isPending || !r.enabled || mode === "paused"} onClick={() => mSell.mutate(r.id)}>Sell</Button>
+                          <Button size="sm" variant="outline" disabled={!openT} onClick={() => openT && mClose.mutate(openT.id)}>Fechar</Button>
+                          <Button size="sm" variant="outline" disabled={!openT || mReverse.isPending} onClick={() => mReverse.mutate(r.id)}>Virar mão</Button>
+                          {mode !== "paused"
+                            ? <Button size="sm" variant="ghost" onClick={() => mMode.mutate({ robot_id: r.id, mode: "paused" })}>Pausar</Button>
+                            : <Button size="sm" variant="ghost" onClick={() => mMode.mutate({ robot_id: r.id, mode: "manual" })}>Retomar</Button>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="p-3 text-xs text-muted-foreground">Todas as operações são simuladas. Ordens reais enviadas: <span className="text-emerald-400 font-mono">0</span>. Cotação: {feedingServer}.</div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+
 
         <TabsContent value="painel" className="space-y-4">
           <Card>
@@ -196,14 +300,30 @@ function Mt5SimPage() {
 
         <TabsContent value="trades">
           <Card><CardContent className="overflow-x-auto p-0">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b border-border"><tr><th className="text-left py-2 pl-3">Robô</th><th>Side</th><th className="text-right">Vol</th><th className="text-right">Entrada</th><th className="text-right">Saída</th><th className="text-right">Pts</th><th className="text-right">Bruto</th><th className="text-right">Líq.</th><th>Motivo saída</th><th>Status</th><th></th></tr></thead>
+            <table className="w-full text-sm border-separate border-spacing-x-3">
+              <thead className="text-xs text-muted-foreground border-b border-border">
+                <tr className="[&>th]:py-2 [&>th]:whitespace-nowrap">
+                  <th className="text-left pl-3">Robô</th>
+                  <th className="text-left">Motivo entrada</th>
+                  <th>Side</th>
+                  <th className="text-right">Vol</th>
+                  <th className="text-right">Entrada</th>
+                  <th className="text-right">Saída</th>
+                  <th className="text-right">Pts</th>
+                  <th className="text-right">Bruto</th>
+                  <th className="text-right">Líq.</th>
+                  <th className="text-left">Motivo saída</th>
+                  <th className="text-left">Status</th>
+                  <th className="pr-3"></th>
+                </tr>
+              </thead>
               <tbody>
                 {(data.trades as any[]).map((t) => {
                   const r = (data.robots as any[]).find((x) => x.id === t.robot_id);
                   return (
-                    <tr key={t.id} className="border-b border-border/40">
-                      <td className="py-2 pl-3">{r?.profile}</td>
+                    <tr key={t.id} className="border-b border-border/40 [&>td]:py-2 [&>td]:whitespace-nowrap">
+                      <td className="pl-3">{r?.profile}</td>
+                      <td className="text-xs text-muted-foreground">{t.entry_reason ?? "—"}</td>
                       <td><Badge className={t.side === "buy" ? "bg-emerald-600" : "bg-red-600"}>{t.side}</Badge></td>
                       <td className="text-right font-mono">{t.volume}</td>
                       <td className="text-right font-mono">{Number(t.price_entry_sim).toLocaleString("pt-BR")}</td>
@@ -217,11 +337,13 @@ function Mt5SimPage() {
                     </tr>
                   );
                 })}
-                {(data.trades as any[]).length === 0 && <tr><td colSpan={11} className="py-4 text-muted-foreground text-center">Sem trades simuladas ainda.</td></tr>}
+                {(data.trades as any[]).length === 0 && <tr><td colSpan={12} className="py-4 text-muted-foreground text-center">Sem trades simuladas ainda.</td></tr>}
               </tbody>
             </table>
           </CardContent></Card>
         </TabsContent>
+
+
 
         <TabsContent value="blocks">
           <Card><CardContent className="p-0">
