@@ -95,6 +95,12 @@ function Mt5SimPage() {
             <div className="text-sm text-muted-foreground mt-1">
               Servidor configurado <span className="font-mono">{s.server}</span> · Alimentando <span className="font-mono">{feedingServer}</span> · Símbolo <span className="font-mono">{s.mt5_symbol}</span> · Robôs ativos: {(data.robots as any[]).filter(r => r.enabled).length} · Ordens reais enviadas: <span className="font-mono text-emerald-400">0</span>
             </div>
+            <div className="mt-3 flex items-center gap-2 flex-wrap text-sm">
+              <span className="text-muted-foreground">Motor utilizado:</span>
+              <Button size="sm" variant={s.engine === "legacy_b3" ? "default" : "outline"} onClick={() => mEngine.mutate("legacy_b3")}>Motor legado B3 Day Trade WIN</Button>
+              <Button size="sm" variant={s.engine === "new_mt5" ? "default" : "outline"} onClick={() => mEngine.mutate("new_mt5")}>Motor novo MT5</Button>
+              <Badge variant="outline" className="ml-2">Fonte: MT5 XP {isDemo ? "DEMO" : isPrd ? "PRD" : feedingServer} · WINQ26 · Simulação</Badge>
+            </div>
           </div>
           <div className="flex gap-2">
             <Button onClick={() => mTick.mutate()} variant="outline" disabled={mTick.isPending}><RefreshCw className="size-4 mr-1" /> Tick agora</Button>
