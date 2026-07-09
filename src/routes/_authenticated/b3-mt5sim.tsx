@@ -406,11 +406,13 @@ while True:
 `;
   return (
     <Card><CardContent className="p-5 space-y-3">
-      <div className="text-sm">Este modo lê cotações reais do MT5 sem enviar ordens. Rode este script no PC onde o MetaTrader 5 XP está logado no servidor <code className="font-mono">{server}</code> e monitore <code className="font-mono">{symbol}</code>.</div>
-      <div className="text-xs text-muted-foreground">Endpoint (HMAC-SHA256 sobre o corpo, header <code>x-mt5-signature</code>):</div>
+      <div className="text-sm">Este modo lê cotações reais do MT5 sem enviar ordens. Rode este script no PC onde o MetaTrader 5 XP está logado. O endpoint aceita ticks vindos de <code className="font-mono">XPMT5-DEMO</code> e de <code className="font-mono">XPMT5-PRD</code> — na fase inicial, priorize <code className="font-mono">XPMT5-DEMO</code>. Símbolo monitorado: <code className="font-mono">{symbol}</code>.</div>
+      <div className="text-xs text-muted-foreground">Endpoint (HMAC-SHA256 sobre o corpo, header <code>x-mt5-signature</code>) — use SEMPRE a URL publicada, nunca a URL de preview (que tem autenticação):</div>
       <code className="block text-xs bg-muted p-2 rounded break-all">{endpoint}</code>
+      <div className="text-xs text-orange-300">Resposta esperada em sucesso: <code>{`{"ok":true,"received":true,"server":"XPMT5-DEMO"}`}</code>. Se o puller receber HTML (<code>&lt;!DOCTYPE html&gt;</code>), a URL usada não é a publicada — troque para a URL acima.</div>
       <div className="text-xs text-muted-foreground">Substitua <code>SEU_B3_MT5SIM_INGEST_SECRET</code> pelo valor do secret <code>B3_MT5SIM_INGEST_SECRET</code> gerado no backend (nunca exibido pela plataforma).</div>
       <pre className="text-xs bg-muted p-3 rounded overflow-x-auto whitespace-pre">{code}</pre>
     </CardContent></Card>
   );
 }
+
