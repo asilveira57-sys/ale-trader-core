@@ -62,31 +62,33 @@ export const getLegacyVsMt5Comparative = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context as any;
-    const [{ data: legacy }, { data: newSim }] = await Promise.all([
+    const [{ data: legacy }, { data: newSim }, { data: robots }] = await Promise.all([
       supabase.from("b3_legacy_mt5_trades").select("id, mode, side, entry_price, exit_price, net_brl, gross_pts, opened_at, closed_at, close_reason, quote_server, status")
         .eq("user_id", userId).order("opened_at", { ascending: false }).limit(200),
-      supabase.from("b3_mt5sim_trades").select("id, profile, side, entry_price, exit_price, pnl_net_brl, gross_points, ts_entry, ts_exit, close_reason, status")
+      supabase.from("b3_mt5sim_trades").select("id, robot_id, side, price_entry_sim, price_exit_sim, net_brl, points_result, ts_entry, ts_exit, exit_reason, status")
         .eq("user_id", userId).order("ts_entry", { ascending: false }).limit(200),
+      supabase.from("b3_mt5sim_robots").select("id, profile").eq("user_id", userId),
     ]);
+    const profileById = new Map(((robots as any[]) ?? []).map((r) => [r.id, r.profile]));
 
     const rows = ((legacy as any[]) ?? []).map((l) => {
       const t = new Date(l.opened_at).getTime();
-      const match = ((newSim as any[]) ?? []).find((n) => n.profile === l.mode && Math.abs(new Date(n.ts_entry).getTime() - t) <= 60_000);
+      const match = ((newSim as any[]) ?? []).find((n) => profileById.get(n.robot_id) === l.mode && Math.abs(new Date(n.ts_entry).getTime() - t) <= 60_000);
       const netLegacy = Number(l.net_brl ?? 0);
-      const netNew = match ? Number(match.pnl_net_brl ?? 0) : null;
+      const netNew = match ? Number(match.net_brl ?? 0) : null;
       const diff = netNew != null ? netLegacy - netNew : null;
       let motivo: string | null = null;
       if (match) {
         if (l.side !== match.side) motivo = "lado divergente";
-        else if (l.close_reason !== match.close_reason) motivo = `saída ${l.close_reason} vs ${match.close_reason}`;
+        else if (l.close_reason !== match.exit_reason) motivo = `saída ${l.close_reason} vs ${match.exit_reason}`;
         else if (Math.abs(diff ?? 0) > 0.01) motivo = "diferença de preço/execução";
       } else motivo = "sem trade equivalente no motor novo";
       return {
         robot: l.mode, legacy_side: l.side, entry_legacy: l.entry_price, exit_legacy: l.exit_price,
         net_legacy: netLegacy, close_reason_legacy: l.close_reason,
         opened_at: l.opened_at, closed_at: l.closed_at,
-        new_side: match?.side ?? null, entry_new: match?.entry_price ?? null, exit_new: match?.exit_price ?? null,
-        net_new: netNew, close_reason_new: match?.close_reason ?? null,
+        new_side: match?.side ?? null, entry_new: match?.price_entry_sim ?? null, exit_new: match?.price_exit_sim ?? null,
+        net_new: netNew, close_reason_new: match?.exit_reason ?? null,
         diff, motivo,
       };
     });
