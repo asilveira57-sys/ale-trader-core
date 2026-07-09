@@ -260,17 +260,22 @@ export async function runB3SimulationTick(
     const now = new Date();
     const cur = saoPauloMinutes(now);
 
-    const ctx = buildMockB3Context("WIN", "WINFUT", 130000);
+    const priceSrc = await getB3PriceContext(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
+    const ctx = priceSrc.ctx;
     const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
       .insert({
         simulation_run_id: runId, user_id: userId, symbol: "WIN",
         price: ctx.price, candle_open: ctx.open, candle_high: ctx.high, candle_low: ctx.low,
         candle_close: ctx.price, volume: ctx.volume_ratio, vwap: ctx.vwap,
-        market_time: now.toISOString(), source: "mock",
+        market_time: now.toISOString(),
+        source: priceSrc.live ? `mt5:${priceSrc.server ?? "xp"}` : (priceSrc.source === "mt5_xp_demo" ? "mt5:sem_tick" : "mock"),
         extra: { ema9: ctx.ema9, ema21: ctx.ema21, rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
-          momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase },
+          momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase,
+          price_source: priceSrc.source, quote_age_s: priceSrc.quote_age_s, quote_symbol: priceSrc.quote_symbol,
+          bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last },
       }).select("id").single();
     if (sErr) throw sErr;
+
 
     const macroBlock = (macros ?? []).find((m: any) => {
       const a = new Date(m.block_start).getTime();
