@@ -471,7 +471,7 @@ export async function runMt5SimTick(sb: SupabaseClient, userId: string, opts: { 
       continue;
     }
 
-    await openTrade(sb, userId, s, robot, signalId, sig.side, q, sig.price, sig.reason);
+    await openSimTrade(sb, userId, s, robot, signalId, sig.side, q, sig.price, sig.reason);
     await (sb as any).from("b3_mt5sim_signals").update({ status: "used" }).eq("id", signalId);
     res.opened++;
     sidesActive.push({ robot, side: sig.side, price: sig.price });
