@@ -158,8 +158,15 @@ export const tickMt5SimNow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context as any;
+    const { data: settings } = await supabase.from("b3_mt5sim_settings").select("engine").eq("user_id", userId).maybeSingle();
+    const engine = settings?.engine ?? "legacy_b3";
+    if (engine === "legacy_b3") {
+      const { runLegacyMt5Tick } = await import("./b3-legacy-mt5-adapter.server");
+      const res = await runLegacyMt5Tick(supabase, userId, { force: true });
+      return { ...res, engine };
+    }
     const res = await runMt5SimTick(supabase, userId, { force: true });
-    return res;
+    return { ...res, engine };
   });
 
 export const closeMt5SimTrade = createServerFn({ method: "POST" })
