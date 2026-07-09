@@ -1002,7 +1002,9 @@ export type Database = {
           min_score: number
           profile: string
           signal_ttl_s: number
+          stop_loss_points: number
           strategy_params: Json
+          take_profit_points: number
           updated_at: string
           user_id: string
           volume: number
@@ -1021,7 +1023,9 @@ export type Database = {
           min_score?: number
           profile: string
           signal_ttl_s?: number
+          stop_loss_points?: number
           strategy_params?: Json
+          take_profit_points?: number
           updated_at?: string
           user_id: string
           volume?: number
@@ -1040,7 +1044,9 @@ export type Database = {
           min_score?: number
           profile?: string
           signal_ttl_s?: number
+          stop_loss_points?: number
           strategy_params?: Json
+          take_profit_points?: number
           updated_at?: string
           user_id?: string
           volume?: number
@@ -1251,6 +1257,8 @@ export type Database = {
           slippage_ticks: number | null
           spread: number | null
           status: string
+          stop_price: number | null
+          target_price: number | null
           ts_entry: string
           ts_exit: string | null
           ts_signal: string | null
@@ -1282,6 +1290,8 @@ export type Database = {
           slippage_ticks?: number | null
           spread?: number | null
           status?: string
+          stop_price?: number | null
+          target_price?: number | null
           ts_entry?: string
           ts_exit?: string | null
           ts_signal?: string | null
@@ -1313,6 +1323,8 @@ export type Database = {
           slippage_ticks?: number | null
           spread?: number | null
           status?: string
+          stop_price?: number | null
+          target_price?: number | null
           ts_entry?: string
           ts_exit?: string | null
           ts_signal?: string | null
