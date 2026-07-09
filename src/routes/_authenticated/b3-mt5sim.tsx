@@ -30,8 +30,12 @@ function Mt5SimPage() {
   const stopFn = useServerFn(stopMt5SimRun);
   const tickFn = useServerFn(tickMt5SimNow);
   const closeFn = useServerFn(closeMt5SimTrade);
+  const buyFn = useServerFn(manualBuyMt5Sim);
+  const sellFn = useServerFn(manualSellMt5Sim);
+  const reverseFn = useServerFn(manualReverseMt5Sim);
+  const modeFn = useServerFn(setMt5SimRobotMode);
 
-  const { data, isLoading } = useQuery({ queryKey: ["b3-mt5sim"], queryFn: () => fetchFn({}), refetchInterval: 5000 });
+  const { data, isLoading } = useQuery({ queryKey: ["b3-mt5sim"], queryFn: () => fetchFn({}), refetchInterval: 3000 });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["b3-mt5sim"] });
 
   const mStart = useMutation({ mutationFn: () => startFn({}), onSuccess: () => { toast.success("Simulação iniciada"); invalidate(); } });
@@ -39,7 +43,12 @@ function Mt5SimPage() {
   const mTick = useMutation({ mutationFn: () => tickFn({}), onSuccess: (r: any) => { toast.success(`Tick: ${r.status} · sinais ${r.signals} · abertas ${r.opened} · fechadas ${r.closed}`); invalidate(); }, onError: (e: any) => toast.error(e.message) });
   const mSettings = useMutation({ mutationFn: (d: any) => updSettings({ data: d }), onSuccess: () => { toast.success("Configuração salva"); invalidate(); } });
   const mRobot = useMutation({ mutationFn: (d: any) => updRobot({ data: d }), onSuccess: () => { toast.success("Robô salvo"); invalidate(); } });
-  const mClose = useMutation({ mutationFn: (id: string) => closeFn({ data: { trade_id: id } }), onSuccess: () => { toast.success("Trade fechada"); invalidate(); } });
+  const mClose = useMutation({ mutationFn: (id: string) => closeFn({ data: { trade_id: id } }), onSuccess: () => { toast.success("Trade fechada"); invalidate(); }, onError: (e: any) => toast.error(e.message) });
+  const mBuy = useMutation({ mutationFn: (id: string) => buyFn({ data: { robot_id: id } }), onSuccess: () => { toast.success("Compra simulada aberta"); invalidate(); }, onError: (e: any) => toast.error(e.message) });
+  const mSell = useMutation({ mutationFn: (id: string) => sellFn({ data: { robot_id: id } }), onSuccess: () => { toast.success("Venda simulada aberta"); invalidate(); }, onError: (e: any) => toast.error(e.message) });
+  const mReverse = useMutation({ mutationFn: (id: string) => reverseFn({ data: { robot_id: id } }), onSuccess: () => { toast.success("Virada simulada aplicada"); invalidate(); }, onError: (e: any) => toast.error(e.message) });
+  const mMode = useMutation({ mutationFn: (p: { robot_id: string; mode: "manual"|"auto"|"paused" }) => modeFn({ data: p }), onSuccess: () => { toast.success("Modo do robô atualizado"); invalidate(); } });
+
 
   if (isLoading || !data) return <div className="p-8 text-muted-foreground">Carregando…</div>;
 
