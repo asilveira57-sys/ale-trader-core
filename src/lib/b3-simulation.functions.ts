@@ -9,7 +9,16 @@ import {
   evaluateB3Protection, resetB3ProtectionForNewDay, b3DayKeyBRT,
   type B3ProtectionRuntime, type B3ProtectionSettings,
 } from "./b3-protection.server";
-import { getB3PriceContext } from "./b3-price-source.server";
+import {
+  B3_MT5_SERVER,
+  B3_MT5_SYMBOL,
+  B3_MT5_TTL_SECONDS,
+  getB3ExecutionAudit,
+  getB3PriceContext,
+  quoteAuditBase,
+  type B3PriceContextResult,
+  type B3QuoteExecutionAudit,
+} from "./b3-price-source.server";
 
 
 const POINT_VALUE_BRL = 0.2;
