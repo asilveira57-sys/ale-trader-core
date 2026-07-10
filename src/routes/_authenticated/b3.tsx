@@ -348,7 +348,6 @@ function TradePanel({
   onChanged: () => void;
 }) {
   const [side, setSide] = useState<Side>("buy");
-  const [price, setPrice] = useState<number>(130000);
   const [qty, setQty] = useState<number>(1);
   const [contract, setContract] = useState<string>("WINFUT");
   const [closingId, setClosingId] = useState<string | null>(null);
@@ -361,7 +360,6 @@ function TradePanel({
       // Real exige confirmação explícita (auto on)
     }
     if (qty > settings.max_contracts) return `Quantidade ${qty} excede limite (${settings.max_contracts}).`;
-    if (price % TICK !== 0) return `Preço fora do tick de ${TICK} pontos.`;
     const now = new Date();
     const [sh, sm] = settings.start_time.split(":").map(Number);
     const [eh, em] = settings.end_time.split(":").map(Number);
@@ -422,7 +420,7 @@ function TradePanel({
             </div>
             <div>
               <Label>Preço (pontos)</Label>
-              <Input type="number" step={TICK} value={price} onChange={e => setPrice(Number(e.target.value))} disabled />
+              <Input value="B3QuoteProvider" disabled />
               <p className="text-[10px] text-muted-foreground mt-1">A execução usa o provider central da fonte selecionada.</p>
             </div>
             <div>
