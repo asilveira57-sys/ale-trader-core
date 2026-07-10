@@ -322,3 +322,11 @@ export async function getB3PriceContext(
     legacy_provider_calls: 0,
   };
 }
+
+export async function B3QuoteProvider(
+  supabase: any,
+  userId: string,
+  opts: { symbol?: string; contract?: string; base?: number } = {},
+): Promise<B3PriceContextResult> {
+  return getB3PriceContext(supabase, userId, opts);
+}
