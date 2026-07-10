@@ -238,10 +238,57 @@ export async function runB3SimulationTick(
   }
   let realizedTodayByMode = await getRealizedTodayByMode();
 
+  const providerStats = {
+    selected_source: "desconhecida" as string,
+    provider_used: "B3QuoteProvider",
+    mt5_provider_calls: 0,
+    legacy_provider_calls: 0,
+    fallback_to_csv: false,
+    last_entry_price: null as number | null,
+    last_exit_price: null as number | null,
+    last_price_function: null as string | null,
+  };
+
+  function rememberProvider(info: B3PriceContextResult) {
+    providerStats.selected_source = info.quote_source;
+    providerStats.mt5_provider_calls += info.mt5_provider_calls;
+    providerStats.legacy_provider_calls += info.legacy_provider_calls;
+    providerStats.fallback_to_csv = providerStats.fallback_to_csv || info.fallback_to_csv;
+  }
+
+  function mt5InvalidReason(info: B3PriceContextResult): string | null {
+    if (info.source !== "mt5_xp_demo") return null;
+    if (!info.live || !info.raw) return "Tick MT5 XP DEMO indisponível — operação bloqueada.";
+    if (info.quote_symbol !== B3_MT5_SYMBOL) return `Símbolo inválido (${info.quote_symbol ?? "—"}) — esperado ${B3_MT5_SYMBOL}.`;
+    if (info.server !== B3_MT5_SERVER) return `Servidor inválido (${info.server ?? "—"}) — esperado ${B3_MT5_SERVER}.`;
+    if (info.quote_age_s == null || info.quote_age_s > B3_MT5_TTL_SECONDS) return `Idade do tick ${info.quote_age_s ?? "—"}s acima do TTL (${B3_MT5_TTL_SECONDS}s).`;
+    if (!(Number(info.raw.bid) > 0) || !(Number(info.raw.ask) > 0) || !(Number(info.raw.last) > 0)) return "Bid/ask/último inválidos — operação bloqueada.";
+    return null;
+  }
+
+  function orderAuditPatch(audit: B3QuoteExecutionAudit) {
+    return {
+      quote_source: audit.quote_source,
+      quote_server: audit.quote_server,
+      quote_symbol: audit.quote_symbol,
+      quote_tick_ts: audit.quote_tick_ts,
+      quote_bid: audit.quote_bid,
+      quote_ask: audit.quote_ask,
+      quote_last: audit.quote_last,
+      execution_price: audit.execution_price,
+      execution_price_origin: audit.execution_price_origin,
+      legacy_price_detected: audit.legacy_price_detected,
+      provider_name: audit.provider_name,
+    };
+  }
+
   // Helper: registra mudança de status operacional (parou de operar / voltou)
   async function recordStatusIfChanged(
     mode: string, m: any, newStatus: string, trigger: string,
-    opts: { observed?: number; limit?: number; pnl?: number; related_order_id?: string; message?: string } = {},
+    opts: {
+      observed?: number; limit?: number; pnl?: number; related_order_id?: string; message?: string;
+      provider_name?: string; price_source?: string; rejected_price?: number | null; mt5_last?: number | null; diagnostic_payload?: any;
+    } = {},
   ) {
     const prev = m.current_status ?? "operando";
     if (prev === newStatus) return;
@@ -253,6 +300,11 @@ export async function runB3SimulationTick(
       pnl_at_moment: opts.pnl ?? null,
       related_order_id: opts.related_order_id ?? null,
       message: opts.message ?? null,
+      provider_name: opts.provider_name ?? null,
+      price_source: opts.price_source ?? null,
+      rejected_price: opts.rejected_price ?? null,
+      mt5_last: opts.mt5_last ?? null,
+      diagnostic_payload: opts.diagnostic_payload ?? {},
     });
     await supabase.from("b3_simulation_modes").update({
       current_status: newStatus, status_reason: opts.message ?? null,
