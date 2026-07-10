@@ -1668,14 +1668,25 @@ export type Database = {
           entry_price: number
           entry_time: string
           environment: string
+          execution_price: number | null
+          execution_price_origin: string | null
           exit_price: number | null
           exit_time: string | null
           fees: number
           gross_result_brl: number | null
           gross_result_points: number | null
           id: string
+          legacy_price_detected: boolean
           net_result_brl: number | null
+          provider_name: string
           quantity: number
+          quote_ask: number | null
+          quote_bid: number | null
+          quote_last: number | null
+          quote_server: string | null
+          quote_source: string
+          quote_symbol: string | null
+          quote_tick_ts: string | null
           side: string
           status: string
           symbol: string
@@ -1689,14 +1700,25 @@ export type Database = {
           entry_price: number
           entry_time?: string
           environment?: string
+          execution_price?: number | null
+          execution_price_origin?: string | null
           exit_price?: number | null
           exit_time?: string | null
           fees?: number
           gross_result_brl?: number | null
           gross_result_points?: number | null
           id?: string
+          legacy_price_detected?: boolean
           net_result_brl?: number | null
+          provider_name?: string
           quantity?: number
+          quote_ask?: number | null
+          quote_bid?: number | null
+          quote_last?: number | null
+          quote_server?: string | null
+          quote_source?: string
+          quote_symbol?: string | null
+          quote_tick_ts?: string | null
           side: string
           status?: string
           symbol?: string
@@ -1710,14 +1732,25 @@ export type Database = {
           entry_price?: number
           entry_time?: string
           environment?: string
+          execution_price?: number | null
+          execution_price_origin?: string | null
           exit_price?: number | null
           exit_time?: string | null
           fees?: number
           gross_result_brl?: number | null
           gross_result_points?: number | null
           id?: string
+          legacy_price_detected?: boolean
           net_result_brl?: number | null
+          provider_name?: string
           quantity?: number
+          quote_ask?: number | null
+          quote_bid?: number | null
+          quote_last?: number | null
+          quote_server?: string | null
+          quote_source?: string
+          quote_symbol?: string | null
+          quote_tick_ts?: string | null
           side?: string
           status?: string
           symbol?: string
@@ -1796,15 +1829,20 @@ export type Database = {
       b3_simulation_block_events: {
         Row: {
           created_at: string
+          diagnostic_payload: Json
           id: string
           limit_value: number | null
           message: string | null
           mode: string
+          mt5_last: number | null
           new_status: string
           observed_value: number | null
           occurred_at: string
           pnl_at_moment: number | null
           prev_status: string | null
+          price_source: string | null
+          provider_name: string | null
+          rejected_price: number | null
           related_order_id: string | null
           simulation_mode_id: string | null
           simulation_run_id: string
@@ -1813,15 +1851,20 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          diagnostic_payload?: Json
           id?: string
           limit_value?: number | null
           message?: string | null
           mode: string
+          mt5_last?: number | null
           new_status: string
           observed_value?: number | null
           occurred_at?: string
           pnl_at_moment?: number | null
           prev_status?: string | null
+          price_source?: string | null
+          provider_name?: string | null
+          rejected_price?: number | null
           related_order_id?: string | null
           simulation_mode_id?: string | null
           simulation_run_id: string
@@ -1830,15 +1873,20 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          diagnostic_payload?: Json
           id?: string
           limit_value?: number | null
           message?: string | null
           mode?: string
+          mt5_last?: number | null
           new_status?: string
           observed_value?: number | null
           occurred_at?: string
           pnl_at_moment?: number | null
           prev_status?: string | null
+          price_source?: string | null
+          provider_name?: string | null
+          rejected_price?: number | null
           related_order_id?: string | null
           simulation_mode_id?: string | null
           simulation_run_id?: string
@@ -1873,6 +1921,14 @@ export type Database = {
           id: string
           market_time: string
           price: number
+          provider_name: string
+          quote_ask: number | null
+          quote_bid: number | null
+          quote_last: number | null
+          quote_server: string | null
+          quote_source: string
+          quote_symbol: string | null
+          quote_tick_ts: string | null
           simulation_run_id: string
           source: string
           symbol: string
@@ -1890,6 +1946,14 @@ export type Database = {
           id?: string
           market_time?: string
           price: number
+          provider_name?: string
+          quote_ask?: number | null
+          quote_bid?: number | null
+          quote_last?: number | null
+          quote_server?: string | null
+          quote_source?: string
+          quote_symbol?: string | null
+          quote_tick_ts?: string | null
           simulation_run_id: string
           source?: string
           symbol?: string
@@ -1907,6 +1971,14 @@ export type Database = {
           id?: string
           market_time?: string
           price?: number
+          provider_name?: string
+          quote_ask?: number | null
+          quote_bid?: number | null
+          quote_last?: number | null
+          quote_server?: string | null
+          quote_source?: string
+          quote_symbol?: string | null
+          quote_tick_ts?: string | null
           simulation_run_id?: string
           source?: string
           symbol?: string
@@ -2154,15 +2226,26 @@ export type Database = {
           created_at: string
           entry_price: number
           entry_time: string
+          execution_price: number | null
+          execution_price_origin: string | null
           exit_price: number | null
           exit_time: string | null
           fees: number
           gross_result_brl: number
           gross_result_points: number
           id: string
+          legacy_price_detected: boolean
           mode: string
           net_result_brl: number
+          provider_name: string
           quantity: number
+          quote_ask: number | null
+          quote_bid: number | null
+          quote_last: number | null
+          quote_server: string | null
+          quote_source: string
+          quote_symbol: string | null
+          quote_tick_ts: string | null
           side: string
           simulation_mode_id: string
           simulation_run_id: string
@@ -2177,15 +2260,26 @@ export type Database = {
           created_at?: string
           entry_price: number
           entry_time?: string
+          execution_price?: number | null
+          execution_price_origin?: string | null
           exit_price?: number | null
           exit_time?: string | null
           fees?: number
           gross_result_brl?: number
           gross_result_points?: number
           id?: string
+          legacy_price_detected?: boolean
           mode: string
           net_result_brl?: number
+          provider_name?: string
           quantity?: number
+          quote_ask?: number | null
+          quote_bid?: number | null
+          quote_last?: number | null
+          quote_server?: string | null
+          quote_source?: string
+          quote_symbol?: string | null
+          quote_tick_ts?: string | null
           side: string
           simulation_mode_id: string
           simulation_run_id: string
@@ -2200,15 +2294,26 @@ export type Database = {
           created_at?: string
           entry_price?: number
           entry_time?: string
+          execution_price?: number | null
+          execution_price_origin?: string | null
           exit_price?: number | null
           exit_time?: string | null
           fees?: number
           gross_result_brl?: number
           gross_result_points?: number
           id?: string
+          legacy_price_detected?: boolean
           mode?: string
           net_result_brl?: number
+          provider_name?: string
           quantity?: number
+          quote_ask?: number | null
+          quote_bid?: number | null
+          quote_last?: number | null
+          quote_server?: string | null
+          quote_source?: string
+          quote_symbol?: string | null
+          quote_tick_ts?: string | null
           side?: string
           simulation_mode_id?: string
           simulation_run_id?: string
