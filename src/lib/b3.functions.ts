@@ -147,7 +147,7 @@ export const getB3PanelOverview = createServerFn({ method: "GET" })
     const [{ data: modes }, { data: settings }, { data: openOrders }, { data: closedToday }] = await Promise.all([
       (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", run.id).eq("user_id", userId),
       (supabase as any).from("b3_simulation_mode_settings").select("*").eq("simulation_run_id", run.id).eq("user_id", userId),
-      (supabase as any).from("b3_simulation_orders").select("id,mode,side,entry_price,quantity").eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
+      (supabase as any).from("b3_simulation_orders").select("id,mode,side,entry_price,quantity,quote_source,provider_name,execution_price_origin").eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
       (supabase as any).from("b3_simulation_orders").select("id,mode,net_result_brl,gross_result_brl,fees,gross_result_points,quantity,close_reason,exit_time")
         .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "closed")
         .gte("exit_time", new Date(new Date().setHours(0,0,0,0)).toISOString()),
