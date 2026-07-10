@@ -344,6 +344,14 @@ export const closeB3ManualOrder = createServerFn({ method: "POST" })
     const { data: order } = await (supabase as any).from("b3_orders").select("*").eq("id", data.order_id).eq("user_id", userId).maybeSingle();
     if (!order || order.status !== "open") throw new Error("Ordem aberta não encontrada.");
     const info = await getB3PriceContext(supabase, userId, { symbol: "WIN", contract: order.contract_code ?? "WINFUT", base: 130000 });
+    if (info.source === "mt5_xp_demo" && order.quote_source !== "MT5 XP DEMO") {
+      await (supabase as any).from("b3_orders").update({
+        status: "cancelled",
+        close_reason: "Fonte alterada para MT5 XP DEMO — operação legada invalidada",
+        exit_time: new Date().toISOString(),
+      }).eq("id", order.id).eq("user_id", userId);
+      throw new Error("Operação aberta com preço legado invalidada — não será misturada com MT5 XP DEMO.");
+    }
     const audit = getB3ExecutionAudit(info, order.side, "exit", "closeB3ManualOrder");
     if (info.source === "mt5_xp_demo" && audit.quote_source !== "MT5 XP DEMO") throw new Error("Preço de execução incompatível com a cotação MT5 — operação bloqueada");
     const points = order.side === "buy" ? audit.execution_price - Number(order.entry_price) : Number(order.entry_price) - audit.execution_price;
