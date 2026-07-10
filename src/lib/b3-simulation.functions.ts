@@ -677,6 +677,14 @@ export async function runB3SimulationTick(
           log.push({ mode, action: "blocked", reason: "price_guard", message: (e as Error).message });
           continue;
         }
+        if (priceSrc.source !== "mt5_xp_demo") {
+          const slip = Number(run.simulated_slippage_pts) || 0;
+          entryAudit = {
+            ...entryAudit,
+            execution_price: Math.round((intendedSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip) / TICK) * TICK,
+            execution_price_origin: `${entryAudit.execution_price_origin}+legacy_slippage`,
+          };
+        }
         const entry = entryAudit.execution_price;
         const baseQty = 1;
         const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
