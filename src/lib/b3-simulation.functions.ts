@@ -288,10 +288,11 @@ export async function runB3SimulationTick(
     opts: {
       observed?: number; limit?: number; pnl?: number; related_order_id?: string; message?: string;
       provider_name?: string; price_source?: string; rejected_price?: number | null; mt5_last?: number | null; diagnostic_payload?: any;
+      forceLog?: boolean;
     } = {},
   ) {
     const prev = m.current_status ?? "operando";
-    if (prev === newStatus) return;
+    if (prev === newStatus && !opts.forceLog) return;
     await supabase.from("b3_simulation_block_events").insert({
       simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
       mode, prev_status: prev, new_status: newStatus, trigger,
@@ -306,14 +307,16 @@ export async function runB3SimulationTick(
       mt5_last: opts.mt5_last ?? null,
       diagnostic_payload: opts.diagnostic_payload ?? {},
     });
-    await supabase.from("b3_simulation_modes").update({
-      current_status: newStatus, status_reason: opts.message ?? null,
-      status_changed_at: new Date().toISOString(), last_trigger: trigger,
-    }).eq("id", m.id);
-    m.current_status = newStatus;
-    m.status_reason = opts.message ?? null;
-    m.status_changed_at = new Date().toISOString();
-    m.last_trigger = trigger;
+    if (prev !== newStatus) {
+      await supabase.from("b3_simulation_modes").update({
+        current_status: newStatus, status_reason: opts.message ?? null,
+        status_changed_at: new Date().toISOString(), last_trigger: trigger,
+      }).eq("id", m.id);
+      m.current_status = newStatus;
+      m.status_reason = opts.message ?? null;
+      m.status_changed_at = new Date().toISOString();
+      m.last_trigger = trigger;
+    }
   }
 
 
@@ -372,6 +375,7 @@ export async function runB3SimulationTick(
           price_source: priceSrc.quote_source,
           rejected_price: ctx.price,
           mt5_last: priceSrc.raw?.last ?? null,
+          forceLog: true,
           diagnostic_payload: {
             function: "runB3SimulationTick",
             provider: priceSrc.provider_name,
@@ -549,6 +553,7 @@ export async function runB3SimulationTick(
             price_source: priceSrc.quote_source,
             rejected_price: ctx.price,
             mt5_last: priceSrc.raw?.last ?? null,
+            forceLog: true,
             diagnostic_payload: { function: "runB3SimulationTick.markToMarket", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
           log.push({ mode, action: "skip", reason: "price_guard", message: (e as Error).message });
@@ -681,6 +686,7 @@ export async function runB3SimulationTick(
             price_source: priceSrc.quote_source,
             rejected_price: ctx.price,
             mt5_last: priceSrc.raw?.last ?? null,
+            forceLog: true,
             diagnostic_payload: { function: "runB3SimulationTick.openOrder", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
           log.push({ mode, action: "blocked", reason: "price_guard", message: (e as Error).message });
