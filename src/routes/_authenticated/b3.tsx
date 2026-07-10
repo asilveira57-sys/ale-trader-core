@@ -65,6 +65,7 @@ interface B3Settings {
   strategy_mode: "conservador" | "moderado" | "agressivo";
   auto_trade_enabled: boolean;
   alert_only_enabled: boolean;
+  price_source?: "csv" | "mt5_xp_demo";
 }
 
 interface B3Order {
@@ -484,9 +485,10 @@ function TradePanel({
 // ────────────────────────────────────────────────────────────────────
 function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings }) {
   const today = new Date().toISOString().slice(0, 10);
+  const isMt5 = settings.price_source === "mt5_xp_demo";
   const todays = useMemo(
-    () => orders.filter(o => o.created_at.slice(0, 10) === today),
-    [orders, today],
+    () => orders.filter(o => o.created_at.slice(0, 10) === today && (!isMt5 || (o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider"))),
+    [orders, today, isMt5],
   );
 
   // Inclui também operações da Simulação 3 Modos do dia
@@ -507,7 +509,11 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
       return data ?? [];
     },
   });
-  const simOrders: any[] = simQ.data ?? [];
+  const simOrdersRaw: any[] = simQ.data ?? [];
+  const simOrders: any[] = isMt5
+    ? simOrdersRaw.filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider")
+    : simOrdersRaw;
+  const hiddenSimLegacy = isMt5 ? simOrdersRaw.length - simOrders.length : 0;
   const simClosed = simOrders.filter(o => o.status === "closed");
 
   const closed = todays.filter(o => o.status === "closed");
@@ -612,6 +618,11 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
             O Relatório acima reflete apenas operações reais/manuais. Esta seção mostra as ordens da Simulação 3 Modos
             executadas hoje (já somadas nos cartões: Resultado realizado, Bruto, Taxas e Patrimônio).
           </p>
+          {hiddenSimLegacy > 0 && (
+            <p className="text-xs text-amber-300 mb-2 flex items-center gap-1">
+              <ShieldAlert className="w-3 h-3" /> {hiddenSimLegacy} operação(ões) legada(s) ocultada(s). Em MT5 XP DEMO o relatório soma somente operações auditadas pelo B3QuoteProvider.
+            </p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="text-left text-muted-foreground border-b">
@@ -1027,6 +1038,8 @@ function PriceSourceCard() {
               <Metric label="Última saída" value={st?.last_exit_price != null ? NUM(Number(st.last_exit_price)) : "—"} />
               <Metric label="Fonte última entrada" value={st?.last_entry_source ?? "—"} />
               <Metric label="Fonte última saída" value={st?.last_exit_source ?? "—"} />
+              <Metric label="Ops MT5 válidas" value={String(st?.valid_mt5_orders ?? 0)} tone={Number(st?.valid_mt5_orders ?? 0) > 0 ? "ok" : undefined} />
+              <Metric label="Legado ocultado" value={String(st?.legacy_orders_hidden ?? 0)} tone={Number(st?.legacy_orders_hidden ?? 0) > 0 ? "warn" : "ok"} />
             </div>
             {st?.last_block?.message && (
               <p className="text-xs text-destructive flex items-center gap-1">
@@ -1037,7 +1050,7 @@ function PriceSourceCard() {
         )}
         {isMt5 && dead && (
           <p className="text-xs text-destructive flex items-center gap-1">
-            <AlertTriangle className="w-3 h-3" /> Tick MT5 vencido (&gt; 30s). O motor pode operar com preço defasado até o ingest voltar.
+            <AlertTriangle className="w-3 h-3" /> Tick MT5 vencido (&gt; 30s). Novas entradas e fechamentos simulados ficam bloqueados até o ingest voltar.
           </p>
         )}
         {isMt5 && !st?.live && !dead && (

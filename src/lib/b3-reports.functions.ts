@@ -36,15 +36,22 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
     if (data.period === "today") { fromISO = startOfTodayBrtISO(); }
     else if (data.period === "custom") { fromISO = data.from ?? null; toISO = data.to ?? null; }
 
-    const { data: modes } = await (supabase as any).from("b3_simulation_modes")
-      .select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId);
+    const [{ data: modes }, { data: settings }] = await Promise.all([
+      (supabase as any).from("b3_simulation_modes")
+        .select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId),
+      (supabase as any).from("b3_trading_settings").select("price_source").eq("user_id", userId).maybeSingle(),
+    ]);
+    const isMt5 = settings?.price_source === "mt5_xp_demo";
 
     // Ordens fechadas no período
     let q = (supabase as any).from("b3_simulation_orders")
       .select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).eq("status", "closed");
     if (fromISO) q = q.gte("exit_time", fromISO);
     if (toISO) q = q.lte("exit_time", toISO);
-    const { data: orders } = await q.order("exit_time", { ascending: true }).limit(10000);
+    const { data: ordersRaw } = await q.order("exit_time", { ascending: true }).limit(10000);
+    const orders = isMt5
+      ? ((ordersRaw ?? []) as any[]).filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider")
+      : (ordersRaw ?? []);
 
     // Votos do comitê no período (aprovados/rejeitados a partir dos snapshots)
     let qv = (supabase as any).from("b3_simulation_agent_votes")
@@ -84,9 +91,12 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
       const maxLoss = ords.reduce((m: number, o: any) => Math.min(m, Number(o.net_result_brl ?? 0)), 0);
 
       // saldo inicial do período = current_balance - liquido (estimativa baseada nos fechamentos no período)
-      const saldoFinal = Number(mRow?.current_balance ?? Number(mRow?.initial_balance ?? 0));
+      const initialBalance = Number(mRow?.initial_balance ?? 0);
+      const saldoFinal = isMt5
+        ? initialBalance + liquido
+        : Number(mRow?.current_balance ?? initialBalance);
       const saldoInicialPeriodo = data.period === "all"
-        ? Number(mRow?.initial_balance ?? 0)
+        ? initialBalance
         : saldoFinal - liquido;
 
       // Drawdown máximo no período (curva acumulada)
@@ -140,11 +150,11 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
         cumulative: {
           initial_balance: Number(mRow?.initial_balance ?? 0),
           current_balance: saldoFinal,
-          realized_pnl: Number(mRow?.realized_pnl ?? 0),
-          total_trades: Number(mRow?.total_trades ?? 0),
-          winning_trades: Number(mRow?.winning_trades ?? 0),
-          losing_trades: Number(mRow?.losing_trades ?? 0),
-          max_drawdown: Number(mRow?.max_drawdown ?? 0),
+          realized_pnl: isMt5 ? liquido : Number(mRow?.realized_pnl ?? 0),
+          total_trades: isMt5 ? total : Number(mRow?.total_trades ?? 0),
+          winning_trades: isMt5 ? wins : Number(mRow?.winning_trades ?? 0),
+          losing_trades: isMt5 ? losses : Number(mRow?.losing_trades ?? 0),
+          max_drawdown: isMt5 ? dd : Number(mRow?.max_drawdown ?? 0),
           committee_approvals: Number(mRow?.committee_approvals ?? 0),
           committee_rejections: Number(mRow?.committee_rejections ?? 0),
           risk_blocks: Number(mRow?.risk_blocks ?? 0),
@@ -160,6 +170,8 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
       to: toISO,
       modes: MODES.map((m) => metricsByMode[m]),
       block_events: blockEvents ?? [],
+      price_source: settings?.price_source ?? "csv",
+      legacy_orders_hidden: isMt5 ? ((ordersRaw ?? []) as any[]).length - orders.length : 0,
     };
   });
 

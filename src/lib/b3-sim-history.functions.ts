@@ -7,14 +7,26 @@ export const listAllB3SimOrders = createServerFn({ method: "POST" })
   .inputValidator((d: { run_id: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const [runR, modesR, ordersR] = await Promise.all([
+    const [runR, modesR, ordersR, settingsR] = await Promise.all([
       (supabase as any).from("b3_simulation_runs").select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle(),
       (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId),
       (supabase as any).from("b3_simulation_orders").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: false }).limit(5000),
+      (supabase as any).from("b3_trading_settings").select("price_source").eq("user_id", userId).maybeSingle(),
     ]);
     if (runR.error) throw runR.error;
     if (!runR.data) throw new Error("Run não encontrada");
-    return { run: runR.data, modes: modesR.data ?? [], orders: ordersR.data ?? [] };
+    const isMt5 = settingsR.data?.price_source === "mt5_xp_demo";
+    const allOrders = (ordersR.data ?? []) as any[];
+    const orders = isMt5
+      ? allOrders.filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider")
+      : allOrders;
+    return {
+      run: runR.data,
+      modes: modesR.data ?? [],
+      orders,
+      price_source: settingsR.data?.price_source ?? "csv",
+      legacy_orders_hidden: isMt5 ? allOrders.length - orders.length : 0,
+    };
   });
 
 export const listB3SimVotesForOrder = createServerFn({ method: "POST" })
@@ -49,20 +61,28 @@ export const getB3SimLiveDashboard = createServerFn({ method: "POST" })
     const hours = Math.max(1, Math.min(72, data.hours ?? 6));
     const since = new Date(Date.now() - hours * 3600_000).toISOString();
 
-    const [runR, modesR, ordersR, snapsR, votesR] = await Promise.all([
+    const [runR, modesR, ordersR, snapsR, votesR, settingsR] = await Promise.all([
       (supabase as any).from("b3_simulation_runs").select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle(),
       (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId),
       (supabase as any).from("b3_simulation_orders").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: true }).limit(5000),
       (supabase as any).from("b3_simulation_market_snapshots").select("market_time, price, candle_open, candle_high, candle_low, candle_close, volume").eq("simulation_run_id", data.run_id).eq("user_id", userId).gte("market_time", since).order("market_time", { ascending: true }).limit(2000),
       (supabase as any).from("b3_simulation_agent_votes").select("created_at, mode, agent_name, vote, confidence, reason").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: false }).limit(30),
+      (supabase as any).from("b3_trading_settings").select("price_source").eq("user_id", userId).maybeSingle(),
     ]);
     if (runR.error) throw runR.error;
     if (!runR.data) throw new Error("Run não encontrada");
+    const isMt5 = settingsR.data?.price_source === "mt5_xp_demo";
+    const allOrders = (ordersR.data ?? []) as any[];
+    const orders = isMt5
+      ? allOrders.filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider")
+      : allOrders;
     return {
       run: runR.data,
       modes: modesR.data ?? [],
-      orders: ordersR.data ?? [],
+      orders,
       snapshots: snapsR.data ?? [],
       recent_votes: votesR.data ?? [],
+      price_source: settingsR.data?.price_source ?? "csv",
+      legacy_orders_hidden: isMt5 ? allOrders.length - orders.length : 0,
     };
   });
