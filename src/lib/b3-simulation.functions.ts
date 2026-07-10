@@ -322,7 +322,9 @@ export async function runB3SimulationTick(
     const cur = saoPauloMinutes(now);
 
     const priceSrc = await getB3PriceContext(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
+    rememberProvider(priceSrc);
     const ctx = priceSrc.ctx;
+    const invalidMt5 = mt5InvalidReason(priceSrc);
     const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
       .insert({
         simulation_run_id: runId, user_id: userId, symbol: "WIN",
@@ -330,10 +332,20 @@ export async function runB3SimulationTick(
         candle_close: ctx.price, volume: ctx.volume_ratio, vwap: ctx.vwap,
         market_time: now.toISOString(),
         source: priceSrc.live ? `mt5:${priceSrc.server ?? "xp"}` : (priceSrc.source === "mt5_xp_demo" ? "mt5:sem_tick" : "mock"),
+        quote_source: priceSrc.quote_source,
+        quote_server: priceSrc.server,
+        quote_symbol: priceSrc.quote_symbol,
+        quote_tick_ts: priceSrc.raw?.tick_ts ?? null,
+        quote_bid: priceSrc.raw?.bid ?? null,
+        quote_ask: priceSrc.raw?.ask ?? null,
+        quote_last: priceSrc.raw?.last ?? null,
+        provider_name: priceSrc.provider_name,
         extra: { ema9: ctx.ema9, ema21: ctx.ema21, rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
           momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase,
           price_source: priceSrc.source, quote_age_s: priceSrc.quote_age_s, quote_symbol: priceSrc.quote_symbol,
-          bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last },
+          bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last,
+          provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
+          mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls },
       }).select("id").single();
     if (sErr) throw sErr;
 
