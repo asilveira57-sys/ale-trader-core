@@ -275,10 +275,10 @@ export const setB3PriceSource = createServerFn({ method: "POST" })
       await Promise.all([
         (supabase as any).from("b3_simulation_orders")
           .update({ status: "cancelled", close_reason: "Fonte alterada para MT5 XP DEMO — estado operacional legado reiniciado" })
-          .eq("user_id", userId).eq("status", "open").neq("quote_source", "MT5 XP DEMO"),
+          .eq("user_id", userId).eq("status", "open"),
         (supabase as any).from("b3_orders")
           .update({ status: "cancelled", close_reason: "Fonte alterada para MT5 XP DEMO — estado operacional legado reiniciado", exit_time: now })
-          .eq("user_id", userId).eq("status", "open").neq("quote_source", "MT5 XP DEMO"),
+          .eq("user_id", userId).eq("status", "open"),
         (supabase as any).from("b3_simulation_modes")
           .update({ current_status: "operando", status_reason: "Fonte alterada para MT5 XP DEMO — estado operacional legado reiniciado", status_changed_at: now, last_trigger: "price_source_reset" })
           .eq("user_id", userId),
