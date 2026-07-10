@@ -214,10 +214,13 @@ export const getB3PriceSourceStatus = createServerFn({ method: "GET" })
         .select("occurred_at, trigger, message, provider_name, price_source, rejected_price, mt5_last, diagnostic_payload")
         .eq("user_id", userId).order("occurred_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
-    const legacyCalls = Number((lastSnapshot?.extra as any)?.legacy_provider_calls ?? info.legacy_provider_calls ?? 0);
-    const mt5Calls = Number((lastSnapshot?.extra as any)?.mt5_provider_calls ?? info.mt5_provider_calls ?? 0);
-    const lastEntryTime = lastEntry?.created_at ? new Date(lastEntry.created_at).getTime() : 0;
-    const lastExitTime = lastExit?.exit_time ? new Date(lastExit.exit_time).getTime() : 0;
+    const snapshotMatchesSource = info.source !== "mt5_xp_demo" || lastSnapshot?.quote_source === "MT5 XP DEMO";
+    const entryMatchesSource = info.source !== "mt5_xp_demo" || lastEntry?.quote_source === "MT5 XP DEMO";
+    const exitMatchesSource = info.source !== "mt5_xp_demo" || lastExit?.quote_source === "MT5 XP DEMO";
+    const legacyCalls = snapshotMatchesSource ? Number((lastSnapshot?.extra as any)?.legacy_provider_calls ?? info.legacy_provider_calls ?? 0) : info.legacy_provider_calls;
+    const mt5Calls = snapshotMatchesSource ? Number((lastSnapshot?.extra as any)?.mt5_provider_calls ?? info.mt5_provider_calls ?? 0) : info.mt5_provider_calls;
+    const lastEntryTime = entryMatchesSource && lastEntry?.created_at ? new Date(lastEntry.created_at).getTime() : 0;
+    const lastExitTime = exitMatchesSource && lastExit?.exit_time ? new Date(lastExit.exit_time).getTime() : 0;
     const lastPriceFunction = lastExitTime > lastEntryTime
       ? lastExit?.execution_price_origin
       : lastEntry?.execution_price_origin;
@@ -238,11 +241,11 @@ export const getB3PriceSourceStatus = createServerFn({ method: "GET" })
       fallback_to_csv: info.fallback_to_csv,
       mt5_provider_calls: mt5Calls,
       legacy_provider_calls: legacyCalls,
-      last_entry_price: lastEntry?.entry_price ?? lastEntry?.execution_price ?? null,
-      last_exit_price: lastExit?.exit_price ?? lastExit?.execution_price ?? null,
+      last_entry_price: entryMatchesSource ? (lastEntry?.entry_price ?? lastEntry?.execution_price ?? null) : null,
+      last_exit_price: exitMatchesSource ? (lastExit?.exit_price ?? lastExit?.execution_price ?? null) : null,
       last_price_function: lastPriceFunction ?? null,
-      last_entry_source: lastEntry?.quote_source ?? null,
-      last_exit_source: lastExit?.quote_source ?? null,
+      last_entry_source: entryMatchesSource ? (lastEntry?.quote_source ?? null) : null,
+      last_exit_source: exitMatchesSource ? (lastExit?.quote_source ?? null) : null,
       last_block: lastBlock ?? null,
       guard: {
         required_symbol: B3_MT5_SYMBOL,
