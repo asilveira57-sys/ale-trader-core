@@ -526,6 +526,15 @@ export async function runB3SimulationTick(
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
       if (open) {
+        if (priceSrc.source === "mt5_xp_demo" && open.quote_source !== "MT5 XP DEMO") {
+          await supabase.from("b3_simulation_orders").update({
+            status: "cancelled",
+            close_reason: "Fonte alterada para MT5 XP DEMO — operação legada invalidada",
+          }).eq("id", open.id).eq("user_id", userId);
+          openOrdersCache = null;
+          log.push({ mode, action: "cancel_legacy_open", reason: "legacy_price_state_invalidated" });
+          continue;
+        }
         const dirSign = open.side === "buy" ? 1 : -1;
         let markAudit: B3QuoteExecutionAudit;
         try {
