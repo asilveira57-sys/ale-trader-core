@@ -10,6 +10,7 @@ import {
   B3_MT5_SERVER,
   B3_MT5_SYMBOL,
   B3_MT5_TTL_SECONDS,
+  assertFreshMt5Quote,
   getB3ExecutionAudit,
   getB3PriceContext,
   type B3PriceSource,
@@ -77,6 +78,7 @@ export const runB3Committee = createServerFn({ method: "POST" })
       base: data.base_price ?? 130000,
     });
     const ctx = priceSrc.ctx;
+    if (priceSrc.source === "mt5_xp_demo") assertFreshMt5Quote(priceSrc, "runB3Committee");
 
 
     // settings de consenso por modo
