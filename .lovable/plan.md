@@ -1,86 +1,152 @@
+## Diagnóstico
 
-# Simulação Local MT5 XP — WINQ26 (módulo B3)
+O Bid/Ask exibido no topo já vem corretamente da ponte MT5 XP DEMO. O problema está abaixo, na camada de simulação/histórico do B3:
 
-Modo novo, isolado, que roda todos os robôs B3 sobre o WINQ26 usando **cotação real do MetaTrader 5 (XPMT5-PRD)** mas **sem enviar nenhuma ordem real**. Serve para comparar entradas, saídas, travas, PnL teórico, drawdown e conflitos entre robôs antes de qualquer execução real.
+1. A tabela de “Últimas operações simuladas” ainda mostra operações antigas/legadas do `b3_simulation_orders` com `quote_source` nulo/desconhecido.
+2. Ao ativar MT5, o código atual cancela principalmente posições abertas legadas, mas não remove/quarentena operações já fechadas ou registros antigos da run ativa.
+3. O painel de diagnóstico ignora esses registros para “última entrada/saída”, mas a tabela continua exibindo-os; por isso o topo mostra MT5 real e a tabela mostra 129.xxx/131.xxx.
+4. Falta uma trava definitiva em múltiplas camadas para impedir qualquer inserção futura em modo MT5 se o preço não vier explicitamente do `B3QuoteProvider` com `quote_source = MT5 XP DEMO`.
 
-## Escopo e isolamento
+## Objetivo da correção
 
-- Tudo novo com prefixo `b3_mt5sim_*` (tabelas, rotas, arquivos, componentes).
-- **Não altero**: qualquer módulo Binance, `pipeline-runner`, `committee`, `binance-*`, `b3-protection`, `b3-simulation-*` já existentes, `atrader.functions.ts`, `b3.functions.ts`.
-- O B3 clássico e a Flexibilização de Bloqueios continuam funcionando como estão.
+Quando a fonte estiver em `MT5 XP DEMO`, o módulo B3 Day Trade WIN deve ficar em modo estrito:
 
-## Banco de dados (uma migration)
+- Entrada BUY sempre pelo Ask MT5.
+- Entrada SELL sempre pelo Bid MT5.
+- Fechamento de BUY sempre pelo Bid MT5.
+- Fechamento de SELL sempre pelo Ask MT5.
+- Nenhum preço 128.xxx/129.xxx/130.xxx/131.xxx pode aparecer como nova operação em modo MT5.
+- Operações legadas não devem aparecer misturadas como se fossem operações atuais MT5.
+- Ordem real enviada continua sempre zero.
 
-Todas as tabelas em `public`, com GRANT, RLS por `user_id` (`auth.uid()`), `service_role` full, `updated_at` trigger onde aplicável.
+## Plano de implementação
 
-- `b3_mt5sim_settings` — 1 linha por user: `market` (WIN), `mt5_symbol` (WINQ26), `server` (XPMT5-PRD), `tick_size` (5), `tick_value` (1.00), `point_value` (0.20), `default_volume` (1), `price_source` (`last`|`bid_ask`|`bid_ask_slip`), `slippage_ticks`, `fee_per_contract_brl`, `use_spread`, `poll_interval_ms`, `session_start`, `session_end`, `kill_switch_real` (default true), `allow_long`, `allow_short`, `allow_reverse`, promotion criteria (`min_trades_per_robot`, `min_days`, `max_price_divergence_pts`, `max_drawdown_brl`, `min_hit_rate`, `min_net_pnl`).
-- `b3_mt5sim_robots` — 1 linha por robô participante (`profile` enum: conservador|moderado|equilibrado|semi_agressivo|agressivo), com travas independentes: `daily_loss_limit_brl`, `daily_gain_limit_brl`, `max_trades_day`, `max_drawdown_brl`, `max_consec_losses`, `min_score`, `signal_ttl_s`, `max_spread_ticks`, `volatility_block_atr`, `enabled`, `initial_balance_brl`.
-- `b3_mt5sim_wallet_daily` — carteira simulada por robô/dia: saldo inicial, PnL bruto, PnL líquido, taxas, trades, wins/losses, hit_rate, best/worst, drawdown, points_net, current_position_side/qty/avg, status.
-- `b3_mt5sim_quotes` — ticks capturados (bid, ask, last, spread, ts, volume, symbol_status, mt5_connected, server, account_masked).
-- `b3_mt5sim_signals` — sinais gerados por robô (side, price_signal, score, motivo, ts, expires_at, status).
-- `b3_mt5sim_trades` — operações simuladas completas com todos os campos de auditoria do prompt (simulation_id, robot_id, signal_id, símbolo lógico/MT5, side, volume, price_signal, price_entry_sim, price_exit_sim, ts_signal/entry/exit, spread, slippage_ticks, fee_brl, points_result, gross_brl, net_brl, entry_reason, exit_reason, locks_triggered jsonb, status, observations).
-- `b3_mt5sim_blocks` — sinais bloqueados por travas (robot, lock_kind, observed, limit, signal_id, motivo, ts).
-- `b3_mt5sim_conflicts` — snapshots de conflito entre robôs (ts, robots jsonb, sides, prices, outcome_delta).
-- `b3_mt5sim_order_attempts` — log de qualquer tentativa (interna) de enviar ordem real enquanto o modo está ativo (erro crítico).
+### 1. Criar uma barreira única de execução MT5 no backend
 
-## Ponte MT5 (cotação real, sem ordens)
+Adicionar um helper server-side específico para execução B3 em modo MT5 estrito:
 
-Não há SDK do MT5 no Worker. Uso um **puller local** externo (script Python no PC do usuário rodando junto com o MT5 XP) que faz POST periódico de ticks para um endpoint público protegido por HMAC. Não escrevo o script agora; entrego o endpoint e a documentação inline.
+```text
+resolveB3StrictExecutionPrice(side, action)
+  -> lê B3QuoteProvider
+  -> exige fonte mt5_xp_demo
+  -> exige quote_source MT5 XP DEMO
+  -> exige server XPMT5-DEMO
+  -> exige symbol WINQ26
+  -> exige tick <= 5s
+  -> calcula preço por bid/ask
+  -> rejeita qualquer preço fora da banda do tick MT5
+```
 
-- `src/routes/api/public/hooks/b3-mt5sim-tick-ingest.ts` — POST `{symbol, bid, ask, last, spread, ts, volume, symbol_status, server, account_masked}` assinado com `B3_MT5SIM_INGEST_SECRET` (HMAC-SHA256 do corpo, header `x-mt5-signature`, timing-safe). Grava em `b3_mt5sim_quotes` via `supabaseAdmin`. Rejeita se `symbol != settings.mt5_symbol` do owner-alvo (pass user_id no payload ou via secret dedicado por user na v1: um user apenas).
-- `src/routes/api/public/hooks/b3-mt5sim-tick.ts` — cron a cada minuto durante pregão: para cada `b3_mt5sim_runs` ativa chama `runMt5SimTick`.
-- Secret: peço `B3_MT5SIM_INGEST_SECRET` via `generate_secret` na fase de execução.
+Esse helper será usado por:
 
-## Engine (`src/lib/b3-mt5sim.server.ts`)
+- abertura automática da Simulação 3 Modos;
+- fechamento automático por stop/gain/zeragem;
+- marcação a mercado;
+- ordem manual simulada;
+- fechamento manual simulado;
+- comitê B3 quando gerar contexto de decisão.
 
-Puro server, sem tocar em outros módulos:
+### 2. Blindar a run ativa ao entrar em MT5
 
-- `getLatestQuote(userId)` — última linha de `b3_mt5sim_quotes` dentro do TTL; se stale → status `quote_stale`, pausa tick.
-- `generateSignalsForRobots(userId, quote)` — chama estratégias locais leves por perfil (conservador→agressivo) usando janela recente de ticks/últimos preços. Implementação inicial: 5 estratégias determinísticas parametrizadas (SMA fast/slow + threshold + cooldown), suficiente para gerar sinais divergentes por perfil. Ganchos para plugar comitê B3 depois, mas **sem importar** `b3-committee` nesta fase.
-- `evaluateRobotLocks(robot, wallet, signal, quote)` — aplica todas as travas do prompt; retorna `{allow, lock?}`. Bloqueios são gravados em `b3_mt5sim_blocks`.
-- `openSimTrade` / `manageOpenTrades` / `closeSimTrade` — simulação de execução, stop, alvo, sinal contrário, zeragem por horário, fim de pregão, kill switch. Preço de entrada/saída por `price_source`. Cálculo: `points = (exit - entry) * sideSign / tick_size * tick_size`; `gross = points * point_value * volume`; `fee = fee_per_contract_brl * volume * 2`; `net = gross - fee - slippage_brl`.
-- `recordConflicts(userId, ts)` — detecta robôs com posições/sinais opostos no mesmo minuto e persiste em `b3_mt5sim_conflicts`.
-- `assertNoRealOrder(ctx)` — helper exportado: se alguém chamar rota real (`atrader`/`b3` real) enquanto `b3_mt5sim_runs.status='running'` e `kill_switch_real=true`, grava em `b3_mt5sim_order_attempts` e lança. **Não** conecto isso automaticamente em código Binance/B3 existente — apenas exponho para uso futuro (o kill switch real já bloqueia envio real por padrão via flag).
+Quando o usuário selecionar MT5 XP DEMO ou quando o tick da simulação rodar com MT5 ativo:
 
-## Server functions (`src/lib/b3-mt5sim.functions.ts`)
+- localizar ordens da run ativa com `quote_source` diferente de `MT5 XP DEMO`;
+- marcar essas ordens como `cancelled` ou `legacy_invalidated`, sem recalcular resultado;
+- registrar evento de bloqueio/auditoria explicando:
 
-Todas com `requireSupabaseAuth`:
+```text
+Operação legada ocultada/invalida — modo MT5 XP DEMO exige preço B3QuoteProvider
+```
 
-- `getMt5SimDashboard` — settings, run atual, quote atual, wallets por robô, últimas trades, últimos blocks, últimos conflicts, ranking, contadores (ordens reais enviadas = 0 fixo).
-- `updateMt5SimSettings`, `upsertMt5SimRobot`, `toggleMt5SimRobot`.
-- `startMt5SimRun`, `stopMt5SimRun`, `resetMt5SimDay`.
-- `listMt5SimTrades`, `listMt5SimBlocks`, `listMt5SimConflicts`, `getMt5SimRanking`, `getMt5SimPromotionStatus`.
+Isso elimina a mistura visual e operacional entre CSV antigo e MT5.
 
-## UI (rota nova)
+### 3. Filtrar a tela de “Últimas operações simuladas” em modo MT5
 
-`src/routes/_authenticated/b3-mt5sim.tsx` — painel único, sem tocar em telas B3 existentes:
+Na aba Simulação 3 Modos, quando a fonte ativa for MT5:
 
-- Header destacado: **"SIMULAÇÃO LOCAL — USANDO COTAÇÃO REAL DO PRD — SEM ENVIO DE ORDEM"**, servidor, símbolo, última cotação, robôs ativos, "Ordens reais enviadas: 0".
-- Card **Configuração** (edita `b3_mt5sim_settings`).
-- Grid **Robôs Participantes** (por perfil, com travas e volume).
-- Grid **Carteira simulada por robô** (todas as métricas do prompt).
-- **Ranking** dos robôs.
-- Abas: Trades simuladas · Sinais bloqueados · Conflitos entre robôs · Auditoria.
-- Bloco **Critério para próxima fase** com status ou "Execução real bloqueada — simulação ainda insuficiente".
+- exibir por padrão somente operações com `quote_source = MT5 XP DEMO`;
+- mostrar um aviso se houver registros legados ocultados;
+- opcionalmente listar esses registros em uma seção separada “Legado invalidado”, sem entrar no ranking/resultado atual.
 
-Link no menu B3 (uma linha no layout B3 se existir, senão só via URL).
+Assim, a tabela principal nunca mais mostrará 129.xxx como operação válida MT5.
 
-## Instruções ao usuário (no painel, texto)
+### 4. Corrigir ranking, score e resultado para ignorarem legado em MT5
 
-Como o Worker não fala MT5 diretamente, o painel exibirá as credenciais do ingest endpoint e um snippet Python de ~40 linhas usando `MetaTrader5` para bombear ticks do WINQ26 para o endpoint. Sem esse puller local rodando, o painel mostra `Cotação inválida ou desatualizada — simulação pausada`.
+Em modo MT5, todos os cálculos de:
 
-## Fora de escopo
+- PnL;
+- ranking;
+- score;
+- modo sugerido;
+- estatísticas;
+- últimas operações;
+- relatório;
 
-- Não implemento o script Python neste ciclo (só documento e mostro no painel).
-- Não pluggo comitê B3 aqui; estratégias iniciais são locais e substituíveis.
-- Não altero nada fora dos arquivos/tabelas `b3_mt5sim_*` + a nova rota.
+devem considerar somente ordens com auditoria MT5 válida.
 
-## Ordem de execução
+Regra:
 
-1. Migration (todas as tabelas + GRANT + RLS + triggers).
-2. `generate_secret` `B3_MT5SIM_INGEST_SECRET`.
-3. Engine + server functions + rotas API (ingest + tick cron).
-4. Rota UI `b3-mt5sim.tsx`.
-5. Verificação de build.
+```text
+Se price_source = mt5_xp_demo:
+  aceitar apenas quote_source = MT5 XP DEMO e provider_name = B3QuoteProvider
+```
 
-Confirma para eu executar?
+### 5. Adicionar trava de banco para impedir novas escritas inválidas
+
+Criar uma validação no banco para `b3_simulation_orders` e `b3_orders`:
+
+- se o usuário estiver com `b3_trading_settings.price_source = mt5_xp_demo`;
+- e a linha nova/alterada for uma ordem B3;
+- então exigir:
+  - `quote_source = 'MT5 XP DEMO'`;
+  - `provider_name = 'B3QuoteProvider'`;
+  - `quote_server = 'XPMT5-DEMO'`;
+  - `quote_symbol = 'WINQ26'`;
+  - `legacy_price_detected = false`.
+
+Se algum caminho antigo tentar gravar preço legado, a gravação falha imediatamente.
+
+### 6. Auditoria explícita de tentativa bloqueada
+
+Quando qualquer rotina tentar abrir/fechar com preço não-MT5 em modo MT5, registrar em `b3_simulation_block_events`:
+
+```text
+Tentativa de preço legado bloqueada — modo MT5 XP DEMO ativo
+```
+
+Com payload contendo:
+
+- função que tentou executar;
+- preço rejeitado;
+- último Bid/Ask/Last MT5;
+- fonte esperada;
+- fonte recebida;
+- run/mode/side/action.
+
+### 7. Ajustar o painel de diagnóstico
+
+No card “Diagnóstico de Fonte do Motor B3”, deixar explícito:
+
+- Fonte ativa: MT5 XP DEMO;
+- Provider usado: B3QuoteProvider;
+- Chamadas MT5: maior que zero;
+- Chamadas legado: zero;
+- Operações MT5 válidas: quantidade;
+- Operações legadas ocultadas/invalidadas: quantidade;
+- Última entrada/saída válida MT5.
+
+### 8. Validação final
+
+Depois da implementação, validar com uma run ativa:
+
+- se Bid/Ask estão em torno de 177.xxx;
+- uma nova compra abre próxima do Ask;
+- uma nova venda abre próxima do Bid;
+- fechamento usa lado oposto do book;
+- a tabela não mostra mais operações 128.xxx/129.xxx/130.xxx/131.xxx como válidas em MT5;
+- se uma rotina tentar gravar legado, ela é bloqueada e auditada;
+- ordens reais enviadas permanecem zero.
+
+## Resultado esperado
+
+O B3 Day Trade WIN continuará sendo o cérebro dos robôs, mas em modo MT5 XP DEMO toda execução, fechamento, resultado e exibição operacional passarão obrigatoriamente por preço real da ponte MT5. O histórico legado será separado/invalidationado e não contaminará mais a simulação atual.

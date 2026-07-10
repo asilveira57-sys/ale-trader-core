@@ -331,6 +331,11 @@ function HistoryPage() {
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-base">Operações ({filtered.length})</CardTitle></CardHeader>
           <CardContent className="overflow-x-auto">
+            {Number(dQ.data?.legacy_orders_hidden ?? 0) > 0 && (
+              <p className="text-xs text-amber-300 mb-2">
+                {dQ.data?.legacy_orders_hidden} operação(ões) legada(s) ocultada(s). Com MT5 XP DEMO ativo, o histórico mostra apenas execuções auditadas pelo B3QuoteProvider.
+              </p>
+            )}
             <table className="w-full text-xs">
               <thead className="text-muted-foreground">
                 <tr className="text-left">

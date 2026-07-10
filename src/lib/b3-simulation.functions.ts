@@ -14,6 +14,7 @@ import {
   B3_MT5_SYMBOL,
   B3_MT5_TTL_SECONDS,
   B3QuoteProvider,
+  assertB3StrictMt5ExecutionAudit,
   getB3ExecutionAudit,
   quoteAuditBase,
   type B3PriceContextResult,
@@ -146,18 +147,68 @@ export const getB3SimulationDetail = createServerFn({ method: "POST" })
   .inputValidator((d: { run_id: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const [runR, modesR, ordersR, snapsR] = await Promise.all([
+    const [runR, modesR, settingsR, ordersR, legacyOrdersR, snapsR] = await Promise.all([
       (supabase as any).from("b3_simulation_runs").select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle(),
       (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId),
+      (supabase as any).from("b3_trading_settings").select("price_source").eq("user_id", userId).maybeSingle(),
       (supabase as any).from("b3_simulation_orders").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: false }).limit(500),
+      (supabase as any).from("b3_simulation_orders").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).limit(5000),
       (supabase as any).from("b3_simulation_market_snapshots").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("market_time", { ascending: false }).limit(120),
     ]);
     if (runR.error) throw runR.error;
     if (!runR.data) throw new Error("Run não encontrada");
+    const isMt5Source = settingsR.data?.price_source === "mt5_xp_demo";
+    const allOrders = (ordersR.data ?? []) as any[];
+    const allCountOrders = (legacyOrdersR.data ?? []) as any[];
+    const visibleOrders = isMt5Source
+      ? allCountOrders.filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider")
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 500)
+      : allOrders;
+    const hiddenLegacyCount = isMt5Source
+      ? allCountOrders.filter((o) => o.quote_source !== "MT5 XP DEMO" || o.provider_name !== "B3QuoteProvider").length
+      : 0;
+    const visibleModes = isMt5Source
+      ? ((modesR.data ?? []) as any[]).map((m) => {
+        const orders = visibleOrders.filter((o) => o.mode === m.mode);
+        const closed = orders.filter((o) => o.status === "closed");
+        const realized = closed.reduce((s, o) => s + Number(o.net_result_brl ?? 0), 0);
+        const fees = orders.reduce((s, o) => s + Number(o.fees ?? 0), 0);
+        const wins = closed.filter((o) => Number(o.net_result_brl ?? 0) > 0).length;
+        const losses = closed.filter((o) => Number(o.net_result_brl ?? 0) < 0).length;
+        const maxGain = closed.reduce((v, o) => Math.max(v, Number(o.net_result_brl ?? 0)), 0);
+        const maxLoss = closed.reduce((v, o) => Math.min(v, Number(o.net_result_brl ?? 0)), 0);
+        const points = closed.reduce((s, o) => s + Number(o.gross_result_points ?? 0), 0);
+        const contracts = orders.reduce((s, o) => s + Number(o.quantity ?? 0), 0);
+        let acc = 0, peak = 0, dd = 0;
+        for (const o of closed.slice().sort((a, b) => new Date(a.exit_time ?? a.created_at).getTime() - new Date(b.exit_time ?? b.created_at).getTime())) {
+          acc += Number(o.net_result_brl ?? 0);
+          peak = Math.max(peak, acc);
+          dd = Math.max(dd, peak - acc);
+        }
+        return {
+          ...m,
+          realized_pnl: realized,
+          unrealized_pnl: 0,
+          current_balance: Number(m.initial_balance ?? 0) + realized,
+          total_fees: fees,
+          total_trades: closed.length,
+          winning_trades: wins,
+          losing_trades: losses,
+          max_gain: maxGain,
+          max_loss: maxLoss,
+          max_drawdown: dd,
+          points_result: points,
+          contracts_traded: contracts,
+        };
+      })
+      : (modesR.data ?? []);
     return {
       run: runR.data,
-      modes: modesR.data ?? [],
-      orders: ordersR.data ?? [],
+      modes: visibleModes,
+      price_source: settingsR.data?.price_source ?? "csv",
+      orders: visibleOrders,
+      legacy_orders_hidden: hiddenLegacyCount,
       snapshots: snapsR.data ?? [],
     };
   });
@@ -247,6 +298,8 @@ export async function runB3SimulationTick(
     last_entry_price: null as number | null,
     last_exit_price: null as number | null,
     last_price_function: null as string | null,
+    valid_mt5_orders: 0,
+    legacy_orders_invalidated: 0,
   };
 
   function rememberProvider(info: B3PriceContextResult) {
@@ -264,6 +317,91 @@ export async function runB3SimulationTick(
     if (info.quote_age_s == null || info.quote_age_s > B3_MT5_TTL_SECONDS) return `Idade do tick ${info.quote_age_s ?? "—"}s acima do TTL (${B3_MT5_TTL_SECONDS}s).`;
     if (!(Number(info.raw.bid) > 0) || !(Number(info.raw.ask) > 0) || !(Number(info.raw.last) > 0)) return "Bid/ask/último inválidos — operação bloqueada.";
     return null;
+  }
+
+  async function recomputeModeTotalsFromValidMt5Orders() {
+    const { data: validOrders } = await supabase.from("b3_simulation_orders")
+      .select("*").eq("simulation_run_id", runId).eq("user_id", userId)
+      .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider");
+    const byMode: Record<string, any[]> = {};
+    for (const mode of MODES) byMode[mode] = [];
+    for (const o of (validOrders ?? [])) if (byMode[o.mode]) byMode[o.mode].push(o);
+    providerStats.valid_mt5_orders = (validOrders ?? []).length;
+
+    for (const mode of MODES) {
+      const m = modeByName[mode];
+      if (!m) continue;
+      const orders = byMode[mode] ?? [];
+      const closed = orders.filter((o) => o.status === "closed");
+      const open = orders.filter((o) => o.status === "open");
+      const realized = closed.reduce((s, o) => s + Number(o.net_result_brl ?? 0), 0);
+      const fees = orders.reduce((s, o) => s + Number(o.fees ?? 0), 0);
+      const wins = closed.filter((o) => Number(o.net_result_brl ?? 0) > 0).length;
+      const losses = closed.filter((o) => Number(o.net_result_brl ?? 0) < 0).length;
+      const maxGain = closed.reduce((v, o) => Math.max(v, Number(o.net_result_brl ?? 0)), 0);
+      const maxLoss = closed.reduce((v, o) => Math.min(v, Number(o.net_result_brl ?? 0)), 0);
+      const points = closed.reduce((s, o) => s + Number(o.gross_result_points ?? 0), 0);
+      const contracts = orders.reduce((s, o) => s + Number(o.quantity ?? 0), 0);
+      let acc = 0, peak = 0, dd = 0;
+      for (const o of closed.slice().sort((a, b) => new Date(a.exit_time ?? a.created_at).getTime() - new Date(b.exit_time ?? b.created_at).getTime())) {
+        acc += Number(o.net_result_brl ?? 0);
+        peak = Math.max(peak, acc);
+        dd = Math.max(dd, peak - acc);
+      }
+      const patch = {
+        realized_pnl: realized,
+        unrealized_pnl: 0,
+        current_balance: Number(m.initial_balance) + realized,
+        total_fees: fees,
+        total_trades: closed.length,
+        winning_trades: wins,
+        losing_trades: losses,
+        max_gain: maxGain,
+        max_loss: maxLoss,
+        max_drawdown: dd,
+        points_result: points,
+        contracts_traded: contracts,
+      };
+      await supabase.from("b3_simulation_modes").update(patch).eq("id", m.id).eq("user_id", userId);
+      Object.assign(m, patch);
+      if (open.length === 0) continue;
+    }
+  }
+
+  async function invalidateLegacyOrdersForMt5(info: B3PriceContextResult) {
+    if (info.source !== "mt5_xp_demo") return;
+    const { data: legacyOrders } = await supabase.from("b3_simulation_orders")
+      .select("id, mode, status, entry_price, exit_price, quote_source, provider_name")
+      .eq("simulation_run_id", runId).eq("user_id", userId);
+    const rows = (legacyOrders ?? []).filter((o: any) => o.quote_source !== "MT5 XP DEMO" || o.provider_name !== "B3QuoteProvider");
+    if (!rows.length) {
+      await recomputeModeTotalsFromValidMt5Orders();
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    const ids = rows.map((o: any) => o.id);
+    await supabase.from("b3_simulation_orders").update({
+      status: "cancelled",
+      close_reason: "Operação legada invalidada — modo MT5 XP DEMO exige preço B3QuoteProvider",
+      exit_time: nowIso,
+    }).in("id", ids).eq("user_id", userId);
+    providerStats.legacy_orders_invalidated += rows.length;
+    openOrdersCache = null;
+    for (const o of rows.slice(0, 20)) {
+      const m = modeByName[o.mode];
+      if (!m) continue;
+      await recordStatusIfChanged(o.mode, m, m.current_status ?? "operando", "legacy_price_invalidated", {
+        related_order_id: o.id,
+        message: "Operação legada ocultada/invalida — modo MT5 XP DEMO exige preço B3QuoteProvider",
+        provider_name: info.provider_name,
+        price_source: info.quote_source,
+        rejected_price: Number(o.exit_price ?? o.entry_price ?? 0),
+        mt5_last: info.raw?.last ?? null,
+        forceLog: true,
+        diagnostic_payload: { function: "invalidateLegacyOrdersForMt5", order_quote_source: o.quote_source, order_provider_name: o.provider_name, ...quoteAuditBase(info) },
+      });
+    }
+    await recomputeModeTotalsFromValidMt5Orders();
   }
 
   function orderAuditPatch(audit: B3QuoteExecutionAudit) {
@@ -328,6 +466,7 @@ export async function runB3SimulationTick(
     rememberProvider(priceSrc);
     const ctx = priceSrc.ctx;
     const invalidMt5 = mt5InvalidReason(priceSrc);
+    await invalidateLegacyOrdersForMt5(priceSrc);
     const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
       .insert({
         simulation_run_id: runId, user_id: userId, symbol: "WIN",
@@ -543,6 +682,7 @@ export async function runB3SimulationTick(
         let markAudit: B3QuoteExecutionAudit;
         try {
           markAudit = getB3ExecutionAudit(priceSrc, open.side, "mark", "runB3SimulationTick.markToMarket");
+          if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(markAudit, "runB3SimulationTick.markToMarket");
           providerStats.last_price_function = markAudit.execution_price_origin;
         } catch (e) {
           await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
@@ -677,6 +817,7 @@ export async function runB3SimulationTick(
         let entryAudit: B3QuoteExecutionAudit;
         try {
           entryAudit = getB3ExecutionAudit(priceSrc, intendedSide, "entry", "runB3SimulationTick.openOrder");
+          if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(entryAudit, "runB3SimulationTick.openOrder");
           providerStats.last_price_function = entryAudit.execution_price_origin;
         } catch (e) {
           await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
@@ -743,6 +884,7 @@ export const tickB3Simulation = createServerFn({ method: "POST" })
 
 
 async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string) {
+  if (exitAudit.quote_source === "MT5 XP DEMO") assertB3StrictMt5ExecutionAudit(exitAudit, "closeOrder");
   const exitPrice = exitAudit.execution_price;
   const dir = order.side === "buy" ? 1 : -1;
   const grossPts = (exitPrice - Number(order.entry_price)) * dir;

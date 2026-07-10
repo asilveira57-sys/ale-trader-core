@@ -40,6 +40,24 @@ export interface B3QuoteExecutionAudit {
   provider_name: string;
 }
 
+export function isB3StrictMt5AuditRow(row: any): boolean {
+  return row?.quote_source === "MT5 XP DEMO"
+    && row?.provider_name === "B3QuoteProvider"
+    && row?.quote_server === B3_MT5_SERVER
+    && row?.quote_symbol === B3_MT5_SYMBOL
+    && row?.legacy_price_detected === false
+    && Number(row?.quote_bid) > 0
+    && Number(row?.quote_ask) > 0
+    && Number(row?.quote_last) > 0
+    && Number(row?.execution_price) > 0;
+}
+
+export function assertB3StrictMt5ExecutionAudit(audit: B3QuoteExecutionAudit, functionName: string): void {
+  if (!isB3StrictMt5AuditRow(audit)) {
+    throw new Error(`Tentativa de preço legado bloqueada — modo MT5 XP DEMO ativo (${functionName})`);
+  }
+}
+
 function saoPauloPhase(d: Date): B3Context["session_phase"] {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Sao_Paulo", hour12: false, hour: "2-digit", minute: "2-digit",

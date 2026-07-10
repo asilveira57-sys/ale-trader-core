@@ -283,8 +283,13 @@ export function SimComparePanel() {
       {/* Operações recentes */}
       {detail && (
         <Card>
-          <CardHeader><CardTitle>Últimas operações simuladas</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Últimas operações simuladas{detail.price_source === "mt5_xp_demo" ? " · MT5 XP DEMO válidas" : ""}</CardTitle></CardHeader>
           <CardContent>
+            {Number(detail.legacy_orders_hidden ?? 0) > 0 && (
+              <p className="text-xs text-amber-300 mb-2 flex items-center gap-1">
+                <ShieldAlert className="w-3 h-3" /> {detail.legacy_orders_hidden} operação(ões) legada(s) ocultada(s)/invalidada(s). Em MT5 XP DEMO esta tabela só mostra preço auditado pelo B3QuoteProvider.
+              </p>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="text-muted-foreground">
