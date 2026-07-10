@@ -351,7 +351,6 @@ function TradePanel({
   const [qty, setQty] = useState<number>(1);
   const [contract, setContract] = useState<string>("WINFUT");
   const [closingId, setClosingId] = useState<string | null>(null);
-  const [closePrice, setClosePrice] = useState<number>(130000);
   const openManual = useServerFn(openB3ManualOrder);
   const closeManual = useServerFn(closeB3ManualOrder);
 
@@ -458,8 +457,7 @@ function TradePanel({
               </div>
               {closingId === o.id ? (
                 <div className="flex gap-2">
-                  <Input type="number" step={TICK} value={closePrice}
-                    onChange={e => setClosePrice(Number(e.target.value))} disabled />
+                  <Input value="B3QuoteProvider" disabled />
                   <Button size="sm" onClick={() => closeOrder.mutate(o)} disabled={closeOrder.isPending}>
                     Encerrar
                   </Button>
@@ -467,7 +465,7 @@ function TradePanel({
                 </div>
               ) : (
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => { setClosingId(o.id); setClosePrice(o.entry_price); }}>
+                  <Button size="sm" variant="outline" onClick={() => setClosingId(o.id)}>
                     <PauseCircle className="w-4 h-4 mr-1" />Encerrar a mercado
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => cancelOrder.mutate(o.id)}>
