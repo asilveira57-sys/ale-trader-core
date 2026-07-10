@@ -595,7 +595,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                   <td className="text-right">{BRL(grossRealized)}</td>
                   <td className="text-right">{BRL(fees)}</td>
                   <td className={`text-right ${realized >= 0 ? "text-emerald-500" : "text-destructive"}`}>{BRL(realized)}</td>
-                  <td>{closed.length} fech. / {open.length} ab.</td>
+                  <td colSpan={2}>{closed.length} fech. / {open.length} ab.</td>
                 </tr>
               </tfoot>
             </table>
