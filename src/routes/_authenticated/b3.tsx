@@ -38,7 +38,6 @@ export const Route = createFileRoute("/_authenticated/b3")({
 // ────────────────────────────────────────────────────────────────────
 const POINT_VALUE_BRL = 0.2; // R$ por ponto por contrato
 const TICK = 5;              // variação mínima em pontos
-const DEFAULT_FEE_BRL = 0.5; // estimativa por contrato por lado
 
 const BRL = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -503,7 +502,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
       const end = `${today}T23:59:59.999Z`;
       const { data, error } = await (supabase as any)
         .from("b3_simulation_orders")
-        .select("id, mode, side, entry_price, exit_price, gross_result_points, gross_result_brl, fees, net_result_brl, status, close_reason, created_at, exit_time")
+        .select("id, mode, side, entry_price, exit_price, gross_result_points, gross_result_brl, fees, net_result_brl, status, close_reason, created_at, exit_time, quote_source, provider_name, execution_price_origin")
         .gte("created_at", start)
         .lte("created_at", end)
         .order("created_at", { ascending: false })
@@ -561,12 +560,13 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                   <th className="text-right">Bruto R$</th>
                   <th className="text-right">Taxas</th>
                   <th className="text-right">Líquido R$</th>
+                  <th>Fonte do preço</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {todays.length === 0 && (
-                  <tr><td colSpan={11} className="py-4 text-center text-muted-foreground">Sem operações hoje.</td></tr>
+                  <tr><td colSpan={12} className="py-4 text-center text-muted-foreground">Sem operações hoje.</td></tr>
                 )}
                 {todays.map(o => (
                   <tr key={o.id} className="border-b last:border-0">
@@ -584,6 +584,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                     <td className={`text-right ${(o.net_result_brl ?? 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
                       {o.net_result_brl != null ? BRL(o.net_result_brl) : "—"}
                     </td>
+                    <td>{o.quote_source ?? "desconhecida"}</td>
                     <td>{o.status}</td>
                   </tr>
                 ))}
@@ -628,13 +629,14 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                   <th className="text-right">Bruto R$</th>
                   <th className="text-right">Taxas</th>
                   <th className="text-right">Líquido R$</th>
+                  <th>Fonte do preço</th>
                   <th>Status</th>
                   <th>Motivo</th>
                 </tr>
               </thead>
               <tbody>
                 {simOrders.length === 0 && (
-                  <tr><td colSpan={11} className="py-4 text-center text-muted-foreground">Sem operações simuladas hoje.</td></tr>
+                  <tr><td colSpan={12} className="py-4 text-center text-muted-foreground">Sem operações simuladas hoje.</td></tr>
                 )}
                 {simOrders.map((o: any) => (
                   <tr key={o.id} className="border-b last:border-0">
@@ -651,6 +653,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                     <td className={`text-right ${Number(o.net_result_brl ?? 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
                       {o.net_result_brl != null ? BRL(Number(o.net_result_brl)) : "—"}
                     </td>
+                    <td>{o.quote_source ?? "desconhecida"}</td>
                     <td>{o.status}</td>
                     <td className="text-muted-foreground">{o.close_reason ?? "—"}</td>
                   </tr>
@@ -662,7 +665,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                   <td className="text-right">{BRL(grossRealSim)}</td>
                   <td className="text-right">{BRL(feesSim)}</td>
                   <td className={`text-right ${realizedSim >= 0 ? "text-emerald-500" : "text-destructive"}`}>{BRL(realizedSim)}</td>
-                  <td colSpan={2}>{simClosed.length} fech. / {simOrders.length - simClosed.length} ab.</td>
+                  <td colSpan={3}>{simClosed.length} fech. / {simOrders.length - simClosed.length} ab.</td>
                 </tr>
               </tfoot>
             </table>
@@ -965,7 +968,7 @@ function PriceSourceCard() {
   });
   const mut = useMutation({
     mutationFn: (source: "csv" | "mt5_xp_demo") => setSource({ data: { source } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["b3-price-source"] }); toast.success("Fonte de cotação atualizada"); },
+    onSuccess: (r: any) => { qc.invalidateQueries({ queryKey: ["b3-price-source"] }); toast.success(r?.message ?? "Fonte de cotação atualizada"); },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao atualizar fonte"),
   });
   const st = statusQ.data as any;
@@ -1007,6 +1010,35 @@ function PriceSourceCard() {
               tone={dead ? "danger" : stale ? "warn" : "ok"} />
           </div>
         )}
+        {isMt5 && (
+          <div className="rounded-md border border-border/60 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-sm font-medium">Diagnóstico de Fonte do Motor B3</h3>
+              <Badge variant={Number(st?.legacy_provider_calls ?? 0) === 0 ? "outline" : "destructive"}>
+                legado: {Number(st?.legacy_provider_calls ?? 0)} chamadas
+              </Badge>
+            </div>
+            <div className="grid gap-2 md:grid-cols-4 text-xs">
+              <Metric label="Fonte interface" value={st?.source === "mt5_xp_demo" ? "MT5 XP DEMO" : "CSV legado"} />
+              <Metric label="Provider usado" value={st?.provider_name ?? "—"} />
+              <Metric label="Chamadas MT5" value={String(st?.mt5_provider_calls ?? 0)} />
+              <Metric label="Fallback CSV" value={st?.fallback_to_csv ? "sim" : "não"} tone={st?.fallback_to_csv ? "danger" : "ok"} />
+              <Metric label="Timestamp" value={st?.quote_tick_ts ? new Date(st.quote_tick_ts).toLocaleTimeString("pt-BR") : "—"} />
+              <Metric label="Símbolo" value={st?.quote_symbol ?? "—"} />
+              <Metric label="Servidor" value={st?.server ?? "—"} />
+              <Metric label="Função do preço" value={st?.last_price_function ?? "—"} />
+              <Metric label="Última entrada" value={st?.last_entry_price != null ? NUM(Number(st.last_entry_price)) : "—"} />
+              <Metric label="Última saída" value={st?.last_exit_price != null ? NUM(Number(st.last_exit_price)) : "—"} />
+              <Metric label="Fonte última entrada" value={st?.last_entry_source ?? "—"} />
+              <Metric label="Fonte última saída" value={st?.last_exit_source ?? "—"} />
+            </div>
+            {st?.last_block?.message && (
+              <p className="text-xs text-destructive flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> {st.last_block.message}
+              </p>
+            )}
+          </div>
+        )}
         {isMt5 && dead && (
           <p className="text-xs text-destructive flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" /> Tick MT5 vencido (&gt; 30s). O motor pode operar com preço defasado até o ingest voltar.
@@ -1014,7 +1046,7 @@ function PriceSourceCard() {
         )}
         {isMt5 && !st?.live && !dead && (
           <p className="text-xs text-muted-foreground">
-            Aguardando primeiro tick da ponte MT5 XP DEMO. Enquanto isso, o motor usa fallback para não travar.
+            Aguardando tick válido da ponte MT5 XP DEMO. Enquanto isso, novas execuções são bloqueadas.
           </p>
         )}
       </CardContent>
