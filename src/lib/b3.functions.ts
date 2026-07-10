@@ -314,7 +314,7 @@ export const openB3ManualOrder = createServerFn({ method: "POST" })
       entry_time: new Date().toISOString(),
       fees: 0.5 * data.qty,
       status: "open",
-      environment: settings?.environment ?? data.environment ?? "simulation",
+      environment: "simulation",
       quote_source: audit.quote_source,
       quote_server: audit.quote_server,
       quote_symbol: audit.quote_symbol,
