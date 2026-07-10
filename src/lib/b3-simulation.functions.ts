@@ -660,8 +660,24 @@ export async function runB3SimulationTick(
       await supabase.from("b3_simulation_agent_votes").insert(voteRows);
 
       if (decision.final === "approved") {
-        const slip = Number(run.simulated_slippage_pts) || 0;
-        const entry = intendedSide === "buy" ? ctx.price + slip : ctx.price - slip;
+        let entryAudit: B3QuoteExecutionAudit;
+        try {
+          entryAudit = getB3ExecutionAudit(priceSrc, intendedSide, "entry", "runB3SimulationTick.openOrder");
+          providerStats.last_price_function = entryAudit.execution_price_origin;
+        } catch (e) {
+          await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
+            pnl: realizedToday,
+            message: (e as Error).message,
+            provider_name: priceSrc.provider_name,
+            price_source: priceSrc.quote_source,
+            rejected_price: ctx.price,
+            mt5_last: priceSrc.raw?.last ?? null,
+            diagnostic_payload: { function: "runB3SimulationTick.openOrder", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
+          });
+          log.push({ mode, action: "blocked", reason: "price_guard", message: (e as Error).message });
+          continue;
+        }
+        const entry = entryAudit.execution_price;
         const baseQty = 1;
         const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
         const { error: oErr } = await supabase.from("b3_simulation_orders").insert({
@@ -669,8 +685,10 @@ export async function runB3SimulationTick(
           mode, symbol: "WIN", contract_code: "WINFUT", side: intendedSide,
           entry_price: Math.round(entry / TICK) * TICK, quantity: qty,
           fees: Number(run.simulated_fee_brl) || 0, status: "open",
+          ...orderAuditPatch(entryAudit),
         });
         if (oErr) throw oErr;
+        providerStats.last_entry_price = entry;
         openOrdersCache = null;
         await supabase.from("b3_simulation_modes")
           .update({
@@ -679,7 +697,7 @@ export async function runB3SimulationTick(
           }).eq("id", m.id);
         m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
         m.contracts_traded = (Number(m.contracts_traded) || 0) + 1;
-        log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score });
+        log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin });
       } else {
         const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
         await supabase.from("b3_simulation_modes")
@@ -690,7 +708,7 @@ export async function runB3SimulationTick(
     }
   }
 
-  return { ok: true, processed: ticks, log };
+  return { ok: true, processed: ticks, log: [{ action: "provider_diagnostic", ...providerStats }, ...log] };
 }
 
 export const tickB3Simulation = createServerFn({ method: "POST" })
@@ -701,7 +719,8 @@ export const tickB3Simulation = createServerFn({ method: "POST" })
   });
 
 
-async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitPrice: number, reason: string) {
+async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string) {
+  const exitPrice = exitAudit.execution_price;
   const dir = order.side === "buy" ? 1 : -1;
   const grossPts = (exitPrice - Number(order.entry_price)) * dir;
   const qty = Number(order.quantity) || 1;
@@ -716,6 +735,17 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
     gross_result_brl: grossBrl,
     fees, net_result_brl: netBrl,
     status: "closed", close_reason: reason,
+    quote_source: exitAudit.quote_source,
+    quote_server: exitAudit.quote_server,
+    quote_symbol: exitAudit.quote_symbol,
+    quote_tick_ts: exitAudit.quote_tick_ts,
+    quote_bid: exitAudit.quote_bid,
+    quote_ask: exitAudit.quote_ask,
+    quote_last: exitAudit.quote_last,
+    execution_price: exitAudit.execution_price,
+    execution_price_origin: exitAudit.execution_price_origin,
+    legacy_price_detected: exitAudit.legacy_price_detected,
+    provider_name: exitAudit.provider_name,
   }).eq("id", order.id).eq("user_id", userId);
 
   const newRealized = Number(mode.realized_pnl) + netBrl;
