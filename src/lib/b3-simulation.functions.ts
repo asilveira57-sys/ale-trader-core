@@ -364,6 +364,31 @@ export async function runB3SimulationTick(
       const cfg = settingsByMode[mode];
       const realizedToday = Number(realizedTodayByMode[mode] ?? 0);
 
+      if (invalidMt5) {
+        await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
+          pnl: realizedToday,
+          message: invalidMt5,
+          provider_name: priceSrc.provider_name,
+          price_source: priceSrc.quote_source,
+          rejected_price: ctx.price,
+          mt5_last: priceSrc.raw?.last ?? null,
+          diagnostic_payload: {
+            function: "runB3SimulationTick",
+            provider: priceSrc.provider_name,
+            selected_source: priceSrc.source,
+            quote_source: priceSrc.quote_source,
+            symbol: priceSrc.quote_symbol,
+            server: priceSrc.server,
+            quote_age_s: priceSrc.quote_age_s,
+            bid: priceSrc.raw?.bid ?? null,
+            ask: priceSrc.raw?.ask ?? null,
+            last: priceSrc.raw?.last ?? null,
+          },
+        });
+        log.push({ mode, action: "skip", reason: "mt5_quote_invalid", detail: invalidMt5 });
+        continue;
+      }
+
       // ─────────── B3 Protection (Flexibilização Inteligente) ───────────
       const todayKey = b3DayKeyBRT(now);
       // Reset diário se virou o dia.
@@ -502,12 +527,32 @@ export async function runB3SimulationTick(
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
       if (open) {
         const dirSign = open.side === "buy" ? 1 : -1;
-        const movePts = (ctx.price - Number(open.entry_price)) * dirSign;
+        let markAudit: B3QuoteExecutionAudit;
+        try {
+          markAudit = getB3ExecutionAudit(priceSrc, open.side, "mark", "runB3SimulationTick.markToMarket");
+          providerStats.last_price_function = markAudit.execution_price_origin;
+        } catch (e) {
+          await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
+            pnl: realizedToday,
+            related_order_id: open.id,
+            message: (e as Error).message,
+            provider_name: priceSrc.provider_name,
+            price_source: priceSrc.quote_source,
+            rejected_price: ctx.price,
+            mt5_last: priceSrc.raw?.last ?? null,
+            diagnostic_payload: { function: "runB3SimulationTick.markToMarket", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
+          });
+          log.push({ mode, action: "skip", reason: "price_guard", message: (e as Error).message });
+          continue;
+        }
+        const markPrice = markAudit.execution_price;
+        const movePts = (markPrice - Number(open.entry_price)) * dirSign;
         const hitStop = movePts <= -Number(cfg.stop_pts);
         const hitGain = movePts >= Number(cfg.gain_pts);
         if (forceClose || hitStop || hitGain) {
           const reason = forceClose ? "force_close" : hitStop ? "stop" : "gain";
-          await closeOrder(supabase, userId, run, m, open, ctx.price, reason);
+          await closeOrder(supabase, userId, run, m, open, markAudit, reason);
+          providerStats.last_exit_price = markPrice;
           openOrdersCache = null;
           realizedTodayByMode = await getRealizedTodayByMode();
           if (reason === "stop") {
@@ -515,7 +560,7 @@ export async function runB3SimulationTick(
               { observed: movePts, limit: -Number(cfg.stop_pts), pnl: realizedTodayByMode[mode] ?? 0,
                 related_order_id: open.id, message: `Stop da operação atingido (${movePts.toFixed(0)} pts).` });
           }
-          log.push({ mode, action: "close", reason, price: ctx.price });
+          log.push({ mode, action: "close", reason, price: markPrice, source: markAudit.quote_source, origin: markAudit.execution_price_origin });
           continue;
         }
       }
