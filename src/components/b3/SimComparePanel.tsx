@@ -322,7 +322,7 @@ export function SimComparePanel() {
                     </tr>
                   ))}
                   {(detail.orders ?? []).length === 0 && (
-                    <tr><td colSpan={12} className="text-center text-muted-foreground py-4">Sem operações ainda. Rode alguns ticks.</td></tr>
+                    <tr><td colSpan={13} className="text-center text-muted-foreground py-4">Sem operações ainda. Rode alguns ticks.</td></tr>
                   )}
                 </tbody>
               </table>
