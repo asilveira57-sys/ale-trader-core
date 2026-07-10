@@ -16,7 +16,15 @@ import {
   Clock, PauseCircle, PlayCircle, XCircle, FileBarChart, Settings as SettingsIcon, Users, Swords,
 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
-import { runB3Committee, listB3AgentVotes, getB3PanelOverview, getB3PriceSourceStatus, setB3PriceSource } from "@/lib/b3.functions";
+import {
+  closeB3ManualOrder,
+  getB3PanelOverview,
+  getB3PriceSourceStatus,
+  listB3AgentVotes,
+  openB3ManualOrder,
+  runB3Committee,
+  setB3PriceSource,
+} from "@/lib/b3.functions";
 import { SimComparePanel } from "@/components/b3/SimComparePanel";
 import { SimLiveDashboard } from "@/components/b3/SimLiveDashboard";
 
@@ -78,6 +86,9 @@ interface B3Order {
   close_reason: string | null;
   environment: "simulation" | "real";
   created_at: string;
+  quote_source?: string | null;
+  provider_name?: string | null;
+  execution_price_origin?: string | null;
 }
 
 const DEFAULTS: B3Settings = {
@@ -343,6 +354,8 @@ function TradePanel({
   const [contract, setContract] = useState<string>("WINFUT");
   const [closingId, setClosingId] = useState<string | null>(null);
   const [closePrice, setClosePrice] = useState<number>(130000);
+  const openManual = useServerFn(openB3ManualOrder);
+  const closeManual = useServerFn(closeB3ManualOrder);
 
   const checkGuards = (): string | null => {
     if (settings.environment === "real" && !settings.auto_trade_enabled) {
@@ -363,43 +376,17 @@ function TradePanel({
     mutationFn: async () => {
       const err = checkGuards();
       if (err) throw new Error(err);
-      const { error } = await (supabase as any).from("b3_orders").insert({
-        user_id: userId,
-        symbol: "WIN",
-        contract_code: contract,
-        side,
-        entry_price: price,
-        quantity: qty,
-        entry_time: new Date().toISOString(),
-        fees: DEFAULT_FEE_BRL * qty,
-        status: "open",
-        environment: settings.environment,
-      });
-      if (error) throw error;
+      return openManual({ data: { side, qty, contract_code: contract, environment: settings.environment } });
     },
-    onSuccess: () => { toast.success("Ordem simulada aberta"); onChanged(); },
+    onSuccess: (r: any) => { toast.success(`Ordem simulada aberta @ ${NUM(Number(r?.price ?? 0))} · ${r?.source ?? "fonte atual"}`); onChanged(); },
     onError: (e: any) => toast.error(e.message),
   });
 
   const closeOrder = useMutation({
     mutationFn: async (o: B3Order) => {
-      const points = o.side === "buy" ? closePrice - o.entry_price : o.entry_price - closePrice;
-      const grossBRL = points * POINT_VALUE_BRL * o.quantity;
-      const totalFees = (o.fees ?? 0) + DEFAULT_FEE_BRL * o.quantity;
-      const net = grossBRL - totalFees;
-      const { error } = await (supabase as any).from("b3_orders").update({
-        exit_price: closePrice,
-        exit_time: new Date().toISOString(),
-        gross_result_points: points,
-        gross_result_brl: grossBRL,
-        fees: totalFees,
-        net_result_brl: net,
-        status: "closed",
-        close_reason: "manual",
-      }).eq("id", o.id);
-      if (error) throw error;
+      return closeManual({ data: { order_id: o.id } });
     },
-    onSuccess: () => { toast.success("Ordem encerrada"); setClosingId(null); onChanged(); },
+    onSuccess: (r: any) => { toast.success(`Ordem encerrada @ ${NUM(Number(r?.price ?? 0))} · ${r?.source ?? "fonte atual"}`); setClosingId(null); onChanged(); },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -436,7 +423,8 @@ function TradePanel({
             </div>
             <div>
               <Label>Preço (pontos)</Label>
-              <Input type="number" step={TICK} value={price} onChange={e => setPrice(Number(e.target.value))} />
+              <Input type="number" step={TICK} value={price} onChange={e => setPrice(Number(e.target.value))} disabled />
+              <p className="text-[10px] text-muted-foreground mt-1">A execução usa o provider central da fonte selecionada.</p>
             </div>
             <div>
               <Label>Quantidade</Label>
@@ -465,6 +453,7 @@ function TradePanel({
                     {o.side === "buy" ? "C" : "V"}
                   </Badge>
                   {o.contract_code} · {o.quantity}× @ {NUM(o.entry_price)}
+                  {o.quote_source && <span className="text-muted-foreground"> · {o.quote_source}</span>}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {new Date(o.entry_time).toLocaleTimeString("pt-BR")}
@@ -473,7 +462,7 @@ function TradePanel({
               {closingId === o.id ? (
                 <div className="flex gap-2">
                   <Input type="number" step={TICK} value={closePrice}
-                    onChange={e => setClosePrice(Number(e.target.value))} />
+                    onChange={e => setClosePrice(Number(e.target.value))} disabled />
                   <Button size="sm" onClick={() => closeOrder.mutate(o)} disabled={closeOrder.isPending}>
                     Encerrar
                   </Button>
