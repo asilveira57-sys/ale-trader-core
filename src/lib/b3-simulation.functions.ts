@@ -9,7 +9,16 @@ import {
   evaluateB3Protection, resetB3ProtectionForNewDay, b3DayKeyBRT,
   type B3ProtectionRuntime, type B3ProtectionSettings,
 } from "./b3-protection.server";
-import { getB3PriceContext } from "./b3-price-source.server";
+import {
+  B3_MT5_SERVER,
+  B3_MT5_SYMBOL,
+  B3_MT5_TTL_SECONDS,
+  B3QuoteProvider,
+  getB3ExecutionAudit,
+  quoteAuditBase,
+  type B3PriceContextResult,
+  type B3QuoteExecutionAudit,
+} from "./b3-price-source.server";
 
 
 const POINT_VALUE_BRL = 0.2;
@@ -229,13 +238,61 @@ export async function runB3SimulationTick(
   }
   let realizedTodayByMode = await getRealizedTodayByMode();
 
+  const providerStats = {
+    selected_source: "desconhecida" as string,
+    provider_used: "B3QuoteProvider",
+    mt5_provider_calls: 0,
+    legacy_provider_calls: 0,
+    fallback_to_csv: false,
+    last_entry_price: null as number | null,
+    last_exit_price: null as number | null,
+    last_price_function: null as string | null,
+  };
+
+  function rememberProvider(info: B3PriceContextResult) {
+    providerStats.selected_source = info.quote_source;
+    providerStats.mt5_provider_calls += info.mt5_provider_calls;
+    providerStats.legacy_provider_calls += info.legacy_provider_calls;
+    providerStats.fallback_to_csv = providerStats.fallback_to_csv || info.fallback_to_csv;
+  }
+
+  function mt5InvalidReason(info: B3PriceContextResult): string | null {
+    if (info.source !== "mt5_xp_demo") return null;
+    if (!info.live || !info.raw) return "Tick MT5 XP DEMO indisponível — operação bloqueada.";
+    if (info.quote_symbol !== B3_MT5_SYMBOL) return `Símbolo inválido (${info.quote_symbol ?? "—"}) — esperado ${B3_MT5_SYMBOL}.`;
+    if (info.server !== B3_MT5_SERVER) return `Servidor inválido (${info.server ?? "—"}) — esperado ${B3_MT5_SERVER}.`;
+    if (info.quote_age_s == null || info.quote_age_s > B3_MT5_TTL_SECONDS) return `Idade do tick ${info.quote_age_s ?? "—"}s acima do TTL (${B3_MT5_TTL_SECONDS}s).`;
+    if (!(Number(info.raw.bid) > 0) || !(Number(info.raw.ask) > 0) || !(Number(info.raw.last) > 0)) return "Bid/ask/último inválidos — operação bloqueada.";
+    return null;
+  }
+
+  function orderAuditPatch(audit: B3QuoteExecutionAudit) {
+    return {
+      quote_source: audit.quote_source,
+      quote_server: audit.quote_server,
+      quote_symbol: audit.quote_symbol,
+      quote_tick_ts: audit.quote_tick_ts,
+      quote_bid: audit.quote_bid,
+      quote_ask: audit.quote_ask,
+      quote_last: audit.quote_last,
+      execution_price: audit.execution_price,
+      execution_price_origin: audit.execution_price_origin,
+      legacy_price_detected: audit.legacy_price_detected,
+      provider_name: audit.provider_name,
+    };
+  }
+
   // Helper: registra mudança de status operacional (parou de operar / voltou)
   async function recordStatusIfChanged(
     mode: string, m: any, newStatus: string, trigger: string,
-    opts: { observed?: number; limit?: number; pnl?: number; related_order_id?: string; message?: string } = {},
+    opts: {
+      observed?: number; limit?: number; pnl?: number; related_order_id?: string; message?: string;
+      provider_name?: string; price_source?: string; rejected_price?: number | null; mt5_last?: number | null; diagnostic_payload?: any;
+      forceLog?: boolean;
+    } = {},
   ) {
     const prev = m.current_status ?? "operando";
-    if (prev === newStatus) return;
+    if (prev === newStatus && !opts.forceLog) return;
     await supabase.from("b3_simulation_block_events").insert({
       simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
       mode, prev_status: prev, new_status: newStatus, trigger,
@@ -244,15 +301,22 @@ export async function runB3SimulationTick(
       pnl_at_moment: opts.pnl ?? null,
       related_order_id: opts.related_order_id ?? null,
       message: opts.message ?? null,
+      provider_name: opts.provider_name ?? null,
+      price_source: opts.price_source ?? null,
+      rejected_price: opts.rejected_price ?? null,
+      mt5_last: opts.mt5_last ?? null,
+      diagnostic_payload: opts.diagnostic_payload ?? {},
     });
-    await supabase.from("b3_simulation_modes").update({
-      current_status: newStatus, status_reason: opts.message ?? null,
-      status_changed_at: new Date().toISOString(), last_trigger: trigger,
-    }).eq("id", m.id);
-    m.current_status = newStatus;
-    m.status_reason = opts.message ?? null;
-    m.status_changed_at = new Date().toISOString();
-    m.last_trigger = trigger;
+    if (prev !== newStatus) {
+      await supabase.from("b3_simulation_modes").update({
+        current_status: newStatus, status_reason: opts.message ?? null,
+        status_changed_at: new Date().toISOString(), last_trigger: trigger,
+      }).eq("id", m.id);
+      m.current_status = newStatus;
+      m.status_reason = opts.message ?? null;
+      m.status_changed_at = new Date().toISOString();
+      m.last_trigger = trigger;
+    }
   }
 
 
@@ -260,8 +324,10 @@ export async function runB3SimulationTick(
     const now = new Date();
     const cur = saoPauloMinutes(now);
 
-    const priceSrc = await getB3PriceContext(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
+    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
+    rememberProvider(priceSrc);
     const ctx = priceSrc.ctx;
+    const invalidMt5 = mt5InvalidReason(priceSrc);
     const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
       .insert({
         simulation_run_id: runId, user_id: userId, symbol: "WIN",
@@ -269,10 +335,20 @@ export async function runB3SimulationTick(
         candle_close: ctx.price, volume: ctx.volume_ratio, vwap: ctx.vwap,
         market_time: now.toISOString(),
         source: priceSrc.live ? `mt5:${priceSrc.server ?? "xp"}` : (priceSrc.source === "mt5_xp_demo" ? "mt5:sem_tick" : "mock"),
+        quote_source: priceSrc.quote_source,
+        quote_server: priceSrc.server,
+        quote_symbol: priceSrc.quote_symbol,
+        quote_tick_ts: priceSrc.raw?.tick_ts ?? null,
+        quote_bid: priceSrc.raw?.bid ?? null,
+        quote_ask: priceSrc.raw?.ask ?? null,
+        quote_last: priceSrc.raw?.last ?? null,
+        provider_name: priceSrc.provider_name,
         extra: { ema9: ctx.ema9, ema21: ctx.ema21, rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
           momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase,
           price_source: priceSrc.source, quote_age_s: priceSrc.quote_age_s, quote_symbol: priceSrc.quote_symbol,
-          bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last },
+          bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last,
+          provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
+          mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls },
       }).select("id").single();
     if (sErr) throw sErr;
 
@@ -290,6 +366,32 @@ export async function runB3SimulationTick(
       if (!m) continue;
       const cfg = settingsByMode[mode];
       const realizedToday = Number(realizedTodayByMode[mode] ?? 0);
+
+      if (invalidMt5) {
+        await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
+          pnl: realizedToday,
+          message: invalidMt5,
+          provider_name: priceSrc.provider_name,
+          price_source: priceSrc.quote_source,
+          rejected_price: ctx.price,
+          mt5_last: priceSrc.raw?.last ?? null,
+          forceLog: true,
+          diagnostic_payload: {
+            function: "runB3SimulationTick",
+            provider: priceSrc.provider_name,
+            selected_source: priceSrc.source,
+            quote_source: priceSrc.quote_source,
+            symbol: priceSrc.quote_symbol,
+            server: priceSrc.server,
+            quote_age_s: priceSrc.quote_age_s,
+            bid: priceSrc.raw?.bid ?? null,
+            ask: priceSrc.raw?.ask ?? null,
+            last: priceSrc.raw?.last ?? null,
+          },
+        });
+        log.push({ mode, action: "skip", reason: "mt5_quote_invalid", detail: invalidMt5 });
+        continue;
+      }
 
       // ─────────── B3 Protection (Flexibilização Inteligente) ───────────
       const todayKey = b3DayKeyBRT(now);
@@ -428,13 +530,43 @@ export async function runB3SimulationTick(
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
       if (open) {
+        if (priceSrc.source === "mt5_xp_demo" && open.quote_source !== "MT5 XP DEMO") {
+          await supabase.from("b3_simulation_orders").update({
+            status: "cancelled",
+            close_reason: "Fonte alterada para MT5 XP DEMO — operação legada invalidada",
+          }).eq("id", open.id).eq("user_id", userId);
+          openOrdersCache = null;
+          log.push({ mode, action: "cancel_legacy_open", reason: "legacy_price_state_invalidated" });
+          continue;
+        }
         const dirSign = open.side === "buy" ? 1 : -1;
-        const movePts = (ctx.price - Number(open.entry_price)) * dirSign;
+        let markAudit: B3QuoteExecutionAudit;
+        try {
+          markAudit = getB3ExecutionAudit(priceSrc, open.side, "mark", "runB3SimulationTick.markToMarket");
+          providerStats.last_price_function = markAudit.execution_price_origin;
+        } catch (e) {
+          await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
+            pnl: realizedToday,
+            related_order_id: open.id,
+            message: (e as Error).message,
+            provider_name: priceSrc.provider_name,
+            price_source: priceSrc.quote_source,
+            rejected_price: ctx.price,
+            mt5_last: priceSrc.raw?.last ?? null,
+            forceLog: true,
+            diagnostic_payload: { function: "runB3SimulationTick.markToMarket", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
+          });
+          log.push({ mode, action: "skip", reason: "price_guard", message: (e as Error).message });
+          continue;
+        }
+        const markPrice = markAudit.execution_price;
+        const movePts = (markPrice - Number(open.entry_price)) * dirSign;
         const hitStop = movePts <= -Number(cfg.stop_pts);
         const hitGain = movePts >= Number(cfg.gain_pts);
         if (forceClose || hitStop || hitGain) {
           const reason = forceClose ? "force_close" : hitStop ? "stop" : "gain";
-          await closeOrder(supabase, userId, run, m, open, ctx.price, reason);
+          await closeOrder(supabase, userId, run, m, open, markAudit, reason);
+          providerStats.last_exit_price = markPrice;
           openOrdersCache = null;
           realizedTodayByMode = await getRealizedTodayByMode();
           if (reason === "stop") {
@@ -442,7 +574,7 @@ export async function runB3SimulationTick(
               { observed: movePts, limit: -Number(cfg.stop_pts), pnl: realizedTodayByMode[mode] ?? 0,
                 related_order_id: open.id, message: `Stop da operação atingido (${movePts.toFixed(0)} pts).` });
           }
-          log.push({ mode, action: "close", reason, price: ctx.price });
+          log.push({ mode, action: "close", reason, price: markPrice, source: markAudit.quote_source, origin: markAudit.execution_price_origin });
           continue;
         }
       }
@@ -542,8 +674,33 @@ export async function runB3SimulationTick(
       await supabase.from("b3_simulation_agent_votes").insert(voteRows);
 
       if (decision.final === "approved") {
-        const slip = Number(run.simulated_slippage_pts) || 0;
-        const entry = intendedSide === "buy" ? ctx.price + slip : ctx.price - slip;
+        let entryAudit: B3QuoteExecutionAudit;
+        try {
+          entryAudit = getB3ExecutionAudit(priceSrc, intendedSide, "entry", "runB3SimulationTick.openOrder");
+          providerStats.last_price_function = entryAudit.execution_price_origin;
+        } catch (e) {
+          await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
+            pnl: realizedToday,
+            message: (e as Error).message,
+            provider_name: priceSrc.provider_name,
+            price_source: priceSrc.quote_source,
+            rejected_price: ctx.price,
+            mt5_last: priceSrc.raw?.last ?? null,
+            forceLog: true,
+            diagnostic_payload: { function: "runB3SimulationTick.openOrder", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
+          });
+          log.push({ mode, action: "blocked", reason: "price_guard", message: (e as Error).message });
+          continue;
+        }
+        if (priceSrc.source !== "mt5_xp_demo") {
+          const slip = Number(run.simulated_slippage_pts) || 0;
+          entryAudit = {
+            ...entryAudit,
+            execution_price: Math.round((intendedSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip) / TICK) * TICK,
+            execution_price_origin: `${entryAudit.execution_price_origin}+legacy_slippage`,
+          };
+        }
+        const entry = entryAudit.execution_price;
         const baseQty = 1;
         const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
         const { error: oErr } = await supabase.from("b3_simulation_orders").insert({
@@ -551,8 +708,10 @@ export async function runB3SimulationTick(
           mode, symbol: "WIN", contract_code: "WINFUT", side: intendedSide,
           entry_price: Math.round(entry / TICK) * TICK, quantity: qty,
           fees: Number(run.simulated_fee_brl) || 0, status: "open",
+          ...orderAuditPatch(entryAudit),
         });
         if (oErr) throw oErr;
+        providerStats.last_entry_price = entry;
         openOrdersCache = null;
         await supabase.from("b3_simulation_modes")
           .update({
@@ -561,7 +720,7 @@ export async function runB3SimulationTick(
           }).eq("id", m.id);
         m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
         m.contracts_traded = (Number(m.contracts_traded) || 0) + 1;
-        log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score });
+        log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin });
       } else {
         const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
         await supabase.from("b3_simulation_modes")
@@ -572,7 +731,7 @@ export async function runB3SimulationTick(
     }
   }
 
-  return { ok: true, processed: ticks, log };
+  return { ok: true, processed: ticks, log: [{ action: "provider_diagnostic", ...providerStats }, ...log] };
 }
 
 export const tickB3Simulation = createServerFn({ method: "POST" })
@@ -583,7 +742,8 @@ export const tickB3Simulation = createServerFn({ method: "POST" })
   });
 
 
-async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitPrice: number, reason: string) {
+async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string) {
+  const exitPrice = exitAudit.execution_price;
   const dir = order.side === "buy" ? 1 : -1;
   const grossPts = (exitPrice - Number(order.entry_price)) * dir;
   const qty = Number(order.quantity) || 1;
@@ -598,6 +758,17 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
     gross_result_brl: grossBrl,
     fees, net_result_brl: netBrl,
     status: "closed", close_reason: reason,
+    quote_source: exitAudit.quote_source,
+    quote_server: exitAudit.quote_server,
+    quote_symbol: exitAudit.quote_symbol,
+    quote_tick_ts: exitAudit.quote_tick_ts,
+    quote_bid: exitAudit.quote_bid,
+    quote_ask: exitAudit.quote_ask,
+    quote_last: exitAudit.quote_last,
+    execution_price: exitAudit.execution_price,
+    execution_price_origin: exitAudit.execution_price_origin,
+    legacy_price_detected: exitAudit.legacy_price_detected,
+    provider_name: exitAudit.provider_name,
   }).eq("id", order.id).eq("user_id", userId);
 
   const newRealized = Number(mode.realized_pnl) + netBrl;

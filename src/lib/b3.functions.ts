@@ -5,7 +5,16 @@ import {
   runB3Agents, buildB3Decision,
   type B3Side, type B3RiskState, type B3CommitteeSettings,
 } from "./b3-committee.server";
-import { getB3PriceContext, type B3PriceSource } from "./b3-price-source.server";
+import {
+  B3_MT5_PRICE_DEVIATION_LIMIT,
+  B3_MT5_SERVER,
+  B3_MT5_SYMBOL,
+  B3_MT5_TTL_SECONDS,
+  B3QuoteProvider,
+  assertFreshMt5Quote,
+  getB3ExecutionAudit,
+  type B3PriceSource,
+} from "./b3-price-source.server";
 
 
 interface Input {
@@ -63,12 +72,13 @@ export const runB3Committee = createServerFn({ method: "POST" })
       strategy_mode: settings.strategy_mode as any,
     };
 
-    const priceSrc = await getB3PriceContext(supabase, userId, {
+    const priceSrc = await B3QuoteProvider(supabase, userId, {
       symbol: data.symbol ?? "WIN",
       contract: data.contract_code ?? "WINFUT",
       base: data.base_price ?? 130000,
     });
     const ctx = priceSrc.ctx;
+    if (priceSrc.source === "mt5_xp_demo") assertFreshMt5Quote(priceSrc, "runB3Committee");
 
 
     // settings de consenso por modo
@@ -137,7 +147,7 @@ export const getB3PanelOverview = createServerFn({ method: "GET" })
     const [{ data: modes }, { data: settings }, { data: openOrders }, { data: closedToday }] = await Promise.all([
       (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", run.id).eq("user_id", userId),
       (supabase as any).from("b3_simulation_mode_settings").select("*").eq("simulation_run_id", run.id).eq("user_id", userId),
-      (supabase as any).from("b3_simulation_orders").select("id,mode,side,entry_price,quantity").eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
+      (supabase as any).from("b3_simulation_orders").select("id,mode,side,entry_price,quantity,quote_source,provider_name,execution_price_origin").eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
       (supabase as any).from("b3_simulation_orders").select("id,mode,net_result_brl,gross_result_brl,fees,gross_result_points,quantity,close_reason,exit_time")
         .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "closed")
         .gte("exit_time", new Date(new Date().setHours(0,0,0,0)).toISOString()),
@@ -189,7 +199,31 @@ export const getB3PriceSourceStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context as any;
-    const info = await getB3PriceContext(supabase, userId);
+    const info = await B3QuoteProvider(supabase, userId);
+    const [{ data: lastEntry }, { data: lastExit }, { data: lastSnapshot }, { data: lastBlock }] = await Promise.all([
+      (supabase as any).from("b3_simulation_orders")
+        .select("entry_price, execution_price, execution_price_origin, quote_source, provider_name, legacy_price_detected, created_at")
+        .eq("user_id", userId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      (supabase as any).from("b3_simulation_orders")
+        .select("exit_price, execution_price, execution_price_origin, quote_source, provider_name, legacy_price_detected, exit_time")
+        .eq("user_id", userId).eq("status", "closed").order("exit_time", { ascending: false }).limit(1).maybeSingle(),
+      (supabase as any).from("b3_simulation_market_snapshots")
+        .select("market_time, provider_name, quote_source, quote_bid, quote_ask, quote_last, quote_symbol, quote_server, extra")
+        .eq("user_id", userId).order("market_time", { ascending: false }).limit(1).maybeSingle(),
+      (supabase as any).from("b3_simulation_block_events")
+        .select("occurred_at, trigger, message, provider_name, price_source, rejected_price, mt5_last, diagnostic_payload")
+        .eq("user_id", userId).order("occurred_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    const snapshotMatchesSource = info.source !== "mt5_xp_demo" || lastSnapshot?.quote_source === "MT5 XP DEMO";
+    const entryMatchesSource = info.source !== "mt5_xp_demo" || lastEntry?.quote_source === "MT5 XP DEMO";
+    const exitMatchesSource = info.source !== "mt5_xp_demo" || lastExit?.quote_source === "MT5 XP DEMO";
+    const legacyCalls = snapshotMatchesSource ? Number((lastSnapshot?.extra as any)?.legacy_provider_calls ?? info.legacy_provider_calls ?? 0) : info.legacy_provider_calls;
+    const mt5Calls = snapshotMatchesSource ? Number((lastSnapshot?.extra as any)?.mt5_provider_calls ?? info.mt5_provider_calls ?? 0) : info.mt5_provider_calls;
+    const lastEntryTime = entryMatchesSource && lastEntry?.created_at ? new Date(lastEntry.created_at).getTime() : 0;
+    const lastExitTime = exitMatchesSource && lastExit?.exit_time ? new Date(lastExit.exit_time).getTime() : 0;
+    const lastPriceFunction = lastExitTime > lastEntryTime
+      ? lastExit?.execution_price_origin
+      : lastEntry?.execution_price_origin;
     return {
       source: info.source,
       live: info.live,
@@ -201,6 +235,24 @@ export const getB3PriceSourceStatus = createServerFn({ method: "GET" })
       last: info.raw?.last ?? null,
       spread: info.raw?.spread ?? null,
       ctx_price: info.ctx.price,
+      provider_name: info.provider_name,
+      quote_source: info.quote_source,
+      quote_tick_ts: info.raw?.tick_ts ?? null,
+      fallback_to_csv: info.fallback_to_csv,
+      mt5_provider_calls: mt5Calls,
+      legacy_provider_calls: legacyCalls,
+      last_entry_price: entryMatchesSource ? (lastEntry?.entry_price ?? lastEntry?.execution_price ?? null) : null,
+      last_exit_price: exitMatchesSource ? (lastExit?.exit_price ?? lastExit?.execution_price ?? null) : null,
+      last_price_function: lastPriceFunction ?? null,
+      last_entry_source: entryMatchesSource ? (lastEntry?.quote_source ?? null) : null,
+      last_exit_source: exitMatchesSource ? (lastExit?.quote_source ?? null) : null,
+      last_block: lastBlock ?? null,
+      guard: {
+        required_symbol: B3_MT5_SYMBOL,
+        required_server: B3_MT5_SERVER,
+        ttl_seconds: B3_MT5_TTL_SECONDS,
+        max_deviation_points: B3_MT5_PRICE_DEVIATION_LIMIT,
+      },
     };
   });
 
@@ -212,6 +264,9 @@ export const setB3PriceSource = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as any;
+    const { data: currentSettings } = await supabase.from("b3_trading_settings")
+      .select("price_source").eq("user_id", userId).maybeSingle();
+    const previousSource = (currentSettings?.price_source as B3PriceSource | undefined) ?? "csv";
     // upsert seguro caso o usuário ainda não tenha b3_trading_settings.
     const { data: existing } = await supabase.from("b3_trading_settings")
       .select("id").eq("user_id", userId).maybeSingle();
@@ -224,6 +279,110 @@ export const setB3PriceSource = createServerFn({ method: "POST" })
         .insert({ user_id: userId, price_source: data.source });
       if (error) throw error;
     }
-    return { ok: true, source: data.source };
+    let resetMessage: string | null = null;
+    if (previousSource !== "mt5_xp_demo" && data.source === "mt5_xp_demo") {
+      const now = new Date().toISOString();
+      await Promise.all([
+        (supabase as any).from("b3_simulation_orders")
+          .update({ status: "cancelled", close_reason: "Fonte alterada para MT5 XP DEMO — estado operacional legado reiniciado" })
+          .eq("user_id", userId).eq("status", "open"),
+        (supabase as any).from("b3_orders")
+          .update({ status: "cancelled", close_reason: "Fonte alterada para MT5 XP DEMO — estado operacional legado reiniciado", exit_time: now })
+          .eq("user_id", userId).eq("status", "open"),
+        (supabase as any).from("b3_simulation_modes")
+          .update({ current_status: "operando", status_reason: "Fonte alterada para MT5 XP DEMO — estado operacional legado reiniciado", status_changed_at: now, last_trigger: "price_source_reset" })
+          .eq("user_id", userId),
+      ]);
+      resetMessage = "Fonte alterada para MT5 XP DEMO — estado operacional legado reiniciado";
+    }
+    return { ok: true, source: data.source, message: resetMessage };
+  });
+
+export const openB3ManualOrder = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { side: B3Side; qty: number; contract_code?: string; environment?: "simulation" | "real" }) => {
+    if (!d || (d.side !== "buy" && d.side !== "sell")) throw new Error("side inválido");
+    if (!Number.isFinite(d.qty) || d.qty <= 0) throw new Error("qty inválido");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const { data: settings } = await supabase.from("b3_trading_settings").select("max_contracts, environment").eq("user_id", userId).maybeSingle();
+    if (Number(data.qty) > Number(settings?.max_contracts ?? 1)) throw new Error(`Quantidade ${data.qty} excede limite (${settings?.max_contracts ?? 1}).`);
+    const info = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: data.contract_code ?? "WINFUT", base: 130000 });
+    const audit = getB3ExecutionAudit(info, data.side, "entry", "openB3ManualOrder");
+    if (info.source === "mt5_xp_demo" && audit.quote_source !== "MT5 XP DEMO") throw new Error("Preço de execução incompatível com a cotação MT5 — operação bloqueada");
+    const { error } = await (supabase as any).from("b3_orders").insert({
+      user_id: userId,
+      symbol: "WIN",
+      contract_code: data.contract_code ?? "WINFUT",
+      side: data.side,
+      entry_price: audit.execution_price,
+      quantity: data.qty,
+      entry_time: new Date().toISOString(),
+      fees: 0.5 * data.qty,
+      status: "open",
+      environment: "simulation",
+      quote_source: audit.quote_source,
+      quote_server: audit.quote_server,
+      quote_symbol: audit.quote_symbol,
+      quote_tick_ts: audit.quote_tick_ts,
+      quote_bid: audit.quote_bid,
+      quote_ask: audit.quote_ask,
+      quote_last: audit.quote_last,
+      execution_price: audit.execution_price,
+      execution_price_origin: audit.execution_price_origin,
+      legacy_price_detected: audit.legacy_price_detected,
+      provider_name: audit.provider_name,
+    });
+    if (error) throw error;
+    return { ok: true, price: audit.execution_price, source: audit.quote_source };
+  });
+
+export const closeB3ManualOrder = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { order_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as any;
+    const { data: order } = await (supabase as any).from("b3_orders").select("*").eq("id", data.order_id).eq("user_id", userId).maybeSingle();
+    if (!order || order.status !== "open") throw new Error("Ordem aberta não encontrada.");
+    const info = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: order.contract_code ?? "WINFUT", base: 130000 });
+    if (info.source === "mt5_xp_demo" && order.quote_source !== "MT5 XP DEMO") {
+      await (supabase as any).from("b3_orders").update({
+        status: "cancelled",
+        close_reason: "Fonte alterada para MT5 XP DEMO — operação legada invalidada",
+        exit_time: new Date().toISOString(),
+      }).eq("id", order.id).eq("user_id", userId);
+      throw new Error("Operação aberta com preço legado invalidada — não será misturada com MT5 XP DEMO.");
+    }
+    const audit = getB3ExecutionAudit(info, order.side, "exit", "closeB3ManualOrder");
+    if (info.source === "mt5_xp_demo" && audit.quote_source !== "MT5 XP DEMO") throw new Error("Preço de execução incompatível com a cotação MT5 — operação bloqueada");
+    const points = order.side === "buy" ? audit.execution_price - Number(order.entry_price) : Number(order.entry_price) - audit.execution_price;
+    const grossBRL = points * 0.2 * Number(order.quantity ?? 1);
+    const totalFees = Number(order.fees ?? 0) + 0.5 * Number(order.quantity ?? 1);
+    const net = grossBRL - totalFees;
+    const { error } = await (supabase as any).from("b3_orders").update({
+      exit_price: audit.execution_price,
+      exit_time: new Date().toISOString(),
+      gross_result_points: points,
+      gross_result_brl: grossBRL,
+      fees: totalFees,
+      net_result_brl: net,
+      status: "closed",
+      close_reason: "manual",
+      quote_source: audit.quote_source,
+      quote_server: audit.quote_server,
+      quote_symbol: audit.quote_symbol,
+      quote_tick_ts: audit.quote_tick_ts,
+      quote_bid: audit.quote_bid,
+      quote_ask: audit.quote_ask,
+      quote_last: audit.quote_last,
+      execution_price: audit.execution_price,
+      execution_price_origin: audit.execution_price_origin,
+      legacy_price_detected: audit.legacy_price_detected,
+      provider_name: audit.provider_name,
+    }).eq("id", order.id).eq("user_id", userId);
+    if (error) throw error;
+    return { ok: true, price: audit.execution_price, source: audit.quote_source };
   });
 

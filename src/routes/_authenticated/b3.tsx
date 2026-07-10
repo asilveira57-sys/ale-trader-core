@@ -16,7 +16,15 @@ import {
   Clock, PauseCircle, PlayCircle, XCircle, FileBarChart, Settings as SettingsIcon, Users, Swords,
 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
-import { runB3Committee, listB3AgentVotes, getB3PanelOverview, getB3PriceSourceStatus, setB3PriceSource } from "@/lib/b3.functions";
+import {
+  closeB3ManualOrder,
+  getB3PanelOverview,
+  getB3PriceSourceStatus,
+  listB3AgentVotes,
+  openB3ManualOrder,
+  runB3Committee,
+  setB3PriceSource,
+} from "@/lib/b3.functions";
 import { SimComparePanel } from "@/components/b3/SimComparePanel";
 import { SimLiveDashboard } from "@/components/b3/SimLiveDashboard";
 
@@ -30,7 +38,6 @@ export const Route = createFileRoute("/_authenticated/b3")({
 // ────────────────────────────────────────────────────────────────────
 const POINT_VALUE_BRL = 0.2; // R$ por ponto por contrato
 const TICK = 5;              // variação mínima em pontos
-const DEFAULT_FEE_BRL = 0.5; // estimativa por contrato por lado
 
 const BRL = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -78,6 +85,9 @@ interface B3Order {
   close_reason: string | null;
   environment: "simulation" | "real";
   created_at: string;
+  quote_source?: string | null;
+  provider_name?: string | null;
+  execution_price_origin?: string | null;
 }
 
 const DEFAULTS: B3Settings = {
@@ -338,18 +348,17 @@ function TradePanel({
   onChanged: () => void;
 }) {
   const [side, setSide] = useState<Side>("buy");
-  const [price, setPrice] = useState<number>(130000);
   const [qty, setQty] = useState<number>(1);
   const [contract, setContract] = useState<string>("WINFUT");
   const [closingId, setClosingId] = useState<string | null>(null);
-  const [closePrice, setClosePrice] = useState<number>(130000);
+  const openManual = useServerFn(openB3ManualOrder);
+  const closeManual = useServerFn(closeB3ManualOrder);
 
   const checkGuards = (): string | null => {
     if (settings.environment === "real" && !settings.auto_trade_enabled) {
       // Real exige confirmação explícita (auto on)
     }
     if (qty > settings.max_contracts) return `Quantidade ${qty} excede limite (${settings.max_contracts}).`;
-    if (price % TICK !== 0) return `Preço fora do tick de ${TICK} pontos.`;
     const now = new Date();
     const [sh, sm] = settings.start_time.split(":").map(Number);
     const [eh, em] = settings.end_time.split(":").map(Number);
@@ -363,43 +372,17 @@ function TradePanel({
     mutationFn: async () => {
       const err = checkGuards();
       if (err) throw new Error(err);
-      const { error } = await (supabase as any).from("b3_orders").insert({
-        user_id: userId,
-        symbol: "WIN",
-        contract_code: contract,
-        side,
-        entry_price: price,
-        quantity: qty,
-        entry_time: new Date().toISOString(),
-        fees: DEFAULT_FEE_BRL * qty,
-        status: "open",
-        environment: settings.environment,
-      });
-      if (error) throw error;
+      return openManual({ data: { side, qty, contract_code: contract, environment: settings.environment } });
     },
-    onSuccess: () => { toast.success("Ordem simulada aberta"); onChanged(); },
+    onSuccess: (r: any) => { toast.success(`Ordem simulada aberta @ ${NUM(Number(r?.price ?? 0))} · ${r?.source ?? "fonte atual"}`); onChanged(); },
     onError: (e: any) => toast.error(e.message),
   });
 
   const closeOrder = useMutation({
     mutationFn: async (o: B3Order) => {
-      const points = o.side === "buy" ? closePrice - o.entry_price : o.entry_price - closePrice;
-      const grossBRL = points * POINT_VALUE_BRL * o.quantity;
-      const totalFees = (o.fees ?? 0) + DEFAULT_FEE_BRL * o.quantity;
-      const net = grossBRL - totalFees;
-      const { error } = await (supabase as any).from("b3_orders").update({
-        exit_price: closePrice,
-        exit_time: new Date().toISOString(),
-        gross_result_points: points,
-        gross_result_brl: grossBRL,
-        fees: totalFees,
-        net_result_brl: net,
-        status: "closed",
-        close_reason: "manual",
-      }).eq("id", o.id);
-      if (error) throw error;
+      return closeManual({ data: { order_id: o.id } });
     },
-    onSuccess: () => { toast.success("Ordem encerrada"); setClosingId(null); onChanged(); },
+    onSuccess: (r: any) => { toast.success(`Ordem encerrada @ ${NUM(Number(r?.price ?? 0))} · ${r?.source ?? "fonte atual"}`); setClosingId(null); onChanged(); },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -436,7 +419,8 @@ function TradePanel({
             </div>
             <div>
               <Label>Preço (pontos)</Label>
-              <Input type="number" step={TICK} value={price} onChange={e => setPrice(Number(e.target.value))} />
+              <Input value="B3QuoteProvider" disabled />
+              <p className="text-[10px] text-muted-foreground mt-1">A execução usa o provider central da fonte selecionada.</p>
             </div>
             <div>
               <Label>Quantidade</Label>
@@ -465,6 +449,7 @@ function TradePanel({
                     {o.side === "buy" ? "C" : "V"}
                   </Badge>
                   {o.contract_code} · {o.quantity}× @ {NUM(o.entry_price)}
+                  {o.quote_source && <span className="text-muted-foreground"> · {o.quote_source}</span>}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {new Date(o.entry_time).toLocaleTimeString("pt-BR")}
@@ -472,8 +457,7 @@ function TradePanel({
               </div>
               {closingId === o.id ? (
                 <div className="flex gap-2">
-                  <Input type="number" step={TICK} value={closePrice}
-                    onChange={e => setClosePrice(Number(e.target.value))} />
+                  <Input value="B3QuoteProvider" disabled />
                   <Button size="sm" onClick={() => closeOrder.mutate(o)} disabled={closeOrder.isPending}>
                     Encerrar
                   </Button>
@@ -481,7 +465,7 @@ function TradePanel({
                 </div>
               ) : (
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => { setClosingId(o.id); setClosePrice(o.entry_price); }}>
+                  <Button size="sm" variant="outline" onClick={() => setClosingId(o.id)}>
                     <PauseCircle className="w-4 h-4 mr-1" />Encerrar a mercado
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => cancelOrder.mutate(o.id)}>
@@ -514,7 +498,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
       const end = `${today}T23:59:59.999Z`;
       const { data, error } = await (supabase as any)
         .from("b3_simulation_orders")
-        .select("id, mode, side, entry_price, exit_price, gross_result_points, gross_result_brl, fees, net_result_brl, status, close_reason, created_at, exit_time")
+        .select("id, mode, side, entry_price, exit_price, gross_result_points, gross_result_brl, fees, net_result_brl, status, close_reason, created_at, exit_time, quote_source, provider_name, execution_price_origin")
         .gte("created_at", start)
         .lte("created_at", end)
         .order("created_at", { ascending: false })
@@ -572,12 +556,13 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                   <th className="text-right">Bruto R$</th>
                   <th className="text-right">Taxas</th>
                   <th className="text-right">Líquido R$</th>
+                  <th>Fonte do preço</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {todays.length === 0 && (
-                  <tr><td colSpan={11} className="py-4 text-center text-muted-foreground">Sem operações hoje.</td></tr>
+                  <tr><td colSpan={12} className="py-4 text-center text-muted-foreground">Sem operações hoje.</td></tr>
                 )}
                 {todays.map(o => (
                   <tr key={o.id} className="border-b last:border-0">
@@ -595,6 +580,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                     <td className={`text-right ${(o.net_result_brl ?? 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
                       {o.net_result_brl != null ? BRL(o.net_result_brl) : "—"}
                     </td>
+                    <td>{o.quote_source ?? "desconhecida"}</td>
                     <td>{o.status}</td>
                   </tr>
                 ))}
@@ -605,7 +591,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                   <td className="text-right">{BRL(grossRealized)}</td>
                   <td className="text-right">{BRL(fees)}</td>
                   <td className={`text-right ${realized >= 0 ? "text-emerald-500" : "text-destructive"}`}>{BRL(realized)}</td>
-                  <td>{closed.length} fech. / {open.length} ab.</td>
+                  <td colSpan={2}>{closed.length} fech. / {open.length} ab.</td>
                 </tr>
               </tfoot>
             </table>
@@ -639,13 +625,14 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                   <th className="text-right">Bruto R$</th>
                   <th className="text-right">Taxas</th>
                   <th className="text-right">Líquido R$</th>
+                  <th>Fonte do preço</th>
                   <th>Status</th>
                   <th>Motivo</th>
                 </tr>
               </thead>
               <tbody>
                 {simOrders.length === 0 && (
-                  <tr><td colSpan={11} className="py-4 text-center text-muted-foreground">Sem operações simuladas hoje.</td></tr>
+                  <tr><td colSpan={12} className="py-4 text-center text-muted-foreground">Sem operações simuladas hoje.</td></tr>
                 )}
                 {simOrders.map((o: any) => (
                   <tr key={o.id} className="border-b last:border-0">
@@ -662,6 +649,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                     <td className={`text-right ${Number(o.net_result_brl ?? 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
                       {o.net_result_brl != null ? BRL(Number(o.net_result_brl)) : "—"}
                     </td>
+                    <td>{o.quote_source ?? "desconhecida"}</td>
                     <td>{o.status}</td>
                     <td className="text-muted-foreground">{o.close_reason ?? "—"}</td>
                   </tr>
@@ -673,7 +661,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
                   <td className="text-right">{BRL(grossRealSim)}</td>
                   <td className="text-right">{BRL(feesSim)}</td>
                   <td className={`text-right ${realizedSim >= 0 ? "text-emerald-500" : "text-destructive"}`}>{BRL(realizedSim)}</td>
-                  <td colSpan={2}>{simClosed.length} fech. / {simOrders.length - simClosed.length} ab.</td>
+                  <td colSpan={3}>{simClosed.length} fech. / {simOrders.length - simClosed.length} ab.</td>
                 </tr>
               </tfoot>
             </table>
@@ -976,7 +964,7 @@ function PriceSourceCard() {
   });
   const mut = useMutation({
     mutationFn: (source: "csv" | "mt5_xp_demo") => setSource({ data: { source } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["b3-price-source"] }); toast.success("Fonte de cotação atualizada"); },
+    onSuccess: (r: any) => { qc.invalidateQueries({ queryKey: ["b3-price-source"] }); toast.success(r?.message ?? "Fonte de cotação atualizada"); },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao atualizar fonte"),
   });
   const st = statusQ.data as any;
@@ -1018,6 +1006,35 @@ function PriceSourceCard() {
               tone={dead ? "danger" : stale ? "warn" : "ok"} />
           </div>
         )}
+        {isMt5 && (
+          <div className="rounded-md border border-border/60 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-sm font-medium">Diagnóstico de Fonte do Motor B3</h3>
+              <Badge variant={Number(st?.legacy_provider_calls ?? 0) === 0 ? "outline" : "destructive"}>
+                legado: {Number(st?.legacy_provider_calls ?? 0)} chamadas
+              </Badge>
+            </div>
+            <div className="grid gap-2 md:grid-cols-4 text-xs">
+              <Metric label="Fonte interface" value={st?.source === "mt5_xp_demo" ? "MT5 XP DEMO" : "CSV legado"} />
+              <Metric label="Provider usado" value={st?.provider_name ?? "—"} />
+              <Metric label="Chamadas MT5" value={String(st?.mt5_provider_calls ?? 0)} />
+              <Metric label="Fallback CSV" value={st?.fallback_to_csv ? "sim" : "não"} tone={st?.fallback_to_csv ? "danger" : "ok"} />
+              <Metric label="Timestamp" value={st?.quote_tick_ts ? new Date(st.quote_tick_ts).toLocaleTimeString("pt-BR") : "—"} />
+              <Metric label="Símbolo" value={st?.quote_symbol ?? "—"} />
+              <Metric label="Servidor" value={st?.server ?? "—"} />
+              <Metric label="Função do preço" value={st?.last_price_function ?? "—"} />
+              <Metric label="Última entrada" value={st?.last_entry_price != null ? NUM(Number(st.last_entry_price)) : "—"} />
+              <Metric label="Última saída" value={st?.last_exit_price != null ? NUM(Number(st.last_exit_price)) : "—"} />
+              <Metric label="Fonte última entrada" value={st?.last_entry_source ?? "—"} />
+              <Metric label="Fonte última saída" value={st?.last_exit_source ?? "—"} />
+            </div>
+            {st?.last_block?.message && (
+              <p className="text-xs text-destructive flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> {st.last_block.message}
+              </p>
+            )}
+          </div>
+        )}
         {isMt5 && dead && (
           <p className="text-xs text-destructive flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" /> Tick MT5 vencido (&gt; 30s). O motor pode operar com preço defasado até o ingest voltar.
@@ -1025,7 +1042,7 @@ function PriceSourceCard() {
         )}
         {isMt5 && !st?.live && !dead && (
           <p className="text-xs text-muted-foreground">
-            Aguardando primeiro tick da ponte MT5 XP DEMO. Enquanto isso, o motor usa fallback para não travar.
+            Aguardando tick válido da ponte MT5 XP DEMO. Enquanto isso, novas execuções são bloqueadas.
           </p>
         )}
       </CardContent>

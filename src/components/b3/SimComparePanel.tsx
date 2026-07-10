@@ -298,7 +298,7 @@ export function SimComparePanel() {
                         <TooltipContent className="max-w-xs">BUY = comprado (long) · SELL = vendido (short). Cada linha é uma operação completa: abertura + fechamento.</TooltipContent></Tooltip>
                     </th>
                     <th>Preço abertura</th><th>Preço fechamento</th>
-                    <th>Pts</th><th>Bruto</th><th>Taxas</th><th>Líquido</th><th>Status</th><th>Motivo</th>
+                    <th>Pts</th><th>Bruto</th><th>Taxas</th><th>Líquido</th><th>Fonte</th><th>Status</th><th>Motivo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -316,12 +316,13 @@ export function SimComparePanel() {
                       <td className={Number(o.net_result_brl) > 0 ? "text-emerald-400" : Number(o.net_result_brl) < 0 ? "text-rose-400" : ""}>
                         {o.net_result_brl != null ? BRL(o.net_result_brl) : "—"}
                       </td>
+                      <td>{o.quote_source ?? "desconhecida"}</td>
                       <td>{o.status}</td>
                       <td className="text-muted-foreground">{o.close_reason ?? "—"}</td>
                     </tr>
                   ))}
                   {(detail.orders ?? []).length === 0 && (
-                    <tr><td colSpan={12} className="text-center text-muted-foreground py-4">Sem operações ainda. Rode alguns ticks.</td></tr>
+                    <tr><td colSpan={13} className="text-center text-muted-foreground py-4">Sem operações ainda. Rode alguns ticks.</td></tr>
                   )}
                 </tbody>
               </table>
