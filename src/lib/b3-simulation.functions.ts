@@ -13,8 +13,8 @@ import {
   B3_MT5_SERVER,
   B3_MT5_SYMBOL,
   B3_MT5_TTL_SECONDS,
+  B3QuoteProvider,
   getB3ExecutionAudit,
-  getB3PriceContext,
   quoteAuditBase,
   type B3PriceContextResult,
   type B3QuoteExecutionAudit,
@@ -324,7 +324,7 @@ export async function runB3SimulationTick(
     const now = new Date();
     const cur = saoPauloMinutes(now);
 
-    const priceSrc = await getB3PriceContext(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
+    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
     rememberProvider(priceSrc);
     const ctx = priceSrc.ctx;
     const invalidMt5 = mt5InvalidReason(priceSrc);
