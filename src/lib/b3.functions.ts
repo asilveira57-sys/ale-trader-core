@@ -10,9 +10,9 @@ import {
   B3_MT5_SERVER,
   B3_MT5_SYMBOL,
   B3_MT5_TTL_SECONDS,
+  B3QuoteProvider,
   assertFreshMt5Quote,
   getB3ExecutionAudit,
-  getB3PriceContext,
   type B3PriceSource,
 } from "./b3-price-source.server";
 
@@ -72,7 +72,7 @@ export const runB3Committee = createServerFn({ method: "POST" })
       strategy_mode: settings.strategy_mode as any,
     };
 
-    const priceSrc = await getB3PriceContext(supabase, userId, {
+    const priceSrc = await B3QuoteProvider(supabase, userId, {
       symbol: data.symbol ?? "WIN",
       contract: data.contract_code ?? "WINFUT",
       base: data.base_price ?? 130000,
@@ -199,7 +199,7 @@ export const getB3PriceSourceStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context as any;
-    const info = await getB3PriceContext(supabase, userId);
+    const info = await B3QuoteProvider(supabase, userId);
     const [{ data: lastEntry }, { data: lastExit }, { data: lastSnapshot }, { data: lastBlock }] = await Promise.all([
       (supabase as any).from("b3_simulation_orders")
         .select("entry_price, execution_price, execution_price_origin, quote_source, provider_name, legacy_price_detected, created_at")
@@ -306,7 +306,7 @@ export const openB3ManualOrder = createServerFn({ method: "POST" })
     const { supabase, userId } = context as any;
     const { data: settings } = await supabase.from("b3_trading_settings").select("max_contracts, environment").eq("user_id", userId).maybeSingle();
     if (Number(data.qty) > Number(settings?.max_contracts ?? 1)) throw new Error(`Quantidade ${data.qty} excede limite (${settings?.max_contracts ?? 1}).`);
-    const info = await getB3PriceContext(supabase, userId, { symbol: "WIN", contract: data.contract_code ?? "WINFUT", base: 130000 });
+    const info = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: data.contract_code ?? "WINFUT", base: 130000 });
     const audit = getB3ExecutionAudit(info, data.side, "entry", "openB3ManualOrder");
     if (info.source === "mt5_xp_demo" && audit.quote_source !== "MT5 XP DEMO") throw new Error("Preço de execução incompatível com a cotação MT5 — operação bloqueada");
     const { error } = await (supabase as any).from("b3_orders").insert({
@@ -343,7 +343,7 @@ export const closeB3ManualOrder = createServerFn({ method: "POST" })
     const { supabase, userId } = context as any;
     const { data: order } = await (supabase as any).from("b3_orders").select("*").eq("id", data.order_id).eq("user_id", userId).maybeSingle();
     if (!order || order.status !== "open") throw new Error("Ordem aberta não encontrada.");
-    const info = await getB3PriceContext(supabase, userId, { symbol: "WIN", contract: order.contract_code ?? "WINFUT", base: 130000 });
+    const info = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: order.contract_code ?? "WINFUT", base: 130000 });
     if (info.source === "mt5_xp_demo" && order.quote_source !== "MT5 XP DEMO") {
       await (supabase as any).from("b3_orders").update({
         status: "cancelled",
