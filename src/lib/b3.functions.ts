@@ -216,6 +216,11 @@ export const getB3PriceSourceStatus = createServerFn({ method: "GET" })
     ]);
     const legacyCalls = Number((lastSnapshot?.extra as any)?.legacy_provider_calls ?? info.legacy_provider_calls ?? 0);
     const mt5Calls = Number((lastSnapshot?.extra as any)?.mt5_provider_calls ?? info.mt5_provider_calls ?? 0);
+    const lastEntryTime = lastEntry?.created_at ? new Date(lastEntry.created_at).getTime() : 0;
+    const lastExitTime = lastExit?.exit_time ? new Date(lastExit.exit_time).getTime() : 0;
+    const lastPriceFunction = lastExitTime > lastEntryTime
+      ? lastExit?.execution_price_origin
+      : lastEntry?.execution_price_origin;
     return {
       source: info.source,
       live: info.live,
@@ -235,7 +240,7 @@ export const getB3PriceSourceStatus = createServerFn({ method: "GET" })
       legacy_provider_calls: legacyCalls,
       last_entry_price: lastEntry?.entry_price ?? lastEntry?.execution_price ?? null,
       last_exit_price: lastExit?.exit_price ?? lastExit?.execution_price ?? null,
-      last_price_function: lastEntry?.execution_price_origin ?? lastExit?.execution_price_origin ?? null,
+      last_price_function: lastPriceFunction ?? null,
       last_entry_source: lastEntry?.quote_source ?? null,
       last_exit_source: lastExit?.quote_source ?? null,
       last_block: lastBlock ?? null,
