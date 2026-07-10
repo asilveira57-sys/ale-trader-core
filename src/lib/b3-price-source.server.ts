@@ -1,16 +1,44 @@
-// Fonte de cotação do módulo B3 Day Trade (WIN).
-// Mantém o motor legado inalterado — apenas troca a origem do preço:
-//   - 'csv'          → buildMockB3Context (comportamento original, base 130000).
-//   - 'mt5_xp_demo'  → constrói B3Context a partir dos ticks reais recebidos
-//                      pela ponte MT5 XP DEMO (tabela b3_mt5sim_quotes).
-// A saída é o MESMO B3Context: os robôs, comitê, ranking, bloqueios e
-// estatísticas continuam idênticos. Só o número que entra muda.
+// B3QuoteProvider — fonte central de cotação do módulo B3 Day Trade (WIN).
+// Mantém o cérebro dos robôs inalterado e isola a origem do preço aqui.
+// Regra crítica: quando a fonte selecionada é MT5 XP DEMO, nenhum fallback
+// para CSV/mock/candle antigo é permitido para execução.
 
 import { buildMockB3Context, type B3Context } from "./b3-committee.server";
 
 export type B3PriceSource = "csv" | "mt5_xp_demo";
 
 const TICK = 5;
+export const B3_MT5_SYMBOL = "WINQ26";
+export const B3_MT5_SERVER = "XPMT5-DEMO";
+export const B3_MT5_TTL_SECONDS = 5;
+export const B3_MT5_PRICE_DEVIATION_LIMIT = 2000;
+
+export type B3QuoteSourceLabel = "MT5 XP DEMO" | "CSV legado" | "inválida" | "desconhecida";
+
+export interface B3QuoteProviderRaw {
+  bid: number | null;
+  ask: number | null;
+  last: number | null;
+  spread: number | null;
+  volume: number | null;
+  tick_ts: string | null;
+  server: string | null;
+  symbol: string | null;
+}
+
+export interface B3QuoteExecutionAudit {
+  quote_source: B3QuoteSourceLabel;
+  quote_server: string | null;
+  quote_symbol: string | null;
+  quote_tick_ts: string | null;
+  quote_bid: number | null;
+  quote_ask: number | null;
+  quote_last: number | null;
+  execution_price: number;
+  execution_price_origin: string;
+  legacy_price_detected: boolean;
+  provider_name: string;
+}
 
 function saoPauloPhase(d: Date): B3Context["session_phase"] {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -62,13 +90,109 @@ export interface B3PriceContextResult {
   quote_age_s: number | null;   // idade do tick mais recente
   server: string | null;        // XPMT5-DEMO / XPMT5-PRD / null
   quote_symbol: string | null;  // WINQ26 etc
-  raw: { bid: number | null; ask: number | null; last: number | null; spread: number | null } | null;
+  raw: B3QuoteProviderRaw | null;
+  provider_name: "B3QuoteProvider";
+  quote_source: B3QuoteSourceLabel;
+  fallback_to_csv: boolean;
+  mt5_provider_calls: number;
+  legacy_provider_calls: number;
+}
+
+function emptyContext(symbol: string, contract: string): B3Context {
+  const now = new Date();
+  return {
+    symbol, contract_code: contract,
+    price: 0, prev_close: 0, open: 0, high: 0, low: 0, vwap: 0,
+    ema9: 0, ema21: 0, rsi: 50, macd: 0, macd_signal: 0,
+    volume_ratio: 0, volatility_pct: 0, momentum: 0, spread_pts: 0,
+    now, session_phase: saoPauloPhase(now),
+  };
+}
+
+function toNumber(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function rawFromRow(row: any): B3QuoteProviderRaw {
+  const bid = toNumber(row?.bid);
+  const ask = toNumber(row?.ask);
+  const last = toNumber(row?.last);
+  const spread = toNumber(row?.spread ?? ((ask ?? 0) - (bid ?? 0)));
+  const volume = toNumber(row?.volume);
+  return {
+    bid, ask, last, spread, volume,
+    tick_ts: row?.tick_ts ?? row?.received_at ?? null,
+    server: row?.server ?? null,
+    symbol: row?.symbol ?? null,
+  };
+}
+
+export function quoteAuditBase(info: B3PriceContextResult): Omit<B3QuoteExecutionAudit, "execution_price" | "execution_price_origin" | "legacy_price_detected"> {
+  return {
+    quote_source: info.quote_source,
+    quote_server: info.server,
+    quote_symbol: info.quote_symbol,
+    quote_tick_ts: info.raw?.tick_ts ?? null,
+    quote_bid: info.raw?.bid ?? null,
+    quote_ask: info.raw?.ask ?? null,
+    quote_last: info.raw?.last ?? null,
+    provider_name: info.provider_name,
+  };
+}
+
+export function assertFreshMt5Quote(info: B3PriceContextResult, functionName: string): void {
+  const bid = info.raw?.bid ?? 0;
+  const ask = info.raw?.ask ?? 0;
+  const last = info.raw?.last ?? 0;
+  if (info.source !== "mt5_xp_demo") throw new Error(`${functionName}: fonte selecionada não é MT5 XP DEMO`);
+  if (!info.live || !info.raw) throw new Error(`${functionName}: tick MT5 XP DEMO indisponível — operação bloqueada`);
+  if (info.quote_symbol !== B3_MT5_SYMBOL) throw new Error(`${functionName}: símbolo inválido (${info.quote_symbol ?? "—"}) — esperado ${B3_MT5_SYMBOL}`);
+  if (info.server !== B3_MT5_SERVER) throw new Error(`${functionName}: servidor inválido (${info.server ?? "—"}) — esperado ${B3_MT5_SERVER}`);
+  if (info.quote_age_s == null || info.quote_age_s > B3_MT5_TTL_SECONDS) throw new Error(`${functionName}: idade do tick ${info.quote_age_s ?? "—"}s acima do TTL — operação bloqueada`);
+  if (!(bid > 0) || !(ask > 0) || !(last > 0)) throw new Error(`${functionName}: bid/ask/último inválidos — operação bloqueada`);
+}
+
+export function getB3ExecutionAudit(
+  info: B3PriceContextResult,
+  side: "buy" | "sell",
+  action: "entry" | "exit" | "mark",
+  functionName: string,
+): B3QuoteExecutionAudit {
+  if (info.source === "mt5_xp_demo") {
+    assertFreshMt5Quote(info, functionName);
+    const bid = Number(info.raw!.bid);
+    const ask = Number(info.raw!.ask);
+    const last = Number(info.raw!.last);
+    const price = action === "entry"
+      ? (side === "buy" ? ask : bid)
+      : (side === "buy" ? bid : ask);
+    if (Math.abs(price - last) > B3_MT5_PRICE_DEVIATION_LIMIT) {
+      throw new Error(`Preço de execução incompatível com a cotação MT5 — operação bloqueada (${functionName}; provider=B3QuoteProvider; MT5=${last}; rejeitado=${price})`);
+    }
+    return {
+      ...quoteAuditBase(info),
+      execution_price: Math.round(price / TICK) * TICK,
+      execution_price_origin: action === "entry"
+        ? (side === "buy" ? "mt5_ask_entry" : "mt5_bid_entry")
+        : (side === "buy" ? "mt5_bid_exit_mark" : "mt5_ask_exit_mark"),
+      legacy_price_detected: false,
+    };
+  }
+
+  const price = Math.round(Number(info.ctx.price || 0) / TICK) * TICK;
+  return {
+    ...quoteAuditBase(info),
+    execution_price: price,
+    execution_price_origin: `${functionName}:csv_context_price`,
+    legacy_price_detected: true,
+  };
 }
 
 /**
  * Constrói o B3Context de acordo com a fonte configurada em b3_trading_settings.price_source.
- * Se MT5 estiver selecionado mas não houver tick disponível, cai automaticamente
- * em buildMockB3Context (evita travar o motor). O flag `live` indica a origem real.
+ * Se MT5 estiver selecionado mas não houver tick válido, NÃO cai para CSV.
+ * Retorna live=false e ctx zerado para o chamador bloquear execução.
  */
 export async function getB3PriceContext(
   supabase: any,
@@ -91,27 +215,33 @@ export async function getB3PriceContext(
     return {
       ctx: buildMockB3Context(symbol, contract, base),
       source, live: false, quote_age_s: null, server: null, quote_symbol: null, raw: null,
+      provider_name: "B3QuoteProvider", quote_source: "CSV legado", fallback_to_csv: false,
+      mt5_provider_calls: 0, legacy_provider_calls: 1,
     };
   }
 
-  // Lê os últimos ticks do WINQ26 alimentados pela ponte MT5.
+  // Lê somente os últimos ticks WINQ26 alimentados pela ponte MT5 XP DEMO.
   const { data: quotes } = await supabase
     .from("b3_mt5sim_quotes")
     .select("bid, ask, last, spread, volume, server, symbol, tick_ts, received_at")
     .eq("user_id", userId)
+    .eq("server", B3_MT5_SERVER)
+    .eq("symbol", B3_MT5_SYMBOL)
     .order("tick_ts", { ascending: false })
     .limit(180);
 
   const rows = (quotes as any[] | null) ?? [];
   if (!rows.length) {
-    // Sem ticks — não bloqueia o motor: retorna mock e sinaliza live=false.
     return {
-      ctx: buildMockB3Context(symbol, contract, base),
+      ctx: emptyContext(symbol, contract),
       source, live: false, quote_age_s: null, server: null, quote_symbol: null, raw: null,
+      provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
+      mt5_provider_calls: 1, legacy_provider_calls: 0,
     };
   }
 
   const latest = rows[0];
+  const latestRaw = rawFromRow(latest);
   const series = rows.slice().reverse(); // do mais antigo para o mais recente
   const priceOf = (r: any): number => {
     const l = Number(r.last);
@@ -123,6 +253,15 @@ export async function getB3PriceContext(
   const prices = series.map(priceOf).filter(v => Number.isFinite(v) && v > 0);
   const volumes = series.map(r => Number(r.volume ?? 0));
   const price = priceOf(latest);
+  const hasValidTop = Number(latestRaw.bid) > 0 && Number(latestRaw.ask) > 0 && Number(latestRaw.last) > 0;
+  if (!Number.isFinite(price) || price <= 0 || !hasValidTop) {
+    return {
+      ctx: emptyContext(symbol, contract),
+      source, live: false, quote_age_s: null, server: latestRaw.server, quote_symbol: latestRaw.symbol, raw: latestRaw,
+      provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
+      mt5_provider_calls: 1, legacy_provider_calls: 0,
+    };
+  }
   const priceRounded = Math.round(price / TICK) * TICK;
   const open = prices[0] ?? price;
   const high = Math.max(...prices, price);
@@ -175,11 +314,11 @@ export async function getB3PriceContext(
     quote_age_s: Math.max(0, Math.round(ageMs / 1000)),
     server: latest.server ?? null,
     quote_symbol: latest.symbol ?? null,
-    raw: {
-      bid: latest.bid != null ? Number(latest.bid) : null,
-      ask: latest.ask != null ? Number(latest.ask) : null,
-      last: latest.last != null ? Number(latest.last) : null,
-      spread: latest.spread != null ? Number(latest.spread) : null,
-    },
+    raw: latestRaw,
+    provider_name: "B3QuoteProvider",
+    quote_source: "MT5 XP DEMO",
+    fallback_to_csv: false,
+    mt5_provider_calls: 1,
+    legacy_provider_calls: 0,
   };
 }
