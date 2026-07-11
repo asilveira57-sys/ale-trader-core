@@ -347,7 +347,7 @@ export function SimComparePanel() {
   );
 }
 
-function EngineDiagnosticPanel({ detail }: { detail: any }) {
+export function EngineDiagnosticPanel({ detail }: { detail: any }) {
   const audit = detail?.snapshots?.[0]?.extra?.engine_audit;
   const modes = audit?.modes ?? [];
   const cfgLabels: Record<string, string> = {
