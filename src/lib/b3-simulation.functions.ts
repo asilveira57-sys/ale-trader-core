@@ -579,6 +579,50 @@ export async function runB3SimulationTick(
       if (!m) continue;
       const cfg = settingsByMode[mode];
       const realizedToday = Number(realizedTodayByMode[mode] ?? 0);
+      const startMin = hhmmToMin(cfg.trading_start_time);
+      const cutoffMin = hhmmToMin(cfg.entry_cutoff_time);
+      const forceMin = hhmmToMin(cfg.force_close_time);
+      const insideHours = cur >= startMin && cur <= cutoffMin;
+      const forceClose = cur >= forceMin || cur < startMin;
+      const openList = await getOpen();
+      const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
+      const loadedConfig = normalizeModeConfig(cfg);
+      const cfgCompare = configComparison(cfg, loadedConfig);
+      const checks: any[] = [];
+      const addCheck = (key: string, label: string, ok: boolean, detail?: string, blocking = true) => checks.push(auditCheck(key, label, ok, detail, blocking));
+      const finalizeAudit = (finalReason: string, extra: Record<string, any> = {}) => {
+        const firstStop = checks.find((c) => c.blocking && !c.ok);
+        tickAudit.modes.push({
+          mode,
+          timestamp: now.toISOString(),
+          last_tick: tickAudit.last_tick,
+          last_analysis: extra.last_analysis ?? null,
+          last_score: extra.last_score ?? null,
+          last_confidence: extra.last_confidence ?? null,
+          last_setup: extra.last_setup ?? "Nenhum setup aprovado",
+          last_refusal_reason: finalReason,
+          first_stop: firstStop ? { key: firstStop.key, label: firstStop.label, detail: firstStop.detail } : null,
+          config_loaded: cfgCompare.motor,
+          config_saved: cfgCompare.screen,
+          config_comparison: cfgCompare.fields,
+          config_mismatch_count: cfgCompare.mismatch_count,
+          protection_global: tickAudit.global_protection,
+          checks,
+          signals: extra.signals ?? { evaluated_side: intendedSide, buy: false, sell: false },
+          committee: extra.committee ?? null,
+        });
+      };
+
+      addCheck("tick_received", "Tick recebido", priceSrc.source !== "mt5_xp_demo" || Boolean(priceSrc.raw), priceSrc.raw?.tick_ts ? `tick ${priceSrc.raw.tick_ts}` : "sem tick MT5");
+      addCheck("mt5_server", "Servidor MT5", priceSrc.source !== "mt5_xp_demo" || priceSrc.server === B3_MT5_SERVER, priceSrc.server ? `recebido ${priceSrc.server}` : "sem servidor");
+      addCheck("mt5_symbol", "Símbolo WINQ26", priceSrc.source !== "mt5_xp_demo" || priceSrc.quote_symbol === B3_MT5_SYMBOL, priceSrc.quote_symbol ? `recebido ${priceSrc.quote_symbol}` : "sem símbolo");
+      addCheck("market_open", "Mercado aberto", ctx.session_phase !== "fora", `fase ${ctx.session_phase}`);
+      addCheck("time_allowed", "Horário permitido", insideHours, `${cfg.trading_start_time}–${cfg.entry_cutoff_time}`);
+      addCheck("operation_window", "Janela operacional", insideHours, `${cfg.trading_start_time}–${cfg.entry_cutoff_time}`);
+      addCheck("force_close_window", "Janela zeragem", !forceClose, `zeragem ${cfg.force_close_time}`);
+      addCheck("valid_quote", "Cotação válida", !invalidMt5, invalidMt5 ?? `bid ${priceSrc.raw?.bid ?? "—"} · ask ${priceSrc.raw?.ask ?? "—"}`);
+      addCheck("spread", "Spread", Number(ctx.spread_pts ?? priceSrc.raw?.spread ?? 0) > 0, `${Number(ctx.spread_pts ?? priceSrc.raw?.spread ?? 0)} pts`, false);
+      addCheck("global_protection", "Proteção Global", !globalProtectionActive, globalProtectionReason);
 
       if (invalidMt5) {
         await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
@@ -603,6 +647,7 @@ export async function runB3SimulationTick(
           },
         });
         log.push({ mode, action: "skip", reason: "mt5_quote_invalid", detail: invalidMt5 });
+        finalizeAudit(invalidMt5);
         continue;
       }
 
