@@ -457,6 +457,50 @@ export async function runB3SimulationTick(
     }
   }
 
+  function auditCheck(key: string, label: string, ok: boolean, detail?: string, blocking = true) {
+    return { key, label, status: ok ? "OK" : "NÃO", ok, detail: detail ?? null, blocking };
+  }
+
+  function normalizeModeConfig(cfgRow: any) {
+    return {
+      enabled: cfgRow.enabled !== false,
+      volatility: Number(cfgRow.max_volatility_pct),
+      score: Number(cfgRow.min_score),
+      confidence: Number(cfgRow.min_confidence),
+      min_approve_votes: Number(cfgRow.min_approve_votes),
+      gain: Number(cfgRow.gain_pts),
+      stop: Number(cfgRow.stop_pts),
+      contracts: Number(cfgRow.max_contracts),
+      daily_loss: Number(cfgRow.daily_loss_limit_brl),
+      daily_target: Number(cfgRow.daily_gain_target_brl),
+      trading_start_time: String(cfgRow.trading_start_time),
+      entry_cutoff_time: String(cfgRow.entry_cutoff_time),
+      force_close_time: String(cfgRow.force_close_time),
+    };
+  }
+
+  function configComparison(cfgRow: any, loaded: any) {
+    const saved = normalizeModeConfig(cfgRow);
+    const keys = ["volatility", "score", "confidence", "gain", "stop", "contracts", "daily_loss", "daily_target", "trading_start_time", "entry_cutoff_time", "force_close_time"];
+    const fields: Record<string, any> = {};
+    for (const key of keys) {
+      const screen = (saved as any)[key];
+      const motor = (loaded as any)[key];
+      fields[key] = { screen, motor, matches: String(screen) === String(motor) };
+    }
+    return { screen: saved, motor: loaded, fields, mismatch_count: Object.values(fields).filter((v: any) => !v.matches).length };
+  }
+
+  function finalReasonFromDecision(decision: any, committee: B3CommitteeSettings) {
+    if (decision.final === "approved") return `Setup ${decision.side === "buy" ? "BUY" : "SELL"} aprovado.`;
+    if (decision.final === "blocked") return decision.vetoes?.length ? `Bloqueado pelo comitê: ${decision.vetoes.join(" | ")}` : "Proteção global ou veto do comitê.";
+    if (Number(decision.score) < Number(committee.min_score)) return "Score insuficiente.";
+    if (Number(decision.avg_confidence) < Number(committee.min_confidence)) return "Confiança insuficiente.";
+    if (Number(decision.approve_votes) < Number(committee.min_approve_votes)) return "Votos insuficientes no comitê.";
+    if (decision.final === "rejected") return "Nenhum setup encontrado — agentes rejeitaram o sinal.";
+    return "Nenhum setup encontrado.";
+  }
+
 
   for (let i = 0; i < ticks; i++) {
     const now = new Date();
