@@ -511,6 +511,24 @@ export async function runB3SimulationTick(
     const ctx = priceSrc.ctx;
     const invalidMt5 = mt5InvalidReason(priceSrc);
     await invalidateLegacyOrdersForMt5(priceSrc);
+    const macroBlock = (macros ?? []).find((m: any) => {
+      const a = new Date(m.block_start).getTime();
+      const b = new Date(m.block_end).getTime();
+      return now.getTime() >= a && now.getTime() <= b;
+    });
+    const globalProtectionActive = Boolean(invalidMt5 || macroBlock);
+    const globalProtectionReason = invalidMt5
+      ? invalidMt5
+      : macroBlock
+      ? `Evento macro ativo: ${macroBlock.name}`
+      : "Inativa";
+    const snapshotExtra: any = { ema9: ctx.ema9, ema21: ctx.ema21, rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
+      momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase,
+      price_source: priceSrc.source, quote_age_s: priceSrc.quote_age_s, quote_symbol: priceSrc.quote_symbol,
+      bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last,
+      provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
+      mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls,
+      global_protection: { active: globalProtectionActive, reason: globalProtectionReason } };
     const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
       .insert({
         simulation_run_id: runId, user_id: userId, symbol: "WIN",
@@ -526,23 +544,35 @@ export async function runB3SimulationTick(
         quote_ask: priceSrc.raw?.ask ?? null,
         quote_last: priceSrc.raw?.last ?? null,
         provider_name: priceSrc.provider_name,
-        extra: { ema9: ctx.ema9, ema21: ctx.ema21, rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
-          momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase,
-          price_source: priceSrc.source, quote_age_s: priceSrc.quote_age_s, quote_symbol: priceSrc.quote_symbol,
-          bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last,
-          provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
-          mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls },
+        extra: snapshotExtra,
       }).select("id").single();
     if (sErr) throw sErr;
 
 
-    const macroBlock = (macros ?? []).find((m: any) => {
-      const a = new Date(m.block_start).getTime();
-      const b = new Date(m.block_end).getTime();
-      return now.getTime() >= a && now.getTime() <= b;
-    });
-
     const intendedSide: B3Side = ctx.ema9 >= ctx.ema21 ? "buy" : "sell";
+    const tickAudit: any = {
+      snapshot_id: snapIns.id,
+      tick_index: i + 1,
+      timestamp: now.toISOString(),
+      source: priceSrc.source,
+      provider_name: priceSrc.provider_name,
+      last_tick: {
+        bid: priceSrc.raw?.bid ?? null,
+        ask: priceSrc.raw?.ask ?? null,
+        last: priceSrc.raw?.last ?? null,
+        spread: priceSrc.raw?.spread ?? ctx.spread_pts ?? null,
+        tick_ts: priceSrc.raw?.tick_ts ?? null,
+        age_s: priceSrc.quote_age_s,
+        server: priceSrc.server,
+        symbol: priceSrc.quote_symbol,
+      },
+      global_protection: {
+        status: globalProtectionActive ? "Ativa" : "Inativa",
+        active: globalProtectionActive,
+        reason: globalProtectionReason,
+      },
+      modes: [] as any[],
+    };
 
     for (const mode of MODES) {
       const m = modeByName[mode];
