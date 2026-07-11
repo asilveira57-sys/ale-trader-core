@@ -377,12 +377,12 @@ function EngineDiagnosticPanel({ detail }: { detail: any }) {
         ) : (
           <>
             <div className="grid gap-2 md:grid-cols-6 text-xs">
-              <Metric label="Último tick" value={audit.last_tick?.tick_ts ? new Date(audit.last_tick.tick_ts).toLocaleTimeString("pt-BR") : "—"} />
-              <Metric label="Bid" value={audit.last_tick?.bid != null ? NUM(Number(audit.last_tick.bid)) : "—"} />
-              <Metric label="Ask" value={audit.last_tick?.ask != null ? NUM(Number(audit.last_tick.ask)) : "—"} />
-              <Metric label="Último" value={audit.last_tick?.last != null ? NUM(Number(audit.last_tick.last)) : "—"} />
-              <Metric label="Servidor" value={audit.last_tick?.server ?? "—"} />
-              <Metric label="Símbolo" value={audit.last_tick?.symbol ?? "—"} />
+              <DiagnosticMetric label="Último tick" value={audit.last_tick?.tick_ts ? new Date(audit.last_tick.tick_ts).toLocaleTimeString("pt-BR") : "—"} />
+              <DiagnosticMetric label="Bid" value={audit.last_tick?.bid != null ? NUM(Number(audit.last_tick.bid)) : "—"} />
+              <DiagnosticMetric label="Ask" value={audit.last_tick?.ask != null ? NUM(Number(audit.last_tick.ask)) : "—"} />
+              <DiagnosticMetric label="Último" value={audit.last_tick?.last != null ? NUM(Number(audit.last_tick.last)) : "—"} />
+              <DiagnosticMetric label="Servidor" value={audit.last_tick?.server ?? "—"} />
+              <DiagnosticMetric label="Símbolo" value={audit.last_tick?.symbol ?? "—"} />
             </div>
             <div className="rounded-md border border-border/60 p-3 flex flex-wrap items-center justify-between gap-2 text-sm">
               <div>
@@ -444,6 +444,15 @@ function EngineDiagnosticPanel({ detail }: { detail: any }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function DiagnosticMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border/60 p-2">
+      <div className="text-[10px] uppercase text-muted-foreground">{label}</div>
+      <div className="font-mono">{value}</div>
+    </div>
   );
 }
 
