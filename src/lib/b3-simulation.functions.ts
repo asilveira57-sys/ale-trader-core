@@ -457,6 +457,50 @@ export async function runB3SimulationTick(
     }
   }
 
+  function auditCheck(key: string, label: string, ok: boolean, detail?: string, blocking = true) {
+    return { key, label, status: ok ? "OK" : "NÃO", ok, detail: detail ?? null, blocking };
+  }
+
+  function normalizeModeConfig(cfgRow: any) {
+    return {
+      enabled: cfgRow.enabled !== false,
+      volatility: Number(cfgRow.max_volatility_pct),
+      score: Number(cfgRow.min_score),
+      confidence: Number(cfgRow.min_confidence),
+      min_approve_votes: Number(cfgRow.min_approve_votes),
+      gain: Number(cfgRow.gain_pts),
+      stop: Number(cfgRow.stop_pts),
+      contracts: Number(cfgRow.max_contracts),
+      daily_loss: Number(cfgRow.daily_loss_limit_brl),
+      daily_target: Number(cfgRow.daily_gain_target_brl),
+      trading_start_time: String(cfgRow.trading_start_time),
+      entry_cutoff_time: String(cfgRow.entry_cutoff_time),
+      force_close_time: String(cfgRow.force_close_time),
+    };
+  }
+
+  function configComparison(cfgRow: any, loaded: any) {
+    const saved = normalizeModeConfig(cfgRow);
+    const keys = ["volatility", "score", "confidence", "gain", "stop", "contracts", "daily_loss", "daily_target", "trading_start_time", "entry_cutoff_time", "force_close_time"];
+    const fields: Record<string, any> = {};
+    for (const key of keys) {
+      const screen = (saved as any)[key];
+      const motor = (loaded as any)[key];
+      fields[key] = { screen, motor, matches: String(screen) === String(motor) };
+    }
+    return { screen: saved, motor: loaded, fields, mismatch_count: Object.values(fields).filter((v: any) => !v.matches).length };
+  }
+
+  function finalReasonFromDecision(decision: any, committee: B3CommitteeSettings) {
+    if (decision.final === "approved") return `Setup ${decision.side === "buy" ? "BUY" : "SELL"} aprovado.`;
+    if (decision.final === "blocked") return decision.vetoes?.length ? `Bloqueado pelo comitê: ${decision.vetoes.join(" | ")}` : "Proteção global ou veto do comitê.";
+    if (Number(decision.score) < Number(committee.min_score)) return "Score insuficiente.";
+    if (Number(decision.avg_confidence) < Number(committee.min_confidence)) return "Confiança insuficiente.";
+    if (Number(decision.approve_votes) < Number(committee.min_approve_votes)) return "Votos insuficientes no comitê.";
+    if (decision.final === "rejected") return "Nenhum setup encontrado — agentes rejeitaram o sinal.";
+    return "Nenhum setup encontrado.";
+  }
+
 
   for (let i = 0; i < ticks; i++) {
     const now = new Date();
@@ -467,6 +511,24 @@ export async function runB3SimulationTick(
     const ctx = priceSrc.ctx;
     const invalidMt5 = mt5InvalidReason(priceSrc);
     await invalidateLegacyOrdersForMt5(priceSrc);
+    const macroBlock = (macros ?? []).find((m: any) => {
+      const a = new Date(m.block_start).getTime();
+      const b = new Date(m.block_end).getTime();
+      return now.getTime() >= a && now.getTime() <= b;
+    });
+    const globalProtectionActive = Boolean(invalidMt5 || macroBlock);
+    const globalProtectionReason = invalidMt5
+      ? invalidMt5
+      : macroBlock
+      ? `Evento macro ativo: ${macroBlock.name}`
+      : "Inativa";
+    const snapshotExtra: any = { ema9: ctx.ema9, ema21: ctx.ema21, rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
+      momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase,
+      price_source: priceSrc.source, quote_age_s: priceSrc.quote_age_s, quote_symbol: priceSrc.quote_symbol,
+      bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last,
+      provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
+      mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls,
+      global_protection: { active: globalProtectionActive, reason: globalProtectionReason } };
     const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
       .insert({
         simulation_run_id: runId, user_id: userId, symbol: "WIN",
@@ -482,29 +544,85 @@ export async function runB3SimulationTick(
         quote_ask: priceSrc.raw?.ask ?? null,
         quote_last: priceSrc.raw?.last ?? null,
         provider_name: priceSrc.provider_name,
-        extra: { ema9: ctx.ema9, ema21: ctx.ema21, rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
-          momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase,
-          price_source: priceSrc.source, quote_age_s: priceSrc.quote_age_s, quote_symbol: priceSrc.quote_symbol,
-          bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last,
-          provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
-          mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls },
+        extra: snapshotExtra,
       }).select("id").single();
     if (sErr) throw sErr;
 
 
-    const macroBlock = (macros ?? []).find((m: any) => {
-      const a = new Date(m.block_start).getTime();
-      const b = new Date(m.block_end).getTime();
-      return now.getTime() >= a && now.getTime() <= b;
-    });
-
     const intendedSide: B3Side = ctx.ema9 >= ctx.ema21 ? "buy" : "sell";
+    const tickAudit: any = {
+      snapshot_id: snapIns.id,
+      tick_index: i + 1,
+      timestamp: now.toISOString(),
+      source: priceSrc.source,
+      provider_name: priceSrc.provider_name,
+      last_tick: {
+        bid: priceSrc.raw?.bid ?? null,
+        ask: priceSrc.raw?.ask ?? null,
+        last: priceSrc.raw?.last ?? null,
+        spread: priceSrc.raw?.spread ?? ctx.spread_pts ?? null,
+        tick_ts: priceSrc.raw?.tick_ts ?? null,
+        age_s: priceSrc.quote_age_s,
+        server: priceSrc.server,
+        symbol: priceSrc.quote_symbol,
+      },
+      global_protection: {
+        status: globalProtectionActive ? "Ativa" : "Inativa",
+        active: globalProtectionActive,
+        reason: globalProtectionReason,
+      },
+      modes: [] as any[],
+    };
 
     for (const mode of MODES) {
       const m = modeByName[mode];
       if (!m) continue;
       const cfg = settingsByMode[mode];
       const realizedToday = Number(realizedTodayByMode[mode] ?? 0);
+      const startMin = hhmmToMin(cfg.trading_start_time);
+      const cutoffMin = hhmmToMin(cfg.entry_cutoff_time);
+      const forceMin = hhmmToMin(cfg.force_close_time);
+      const insideHours = cur >= startMin && cur <= cutoffMin;
+      const forceClose = cur >= forceMin || cur < startMin;
+      const openList = await getOpen();
+      const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
+      const loadedConfig = normalizeModeConfig(cfg);
+      const cfgCompare = configComparison(cfg, loadedConfig);
+      const checks: any[] = [];
+      const addCheck = (key: string, label: string, ok: boolean, detail?: string, blocking = true) => checks.push(auditCheck(key, label, ok, detail, blocking));
+      const finalizeAudit = (finalReason: string, extra: Record<string, any> = {}) => {
+        const firstStop = checks.find((c) => c.blocking && !c.ok);
+        tickAudit.modes.push({
+          mode,
+          timestamp: now.toISOString(),
+          last_tick: tickAudit.last_tick,
+          last_analysis: extra.last_analysis ?? null,
+          last_score: extra.last_score ?? null,
+          last_confidence: extra.last_confidence ?? null,
+          last_setup: extra.last_setup ?? "Nenhum setup aprovado",
+          last_refusal_reason: finalReason,
+          first_stop: firstStop ? { key: firstStop.key, label: firstStop.label, detail: firstStop.detail } : null,
+          config_loaded: cfgCompare.motor,
+          config_saved: cfgCompare.screen,
+          config_comparison: cfgCompare.fields,
+          config_mismatch_count: cfgCompare.mismatch_count,
+          protection_global: tickAudit.global_protection,
+          checks,
+          signals: extra.signals ?? { evaluated_side: intendedSide, buy: false, sell: false },
+          committee: extra.committee ?? null,
+        });
+      };
+
+      addCheck("tick_received", "Tick recebido", priceSrc.source !== "mt5_xp_demo" || Boolean(priceSrc.raw), priceSrc.raw?.tick_ts ? `tick ${priceSrc.raw.tick_ts}` : "sem tick MT5");
+      addCheck("mt5_server", "Servidor MT5", priceSrc.source !== "mt5_xp_demo" || priceSrc.server === B3_MT5_SERVER, priceSrc.server ? `recebido ${priceSrc.server}` : "sem servidor");
+      addCheck("mt5_symbol", "Símbolo WINQ26", priceSrc.source !== "mt5_xp_demo" || priceSrc.quote_symbol === B3_MT5_SYMBOL, priceSrc.quote_symbol ? `recebido ${priceSrc.quote_symbol}` : "sem símbolo");
+      addCheck("market_open", "Mercado aberto", ctx.session_phase !== "fora", `fase ${ctx.session_phase}`);
+      addCheck("time_allowed", "Horário permitido", insideHours, `${cfg.trading_start_time}–${cfg.entry_cutoff_time}`);
+      addCheck("operation_window", "Janela operacional", insideHours, `${cfg.trading_start_time}–${cfg.entry_cutoff_time}`);
+      addCheck("force_close_window", "Janela zeragem", !forceClose, `zeragem ${cfg.force_close_time}`);
+      addCheck("valid_quote", "Cotação válida", !invalidMt5, invalidMt5 ?? `bid ${priceSrc.raw?.bid ?? "—"} · ask ${priceSrc.raw?.ask ?? "—"}`);
+      addCheck("spread", "Spread", Number(ctx.spread_pts ?? priceSrc.raw?.spread ?? 0) > 0, `${Number(ctx.spread_pts ?? priceSrc.raw?.spread ?? 0)} pts`, false);
+      addCheck("global_protection", "Proteção Global", !globalProtectionActive, globalProtectionReason);
 
       if (invalidMt5) {
         await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
@@ -529,6 +647,7 @@ export async function runB3SimulationTick(
           },
         });
         log.push({ mode, action: "skip", reason: "mt5_quote_invalid", detail: invalidMt5 });
+        finalizeAudit(invalidMt5);
         continue;
       }
 
@@ -653,21 +772,22 @@ export async function runB3SimulationTick(
       }
       // ────────────────── fim B3 Protection ──────────────────
 
+      addCheck("mode_enabled", "Robô habilitado", cfg.enabled !== false, cfg.enabled === false ? "Modo desativado nas configurações." : "habilitado");
+      addCheck("volatility", "Volatilidade", ctx.volatility_pct <= Number(cfg.max_volatility_pct), `${ctx.volatility_pct.toFixed(2)}% / limite ${Number(cfg.max_volatility_pct).toFixed(2)}%`);
+      addCheck("max_trades", "Máximo trades", !open && 1 <= Number(cfg.max_contracts), open ? "Já existe posição aberta neste robô." : `1 / ${Number(cfg.max_contracts)} contrato(s)`);
+      addCheck("daily_loss", "Loss diário", realizedToday > -Number(cfg.daily_loss_limit_brl), `${realizedToday.toFixed(2)} / -${Number(cfg.daily_loss_limit_brl).toFixed(2)} BRL`);
+      addCheck("daily_target", "Meta diária", realizedToday < Number(cfg.daily_gain_target_brl) || protDec.allow_new_entry, `${realizedToday.toFixed(2)} / ${Number(cfg.daily_gain_target_brl).toFixed(2)} BRL`);
+      addCheck("position_open", "Posição aberta", !open, open ? `ordem ${open.id}` : "NÃO", false);
+      addCheck("protection_engine", "Proteção diária", protDec.allow_new_entry, protDec.next.protection_block_reason ?? protDec.next.protection_state);
+
       if (cfg.enabled === false) {
         await recordStatusIfChanged(mode, m, "pausado", "paused",
           { pnl: realizedToday, message: "Modo desativado nas configurações." });
         log.push({ mode, action: "skip", reason: "modo_desativado" });
+        finalizeAudit("Robô desativado nas configurações.");
         continue;
       }
 
-      const startMin = hhmmToMin(cfg.trading_start_time);
-      const cutoffMin = hhmmToMin(cfg.entry_cutoff_time);
-      const forceMin = hhmmToMin(cfg.force_close_time);
-      const insideHours = cur >= startMin && cur <= cutoffMin;
-      const forceClose = cur >= forceMin || cur < startMin;
-
-      const openList = await getOpen();
-      const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
       if (open) {
         if (priceSrc.source === "mt5_xp_demo" && open.quote_source !== "MT5 XP DEMO") {
           await supabase.from("b3_simulation_orders").update({
@@ -676,6 +796,7 @@ export async function runB3SimulationTick(
           }).eq("id", open.id).eq("user_id", userId);
           openOrdersCache = null;
           log.push({ mode, action: "cancel_legacy_open", reason: "legacy_price_state_invalidated" });
+          finalizeAudit("Posição legada aberta foi invalidada antes de nova decisão.");
           continue;
         }
         const dirSign = open.side === "buy" ? 1 : -1;
@@ -697,6 +818,7 @@ export async function runB3SimulationTick(
             diagnostic_payload: { function: "runB3SimulationTick.markToMarket", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
           log.push({ mode, action: "skip", reason: "price_guard", message: (e as Error).message });
+          finalizeAudit((e as Error).message);
           continue;
         }
         const markPrice = markAudit.execution_price;
@@ -715,6 +837,10 @@ export async function runB3SimulationTick(
                 related_order_id: open.id, message: `Stop da operação atingido (${movePts.toFixed(0)} pts).` });
           }
           log.push({ mode, action: "close", reason, price: markPrice, source: markAudit.quote_source, origin: markAudit.execution_price_origin });
+          finalizeAudit(`Posição existente encerrada por ${reason}.`, {
+            last_setup: `Posição ${open.side.toUpperCase()} em gestão`,
+            signals: { evaluated_side: open.side, buy: false, sell: false },
+          });
           continue;
         }
       }
@@ -724,6 +850,7 @@ export async function runB3SimulationTick(
         await recordStatusIfChanged(mode, m, protDec.next.protection_state, `protection:${protDec.next.protection_state}`,
           { pnl: realizedToday, message: protDec.next.protection_block_reason ?? "Bloqueio pós-meta." });
         log.push({ mode, action: "skip", reason: protDec.next.protection_state });
+        finalizeAudit(protDec.next.protection_block_reason ?? "Proteção global/diária bloqueou nova entrada.");
         continue;
       }
 
@@ -759,6 +886,7 @@ export async function runB3SimulationTick(
 
       if (!insideHours || forceClose) {
         log.push({ mode, action: "skip", reason: !insideHours ? "fora_horario" : "zeragem" });
+        finalizeAudit(!insideHours ? "Fora da janela operacional." : "Janela de zeragem obrigatória.");
         continue;
       }
       if (macroBlock) {
@@ -766,9 +894,16 @@ export async function runB3SimulationTick(
         await supabase.from("b3_simulation_modes")
           .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
         m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        finalizeAudit(`Proteção global: evento macro ${macroBlock.name}.`);
         continue;
       }
-      if (open) continue;
+      if (open) {
+        finalizeAudit("Posição já aberta — motor apenas gerencia stop/gain/zeragem.", {
+          last_setup: `Posição ${open.side.toUpperCase()} aberta`,
+          signals: { evaluated_side: open.side, buy: false, sell: false },
+        });
+        continue;
+      }
 
       // Se protegido/observando, elevamos o daily_gain_target passado ao Risco
       // para não bloquear por "meta atingida" — a decisão de continuar já foi tomada aqui.
@@ -791,6 +926,7 @@ export async function runB3SimulationTick(
           .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
         m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
         log.push({ mode, action: "skip", reason: "volatilidade" });
+        finalizeAudit("Bloqueado por volatilidade.");
         continue;
       }
 
@@ -802,6 +938,11 @@ export async function runB3SimulationTick(
         min_score: Number(cfg.min_score),
       };
       const decision = buildB3Decision(votes, intendedSide, committee);
+      addCheck("score", "Score", Number(decision.score) >= Number(cfg.min_score), `${decision.score.toFixed(0)} / mínimo ${Number(cfg.min_score).toFixed(0)}`);
+      addCheck("confidence", "Confiança", Number(decision.avg_confidence) >= Number(cfg.min_confidence), `${decision.avg_confidence.toFixed(0)} / mínimo ${Number(cfg.min_confidence).toFixed(0)}`);
+      addCheck("committee", "Comitê", decision.final === "approved", decision.justification);
+      addCheck("signal_buy", "Sinal BUY", decision.final === "approved" && intendedSide === "buy", intendedSide === "buy" ? decision.final : "lado avaliado SELL", false);
+      addCheck("signal_sell", "Sinal SELL", decision.final === "approved" && intendedSide === "sell", intendedSide === "sell" ? decision.final : "lado avaliado BUY", false);
 
       const voteRows = votes.map(v => ({
         simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
@@ -831,6 +972,14 @@ export async function runB3SimulationTick(
             diagnostic_payload: { function: "runB3SimulationTick.openOrder", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
           log.push({ mode, action: "blocked", reason: "price_guard", message: (e as Error).message });
+          finalizeAudit((e as Error).message, {
+            last_analysis: decision.justification,
+            last_score: decision.score,
+            last_confidence: decision.avg_confidence,
+            last_setup: `Setup ${intendedSide.toUpperCase()} aprovado, bloqueado no preço`,
+            signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
+            committee: decision,
+          });
           continue;
         }
         if (priceSrc.source !== "mt5_xp_demo") {
@@ -862,14 +1011,36 @@ export async function runB3SimulationTick(
         m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
         m.contracts_traded = (Number(m.contracts_traded) || 0) + 1;
         log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin });
+        finalizeAudit(`Setup ${intendedSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
+          last_analysis: decision.justification,
+          last_score: decision.score,
+          last_confidence: decision.avg_confidence,
+          last_setup: `Setup ${intendedSide.toUpperCase()}`,
+          signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
+          committee: decision,
+        });
       } else {
         const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
         await supabase.from("b3_simulation_modes")
           .update({ [field]: (Number(m[field]) || 0) + 1 }).eq("id", m.id);
         m[field] = (Number(m[field]) || 0) + 1;
         log.push({ mode, action: "reject", final: decision.final, score: decision.score });
+        finalizeAudit(finalReasonFromDecision(decision, committee), {
+          last_analysis: decision.justification,
+          last_score: decision.score,
+          last_confidence: decision.avg_confidence,
+          last_setup: "Nenhum setup aprovado",
+          signals: { evaluated_side: intendedSide, buy: false, sell: false },
+          committee: decision,
+        });
       }
     }
+    snapshotExtra.engine_audit = tickAudit;
+    await supabase.from("b3_simulation_market_snapshots")
+      .update({ extra: snapshotExtra })
+      .eq("id", snapIns.id)
+      .eq("user_id", userId);
+    log.push({ action: "engine_audit", snapshot_id: snapIns.id, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
   }
 
   return { ok: true, processed: ticks, log: [{ action: "provider_diagnostic", ...providerStats }, ...log] };
@@ -880,6 +1051,32 @@ export const tickB3Simulation = createServerFn({ method: "POST" })
   .inputValidator((d: { run_id: string; ticks?: number }) => d)
   .handler(async ({ data, context }) => {
     return runB3SimulationTick(context.supabase, context.userId, data.run_id, data.ticks ?? 1);
+  });
+
+export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: runs } = await (supabase as any).from("b3_simulation_runs")
+      .select("*").eq("user_id", userId).in("status", ["running", "paused"])
+      .order("started_at", { ascending: false }).limit(1);
+    const run = runs?.[0] ?? null;
+    if (!run) return { run: null, audit: null, snapshot: null, settings: [], price_source: null };
+    const [{ data: snapshot }, { data: settings }, { data: tradeSettings }] = await Promise.all([
+      (supabase as any).from("b3_simulation_market_snapshots").select("*")
+        .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1).maybeSingle(),
+      (supabase as any).from("b3_simulation_mode_settings").select("*")
+        .eq("simulation_run_id", run.id).eq("user_id", userId),
+      (supabase as any).from("b3_trading_settings").select("price_source")
+        .eq("user_id", userId).maybeSingle(),
+    ]);
+    return {
+      run,
+      snapshot: snapshot ?? null,
+      audit: (snapshot?.extra as any)?.engine_audit ?? null,
+      settings: settings ?? [],
+      price_source: tradeSettings?.price_source ?? "csv",
+    };
   });
 
 

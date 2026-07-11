@@ -252,6 +252,10 @@ export function SimComparePanel() {
         <StopsAndBlocksPanel data={reportQ.data} />
       )}
 
+      {detail && (
+        <EngineDiagnosticPanel detail={detail} />
+      )}
+
 
       {/* Ranking + sugestão */}
       {detail && winnerCandidate && (
@@ -340,6 +344,115 @@ export function SimComparePanel() {
       <MacroEventsCard />
     </div>
     </TooltipProvider>
+  );
+}
+
+export function EngineDiagnosticPanel({ detail }: { detail: any }) {
+  const audit = detail?.snapshots?.[0]?.extra?.engine_audit;
+  const modes = audit?.modes ?? [];
+  const cfgLabels: Record<string, string> = {
+    volatility: "Volatilidade",
+    score: "Score",
+    confidence: "Confiança",
+    gain: "Gain",
+    stop: "Stop",
+    contracts: "Contratos",
+    daily_loss: "Loss diário",
+    daily_target: "Meta diária",
+    trading_start_time: "Início",
+    entry_cutoff_time: "Corte",
+    force_close_time: "Zeragem",
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ShieldAlert className="w-4 h-4 text-amber-400" /> Diagnóstico do Motor
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!audit ? (
+          <p className="text-xs text-muted-foreground">Nenhuma auditoria registrada ainda. Rode 1 tick da simulação para registrar todas as validações.</p>
+        ) : (
+          <>
+            <div className="grid gap-2 md:grid-cols-6 text-xs">
+              <DiagnosticMetric label="Último tick" value={audit.last_tick?.tick_ts ? new Date(audit.last_tick.tick_ts).toLocaleTimeString("pt-BR") : "—"} />
+              <DiagnosticMetric label="Bid" value={audit.last_tick?.bid != null ? NUM(Number(audit.last_tick.bid)) : "—"} />
+              <DiagnosticMetric label="Ask" value={audit.last_tick?.ask != null ? NUM(Number(audit.last_tick.ask)) : "—"} />
+              <DiagnosticMetric label="Último" value={audit.last_tick?.last != null ? NUM(Number(audit.last_tick.last)) : "—"} />
+              <DiagnosticMetric label="Servidor" value={audit.last_tick?.server ?? "—"} />
+              <DiagnosticMetric label="Símbolo" value={audit.last_tick?.symbol ?? "—"} />
+            </div>
+            <div className="rounded-md border border-border/60 p-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+              <div>
+                <p className="font-medium">Proteção Global</p>
+                <p className="text-xs text-muted-foreground">{audit.global_protection?.reason ?? "—"}</p>
+              </div>
+              <Badge variant={audit.global_protection?.active ? "destructive" : "outline"}>
+                {audit.global_protection?.status ?? "Inativa"}
+              </Badge>
+            </div>
+            <div className="grid gap-3">
+              {modes.map((m: any) => {
+                const checks = m.checks ?? [];
+                const cfg = m.config_comparison ?? {};
+                return (
+                  <div key={m.mode} className="rounded-md border border-border/60 p-3 space-y-3">
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                      <div>
+                        <Badge variant="outline" className={`text-[10px] uppercase ${MODE_COLOR[m.mode as Mode]}`}>{m.mode}</Badge>
+                        <p className="mt-2 text-sm font-medium">Motivo final: {m.last_refusal_reason ?? "—"}</p>
+                        {m.first_stop && <p className="text-xs text-amber-300">Primeira trava: {m.first_stop.label} — {m.first_stop.detail ?? "sem detalhe"}</p>}
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        <p>{m.timestamp ? new Date(m.timestamp).toLocaleString("pt-BR") : "—"}</p>
+                        <p>Score {m.last_score != null ? NUM(Number(m.last_score), 0) : "—"} · Conf. {m.last_confidence != null ? NUM(Number(m.last_confidence), 0) : "—"}</p>
+                        <p>Setup: {m.last_setup ?? "—"}</p>
+                      </div>
+                    </div>
+                    <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4 text-xs">
+                      {checks.map((c: any) => (
+                        <div key={c.key} className="flex items-center justify-between gap-2 rounded border border-border/40 px-2 py-1">
+                          <span className="text-muted-foreground">{c.label}</span>
+                          <Badge variant={c.ok ? "outline" : c.blocking ? "destructive" : "secondary"} className="text-[10px]">{c.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="text-muted-foreground border-b border-border/40">
+                          <tr className="text-left"><th className="py-1 pr-2">Configuração</th><th>Tela</th><th>Motor</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(cfg).map(([key, value]: [string, any]) => (
+                            <tr key={key} className="border-b border-border/20">
+                              <td className="py-1 pr-2">{cfgLabels[key] ?? key}</td>
+                              <td className="font-mono">{String(value?.screen ?? "—")}</td>
+                              <td className="font-mono">{String(value?.motor ?? "—")}</td>
+                              <td><Badge variant={value?.matches ? "outline" : "destructive"} className="text-[10px]">{value?.matches ? "OK" : "DIFERENTE"}</Badge></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DiagnosticMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border/60 p-2">
+      <div className="text-[10px] uppercase text-muted-foreground">{label}</div>
+      <div className="font-mono">{value}</div>
+    </div>
   );
 }
 
