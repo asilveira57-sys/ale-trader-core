@@ -772,21 +772,22 @@ export async function runB3SimulationTick(
       }
       // ────────────────── fim B3 Protection ──────────────────
 
+      addCheck("mode_enabled", "Robô habilitado", cfg.enabled !== false, cfg.enabled === false ? "Modo desativado nas configurações." : "habilitado");
+      addCheck("volatility", "Volatilidade", ctx.volatility_pct <= Number(cfg.max_volatility_pct), `${ctx.volatility_pct.toFixed(2)}% / limite ${Number(cfg.max_volatility_pct).toFixed(2)}%`);
+      addCheck("max_trades", "Máximo trades", !open && 1 <= Number(cfg.max_contracts), open ? "Já existe posição aberta neste robô." : `1 / ${Number(cfg.max_contracts)} contrato(s)`);
+      addCheck("daily_loss", "Loss diário", realizedToday > -Number(cfg.daily_loss_limit_brl), `${realizedToday.toFixed(2)} / -${Number(cfg.daily_loss_limit_brl).toFixed(2)} BRL`);
+      addCheck("daily_target", "Meta diária", realizedToday < Number(cfg.daily_gain_target_brl) || protDec.allow_new_entry, `${realizedToday.toFixed(2)} / ${Number(cfg.daily_gain_target_brl).toFixed(2)} BRL`);
+      addCheck("position_open", "Posição aberta", !open, open ? `ordem ${open.id}` : "NÃO", false);
+      addCheck("protection_engine", "Proteção diária", protDec.allow_new_entry, protDec.next.protection_block_reason ?? protDec.next.protection_state);
+
       if (cfg.enabled === false) {
         await recordStatusIfChanged(mode, m, "pausado", "paused",
           { pnl: realizedToday, message: "Modo desativado nas configurações." });
         log.push({ mode, action: "skip", reason: "modo_desativado" });
+        finalizeAudit("Robô desativado nas configurações.");
         continue;
       }
 
-      const startMin = hhmmToMin(cfg.trading_start_time);
-      const cutoffMin = hhmmToMin(cfg.entry_cutoff_time);
-      const forceMin = hhmmToMin(cfg.force_close_time);
-      const insideHours = cur >= startMin && cur <= cutoffMin;
-      const forceClose = cur >= forceMin || cur < startMin;
-
-      const openList = await getOpen();
-      const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
       if (open) {
         if (priceSrc.source === "mt5_xp_demo" && open.quote_source !== "MT5 XP DEMO") {
           await supabase.from("b3_simulation_orders").update({
