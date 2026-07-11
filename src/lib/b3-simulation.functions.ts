@@ -1053,6 +1053,32 @@ export const tickB3Simulation = createServerFn({ method: "POST" })
     return runB3SimulationTick(context.supabase, context.userId, data.run_id, data.ticks ?? 1);
   });
 
+export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: runs } = await (supabase as any).from("b3_simulation_runs")
+      .select("*").eq("user_id", userId).in("status", ["running", "paused"])
+      .order("started_at", { ascending: false }).limit(1);
+    const run = runs?.[0] ?? null;
+    if (!run) return { run: null, audit: null, snapshot: null, settings: [], price_source: null };
+    const [{ data: snapshot }, { data: settings }, { data: tradeSettings }] = await Promise.all([
+      (supabase as any).from("b3_simulation_market_snapshots").select("*")
+        .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1).maybeSingle(),
+      (supabase as any).from("b3_simulation_mode_settings").select("*")
+        .eq("simulation_run_id", run.id).eq("user_id", userId),
+      (supabase as any).from("b3_trading_settings").select("price_source")
+        .eq("user_id", userId).maybeSingle(),
+    ]);
+    return {
+      run,
+      snapshot: snapshot ?? null,
+      audit: (snapshot?.extra as any)?.engine_audit ?? null,
+      settings: settings ?? [],
+      price_source: tradeSettings?.price_source ?? "csv",
+    };
+  });
+
 
 async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string) {
   if (exitAudit.quote_source === "MT5 XP DEMO") assertB3StrictMt5ExecutionAudit(exitAudit, "closeOrder");
