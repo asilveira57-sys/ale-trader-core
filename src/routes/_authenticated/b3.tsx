@@ -25,7 +25,8 @@ import {
   runB3Committee,
   setB3PriceSource,
 } from "@/lib/b3.functions";
-import { SimComparePanel } from "@/components/b3/SimComparePanel";
+import { getB3EngineDiagnostic } from "@/lib/b3-simulation.functions";
+import { EngineDiagnosticPanel, SimComparePanel } from "@/components/b3/SimComparePanel";
 import { SimLiveDashboard } from "@/components/b3/SimLiveDashboard";
 
 export const Route = createFileRoute("/_authenticated/b3")({
@@ -183,6 +184,7 @@ function B3Page() {
           <TabsTrigger value="committee"><Users className="w-4 h-4 mr-1" />Comitê</TabsTrigger>
           <TabsTrigger value="sim3"><Swords className="w-4 h-4 mr-1" />Simulação 3 Modos</TabsTrigger>
           <TabsTrigger value="live"><Activity className="w-4 h-4 mr-1" />Painel Ao Vivo</TabsTrigger>
+          <TabsTrigger value="diagnostic"><ShieldAlert className="w-4 h-4 mr-1" />Diagnóstico do Motor</TabsTrigger>
           <TabsTrigger value="report"><FileBarChart className="w-4 h-4 mr-1" />Relatório</TabsTrigger>
           <TabsTrigger value="settings"><SettingsIcon className="w-4 h-4 mr-1" />Configurações</TabsTrigger>
         </TabsList>
@@ -209,6 +211,9 @@ function B3Page() {
         <TabsContent value="live">
           <SimLiveDashboard />
         </TabsContent>
+        <TabsContent value="diagnostic">
+          <B3EngineDiagnosticTab />
+        </TabsContent>
         <TabsContent value="report">
           <Report orders={orders} settings={settings} />
         </TabsContent>
@@ -220,6 +225,30 @@ function B3Page() {
           />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function B3EngineDiagnosticTab() {
+  const getDiag = useServerFn(getB3EngineDiagnostic);
+  const q = useQuery({
+    queryKey: ["b3-engine-diagnostic"],
+    queryFn: () => getDiag(),
+    refetchInterval: 3000,
+  });
+  const data = q.data as any;
+  if (!data?.run) {
+    return (
+      <Card className="mt-3">
+        <CardContent className="pt-4 text-sm text-muted-foreground">
+          Nenhuma simulação ativa. Inicie uma simulação para auditar a decisão dos robôs.
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <div className="mt-3">
+      <EngineDiagnosticPanel detail={{ snapshots: data.snapshot ? [data.snapshot] : [] }} />
     </div>
   );
 }
