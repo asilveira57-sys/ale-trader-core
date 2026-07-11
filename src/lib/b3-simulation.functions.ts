@@ -796,6 +796,7 @@ export async function runB3SimulationTick(
           }).eq("id", open.id).eq("user_id", userId);
           openOrdersCache = null;
           log.push({ mode, action: "cancel_legacy_open", reason: "legacy_price_state_invalidated" });
+          finalizeAudit("Posição legada aberta foi invalidada antes de nova decisão.");
           continue;
         }
         const dirSign = open.side === "buy" ? 1 : -1;
@@ -817,6 +818,7 @@ export async function runB3SimulationTick(
             diagnostic_payload: { function: "runB3SimulationTick.markToMarket", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
           log.push({ mode, action: "skip", reason: "price_guard", message: (e as Error).message });
+          finalizeAudit((e as Error).message);
           continue;
         }
         const markPrice = markAudit.execution_price;
@@ -835,6 +837,10 @@ export async function runB3SimulationTick(
                 related_order_id: open.id, message: `Stop da operação atingido (${movePts.toFixed(0)} pts).` });
           }
           log.push({ mode, action: "close", reason, price: markPrice, source: markAudit.quote_source, origin: markAudit.execution_price_origin });
+          finalizeAudit(`Posição existente encerrada por ${reason}.`, {
+            last_setup: `Posição ${open.side.toUpperCase()} em gestão`,
+            signals: { evaluated_side: open.side, buy: false, sell: false },
+          });
           continue;
         }
       }
@@ -844,6 +850,7 @@ export async function runB3SimulationTick(
         await recordStatusIfChanged(mode, m, protDec.next.protection_state, `protection:${protDec.next.protection_state}`,
           { pnl: realizedToday, message: protDec.next.protection_block_reason ?? "Bloqueio pós-meta." });
         log.push({ mode, action: "skip", reason: protDec.next.protection_state });
+        finalizeAudit(protDec.next.protection_block_reason ?? "Proteção global/diária bloqueou nova entrada.");
         continue;
       }
 
@@ -879,6 +886,7 @@ export async function runB3SimulationTick(
 
       if (!insideHours || forceClose) {
         log.push({ mode, action: "skip", reason: !insideHours ? "fora_horario" : "zeragem" });
+        finalizeAudit(!insideHours ? "Fora da janela operacional." : "Janela de zeragem obrigatória.");
         continue;
       }
       if (macroBlock) {
@@ -886,9 +894,16 @@ export async function runB3SimulationTick(
         await supabase.from("b3_simulation_modes")
           .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
         m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        finalizeAudit(`Proteção global: evento macro ${macroBlock.name}.`);
         continue;
       }
-      if (open) continue;
+      if (open) {
+        finalizeAudit("Posição já aberta — motor apenas gerencia stop/gain/zeragem.", {
+          last_setup: `Posição ${open.side.toUpperCase()} aberta`,
+          signals: { evaluated_side: open.side, buy: false, sell: false },
+        });
+        continue;
+      }
 
       // Se protegido/observando, elevamos o daily_gain_target passado ao Risco
       // para não bloquear por "meta atingida" — a decisão de continuar já foi tomada aqui.
@@ -911,6 +926,7 @@ export async function runB3SimulationTick(
           .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
         m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
         log.push({ mode, action: "skip", reason: "volatilidade" });
+        finalizeAudit("Bloqueado por volatilidade.");
         continue;
       }
 
@@ -922,6 +938,11 @@ export async function runB3SimulationTick(
         min_score: Number(cfg.min_score),
       };
       const decision = buildB3Decision(votes, intendedSide, committee);
+      addCheck("score", "Score", Number(decision.score) >= Number(cfg.min_score), `${decision.score.toFixed(0)} / mínimo ${Number(cfg.min_score).toFixed(0)}`);
+      addCheck("confidence", "Confiança", Number(decision.avg_confidence) >= Number(cfg.min_confidence), `${decision.avg_confidence.toFixed(0)} / mínimo ${Number(cfg.min_confidence).toFixed(0)}`);
+      addCheck("committee", "Comitê", decision.final === "approved", decision.justification);
+      addCheck("signal_buy", "Sinal BUY", decision.final === "approved" && intendedSide === "buy", intendedSide === "buy" ? decision.final : "lado avaliado SELL", false);
+      addCheck("signal_sell", "Sinal SELL", decision.final === "approved" && intendedSide === "sell", intendedSide === "sell" ? decision.final : "lado avaliado BUY", false);
 
       const voteRows = votes.map(v => ({
         simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
@@ -951,6 +972,14 @@ export async function runB3SimulationTick(
             diagnostic_payload: { function: "runB3SimulationTick.openOrder", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
           log.push({ mode, action: "blocked", reason: "price_guard", message: (e as Error).message });
+          finalizeAudit((e as Error).message, {
+            last_analysis: decision.justification,
+            last_score: decision.score,
+            last_confidence: decision.avg_confidence,
+            last_setup: `Setup ${intendedSide.toUpperCase()} aprovado, bloqueado no preço`,
+            signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
+            committee: decision,
+          });
           continue;
         }
         if (priceSrc.source !== "mt5_xp_demo") {
@@ -982,14 +1011,36 @@ export async function runB3SimulationTick(
         m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
         m.contracts_traded = (Number(m.contracts_traded) || 0) + 1;
         log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin });
+        finalizeAudit(`Setup ${intendedSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
+          last_analysis: decision.justification,
+          last_score: decision.score,
+          last_confidence: decision.avg_confidence,
+          last_setup: `Setup ${intendedSide.toUpperCase()}`,
+          signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
+          committee: decision,
+        });
       } else {
         const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
         await supabase.from("b3_simulation_modes")
           .update({ [field]: (Number(m[field]) || 0) + 1 }).eq("id", m.id);
         m[field] = (Number(m[field]) || 0) + 1;
         log.push({ mode, action: "reject", final: decision.final, score: decision.score });
+        finalizeAudit(finalReasonFromDecision(decision, committee), {
+          last_analysis: decision.justification,
+          last_score: decision.score,
+          last_confidence: decision.avg_confidence,
+          last_setup: "Nenhum setup aprovado",
+          signals: { evaluated_side: intendedSide, buy: false, sell: false },
+          committee: decision,
+        });
       }
     }
+    snapshotExtra.engine_audit = tickAudit;
+    await supabase.from("b3_simulation_market_snapshots")
+      .update({ extra: snapshotExtra })
+      .eq("id", snapIns.id)
+      .eq("user_id", userId);
+    log.push({ action: "engine_audit", snapshot_id: snapIns.id, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
   }
 
   return { ok: true, processed: ticks, log: [{ action: "provider_diagnostic", ...providerStats }, ...log] };
