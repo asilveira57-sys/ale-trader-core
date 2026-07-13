@@ -6,12 +6,54 @@
 import { buildMockB3Context, type B3Context } from "./b3-committee.server";
 
 export type B3PriceSource = "csv" | "mt5_xp_demo";
+export type B3GuardMode = "validation" | "protected";
 
 const TICK = 5;
 export const B3_MT5_SYMBOL = "WINQ26";
 export const B3_MT5_SERVER = "XPMT5-DEMO";
-export const B3_MT5_TTL_SECONDS = 5;
+export const B3_MT5_ALLOWED_SERVERS = new Set(["XPMT5-DEMO", "XPMT5-PRD"]);
+export const B3_MT5_TTL_SECONDS = 15;
 export const B3_MT5_PRICE_DEVIATION_LIMIT = 2000;
+
+export interface B3GuardSettings {
+  mode: B3GuardMode;
+  ttl_seconds: number;
+  ttl_tolerance_seconds: number;
+  spread_max_points: number;
+  price_deviation_limit: number;
+  require_nonzero_volume: boolean;
+  require_nonzero_last: boolean;
+}
+
+export const B3_DEFAULT_GUARD: B3GuardSettings = {
+  mode: "validation",
+  ttl_seconds: 15,
+  ttl_tolerance_seconds: 30,
+  spread_max_points: 15,
+  price_deviation_limit: 2000,
+  require_nonzero_volume: false,
+  require_nonzero_last: false,
+};
+
+export interface B3GuardCheck {
+  rule: string;
+  label: string;
+  ok: boolean;
+  blocking: boolean;
+  observed: string | number | null;
+  limit: string | number | null;
+  message: string;
+}
+
+export interface B3GuardEvaluation {
+  ok: boolean;
+  first_block_reason: string | null;
+  checks: B3GuardCheck[];
+  settings: B3GuardSettings;
+  spread_pts: number | null;
+  spread_ticks: number | null;
+  tick_age_s: number | null;
+}
 
 export type B3QuoteSourceLabel = "MT5 XP DEMO" | "CSV legado" | "inválida" | "desconhecida";
 
