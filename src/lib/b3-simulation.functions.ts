@@ -579,6 +579,7 @@ export async function runB3SimulationTick(
         active: globalProtectionActive,
         reason: globalProtectionReason,
       },
+      tick_guard: snapshotExtra.tick_guard,
       modes: [] as any[],
     };
 
