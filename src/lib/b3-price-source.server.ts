@@ -349,11 +349,21 @@ export async function getB3PriceContext(
 
   const { data: settings } = await supabase
     .from("b3_trading_settings")
-    .select("price_source")
+    .select("price_source, mt5_guard_mode, mt5_tick_ttl_seconds, mt5_tick_ttl_tolerance_seconds, mt5_spread_max_points, mt5_price_deviation_limit, mt5_require_nonzero_volume, mt5_require_nonzero_last")
     .eq("user_id", userId)
     .maybeSingle();
   const source: B3PriceSource = (settings?.price_source as B3PriceSource) === "mt5_xp_demo"
     ? "mt5_xp_demo" : "csv";
+
+  const guard: B3GuardSettings = {
+    mode: ((settings?.mt5_guard_mode as B3GuardMode) === "protected" ? "protected" : "validation"),
+    ttl_seconds: Number(settings?.mt5_tick_ttl_seconds ?? B3_DEFAULT_GUARD.ttl_seconds),
+    ttl_tolerance_seconds: Number(settings?.mt5_tick_ttl_tolerance_seconds ?? B3_DEFAULT_GUARD.ttl_tolerance_seconds),
+    spread_max_points: Number(settings?.mt5_spread_max_points ?? B3_DEFAULT_GUARD.spread_max_points),
+    price_deviation_limit: Number(settings?.mt5_price_deviation_limit ?? B3_DEFAULT_GUARD.price_deviation_limit),
+    require_nonzero_volume: Boolean(settings?.mt5_require_nonzero_volume ?? B3_DEFAULT_GUARD.require_nonzero_volume),
+    require_nonzero_last: Boolean(settings?.mt5_require_nonzero_last ?? B3_DEFAULT_GUARD.require_nonzero_last),
+  };
 
   if (source === "csv") {
     return {
@@ -361,31 +371,41 @@ export async function getB3PriceContext(
       source, live: false, quote_age_s: null, server: null, quote_symbol: null, raw: null,
       provider_name: "B3QuoteProvider", quote_source: "CSV legado", fallback_to_csv: false,
       mt5_provider_calls: 0, legacy_provider_calls: 1,
+      guard, guard_evaluation: null,
     };
   }
 
-  // Lê somente os últimos ticks WINQ26 alimentados pela ponte MT5 XP DEMO.
+  // Lê últimos ticks WINQ26 alimentados pela ponte MT5 XP DEMO/PRD.
   const { data: quotes } = await supabase
     .from("b3_mt5sim_quotes")
     .select("bid, ask, last, spread, volume, server, symbol, tick_ts, received_at")
     .eq("user_id", userId)
-    .eq("server", B3_MT5_SERVER)
+    .in("server", Array.from(B3_MT5_ALLOWED_SERVERS))
     .eq("symbol", B3_MT5_SYMBOL)
     .order("tick_ts", { ascending: false })
     .limit(180);
 
   const rows = (quotes as any[] | null) ?? [];
   if (!rows.length) {
+    const info = {
+      source, live: false, raw: null as B3QuoteProviderRaw | null,
+      server: null as string | null, quote_symbol: null as string | null, quote_age_s: null as number | null, guard,
+    };
     return {
       ctx: emptyContext(symbol, contract),
       source, live: false, quote_age_s: null, server: null, quote_symbol: null, raw: null,
       provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
       mt5_provider_calls: 1, legacy_provider_calls: 0,
+      guard, guard_evaluation: evaluateMt5Guard(info),
     };
   }
 
   const latest = rows[0];
   const latestRaw = rawFromRow(latest);
+  const now = new Date();
+  const ageMs = now.getTime() - new Date(latest.tick_ts).getTime();
+  const quoteAge = Math.max(0, Math.round(ageMs / 1000));
+
   const series = rows.slice().reverse(); // do mais antigo para o mais recente
   const priceOf = (r: any): number => {
     const l = Number(r.last);
@@ -397,13 +417,21 @@ export async function getB3PriceContext(
   const prices = series.map(priceOf).filter(v => Number.isFinite(v) && v > 0);
   const volumes = series.map(r => Number(r.volume ?? 0));
   const price = priceOf(latest);
-  const hasValidTop = Number(latestRaw.bid) > 0 && Number(latestRaw.ask) > 0 && Number(latestRaw.last) > 0;
-  if (!Number.isFinite(price) || price <= 0 || !hasValidTop) {
+  // Modo Validação aceita tick com last zero desde que bid/ask sejam válidos.
+  const bidOk = Number(latestRaw.bid) > 0;
+  const askOk = Number(latestRaw.ask) > 0;
+  const hasUsablePrice = Number.isFinite(price) && price > 0 && bidOk && askOk;
+  if (!hasUsablePrice) {
+    const info = {
+      source, live: false, raw: latestRaw, server: latestRaw.server,
+      quote_symbol: latestRaw.symbol, quote_age_s: quoteAge, guard,
+    };
     return {
       ctx: emptyContext(symbol, contract),
-      source, live: false, quote_age_s: null, server: latestRaw.server, quote_symbol: latestRaw.symbol, raw: latestRaw,
+      source, live: false, quote_age_s: quoteAge, server: latestRaw.server, quote_symbol: latestRaw.symbol, raw: latestRaw,
       provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
       mt5_provider_calls: 1, legacy_provider_calls: 0,
+      guard, guard_evaluation: evaluateMt5Guard(info),
     };
   }
   const priceRounded = Math.round(price / TICK) * TICK;
@@ -419,7 +447,6 @@ export async function getB3PriceContext(
   const eFast = ema(prices, 12) || price;
   const eSlow = ema(prices, 26) || price;
   const macd = eFast - eSlow;
-  // MACD signal ~ EMA9 do próprio MACD; aproximação: eFast(9) da série de diferenças curtas.
   const macdSignal = ema(prices.map((_, i) => (ema(prices.slice(0, i + 1), 12) - ema(prices.slice(0, i + 1), 26))), 9) || macd;
   const rsi = rsi14(prices);
   const meanPrice = prices.reduce((s, v) => s + v, 0) / Math.max(1, prices.length);
@@ -430,7 +457,6 @@ export async function getB3PriceContext(
   const volume_ratio = avgVol > 0 ? Number(latest.volume ?? avgVol) / avgVol : 1;
   const spread_pts = Math.max(1, Math.round(Number(latest.spread ?? (Number(latest.ask ?? 0) - Number(latest.bid ?? 0))) || 5));
 
-  const now = new Date();
   const ctx: B3Context = {
     symbol, contract_code: contract,
     price: priceRounded,
@@ -450,12 +476,15 @@ export async function getB3PriceContext(
     session_phase: saoPauloPhase(now),
   };
 
-  const ageMs = now.getTime() - new Date(latest.tick_ts).getTime();
+  const info = {
+    source, live: true, raw: latestRaw, server: latest.server ?? null,
+    quote_symbol: latest.symbol ?? null, quote_age_s: quoteAge, guard,
+  };
   return {
     ctx,
     source,
     live: true,
-    quote_age_s: Math.max(0, Math.round(ageMs / 1000)),
+    quote_age_s: quoteAge,
     server: latest.server ?? null,
     quote_symbol: latest.symbol ?? null,
     raw: latestRaw,
@@ -464,6 +493,8 @@ export async function getB3PriceContext(
     fallback_to_csv: false,
     mt5_provider_calls: 1,
     legacy_provider_calls: 0,
+    guard,
+    guard_evaluation: evaluateMt5Guard(info),
   };
 }
 
