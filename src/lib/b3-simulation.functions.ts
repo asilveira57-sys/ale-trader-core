@@ -525,7 +525,18 @@ export async function runB3SimulationTick(
       bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last,
       provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
       mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls,
-      global_protection: { active: globalProtectionActive, reason: globalProtectionReason } };
+      global_protection: { active: globalProtectionActive, reason: globalProtectionReason },
+      tick_guard: priceSrc.guard_evaluation ? {
+        mode: priceSrc.guard.mode,
+        ok: priceSrc.guard_evaluation.ok,
+        first_block_reason: priceSrc.guard_evaluation.first_block_reason,
+        settings: priceSrc.guard_evaluation.settings,
+        spread_pts: priceSrc.guard_evaluation.spread_pts,
+        spread_ticks: priceSrc.guard_evaluation.spread_ticks,
+        tick_age_s: priceSrc.guard_evaluation.tick_age_s,
+        checks: priceSrc.guard_evaluation.checks,
+      } : null,
+    };
     const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
       .insert({
         simulation_run_id: runId, user_id: userId, symbol: "WIN",
