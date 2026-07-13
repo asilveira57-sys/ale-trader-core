@@ -311,12 +311,9 @@ export async function runB3SimulationTick(
 
   function mt5InvalidReason(info: B3PriceContextResult): string | null {
     if (info.source !== "mt5_xp_demo") return null;
-    if (!info.live || !info.raw) return "Tick MT5 XP DEMO indisponível — operação bloqueada.";
-    if (info.quote_symbol !== B3_MT5_SYMBOL) return `Símbolo inválido (${info.quote_symbol ?? "—"}) — esperado ${B3_MT5_SYMBOL}.`;
-    if (info.server !== B3_MT5_SERVER) return `Servidor inválido (${info.server ?? "—"}) — esperado ${B3_MT5_SERVER}.`;
-    if (info.quote_age_s == null || info.quote_age_s > B3_MT5_TTL_SECONDS) return `Idade do tick ${info.quote_age_s ?? "—"}s acima do TTL (${B3_MT5_TTL_SECONDS}s).`;
-    if (!(Number(info.raw.bid) > 0) || !(Number(info.raw.ask) > 0) || !(Number(info.raw.last) > 0)) return "Bid/ask/último inválidos — operação bloqueada.";
-    return null;
+    const guardEval = info.guard_evaluation;
+    if (!guardEval) return "Guard MT5 sem avaliação.";
+    return guardEval.ok ? null : (guardEval.first_block_reason ?? "Guard MT5 rejeitou o tick.");
   }
 
   async function recomputeModeTotalsFromValidMt5Orders() {
