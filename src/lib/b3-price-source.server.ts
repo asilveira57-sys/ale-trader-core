@@ -6,12 +6,54 @@
 import { buildMockB3Context, type B3Context } from "./b3-committee.server";
 
 export type B3PriceSource = "csv" | "mt5_xp_demo";
+export type B3GuardMode = "validation" | "protected";
 
 const TICK = 5;
 export const B3_MT5_SYMBOL = "WINQ26";
 export const B3_MT5_SERVER = "XPMT5-DEMO";
-export const B3_MT5_TTL_SECONDS = 5;
+export const B3_MT5_ALLOWED_SERVERS = new Set(["XPMT5-DEMO", "XPMT5-PRD"]);
+export const B3_MT5_TTL_SECONDS = 15;
 export const B3_MT5_PRICE_DEVIATION_LIMIT = 2000;
+
+export interface B3GuardSettings {
+  mode: B3GuardMode;
+  ttl_seconds: number;
+  ttl_tolerance_seconds: number;
+  spread_max_points: number;
+  price_deviation_limit: number;
+  require_nonzero_volume: boolean;
+  require_nonzero_last: boolean;
+}
+
+export const B3_DEFAULT_GUARD: B3GuardSettings = {
+  mode: "validation",
+  ttl_seconds: 15,
+  ttl_tolerance_seconds: 30,
+  spread_max_points: 15,
+  price_deviation_limit: 2000,
+  require_nonzero_volume: false,
+  require_nonzero_last: false,
+};
+
+export interface B3GuardCheck {
+  rule: string;
+  label: string;
+  ok: boolean;
+  blocking: boolean;
+  observed: string | number | null;
+  limit: string | number | null;
+  message: string;
+}
+
+export interface B3GuardEvaluation {
+  ok: boolean;
+  first_block_reason: string | null;
+  checks: B3GuardCheck[];
+  settings: B3GuardSettings;
+  spread_pts: number | null;
+  spread_ticks: number | null;
+  tick_age_s: number | null;
+}
 
 export type B3QuoteSourceLabel = "MT5 XP DEMO" | "CSV legado" | "inválida" | "desconhecida";
 
@@ -114,6 +156,8 @@ export interface B3PriceContextResult {
   fallback_to_csv: boolean;
   mt5_provider_calls: number;
   legacy_provider_calls: number;
+  guard: B3GuardSettings;
+  guard_evaluation: B3GuardEvaluation | null;
 }
 
 function emptyContext(symbol: string, contract: string): B3Context {
@@ -159,16 +203,97 @@ export function quoteAuditBase(info: B3PriceContextResult): Omit<B3QuoteExecutio
   };
 }
 
+function guardCheck(rule: string, label: string, ok: boolean, blocking: boolean, observed: string | number | null, limit: string | number | null, message: string): B3GuardCheck {
+  return { rule, label, ok, blocking, observed, limit, message };
+}
+
+export function evaluateMt5Guard(info: {
+  source: B3PriceSource;
+  live: boolean;
+  raw: B3QuoteProviderRaw | null;
+  server: string | null;
+  quote_symbol: string | null;
+  quote_age_s: number | null;
+  guard: B3GuardSettings;
+}): B3GuardEvaluation {
+  const s = info.guard;
+  const checks: B3GuardCheck[] = [];
+  const bid = info.raw?.bid ?? null;
+  const ask = info.raw?.ask ?? null;
+  const last = info.raw?.last ?? null;
+  const spread = bid != null && ask != null ? Math.max(0, Number(ask) - Number(bid)) : null;
+  const spreadTicks = spread != null ? Math.round(spread / TICK) : null;
+  const age = info.quote_age_s;
+
+  const push = (c: B3GuardCheck) => checks.push(c);
+
+  push(guardCheck("tick_present", "Tick MT5 recebido", Boolean(info.raw), true, info.raw?.tick_ts ?? "—", "≠ null",
+    info.raw ? "Tick MT5 recebido." : "Nenhum tick MT5 disponível."));
+  push(guardCheck("mt5_server", "Servidor MT5", info.server != null && B3_MT5_ALLOWED_SERVERS.has(info.server), true, info.server ?? "—", "XPMT5-DEMO/PRD",
+    info.server ? `Servidor ${info.server}.` : "Servidor MT5 ausente."));
+  push(guardCheck("mt5_symbol", "Símbolo WINQ26", info.quote_symbol === B3_MT5_SYMBOL, true, info.quote_symbol ?? "—", B3_MT5_SYMBOL,
+    info.quote_symbol === B3_MT5_SYMBOL ? "Símbolo correto." : `Símbolo ${info.quote_symbol ?? "—"} diferente de ${B3_MT5_SYMBOL}.`));
+  push(guardCheck("bid_positive", "Bid > 0", (bid ?? 0) > 0, true, bid, "> 0",
+    (bid ?? 0) > 0 ? `Bid ${bid}.` : "Bid zerado ou ausente."));
+  push(guardCheck("ask_positive", "Ask > 0", (ask ?? 0) > 0, true, ask, "> 0",
+    (ask ?? 0) > 0 ? `Ask ${ask}.` : "Ask zerado ou ausente."));
+  push(guardCheck("ask_ge_bid", "Ask ≥ Bid", bid != null && ask != null && ask >= bid, true, `bid ${bid ?? "—"} / ask ${ask ?? "—"}`, "ask ≥ bid",
+    bid != null && ask != null && ask >= bid ? "Book coerente." : "Ask menor que Bid."));
+
+  // Last: no modo Validação, só bloqueia se explicitamente exigido.
+  const requireLast = s.require_nonzero_last || s.mode === "protected";
+  push(guardCheck("last_positive", "Último preço > 0", (last ?? 0) > 0, requireLast, last, "> 0",
+    (last ?? 0) > 0 ? `Último ${last}.` : "Último zerado — aceito no modo Validação quando Bid/Ask válidos."));
+
+  // Volume: idem
+  const vol = info.raw?.volume ?? null;
+  const requireVol = s.require_nonzero_volume || s.mode === "protected";
+  push(guardCheck("volume_positive", "Volume > 0", (vol ?? 0) > 0, requireVol, vol, "> 0",
+    (vol ?? 0) > 0 ? `Volume ${vol}.` : "Volume zero — aceito no modo Validação."));
+
+  // Spread (em pontos)
+  const spreadLimit = s.spread_max_points;
+  const spreadOk = spread == null ? false : spread <= spreadLimit;
+  push(guardCheck("spread_pts", `Spread ≤ ${spreadLimit} pts`, spreadOk, true,
+    spread == null ? "—" : `${spread} pts (${spreadTicks ?? "—"} ticks)`,
+    `${spreadLimit} pts (${Math.round(spreadLimit / TICK)} ticks)`,
+    spread == null ? "Spread indisponível." :
+    spreadOk ? `Spread ${spread} pts (${spreadTicks} ticks) dentro do limite.` :
+    `Spread ${spread} pts (${spreadTicks} ticks) acima do limite de ${spreadLimit} pts.`));
+
+  // Idade do tick — bloqueia acima do TTL + tolerância
+  const ttlHard = s.ttl_seconds + s.ttl_tolerance_seconds;
+  const ageOk = age != null && age <= ttlHard;
+  push(guardCheck("tick_age", `Idade ≤ ${ttlHard}s`, ageOk, true, age == null ? "—" : `${age}s`, `${ttlHard}s (TTL ${s.ttl_seconds}s + tolerância ${s.ttl_tolerance_seconds}s)`,
+    age == null ? "Idade do tick indisponível." :
+    ageOk ? `Idade ${age}s dentro do limite (${ttlHard}s).` :
+    `Tick bloqueado: idade ${age} segundos, limite ${ttlHard} segundos.`));
+
+  // Aviso não bloqueante para idade entre TTL e TTL+tolerância
+  if (age != null && age > s.ttl_seconds && age <= ttlHard) {
+    push(guardCheck("tick_age_warn", "Idade > TTL alvo", false, false, `${age}s`, `${s.ttl_seconds}s`,
+      `Tick com atraso: ${age}s (alvo ${s.ttl_seconds}s, tolerado até ${ttlHard}s).`));
+  }
+
+  const firstBlock = checks.find((c) => c.blocking && !c.ok);
+  return {
+    ok: !firstBlock,
+    first_block_reason: firstBlock?.message ?? null,
+    checks,
+    settings: s,
+    spread_pts: spread,
+    spread_ticks: spreadTicks,
+    tick_age_s: age,
+  };
+}
+
 export function assertFreshMt5Quote(info: B3PriceContextResult, functionName: string): void {
-  const bid = info.raw?.bid ?? 0;
-  const ask = info.raw?.ask ?? 0;
-  const last = info.raw?.last ?? 0;
   if (info.source !== "mt5_xp_demo") throw new Error(`${functionName}: fonte selecionada não é MT5 XP DEMO`);
-  if (!info.live || !info.raw) throw new Error(`${functionName}: tick MT5 XP DEMO indisponível — operação bloqueada`);
-  if (info.quote_symbol !== B3_MT5_SYMBOL) throw new Error(`${functionName}: símbolo inválido (${info.quote_symbol ?? "—"}) — esperado ${B3_MT5_SYMBOL}`);
-  if (info.server !== B3_MT5_SERVER) throw new Error(`${functionName}: servidor inválido (${info.server ?? "—"}) — esperado ${B3_MT5_SERVER}`);
-  if (info.quote_age_s == null || info.quote_age_s > B3_MT5_TTL_SECONDS) throw new Error(`${functionName}: idade do tick ${info.quote_age_s ?? "—"}s acima do TTL — operação bloqueada`);
-  if (!(bid > 0) || !(ask > 0) || !(last > 0)) throw new Error(`${functionName}: bid/ask/último inválidos — operação bloqueada`);
+  const evalRes = info.guard_evaluation ?? evaluateMt5Guard({
+    source: info.source, live: info.live, raw: info.raw, server: info.server,
+    quote_symbol: info.quote_symbol, quote_age_s: info.quote_age_s, guard: info.guard,
+  });
+  if (!evalRes.ok) throw new Error(`${functionName}: ${evalRes.first_block_reason ?? "guard MT5 rejeitou o tick"}`);
 }
 
 export function getB3ExecutionAudit(
@@ -185,8 +310,9 @@ export function getB3ExecutionAudit(
     const price = action === "entry"
       ? (side === "buy" ? ask : bid)
       : (side === "buy" ? bid : ask);
-    if (Math.abs(price - last) > B3_MT5_PRICE_DEVIATION_LIMIT) {
-      throw new Error(`Preço de execução incompatível com a cotação MT5 — operação bloqueada (${functionName}; provider=B3QuoteProvider; MT5=${last}; rejeitado=${price})`);
+    const limit = info.guard.price_deviation_limit || B3_MT5_PRICE_DEVIATION_LIMIT;
+    if (Math.abs(price - last) > limit) {
+      throw new Error(`Preço de execução incompatível com a cotação MT5 — operação bloqueada (${functionName}; provider=B3QuoteProvider; MT5=${last}; rejeitado=${price}; limite=${limit})`);
     }
     return {
       ...quoteAuditBase(info),
@@ -223,11 +349,21 @@ export async function getB3PriceContext(
 
   const { data: settings } = await supabase
     .from("b3_trading_settings")
-    .select("price_source")
+    .select("price_source, mt5_guard_mode, mt5_tick_ttl_seconds, mt5_tick_ttl_tolerance_seconds, mt5_spread_max_points, mt5_price_deviation_limit, mt5_require_nonzero_volume, mt5_require_nonzero_last")
     .eq("user_id", userId)
     .maybeSingle();
   const source: B3PriceSource = (settings?.price_source as B3PriceSource) === "mt5_xp_demo"
     ? "mt5_xp_demo" : "csv";
+
+  const guard: B3GuardSettings = {
+    mode: ((settings?.mt5_guard_mode as B3GuardMode) === "protected" ? "protected" : "validation"),
+    ttl_seconds: Number(settings?.mt5_tick_ttl_seconds ?? B3_DEFAULT_GUARD.ttl_seconds),
+    ttl_tolerance_seconds: Number(settings?.mt5_tick_ttl_tolerance_seconds ?? B3_DEFAULT_GUARD.ttl_tolerance_seconds),
+    spread_max_points: Number(settings?.mt5_spread_max_points ?? B3_DEFAULT_GUARD.spread_max_points),
+    price_deviation_limit: Number(settings?.mt5_price_deviation_limit ?? B3_DEFAULT_GUARD.price_deviation_limit),
+    require_nonzero_volume: Boolean(settings?.mt5_require_nonzero_volume ?? B3_DEFAULT_GUARD.require_nonzero_volume),
+    require_nonzero_last: Boolean(settings?.mt5_require_nonzero_last ?? B3_DEFAULT_GUARD.require_nonzero_last),
+  };
 
   if (source === "csv") {
     return {
@@ -235,31 +371,41 @@ export async function getB3PriceContext(
       source, live: false, quote_age_s: null, server: null, quote_symbol: null, raw: null,
       provider_name: "B3QuoteProvider", quote_source: "CSV legado", fallback_to_csv: false,
       mt5_provider_calls: 0, legacy_provider_calls: 1,
+      guard, guard_evaluation: null,
     };
   }
 
-  // Lê somente os últimos ticks WINQ26 alimentados pela ponte MT5 XP DEMO.
+  // Lê últimos ticks WINQ26 alimentados pela ponte MT5 XP DEMO/PRD.
   const { data: quotes } = await supabase
     .from("b3_mt5sim_quotes")
     .select("bid, ask, last, spread, volume, server, symbol, tick_ts, received_at")
     .eq("user_id", userId)
-    .eq("server", B3_MT5_SERVER)
+    .in("server", Array.from(B3_MT5_ALLOWED_SERVERS))
     .eq("symbol", B3_MT5_SYMBOL)
     .order("tick_ts", { ascending: false })
     .limit(180);
 
   const rows = (quotes as any[] | null) ?? [];
   if (!rows.length) {
+    const info = {
+      source, live: false, raw: null as B3QuoteProviderRaw | null,
+      server: null as string | null, quote_symbol: null as string | null, quote_age_s: null as number | null, guard,
+    };
     return {
       ctx: emptyContext(symbol, contract),
       source, live: false, quote_age_s: null, server: null, quote_symbol: null, raw: null,
       provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
       mt5_provider_calls: 1, legacy_provider_calls: 0,
+      guard, guard_evaluation: evaluateMt5Guard(info),
     };
   }
 
   const latest = rows[0];
   const latestRaw = rawFromRow(latest);
+  const now = new Date();
+  const ageMs = now.getTime() - new Date(latest.tick_ts).getTime();
+  const quoteAge = Math.max(0, Math.round(ageMs / 1000));
+
   const series = rows.slice().reverse(); // do mais antigo para o mais recente
   const priceOf = (r: any): number => {
     const l = Number(r.last);
@@ -271,13 +417,21 @@ export async function getB3PriceContext(
   const prices = series.map(priceOf).filter(v => Number.isFinite(v) && v > 0);
   const volumes = series.map(r => Number(r.volume ?? 0));
   const price = priceOf(latest);
-  const hasValidTop = Number(latestRaw.bid) > 0 && Number(latestRaw.ask) > 0 && Number(latestRaw.last) > 0;
-  if (!Number.isFinite(price) || price <= 0 || !hasValidTop) {
+  // Modo Validação aceita tick com last zero desde que bid/ask sejam válidos.
+  const bidOk = Number(latestRaw.bid) > 0;
+  const askOk = Number(latestRaw.ask) > 0;
+  const hasUsablePrice = Number.isFinite(price) && price > 0 && bidOk && askOk;
+  if (!hasUsablePrice) {
+    const info = {
+      source, live: false, raw: latestRaw, server: latestRaw.server,
+      quote_symbol: latestRaw.symbol, quote_age_s: quoteAge, guard,
+    };
     return {
       ctx: emptyContext(symbol, contract),
-      source, live: false, quote_age_s: null, server: latestRaw.server, quote_symbol: latestRaw.symbol, raw: latestRaw,
+      source, live: false, quote_age_s: quoteAge, server: latestRaw.server, quote_symbol: latestRaw.symbol, raw: latestRaw,
       provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
       mt5_provider_calls: 1, legacy_provider_calls: 0,
+      guard, guard_evaluation: evaluateMt5Guard(info),
     };
   }
   const priceRounded = Math.round(price / TICK) * TICK;
@@ -293,7 +447,6 @@ export async function getB3PriceContext(
   const eFast = ema(prices, 12) || price;
   const eSlow = ema(prices, 26) || price;
   const macd = eFast - eSlow;
-  // MACD signal ~ EMA9 do próprio MACD; aproximação: eFast(9) da série de diferenças curtas.
   const macdSignal = ema(prices.map((_, i) => (ema(prices.slice(0, i + 1), 12) - ema(prices.slice(0, i + 1), 26))), 9) || macd;
   const rsi = rsi14(prices);
   const meanPrice = prices.reduce((s, v) => s + v, 0) / Math.max(1, prices.length);
@@ -304,7 +457,6 @@ export async function getB3PriceContext(
   const volume_ratio = avgVol > 0 ? Number(latest.volume ?? avgVol) / avgVol : 1;
   const spread_pts = Math.max(1, Math.round(Number(latest.spread ?? (Number(latest.ask ?? 0) - Number(latest.bid ?? 0))) || 5));
 
-  const now = new Date();
   const ctx: B3Context = {
     symbol, contract_code: contract,
     price: priceRounded,
@@ -324,12 +476,15 @@ export async function getB3PriceContext(
     session_phase: saoPauloPhase(now),
   };
 
-  const ageMs = now.getTime() - new Date(latest.tick_ts).getTime();
+  const info = {
+    source, live: true, raw: latestRaw, server: latest.server ?? null,
+    quote_symbol: latest.symbol ?? null, quote_age_s: quoteAge, guard,
+  };
   return {
     ctx,
     source,
     live: true,
-    quote_age_s: Math.max(0, Math.round(ageMs / 1000)),
+    quote_age_s: quoteAge,
     server: latest.server ?? null,
     quote_symbol: latest.symbol ?? null,
     raw: latestRaw,
@@ -338,6 +493,8 @@ export async function getB3PriceContext(
     fallback_to_csv: false,
     mt5_provider_calls: 1,
     legacy_provider_calls: 0,
+    guard,
+    guard_evaluation: evaluateMt5Guard(info),
   };
 }
 

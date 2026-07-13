@@ -278,8 +278,14 @@ export const getB3PriceSourceStatus = createServerFn({ method: "GET" })
       guard: {
         required_symbol: B3_MT5_SYMBOL,
         required_server: B3_MT5_SERVER,
-        ttl_seconds: B3_MT5_TTL_SECONDS,
-        max_deviation_points: B3_MT5_PRICE_DEVIATION_LIMIT,
+        mode: info.guard.mode,
+        ttl_seconds: info.guard.ttl_seconds,
+        ttl_tolerance_seconds: info.guard.ttl_tolerance_seconds,
+        spread_max_points: info.guard.spread_max_points,
+        max_deviation_points: info.guard.price_deviation_limit,
+        require_nonzero_volume: info.guard.require_nonzero_volume,
+        require_nonzero_last: info.guard.require_nonzero_last,
+        evaluation: info.guard_evaluation ?? null,
       },
     };
   });

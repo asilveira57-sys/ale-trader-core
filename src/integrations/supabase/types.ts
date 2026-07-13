@@ -2421,6 +2421,13 @@ export type Database = {
           gain_points: number
           id: string
           max_contracts: number
+          mt5_guard_mode: string
+          mt5_price_deviation_limit: number
+          mt5_require_nonzero_last: boolean
+          mt5_require_nonzero_volume: boolean
+          mt5_spread_max_points: number
+          mt5_tick_ttl_seconds: number
+          mt5_tick_ttl_tolerance_seconds: number
           price_source: string
           start_time: string
           stop_points: number
@@ -2443,6 +2450,13 @@ export type Database = {
           gain_points?: number
           id?: string
           max_contracts?: number
+          mt5_guard_mode?: string
+          mt5_price_deviation_limit?: number
+          mt5_require_nonzero_last?: boolean
+          mt5_require_nonzero_volume?: boolean
+          mt5_spread_max_points?: number
+          mt5_tick_ttl_seconds?: number
+          mt5_tick_ttl_tolerance_seconds?: number
           price_source?: string
           start_time?: string
           stop_points?: number
@@ -2465,6 +2479,13 @@ export type Database = {
           gain_points?: number
           id?: string
           max_contracts?: number
+          mt5_guard_mode?: string
+          mt5_price_deviation_limit?: number
+          mt5_require_nonzero_last?: boolean
+          mt5_require_nonzero_volume?: boolean
+          mt5_spread_max_points?: number
+          mt5_tick_ttl_seconds?: number
+          mt5_tick_ttl_tolerance_seconds?: number
           price_source?: string
           start_time?: string
           stop_points?: number

@@ -311,12 +311,9 @@ export async function runB3SimulationTick(
 
   function mt5InvalidReason(info: B3PriceContextResult): string | null {
     if (info.source !== "mt5_xp_demo") return null;
-    if (!info.live || !info.raw) return "Tick MT5 XP DEMO indisponível — operação bloqueada.";
-    if (info.quote_symbol !== B3_MT5_SYMBOL) return `Símbolo inválido (${info.quote_symbol ?? "—"}) — esperado ${B3_MT5_SYMBOL}.`;
-    if (info.server !== B3_MT5_SERVER) return `Servidor inválido (${info.server ?? "—"}) — esperado ${B3_MT5_SERVER}.`;
-    if (info.quote_age_s == null || info.quote_age_s > B3_MT5_TTL_SECONDS) return `Idade do tick ${info.quote_age_s ?? "—"}s acima do TTL (${B3_MT5_TTL_SECONDS}s).`;
-    if (!(Number(info.raw.bid) > 0) || !(Number(info.raw.ask) > 0) || !(Number(info.raw.last) > 0)) return "Bid/ask/último inválidos — operação bloqueada.";
-    return null;
+    const guardEval = info.guard_evaluation;
+    if (!guardEval) return "Guard MT5 sem avaliação.";
+    return guardEval.ok ? null : (guardEval.first_block_reason ?? "Guard MT5 rejeitou o tick.");
   }
 
   async function recomputeModeTotalsFromValidMt5Orders() {
@@ -528,7 +525,18 @@ export async function runB3SimulationTick(
       bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last,
       provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
       mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls,
-      global_protection: { active: globalProtectionActive, reason: globalProtectionReason } };
+      global_protection: { active: globalProtectionActive, reason: globalProtectionReason },
+      tick_guard: priceSrc.guard_evaluation ? {
+        mode: priceSrc.guard.mode,
+        ok: priceSrc.guard_evaluation.ok,
+        first_block_reason: priceSrc.guard_evaluation.first_block_reason,
+        settings: priceSrc.guard_evaluation.settings,
+        spread_pts: priceSrc.guard_evaluation.spread_pts,
+        spread_ticks: priceSrc.guard_evaluation.spread_ticks,
+        tick_age_s: priceSrc.guard_evaluation.tick_age_s,
+        checks: priceSrc.guard_evaluation.checks,
+      } : null,
+    };
     const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
       .insert({
         simulation_run_id: runId, user_id: userId, symbol: "WIN",
@@ -571,6 +579,7 @@ export async function runB3SimulationTick(
         active: globalProtectionActive,
         reason: globalProtectionReason,
       },
+      tick_guard: snapshotExtra.tick_guard,
       modes: [] as any[],
     };
 
@@ -614,7 +623,7 @@ export async function runB3SimulationTick(
       };
 
       addCheck("tick_received", "Tick recebido", priceSrc.source !== "mt5_xp_demo" || Boolean(priceSrc.raw), priceSrc.raw?.tick_ts ? `tick ${priceSrc.raw.tick_ts}` : "sem tick MT5");
-      addCheck("mt5_server", "Servidor MT5", priceSrc.source !== "mt5_xp_demo" || priceSrc.server === B3_MT5_SERVER, priceSrc.server ? `recebido ${priceSrc.server}` : "sem servidor");
+      addCheck("mt5_server", "Servidor MT5", priceSrc.source !== "mt5_xp_demo" || priceSrc.server === "XPMT5-DEMO" || priceSrc.server === "XPMT5-PRD", priceSrc.server ? `recebido ${priceSrc.server}` : "sem servidor");
       addCheck("mt5_symbol", "Símbolo WINQ26", priceSrc.source !== "mt5_xp_demo" || priceSrc.quote_symbol === B3_MT5_SYMBOL, priceSrc.quote_symbol ? `recebido ${priceSrc.quote_symbol}` : "sem símbolo");
       addCheck("market_open", "Mercado aberto", ctx.session_phase !== "fora", `fase ${ctx.session_phase}`);
       addCheck("time_allowed", "Horário permitido", insideHours, `${cfg.trading_start_time}–${cfg.entry_cutoff_time}`);
