@@ -156,6 +156,8 @@ export interface B3PriceContextResult {
   fallback_to_csv: boolean;
   mt5_provider_calls: number;
   legacy_provider_calls: number;
+  guard: B3GuardSettings;
+  guard_evaluation: B3GuardEvaluation | null;
 }
 
 function emptyContext(symbol: string, contract: string): B3Context {
