@@ -27,6 +27,8 @@ import {
 } from "@/lib/b3.functions";
 import { getB3EngineDiagnostic } from "@/lib/b3-simulation.functions";
 import { EngineDiagnosticPanel, SimComparePanel } from "@/components/b3/SimComparePanel";
+import { PipelineAuditPanel } from "@/components/b3/PipelineAuditPanel";
+
 import { SimLiveDashboard } from "@/components/b3/SimLiveDashboard";
 
 export const Route = createFileRoute("/_authenticated/b3")({
@@ -247,11 +249,13 @@ function B3EngineDiagnosticTab() {
     );
   }
   return (
-    <div className="mt-3">
+    <div className="mt-3 space-y-4">
+      <PipelineAuditPanel />
       <EngineDiagnosticPanel detail={{ snapshots: data.snapshot ? [data.snapshot] : [] }} />
     </div>
   );
 }
+
 
 // ────────────────────────────────────────────────────────────────────
 function Panel({ settings, orders }: { settings: B3Settings; orders: B3Order[] }) {

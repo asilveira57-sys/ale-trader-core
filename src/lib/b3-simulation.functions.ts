@@ -1088,6 +1088,140 @@ export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
     };
   });
 
+// ─────────────────── Pipeline de Diagnóstico (read-only) ───────────────────
+// Agrega os últimos snapshots com engine_audit e produz, por robô:
+//   - a última execução do pipeline (etapas ordenadas com valor observado × limite)
+//   - contadores (ticks, entradas analisadas, bloqueadas, autorizadas, buy/sell, ordens)
+//   - histórico dos últimos 100 bloqueios
+// NÃO altera regras nem parâmetros — só lê snapshots já existentes.
+const PIPELINE_STEP_ORDER = [
+  "tick_received",
+  "valid_quote",
+  "mt5_server",
+  "mt5_symbol",
+  "market_open",
+  "time_allowed",
+  "operation_window",
+  "force_close_window",
+  "spread",
+  "global_protection",
+  "mode_enabled",
+  "volatility",
+  "max_trades",
+  "daily_loss",
+  "daily_target",
+  "position_open",
+  "protection_engine",
+  "score",
+  "confidence",
+  "committee",
+  "signal_buy",
+  "signal_sell",
+] as const;
+
+export const getB3PipelineAudit = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: runs } = await (supabase as any).from("b3_simulation_runs")
+      .select("id, status, started_at").eq("user_id", userId)
+      .in("status", ["running", "paused"])
+      .order("started_at", { ascending: false }).limit(1);
+    const run = runs?.[0] ?? null;
+    if (!run) return { run: null, modes: [], history: [], totals: null };
+
+    const { data: snaps } = await (supabase as any).from("b3_simulation_market_snapshots")
+      .select("id, market_time, extra")
+      .eq("simulation_run_id", run.id).eq("user_id", userId)
+      .order("market_time", { ascending: false })
+      .limit(200);
+
+    const list = (snaps ?? []).filter((s: any) => s?.extra?.engine_audit);
+
+    // contadores por robô
+    const perMode: Record<string, any> = {};
+    for (const mode of MODES) {
+      perMode[mode] = {
+        mode,
+        ticks_received: 0,
+        ticks_valid: 0,
+        entries_analyzed: 0,
+        entries_blocked: 0,
+        entries_authorized: 0,
+        buy_signals: 0,
+        sell_signals: 0,
+        orders_executed: 0,
+        last_reason: null,
+        last_step_blocked: null,
+        last_pipeline: [] as any[],
+        last_snapshot_at: null,
+        last_tick: null,
+        last_score: null,
+        last_confidence: null,
+        last_setup: null,
+      };
+    }
+    const history: any[] = [];
+
+    // snapshots vêm em ordem decrescente; iterar reverso para popular "last_*" corretamente
+    for (const s of [...list].reverse()) {
+      const audit = s.extra.engine_audit;
+      const tick = audit.last_tick ?? null;
+      for (const m of audit.modes ?? []) {
+        const bucket = perMode[m.mode];
+        if (!bucket) continue;
+        bucket.ticks_received += 1;
+        const guardOk = audit.tick_guard ? audit.tick_guard.ok !== false : true;
+        if (guardOk && !audit.global_protection?.active) bucket.ticks_valid += 1;
+        bucket.entries_analyzed += 1;
+        const approved = /aprovado/i.test(m.last_refusal_reason ?? "") && !/bloqueado/i.test(m.last_refusal_reason ?? "");
+        const opened = /ordem simulada aberta/i.test(m.last_refusal_reason ?? "");
+        if (opened) { bucket.entries_authorized += 1; bucket.orders_executed += 1; }
+        else bucket.entries_blocked += 1;
+        if (m.signals?.buy) bucket.buy_signals += 1;
+        if (m.signals?.sell) bucket.sell_signals += 1;
+
+        bucket.last_reason = m.last_refusal_reason ?? bucket.last_reason;
+        bucket.last_step_blocked = m.first_stop ?? bucket.last_step_blocked;
+        bucket.last_snapshot_at = s.market_time;
+        bucket.last_tick = tick;
+        bucket.last_score = m.last_score ?? bucket.last_score;
+        bucket.last_confidence = m.last_confidence ?? bucket.last_confidence;
+        bucket.last_setup = m.last_setup ?? bucket.last_setup;
+
+        const byKey: Record<string, any> = {};
+        for (const c of m.checks ?? []) byKey[c.key] = c;
+        bucket.last_pipeline = PIPELINE_STEP_ORDER
+          .filter((k) => byKey[k])
+          .map((k) => byKey[k]);
+
+        if (!opened && m.first_stop) {
+          history.push({
+            at: s.market_time,
+            mode: m.mode,
+            step: m.first_stop.label,
+            step_key: m.first_stop.key,
+            detail: m.first_stop.detail,
+            reason: m.last_refusal_reason,
+          });
+        }
+      }
+    }
+
+    history.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
+    return {
+      run,
+      modes: MODES.map((m) => perMode[m]),
+      history: history.slice(0, 100),
+      totals: {
+        snapshots_scanned: list.length,
+      },
+    };
+  });
+
+
+
 
 async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string) {
   if (exitAudit.quote_source === "MT5 XP DEMO") assertB3StrictMt5ExecutionAudit(exitAudit, "closeOrder");
