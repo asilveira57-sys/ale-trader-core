@@ -247,11 +247,13 @@ function B3EngineDiagnosticTab() {
     );
   }
   return (
-    <div className="mt-3">
+    <div className="mt-3 space-y-4">
+      <PipelineAuditPanel />
       <EngineDiagnosticPanel detail={{ snapshots: data.snapshot ? [data.snapshot] : [] }} />
     </div>
   );
 }
+
 
 // ────────────────────────────────────────────────────────────────────
 function Panel({ settings, orders }: { settings: B3Settings; orders: B3Order[] }) {
