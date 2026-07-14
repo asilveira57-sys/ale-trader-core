@@ -27,6 +27,8 @@ import {
 } from "@/lib/b3.functions";
 import { getB3EngineDiagnostic } from "@/lib/b3-simulation.functions";
 import { EngineDiagnosticPanel, SimComparePanel } from "@/components/b3/SimComparePanel";
+import { PipelineAuditPanel } from "@/components/b3/PipelineAuditPanel";
+
 import { SimLiveDashboard } from "@/components/b3/SimLiveDashboard";
 
 export const Route = createFileRoute("/_authenticated/b3")({
