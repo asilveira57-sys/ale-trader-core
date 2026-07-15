@@ -85,7 +85,7 @@ export const runB3Committee = createServerFn({ method: "POST" })
     // settings de consenso por modo
     const mode = settings.strategy_mode as string;
     const committee: B3CommitteeSettings =
-      mode === "conservador" ? { min_approve_votes: 6, min_confidence: 70, min_score: 75 } :
+      mode === "conservador" ? { min_approve_votes: 5, min_confidence: 70, min_score: 75 } :
       mode === "agressivo"   ? { min_approve_votes: 4, min_confidence: 55, min_score: 55 } :
                                { min_approve_votes: 5, min_confidence: 62, min_score: 65 };
 
