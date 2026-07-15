@@ -840,19 +840,29 @@ function StopsAndBlocksPanel({ data }: { data: any }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {events.map((e: any) => (
+                  {events.map((e: any) => {
+                    const meta = STOP_EVENT_META[e.new_status] ?? STOP_EVENT_META[e.trigger] ?? { label: e.new_status, cls: "" };
+                    const currentMode = modes.find((m: any) => m.mode === e.mode);
+                    const isReleased = currentMode?.current_status === "operando";
+                    return (
                     <tr key={e.id} className="border-b border-border/20">
                       <td className="py-1 pr-2 font-mono text-[10px] whitespace-nowrap">{new Date(e.occurred_at).toLocaleString("pt-BR")}</td>
                       <td><Badge variant="outline" className={`text-[10px] capitalize ${MODE_COLOR[e.mode as Mode]}`}>{e.mode}</Badge></td>
                       <td className="text-muted-foreground">{e.prev_status ?? "—"}</td>
-                      <td>{e.new_status}</td>
+                      <td className="space-y-1">
+                        <Badge variant="outline" className={`text-[10px] ${meta.cls}`}>{meta.label}</Badge>
+                        {meta.releasedText && isReleased && (
+                          <div className="text-[10px] text-emerald-300">{meta.releasedText}</div>
+                        )}
+                      </td>
                       <td><Badge variant="outline" className="text-[10px]">{e.trigger}</Badge></td>
                       <td className="text-right font-mono">{e.observed_value != null ? NUM(Number(e.observed_value), 2) : "—"}</td>
                       <td className="text-right font-mono">{e.limit_value != null ? NUM(Number(e.limit_value), 2) : "—"}</td>
                       <td className="text-right font-mono">{e.pnl_at_moment != null ? BRL(Number(e.pnl_at_moment)) : "—"}</td>
                       <td className="text-muted-foreground max-w-[300px] truncate">{e.message ?? "—"}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
