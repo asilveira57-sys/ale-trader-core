@@ -583,6 +583,22 @@ export async function runB3SimulationTick(
       modes: [] as any[],
     };
 
+    // Quote-stall guard: se há qualquer posição aberta e o último tick tem >10s,
+    // marcamos o motor como "cotação interrompida com posição aberta" e bloqueamos
+    // qualquer ação (nova entrada OU fechamento) até a cotação retomar. Ao retomar
+    // (age <= 10s), o fluxo existente processa primeiro o if(open) → stop/gain/zeragem
+    // antes de avaliar novas entradas, satisfazendo a ordem exigida.
+    const preOpenList = await getOpen();
+    const quoteAgeS = Number(priceSrc.quote_age_s ?? 0);
+    const anyOpenPre = (preOpenList ?? []).length > 0;
+    const quoteStalledOpen = anyOpenPre && quoteAgeS > 10;
+    tickAudit.quote_stall = {
+      active: quoteStalledOpen,
+      duration_s: quoteAgeS,
+      any_position_open: anyOpenPre,
+      threshold_s: 10,
+    };
+
     for (const mode of MODES) {
       const m = modeByName[mode];
       if (!m) continue;
@@ -595,6 +611,30 @@ export async function runB3SimulationTick(
       const forceClose = cur >= forceMin || cur < startMin;
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
+
+      if (quoteStalledOpen) {
+        await recordStatusIfChanged(mode, m, "cotacao_interrompida_posicao_aberta", "quote_stall_open_position", {
+          pnl: realizedToday,
+          related_order_id: open?.id ?? null,
+          message: `Cotação interrompida há ${quoteAgeS.toFixed(0)}s com posição aberta — novas entradas bloqueadas até retomada.`,
+        });
+        log.push({ mode, action: "skip", reason: "quote_stall_open_position", stall_s: quoteAgeS, has_open: Boolean(open) });
+        // finalizeAudit ainda não está definida neste ponto (é declarada dentro do bloco abaixo),
+        // portanto empilhamos manualmente uma entrada mínima no tickAudit e continuamos.
+        tickAudit.modes.push({
+          mode,
+          timestamp: now.toISOString(),
+          last_tick: tickAudit.last_tick,
+          last_setup: open ? `Posição ${open.side.toUpperCase()} aberta — aguardando retomada` : "Sem posição — aguardando retomada",
+          last_refusal_reason: `Cotação interrompida há ${quoteAgeS.toFixed(0)}s — aguardando retomada antes de fechar/abrir.`,
+          quote_stall: tickAudit.quote_stall,
+          checks: [],
+          signals: { evaluated_side: open?.side ?? intendedSide, buy: false, sell: false },
+          committee: null,
+        });
+        continue;
+      }
+
       const loadedConfig = normalizeModeConfig(cfg);
       const cfgCompare = configComparison(cfg, loadedConfig);
       const checks: any[] = [];
