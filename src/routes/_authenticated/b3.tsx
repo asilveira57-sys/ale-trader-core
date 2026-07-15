@@ -173,6 +173,8 @@ function B3Page() {
           <Badge variant={settings.alert_only_enabled ? "default" : "outline"}>
             Alerta {settings.alert_only_enabled ? "ON" : "OFF"}
           </Badge>
+          <Link to="/b3-auditoria" className="text-xs underline text-primary hover:opacity-80">Auditoria de Entradas →</Link>
+
         </div>
       </header>
 
