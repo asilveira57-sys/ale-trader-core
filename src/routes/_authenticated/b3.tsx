@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -173,6 +173,8 @@ function B3Page() {
           <Badge variant={settings.alert_only_enabled ? "default" : "outline"}>
             Alerta {settings.alert_only_enabled ? "ON" : "OFF"}
           </Badge>
+          <Link to="/b3-auditoria" className="text-xs underline text-primary hover:opacity-80">Auditoria de Entradas →</Link>
+
         </div>
       </header>
 

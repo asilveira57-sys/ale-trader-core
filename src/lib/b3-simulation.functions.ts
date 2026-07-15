@@ -1220,6 +1220,241 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
     };
   });
 
+// ─────────────────── Auditoria de Entradas (Fase 1, read-only) ───────────────────
+// Lê os snapshots do período, monta funil por robô, agrega motivos de bloqueio
+// (com dedup: ocorrência única + repetições), categoriza técnico/operacional/estratégico,
+// e cruza com ordens executadas do período. NÃO altera nenhuma regra.
+
+const REASON_CATEGORY: Record<string, "tecnico" | "operacional" | "estrategico"> = {
+  tick_received: "tecnico",
+  valid_quote: "tecnico",
+  mt5_server: "tecnico",
+  mt5_symbol: "tecnico",
+  spread: "tecnico",
+  market_open: "operacional",
+  time_allowed: "operacional",
+  operation_window: "operacional",
+  force_close_window: "operacional",
+  global_protection: "operacional",
+  mode_enabled: "operacional",
+  max_trades: "operacional",
+  daily_loss: "operacional",
+  daily_target: "operacional",
+  position_open: "operacional",
+  protection_engine: "operacional",
+  volatility: "estrategico",
+  score: "estrategico",
+  confidence: "estrategico",
+  committee: "estrategico",
+  signal_buy: "estrategico",
+  signal_sell: "estrategico",
+};
+
+const CATEGORY_LABEL: Record<string, string> = {
+  tecnico: "Bloqueio técnico",
+  operacional: "Bloqueio operacional",
+  estrategico: "Rejeição estratégica",
+};
+
+export const getB3EntryAuditReport = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { hours?: number } | undefined) => ({ hours: Math.min(Math.max(1, Number(input?.hours ?? 24)), 168) }))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const since = new Date(Date.now() - data.hours * 3600_000).toISOString();
+
+    const { data: runs } = await (supabase as any).from("b3_simulation_runs")
+      .select("id, status, started_at").eq("user_id", userId)
+      .in("status", ["running", "paused", "completed"])
+      .order("started_at", { ascending: false }).limit(1);
+    const run = runs?.[0] ?? null;
+    if (!run) return { run: null, period: { since, hours: data.hours }, modes: [], reasons: [], config_mismatches: [], totals: { snapshots_scanned: 0 } };
+
+    const { data: snaps } = await (supabase as any).from("b3_simulation_market_snapshots")
+      .select("market_time, extra")
+      .eq("simulation_run_id", run.id).eq("user_id", userId)
+      .gte("market_time", since)
+      .order("market_time", { ascending: true })
+      .limit(5000);
+
+    const { data: orders } = await (supabase as any).from("b3_simulation_orders")
+      .select("mode, status, net_result_brl, entry_time")
+      .eq("simulation_run_id", run.id).eq("user_id", userId)
+      .gte("entry_time", since);
+
+    const ordersByMode: Record<string, { total: number; net: number }> = {};
+    for (const m of MODES) ordersByMode[m] = { total: 0, net: 0 };
+    for (const o of orders ?? []) {
+      const b = ordersByMode[o.mode]; if (!b) continue;
+      b.total += 1; b.net += Number(o.net_result_brl ?? 0);
+    }
+
+    const list = (snaps ?? []).filter((s: any) => s?.extra?.engine_audit);
+
+    // Estado para dedup por (mode|step_key). Um novo "grupo" começa quando muda step_key ou detail.
+    type Group = { mode: string; category: string; step_key: string; label: string; detail: string; first_at: string; last_at: string; repetitions: number; observed_values: number[]; limit_values: number[] };
+    const groups: Group[] = [];
+    const activeByMode: Record<string, Group | null> = {};
+    for (const m of MODES) activeByMode[m] = null;
+
+    const funnel: Record<string, any> = {};
+    for (const m of MODES) {
+      funnel[m] = {
+        mode: m,
+        ciclos: 0,
+        ticks_validos: 0,
+        sinais_brutos: 0,
+        filtrados_ok: 0,
+        enviados_comite: 0,
+        aprovados_comite: 0,
+        rejeitados_comite: 0,
+        bloqueios_tecnicos: 0,
+        bloqueios_operacionais: 0,
+        rejeicoes_estrategicas: 0,
+        entradas_executadas: 0,
+        resultado_liquido_brl: 0,
+      };
+    }
+    let configMismatchesLatest: any[] = [];
+    let latestAt: string | null = null;
+
+    const parseObs = (detail: string | null | undefined): { obs?: number; lim?: number } => {
+      if (!detail) return {};
+      // patterns like "58 < 62", "Confiança 53 < 70"
+      const m1 = detail.match(/(-?\d+[\d.,]*)\s*[<>]=?\s*(-?\d+[\d.,]*)/);
+      if (m1) return { obs: Number(m1[1].replace(",", ".")), lim: Number(m1[2].replace(",", ".")) };
+      const m2 = detail.match(/idade\s+(\d+)\s+segundos.*limite\s+(\d+)/i);
+      if (m2) return { obs: Number(m2[1]), lim: Number(m2[2]) };
+      return {};
+    };
+
+    for (const s of list) {
+      const audit = s.extra.engine_audit;
+      latestAt = s.market_time;
+      if (Array.isArray(audit.config_mismatches) && audit.config_mismatches.length) {
+        configMismatchesLatest = audit.config_mismatches;
+      } else if (audit.modes) {
+        // derivar de config_comparison do último snapshot
+        const mism: any[] = [];
+        for (const m of audit.modes) {
+          const comp = m.config_comparison ?? {};
+          for (const [field, v] of Object.entries<any>(comp)) {
+            if (v && v.matches === false) mism.push({ mode: m.mode, field, screen: v.screen, motor: v.motor });
+          }
+        }
+        if (mism.length) configMismatchesLatest = mism;
+      }
+
+      for (const m of audit.modes ?? []) {
+        const f = funnel[m.mode]; if (!f) continue;
+        f.ciclos += 1;
+        const guardOk = audit.tick_guard ? audit.tick_guard.ok !== false : true;
+        const globalOk = !audit.global_protection?.active;
+        if (guardOk && globalOk) f.ticks_validos += 1;
+
+        const buy = !!m.signals?.buy;
+        const sell = !!m.signals?.sell;
+        if (buy || sell) f.sinais_brutos += 1;
+
+        const first = m.first_stop;
+        const opened = /ordem simulada aberta/i.test(m.last_refusal_reason ?? "");
+
+        if (!first && !opened) f.filtrados_ok += 1;
+        if (m.committee) {
+          f.enviados_comite += 1;
+          if (m.committee.final === "approved") f.aprovados_comite += 1;
+          else f.rejeitados_comite += 1;
+        }
+
+        if (first && !opened) {
+          const cat = REASON_CATEGORY[first.key] ?? "estrategico";
+          if (cat === "tecnico") f.bloqueios_tecnicos += 1;
+          else if (cat === "operacional") f.bloqueios_operacionais += 1;
+          else f.rejeicoes_estrategicas += 1;
+
+          const sig = `${first.key}|${(first.detail ?? "").slice(0, 80)}`;
+          const active = activeByMode[m.mode];
+          if (active && `${active.step_key}|${active.detail.slice(0, 80)}` === sig) {
+            active.repetitions += 1;
+            active.last_at = s.market_time;
+            const { obs, lim } = parseObs(first.detail);
+            if (obs != null) active.observed_values.push(obs);
+            if (lim != null) active.limit_values.push(lim);
+          } else {
+            const g: Group = {
+              mode: m.mode, category: cat, step_key: first.key,
+              label: first.label ?? first.key, detail: first.detail ?? "",
+              first_at: s.market_time, last_at: s.market_time,
+              repetitions: 1, observed_values: [], limit_values: [],
+            };
+            const { obs, lim } = parseObs(first.detail);
+            if (obs != null) g.observed_values.push(obs);
+            if (lim != null) g.limit_values.push(lim);
+            groups.push(g);
+            activeByMode[m.mode] = g;
+          }
+        } else {
+          activeByMode[m.mode] = null;
+        }
+      }
+    }
+
+    // Somar ordens executadas do banco (fonte de verdade)
+    for (const m of MODES) {
+      funnel[m].entradas_executadas = ordersByMode[m].total;
+      funnel[m].resultado_liquido_brl = Math.round(ordersByMode[m].net * 100) / 100;
+    }
+
+    // Ranking de motivos: agrupar por (mode, step_key), somando ocorrências únicas e repetições
+    type ReasonAgg = { mode: string; category: string; category_label: string; step_key: string; label: string; occurrences: number; repetitions: number; first_at: string; last_at: string; avg_observed: number | null; avg_limit: number | null; avg_distance: number | null; last_detail: string };
+    const rmap = new Map<string, ReasonAgg>();
+    const modeSignals: Record<string, number> = Object.fromEntries(MODES.map((m) => [m, funnel[m].ciclos || 1]));
+    for (const g of groups) {
+      const k = `${g.mode}|${g.step_key}`;
+      const obs = g.observed_values.length ? g.observed_values.reduce((a, b) => a + b, 0) / g.observed_values.length : null;
+      const lim = g.limit_values.length ? g.limit_values.reduce((a, b) => a + b, 0) / g.limit_values.length : null;
+      const dist = obs != null && lim != null ? obs - lim : null;
+      let r = rmap.get(k);
+      if (!r) {
+        r = { mode: g.mode, category: g.category, category_label: CATEGORY_LABEL[g.category], step_key: g.step_key, label: g.label, occurrences: 0, repetitions: 0, first_at: g.first_at, last_at: g.last_at, avg_observed: null, avg_limit: null, avg_distance: null, last_detail: g.detail };
+        rmap.set(k, r);
+      }
+      r.occurrences += 1;
+      r.repetitions += g.repetitions;
+      if (g.first_at < r.first_at) r.first_at = g.first_at;
+      if (g.last_at > r.last_at) { r.last_at = g.last_at; r.last_detail = g.detail; }
+      // média ponderada simples pelas amostras coletadas neste grupo
+      if (obs != null) r.avg_observed = r.avg_observed == null ? obs : (r.avg_observed + obs) / 2;
+      if (lim != null) r.avg_limit = r.avg_limit == null ? lim : (r.avg_limit + lim) / 2;
+      if (dist != null) r.avg_distance = r.avg_distance == null ? dist : (r.avg_distance + dist) / 2;
+    }
+    const reasons = [...rmap.values()]
+      .map((r) => ({ ...r, pct_of_cycles: Math.round((r.repetitions / (modeSignals[r.mode] || 1)) * 1000) / 10 }))
+      .sort((a, b) => b.repetitions - a.repetitions);
+
+    return {
+      run,
+      period: { since, until: latestAt, hours: data.hours },
+      modes: MODES.map((m) => {
+        const f = funnel[m];
+        const sinais = f.sinais_brutos || 0;
+        const comite = f.enviados_comite || 0;
+        return {
+          ...f,
+          taxa_geracao_sinal: f.ciclos ? Math.round((sinais / f.ciclos) * 10000) / 100 : 0,
+          taxa_aprov_filtros: sinais ? Math.round((comite / sinais) * 10000) / 100 : 0,
+          taxa_aprov_comite: comite ? Math.round((f.aprovados_comite / comite) * 10000) / 100 : 0,
+          taxa_execucao: f.aprovados_comite ? Math.round((f.entradas_executadas / f.aprovados_comite) * 10000) / 100 : 0,
+          conversao_final: sinais ? Math.round((f.entradas_executadas / sinais) * 10000) / 100 : 0,
+        };
+      }),
+      reasons,
+      config_mismatches: configMismatchesLatest,
+      totals: { snapshots_scanned: list.length },
+    };
+  });
+
+
 
 
 
