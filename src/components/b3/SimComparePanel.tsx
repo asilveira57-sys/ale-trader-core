@@ -38,7 +38,7 @@ const MODE_COLOR: Record<Mode, string> = {
 const STATUS_META: Record<string, { label: string; cls: string; canResumeToday: boolean; type: "operando" | "pausa" | "stop_op" | "stop_dia" | "meta" | "risco" | "horario" | "zeragem" | "erro" }> = {
   operando: { label: "Operando", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", canResumeToday: true, type: "operando" },
   pausado: { label: "Pausado", cls: "bg-slate-500/15 text-slate-300 border-slate-500/30", canResumeToday: true, type: "pausa" },
-  stop_operacao: { label: "Stop da operação", cls: "bg-rose-500/15 text-rose-300 border-rose-500/30", canResumeToday: true, type: "stop_op" },
+  stop_operacao: { label: "Stop da operação", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", canResumeToday: true, type: "stop_op" },
   bloqueado_perda_diaria: { label: "Bloqueado · limite diário de perda", cls: "bg-rose-600/20 text-rose-200 border-rose-600/40", canResumeToday: false, type: "stop_dia" },
   bloqueado_meta_diaria: { label: "Bloqueado · meta diária atingida", cls: "bg-emerald-600/20 text-emerald-200 border-emerald-600/40", canResumeToday: false, type: "meta" },
   bloqueado_volatilidade: { label: "Bloqueado · volatilidade", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", canResumeToday: true, type: "risco" },
@@ -46,6 +46,14 @@ const STATUS_META: Record<string, { label: string; cls: string; canResumeToday: 
   bloqueado_zeragem: { label: "Bloqueado · zeragem obrigatória", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", canResumeToday: false, type: "zeragem" },
   bloqueado_risco: { label: "Bloqueado · risco macro", cls: "bg-rose-500/15 text-rose-300 border-rose-500/30", canResumeToday: true, type: "risco" },
   erro_tecnico: { label: "Erro técnico", cls: "bg-rose-600/30 text-rose-100 border-rose-600/50", canResumeToday: true, type: "erro" },
+};
+
+const STOP_EVENT_META: Record<string, { label: string; cls: string; releasedText?: string }> = {
+  stop_operacao: { label: "Stop de operação", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", releasedText: "Operação encerrada pelo stop — robô liberado para novas entradas" },
+  stop_trade: { label: "Stop de operação", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", releasedText: "Operação encerrada pelo stop — robô liberado para novas entradas" },
+  bloqueado_perda_diaria: { label: "Stop diário", cls: "bg-rose-600/20 text-rose-200 border-rose-600/40" },
+  bloqueado_horario: { label: "Corte operacional", cls: "bg-slate-500/15 text-slate-300 border-slate-500/30" },
+  erro_tecnico: { label: "Erro técnico", cls: "bg-rose-600/30 text-rose-100 border-rose-600/50" },
 };
 
 const PROT_LABEL: Record<string, string> = {
@@ -832,19 +840,29 @@ function StopsAndBlocksPanel({ data }: { data: any }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {events.map((e: any) => (
+                  {events.map((e: any) => {
+                    const meta = STOP_EVENT_META[e.new_status] ?? STOP_EVENT_META[e.trigger] ?? { label: e.new_status, cls: "" };
+                    const currentMode = modes.find((m: any) => m.mode === e.mode);
+                    const isReleased = currentMode?.current_status === "operando";
+                    return (
                     <tr key={e.id} className="border-b border-border/20">
                       <td className="py-1 pr-2 font-mono text-[10px] whitespace-nowrap">{new Date(e.occurred_at).toLocaleString("pt-BR")}</td>
                       <td><Badge variant="outline" className={`text-[10px] capitalize ${MODE_COLOR[e.mode as Mode]}`}>{e.mode}</Badge></td>
                       <td className="text-muted-foreground">{e.prev_status ?? "—"}</td>
-                      <td>{e.new_status}</td>
+                      <td className="space-y-1">
+                        <Badge variant="outline" className={`text-[10px] ${meta.cls}`}>{meta.label}</Badge>
+                        {meta.releasedText && isReleased && (
+                          <div className="text-[10px] text-emerald-300">{meta.releasedText}</div>
+                        )}
+                      </td>
                       <td><Badge variant="outline" className="text-[10px]">{e.trigger}</Badge></td>
                       <td className="text-right font-mono">{e.observed_value != null ? NUM(Number(e.observed_value), 2) : "—"}</td>
                       <td className="text-right font-mono">{e.limit_value != null ? NUM(Number(e.limit_value), 2) : "—"}</td>
                       <td className="text-right font-mono">{e.pnl_at_moment != null ? BRL(Number(e.pnl_at_moment)) : "—"}</td>
                       <td className="text-muted-foreground max-w-[300px] truncate">{e.message ?? "—"}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
