@@ -38,7 +38,7 @@ const MODE_COLOR: Record<Mode, string> = {
 const STATUS_META: Record<string, { label: string; cls: string; canResumeToday: boolean; type: "operando" | "pausa" | "stop_op" | "stop_dia" | "meta" | "risco" | "horario" | "zeragem" | "erro" }> = {
   operando: { label: "Operando", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", canResumeToday: true, type: "operando" },
   pausado: { label: "Pausado", cls: "bg-slate-500/15 text-slate-300 border-slate-500/30", canResumeToday: true, type: "pausa" },
-  stop_operacao: { label: "Stop da operação", cls: "bg-rose-500/15 text-rose-300 border-rose-500/30", canResumeToday: true, type: "stop_op" },
+  stop_operacao: { label: "Stop da operação", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", canResumeToday: true, type: "stop_op" },
   bloqueado_perda_diaria: { label: "Bloqueado · limite diário de perda", cls: "bg-rose-600/20 text-rose-200 border-rose-600/40", canResumeToday: false, type: "stop_dia" },
   bloqueado_meta_diaria: { label: "Bloqueado · meta diária atingida", cls: "bg-emerald-600/20 text-emerald-200 border-emerald-600/40", canResumeToday: false, type: "meta" },
   bloqueado_volatilidade: { label: "Bloqueado · volatilidade", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", canResumeToday: true, type: "risco" },
@@ -46,6 +46,14 @@ const STATUS_META: Record<string, { label: string; cls: string; canResumeToday: 
   bloqueado_zeragem: { label: "Bloqueado · zeragem obrigatória", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", canResumeToday: false, type: "zeragem" },
   bloqueado_risco: { label: "Bloqueado · risco macro", cls: "bg-rose-500/15 text-rose-300 border-rose-500/30", canResumeToday: true, type: "risco" },
   erro_tecnico: { label: "Erro técnico", cls: "bg-rose-600/30 text-rose-100 border-rose-600/50", canResumeToday: true, type: "erro" },
+};
+
+const STOP_EVENT_META: Record<string, { label: string; cls: string; releasedText?: string }> = {
+  stop_operacao: { label: "Stop de operação", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", releasedText: "Operação encerrada pelo stop — robô liberado para novas entradas" },
+  stop_trade: { label: "Stop de operação", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", releasedText: "Operação encerrada pelo stop — robô liberado para novas entradas" },
+  bloqueado_perda_diaria: { label: "Stop diário", cls: "bg-rose-600/20 text-rose-200 border-rose-600/40" },
+  bloqueado_horario: { label: "Corte operacional", cls: "bg-slate-500/15 text-slate-300 border-slate-500/30" },
+  erro_tecnico: { label: "Erro técnico", cls: "bg-rose-600/30 text-rose-100 border-rose-600/50" },
 };
 
 const PROT_LABEL: Record<string, string> = {
