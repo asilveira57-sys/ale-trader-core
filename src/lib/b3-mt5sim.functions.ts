@@ -125,6 +125,11 @@ const robotSchema = z.object({
   initial_balance_brl: z.number().min(0).optional(),
   stop_loss_points: z.number().min(0).optional(),
   take_profit_points: z.number().min(0).optional(),
+  exit_mode: z.enum(["fixed", "breakeven", "trailing", "loss_of_momentum", "time_based", "session_close"]).optional(),
+  breakeven_trigger_pts: z.number().int().min(0).max(10000).optional(),
+  trailing_start_pts: z.number().int().min(0).max(10000).optional(),
+  trailing_step_pts: z.number().int().min(0).max(10000).optional(),
+  max_duration_s: z.number().int().min(0).max(86400).optional(),
 });
 
 
