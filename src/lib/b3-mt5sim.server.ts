@@ -36,6 +36,12 @@ interface Settings {
   allow_long: boolean;
   allow_short: boolean;
   allow_reverse: boolean;
+  // Fase 1
+  min_risk_reward: number;
+  max_tick_age_seconds: number;
+  max_tick_jump_pts: number;
+  slippage_ticks_entry: number;
+  slippage_ticks_exit: number;
 }
 
 interface Robot {
@@ -87,7 +93,8 @@ function priceForSide(q: Quote, s: Settings, side: SimSide): number | null {
   const raw = side === "buy" ? ask : bid;
   if (raw == null) return null;
   if (src === "bid_ask_slip") {
-    const slip = s.slippage_ticks * s.tick_size;
+    const slipTicks = (s.slippage_ticks_entry ?? s.slippage_ticks) || 0;
+    const slip = slipTicks * s.tick_size;
     return side === "buy" ? raw + slip : raw - slip;
   }
   return raw;
@@ -166,7 +173,7 @@ async function generateSignal(sb: SupabaseClient, userId: string, robot: Robot, 
   return { side, score, reason: `SMA${cfg.fast}-SMA${cfg.slow}=${diff.toFixed(1)}`, price };
 }
 
-interface LockResult { allow: boolean; kind?: string; observed?: number; limit?: number; reason?: string }
+interface LockResult { allow: boolean; kind?: string; observed?: number; limit?: number; reason?: string; extra?: any }
 
 function evaluateDailyLocks(robot: Robot, wallet: any): LockResult {
   if (Number(wallet.trades_count) >= robot.max_trades_day) return { allow: false, kind: "max_trades_dia", observed: wallet.trades_count, limit: robot.max_trades_day, reason: "máximo de operações diárias atingido" };
@@ -178,13 +185,31 @@ function evaluateDailyLocks(robot: Robot, wallet: any): LockResult {
 }
 
 function evaluateEntryLocks(robot: Robot, wallet: any, quote: Quote, settings: Settings, score: number, quoteAgeS: number): LockResult {
-  if (quoteAgeS > TICK_ENTRY_MAX_AGE_S) return { allow: false, kind: "tick_desatualizado", observed: quoteAgeS, limit: TICK_ENTRY_MAX_AGE_S, reason: `tick com ${quoteAgeS.toFixed(1)}s > ${TICK_ENTRY_MAX_AGE_S}s` };
+  const maxAge = settings.max_tick_age_seconds ?? TICK_ENTRY_MAX_AGE_S;
+  if (quoteAgeS > maxAge) return { allow: false, kind: "tick_desatualizado", observed: quoteAgeS, limit: maxAge, reason: `tick com ${quoteAgeS.toFixed(1)}s > ${maxAge}s` };
   const spreadTicks = quote.spread != null ? quote.spread / settings.tick_size : 0;
   if (settings.use_spread && spreadTicks > robot.max_spread_ticks) return { allow: false, kind: "spread_alto", observed: spreadTicks, limit: robot.max_spread_ticks, reason: "spread acima do limite" };
   if (score < robot.min_score) return { allow: false, kind: "score_baixo", observed: score, limit: robot.min_score, reason: "score do sinal abaixo do mínimo" };
   const daily = evaluateDailyLocks(robot, wallet);
   if (!daily.allow) return daily;
   return { allow: true };
+}
+
+/** Cálculo de risco/retorno considerando custos. */
+function evaluateRiskReward(robot: Robot, settings: Settings, quote: Quote): { ok: boolean; rr: number; risk_net: number; reward_net: number } {
+  const stopPts = Math.max(0, robot.stop_loss_points);
+  const tpPts = Math.max(0, robot.take_profit_points);
+  const pointValue = Number(settings.point_value_brl) || 0;
+  const vol = Math.max(1, robot.volume);
+  const fee = Number(settings.fee_per_contract_brl) * vol * 2;
+  const spreadPts = quote.spread != null ? Number(quote.spread) : 0;
+  const slipEntry = (settings.slippage_ticks_entry ?? 0) * settings.tick_size;
+  const slipExit = (settings.slippage_ticks_exit ?? 0) * settings.tick_size;
+  const cost = fee + (spreadPts + slipEntry + slipExit) * pointValue * vol;
+  const risk = stopPts * pointValue * vol + cost;
+  const reward = tpPts * pointValue * vol - cost;
+  const rr = risk > 0 ? reward / risk : 0;
+  return { ok: reward > 0 && rr >= (settings.min_risk_reward ?? 1.2), rr, risk_net: risk, reward_net: reward };
 }
 
 /** Fechamento canônico. Atualiza carteira e devolve o resultado. */
@@ -211,6 +236,12 @@ export async function closeSimTrade(
   const gross = points * Number(settings.point_value_brl) * Number(trade.volume);
   const fee = Number(settings.fee_per_contract_brl) * Number(trade.volume) * 2;
   const net = gross - fee;
+  const entryTs = trade.ts_entry ? new Date(trade.ts_entry).getTime() : Date.now();
+  const nowTs = Date.now();
+  const durationS = Math.max(0, Math.round((nowTs - entryTs) / 1000));
+  const tickAgeExit = quote ? (nowTs - new Date(quote.received_at).getTime()) / 1000 : null;
+  const spreadExitTicks = quote?.spread != null ? Number(quote.spread) / settings.tick_size : null;
+
   await (sb as any)
     .from("b3_mt5sim_trades")
     .update({
@@ -221,7 +252,11 @@ export async function closeSimTrade(
       fee_brl: fee,
       net_brl: net,
       exit_reason: reason,
+      exit_reason_detail: reason,
       status: "closed",
+      duration_s: durationS,
+      tick_age_exit_s: tickAgeExit,
+      spread_exit_ticks: spreadExitTicks,
     })
     .eq("id", trade.id);
 
@@ -259,7 +294,6 @@ export async function closeSimTrade(
       position_avg_price: null,
     })
     .eq("id", wallet.id);
-  // cooldown do robô após qualquer fechamento (auto ou manual)
   const cd = Math.max(0, Number((robot as any).cooldown_s ?? 30));
   await (sb as any)
     .from("b3_mt5sim_robots")
@@ -274,6 +308,9 @@ export async function openSimTrade(sb: SupabaseClient, userId: string, settings:
   if (px == null) return null;
   const stopPx = side === "buy" ? px - robot.stop_loss_points : px + robot.stop_loss_points;
   const tgtPx = side === "buy" ? px + robot.take_profit_points : px - robot.take_profit_points;
+  const rr = evaluateRiskReward(robot, settings, quote);
+  const tickAgeEntry = (Date.now() - new Date(quote.received_at).getTime()) / 1000;
+  const spreadEntryTicks = quote.spread != null ? Number(quote.spread) / settings.tick_size : null;
   const { data, error } = await (sb as any)
     .from("b3_mt5sim_trades")
     .insert({
@@ -290,9 +327,22 @@ export async function openSimTrade(sb: SupabaseClient, userId: string, settings:
       ts_signal: quote.tick_ts,
       ts_entry: new Date().toISOString(),
       spread: quote.spread,
-      slippage_ticks: settings.price_source === "bid_ask_slip" ? settings.slippage_ticks : 0,
+      slippage_ticks: settings.price_source === "bid_ask_slip" ? (settings.slippage_ticks_entry ?? settings.slippage_ticks) : 0,
       entry_reason: reason,
       status: "open",
+      // telemetria fase 1
+      best_price: px,
+      worst_price: px,
+      mfe_pts: 0,
+      mae_pts: 0,
+      mfe_brl: 0,
+      mae_brl: 0,
+      max_open_profit_brl: 0,
+      initial_risk_brl: rr.risk_net,
+      initial_target_brl: rr.reward_net,
+      risk_reward_ratio: rr.rr,
+      tick_age_entry_s: tickAgeEntry,
+      spread_entry_ticks: spreadEntryTicks,
     })
     .select()
     .single();
@@ -318,6 +368,42 @@ async function registerBlock(sb: SupabaseClient, userId: string, robotId: string
   });
 }
 
+/** Atualiza MFE/MAE/best/worst para uma posição aberta. */
+async function updateTradeTelemetry(sb: SupabaseClient, settings: Settings, trade: any, refPrice: number) {
+  const side: SimSide = trade.side;
+  const entry = Number(trade.price_entry_sim);
+  const best = Number(trade.best_price ?? entry);
+  const worst = Number(trade.worst_price ?? entry);
+  const newBest = side === "buy" ? Math.max(best, refPrice) : Math.min(best, refPrice);
+  const newWorst = side === "buy" ? Math.min(worst, refPrice) : Math.max(worst, refPrice);
+  const mfePts = side === "buy" ? newBest - entry : entry - newBest;
+  const maePts = side === "buy" ? entry - newWorst : newWorst - entry;
+  const pv = Number(settings.point_value_brl) * Number(trade.volume);
+  const mfeBrl = mfePts * pv;
+  const maeBrl = maePts * pv;
+  const openPnl = pointsPnl(entry, refPrice, side, settings.tick_size) * pv;
+  const maxOpen = Math.max(Number(trade.max_open_profit_brl ?? 0), openPnl);
+  await (sb as any)
+    .from("b3_mt5sim_trades")
+    .update({
+      best_price: newBest,
+      worst_price: newWorst,
+      mfe_pts: mfePts,
+      mae_pts: maePts,
+      mfe_brl: mfeBrl,
+      mae_brl: maeBrl,
+      max_open_profit_brl: maxOpen,
+    })
+    .eq("id", trade.id);
+}
+
+/** Chave de deduplicação entre robôs para o mesmo tick/janela. */
+function buildSignalHash(symbol: string, side: SimSide, price: number, tsMs: number): string {
+  const bucket = Math.floor(tsMs / 60_000); // 1 minuto
+  const priceBucket = Math.round(price / 5) * 5;
+  return `${symbol}|${side}|${bucket}|${priceBucket}`;
+}
+
 export interface TickResult {
   status: string;
   signals: number;
@@ -326,10 +412,12 @@ export interface TickResult {
   blocked: number;
   conflicts: number;
   quote_age_s?: number;
+  gap_detected?: boolean;
+  duplicates_blocked?: number;
 }
 
 export async function runMt5SimTick(sb: SupabaseClient, userId: string, opts: { force?: boolean } = {}): Promise<TickResult> {
-  const res: TickResult = { status: "ok", signals: 0, opened: 0, closed: 0, blocked: 0, conflicts: 0 };
+  const res: TickResult = { status: "ok", signals: 0, opened: 0, closed: 0, blocked: 0, conflicts: 0, duplicates_blocked: 0 };
 
   const { data: settings } = await (sb as any).from("b3_mt5sim_settings").select("*").eq("user_id", userId).maybeSingle();
   if (!settings) return { ...res, status: "no_settings" };
@@ -337,7 +425,6 @@ export async function runMt5SimTick(sb: SupabaseClient, userId: string, opts: { 
 
   const insideSession = isInsideSession(new Date(), s.session_start, s.session_end);
   if (!opts.force && !insideSession) {
-    // Fim de horário: forçar fechamento de posições abertas (uma vez).
     await forceCloseAllOpen(sb, userId, s, "fim_horario");
     return { ...res, status: "fora_pregao" };
   }
@@ -355,10 +442,39 @@ export async function runMt5SimTick(sb: SupabaseClient, userId: string, opts: { 
   const age = (Date.now() - new Date(q.received_at).getTime()) / 1000;
   res.quote_age_s = age;
 
-  // Se tick > 30s: pausar simulação por completo (não gerenciar, não abrir, não fechar).
+  // Gap: compara com último tick registrado na run ativa.
+  const currentPrice = Number(q.last ?? q.bid ?? q.ask ?? 0);
+  const { data: activeRun } = await (sb as any)
+    .from("b3_mt5sim_runs")
+    .select("id, last_tick_price, last_tick_at")
+    .eq("user_id", userId)
+    .eq("status", "running")
+    .maybeSingle();
+  let gapDetected = false;
+  if (activeRun) {
+    const prev = Number((activeRun as any).last_tick_price ?? 0);
+    if (prev > 0 && Math.abs(currentPrice - prev) > (s.max_tick_jump_pts ?? 500)) {
+      gapDetected = true;
+      res.gap_detected = true;
+      await (sb as any).from("b3_mt5sim_blocks").insert({
+        user_id: userId,
+        robot_id: null,
+        signal_id: null,
+        lock_kind: "gap_detectado",
+        observed: Math.abs(currentPrice - prev),
+        limit_value: s.max_tick_jump_pts ?? 500,
+        reason: `gap de ${Math.abs(currentPrice - prev).toFixed(0)} pts detectado (prev=${prev} → ${currentPrice})`,
+      });
+    }
+    await (sb as any).from("b3_mt5sim_runs").update({
+      last_tick_at: new Date().toISOString(),
+      last_tick_price: currentPrice,
+    }).eq("id", (activeRun as any).id);
+  }
+
   if (age > TICK_PAUSE_AGE_S) return { ...res, status: "paused_stale", quote_age_s: age };
-  // TTL configurado (padrão 15s): também pausa novas operações.
-  const staleForEntry = age > s.quote_ttl_seconds || age > TICK_ENTRY_MAX_AGE_S;
+  const maxAgeEntry = s.max_tick_age_seconds ?? TICK_ENTRY_MAX_AGE_S;
+  const staleForEntry = age > s.quote_ttl_seconds || age > maxAgeEntry;
 
   const { data: robots } = await (sb as any)
     .from("b3_mt5sim_robots")
@@ -369,65 +485,130 @@ export async function runMt5SimTick(sb: SupabaseClient, userId: string, opts: { 
   if (!list.length) return { ...res, status: "sem_robos" };
 
   const today = new Date().toISOString().slice(0, 10);
-  const sidesActive: { robot: Robot; side: SimSide; price: number }[] = [];
 
-  // 1) Gerenciar posições abertas (stop, alvo, travas diárias) para TODOS os robôs habilitados
+  // ============= FASE A — Watchdog: gestão de posições abertas =============
+  // Isolada em try/catch para não bloquear futura fase de entrada em caso de erro.
   for (const robot of list) {
-    const { data: openTrades } = await (sb as any)
-      .from("b3_mt5sim_trades")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("robot_id", robot.id)
-      .eq("status", "open");
-    for (const t of ((openTrades as any[]) ?? [])) {
-      const side: SimSide = t.side;
-      const ref = Number(q.last ?? (side === "buy" ? q.bid : q.ask) ?? q.bid ?? q.ask);
-      if (!Number.isFinite(ref)) continue;
-      // Stop
-      if (t.stop_price != null) {
-        const hit = side === "buy" ? ref <= Number(t.stop_price) : ref >= Number(t.stop_price);
-        if (hit) {
-          await closeSimTrade(sb, userId, s, robot, t, q, "stop", Number(t.stop_price));
+    try {
+      const { data: openTrades } = await (sb as any)
+        .from("b3_mt5sim_trades")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("robot_id", robot.id)
+        .eq("status", "open");
+      for (const t of ((openTrades as any[]) ?? [])) {
+        const side: SimSide = t.side;
+        const ref = Number(q.last ?? (side === "buy" ? q.bid : q.ask) ?? q.bid ?? q.ask);
+        if (!Number.isFinite(ref)) continue;
+
+        // Telemetria contínua (MFE/MAE)
+        try { await updateTradeTelemetry(sb, s, t, ref); } catch { /* isolado */ }
+
+        // Stop
+        if (t.stop_price != null) {
+          const hit = side === "buy" ? ref <= Number(t.stop_price) : ref >= Number(t.stop_price);
+          if (hit) {
+            await closeSimTrade(sb, userId, s, robot, t, q, "stop", Number(t.stop_price));
+            res.closed++;
+            continue;
+          }
+        }
+        // Alvo
+        if (t.target_price != null) {
+          const hit = side === "buy" ? ref >= Number(t.target_price) : ref <= Number(t.target_price);
+          if (hit) {
+            await closeSimTrade(sb, userId, s, robot, t, q, "alvo", Number(t.target_price));
+            res.closed++;
+            continue;
+          }
+        }
+        // Trava diária → zera posição
+        const wallet = await ensureWallet(sb, userId, robot, today);
+        const daily = evaluateDailyLocks(robot, wallet);
+        if (!daily.allow) {
+          await closeSimTrade(sb, userId, s, robot, t, q, `trava_${daily.kind}`);
           res.closed++;
-          continue;
         }
       }
-      // Alvo
-      if (t.target_price != null) {
-        const hit = side === "buy" ? ref >= Number(t.target_price) : ref <= Number(t.target_price);
-        if (hit) {
-          await closeSimTrade(sb, userId, s, robot, t, q, "alvo", Number(t.target_price));
-          res.closed++;
-          continue;
-        }
-      }
-      // Trava diária ativa → zera posição
-      const wallet = await ensureWallet(sb, userId, robot, today);
-      const daily = evaluateDailyLocks(robot, wallet);
-      if (!daily.allow) {
-        await closeSimTrade(sb, userId, s, robot, t, q, `trava_${daily.kind}`);
-        res.closed++;
-      }
+    } catch (err) {
+      await (sb as any).from("b3_mt5sim_blocks").insert({
+        user_id: userId, robot_id: robot.id, signal_id: null,
+        lock_kind: "position_management_alert",
+        reason: `falha na gestão de posições: ${(err as Error).message}`,
+      });
     }
   }
 
-  // 2) Gerar sinais e abrir/fechar por sinal contrário — apenas robôs em modo automático
+  // Se gap: não abre novas entradas neste tick, mas já rodou gestão acima.
+  if (gapDetected) return { ...res, status: "gap_detected", quote_age_s: age };
+
+  // ============= FASE B — Geração e deduplicação de sinais =============
+  interface Candidate {
+    robot: Robot;
+    wallet: any;
+    sig: { side: SimSide; score: number; reason: string; price: number };
+    signalId: string | null;
+    hash: string;
+  }
+  const candidates: Candidate[] = [];
+
   for (const robot of list) {
     if ((robot.mode ?? "manual") !== "auto") continue;
     if (robot.cooldown_until && new Date(robot.cooldown_until).getTime() > Date.now()) continue;
-    const wallet = await ensureWallet(sb, userId, robot, today);
-    const sig = await generateSignal(sb, userId, robot, q, s.mt5_symbol);
-    if (!sig) continue;
-    res.signals++;
+    try {
+      const wallet = await ensureWallet(sb, userId, robot, today);
+      const sig = await generateSignal(sb, userId, robot, q, s.mt5_symbol);
+      if (!sig) continue;
+      res.signals++;
+      const hash = buildSignalHash(s.mt5_symbol, sig.side, sig.price, Date.now());
+      const { data: sigRow } = await (sb as any)
+        .from("b3_mt5sim_signals")
+        .insert({
+          user_id: userId, robot_id: robot.id, side: sig.side, price_signal: sig.price,
+          score: sig.score, reason: sig.reason, signal_hash: hash,
+          expires_at: new Date(Date.now() + robot.signal_ttl_s * 1000).toISOString(),
+        })
+        .select()
+        .single();
+      candidates.push({ robot, wallet, sig, signalId: (sigRow as any)?.id ?? null, hash });
+    } catch (err) {
+      await (sb as any).from("b3_mt5sim_blocks").insert({
+        user_id: userId, robot_id: robot.id, signal_id: null,
+        lock_kind: "signal_generation_error",
+        reason: (err as Error).message,
+      });
+    }
+  }
 
+  // Dedup: agrupa por hash, mantém o de maior score.
+  const byHash = new Map<string, Candidate>();
+  const losers: Candidate[] = [];
+  for (const c of candidates) {
+    const cur = byHash.get(c.hash);
+    if (!cur) { byHash.set(c.hash, c); continue; }
+    if (c.sig.score > cur.sig.score) {
+      losers.push(cur);
+      byHash.set(c.hash, c);
+    } else {
+      losers.push(c);
+    }
+  }
+  for (const l of losers) {
+    await registerBlock(sb, userId, l.robot.id, l.signalId, {
+      allow: false, kind: "duplicate_signal", reason: `sinal duplicado com robô de maior score no mesmo tick`,
+      extra: { hash: l.hash, score: l.sig.score },
+    });
+    await (sb as any).from("b3_mt5sim_signals").update({ status: "blocked" }).eq("id", l.signalId);
+    res.blocked++;
+    res.duplicates_blocked = (res.duplicates_blocked ?? 0) + 1;
+  }
 
-    const { data: sigRow } = await (sb as any)
-      .from("b3_mt5sim_signals")
-      .insert({ user_id: userId, robot_id: robot.id, side: sig.side, price_signal: sig.price, score: sig.score, reason: sig.reason, expires_at: new Date(Date.now() + robot.signal_ttl_s * 1000).toISOString() })
-      .select()
-      .single();
-    const signalId = (sigRow as any)?.id;
+  // ============= FASE C — Avaliação de entrada por candidato =============
+  const sidesActive: { robot: Robot; side: SimSide; price: number }[] = [];
+  for (const c of byHash.values()) {
+    const { robot, wallet, sig, signalId } = c;
 
+    // Sinal contrário à posição aberta → fecha (não conta como entrada bloqueada)
     const { data: openTrades } = await (sb as any)
       .from("b3_mt5sim_trades")
       .select("*")
@@ -436,7 +617,6 @@ export async function runMt5SimTick(sb: SupabaseClient, userId: string, opts: { 
       .eq("status", "open")
       .limit(1);
     const openT = ((openTrades as any[]) ?? [])[0];
-
     if (openT && openT.side !== sig.side) {
       await closeSimTrade(sb, userId, s, robot, openT, q, "sinal_contrario");
       res.closed++;
@@ -450,7 +630,7 @@ export async function runMt5SimTick(sb: SupabaseClient, userId: string, opts: { 
     }
 
     if (staleForEntry) {
-      const lock: LockResult = { allow: false, kind: "tick_desatualizado", observed: age, limit: TICK_ENTRY_MAX_AGE_S, reason: `tick com ${age.toFixed(1)}s — bloqueio de entrada` };
+      const lock: LockResult = { allow: false, kind: "tick_desatualizado", observed: age, limit: maxAgeEntry, reason: `tick com ${age.toFixed(1)}s — bloqueio de entrada` };
       await registerBlock(sb, userId, robot.id, signalId, lock);
       await (sb as any).from("b3_mt5sim_signals").update({ status: "blocked" }).eq("id", signalId);
       await (sb as any).from("b3_mt5sim_wallet_daily").update({ blocks_count: Number(wallet.blocks_count) + 1, last_block_reason: lock.reason }).eq("id", wallet.id);
@@ -463,6 +643,21 @@ export async function runMt5SimTick(sb: SupabaseClient, userId: string, opts: { 
       await registerBlock(sb, userId, robot.id, signalId, lock);
       await (sb as any).from("b3_mt5sim_signals").update({ status: "blocked" }).eq("id", signalId);
       await (sb as any).from("b3_mt5sim_wallet_daily").update({ blocks_count: Number(wallet.blocks_count) + 1, last_block_reason: lock.reason }).eq("id", wallet.id);
+      res.blocked++;
+      continue;
+    }
+
+    // R:R gate (custos incluídos)
+    const rr = evaluateRiskReward(robot, s, q);
+    if (!rr.ok) {
+      const rrLock: LockResult = {
+        allow: false, kind: "risk_reward_below_threshold",
+        observed: Number(rr.rr.toFixed(2)), limit: Number(s.min_risk_reward ?? 1.2),
+        reason: `R:R líquido ${rr.rr.toFixed(2)} < ${(s.min_risk_reward ?? 1.2).toFixed(2)} (risco R$ ${rr.risk_net.toFixed(2)} / alvo R$ ${rr.reward_net.toFixed(2)})`,
+      };
+      await registerBlock(sb, userId, robot.id, signalId, rrLock);
+      await (sb as any).from("b3_mt5sim_signals").update({ status: "blocked" }).eq("id", signalId);
+      await (sb as any).from("b3_mt5sim_wallet_daily").update({ blocks_count: Number(wallet.blocks_count) + 1, last_block_reason: rrLock.reason }).eq("id", wallet.id);
       res.blocked++;
       continue;
     }
@@ -480,7 +675,7 @@ export async function runMt5SimTick(sb: SupabaseClient, userId: string, opts: { 
     sidesActive.push({ robot, side: sig.side, price: sig.price });
   }
 
-  // 3) Conflitos: robôs em lados opostos no mesmo tick
+  // Conflitos: robôs em lados opostos no mesmo tick
   const buys = sidesActive.filter((x) => x.side === "buy");
   const sells = sidesActive.filter((x) => x.side === "sell");
   if (buys.length && sells.length) {
@@ -593,7 +788,6 @@ export async function manualOpenSimTrade(
     if (existing.side === side) {
       throw new Error(side === "buy" ? "Robô já possui compra simulada aberta" : "Robô já possui venda simulada aberta");
     }
-    // lado oposto → só vira se permitido
     if (!settings.allow_reverse) {
       throw new Error(existing.side === "buy" ? "Robô comprado — virada não permitida" : "Robô vendido — vire mão não permitido");
     }
@@ -617,4 +811,3 @@ export async function manualReverseSimTrade(sb: SupabaseClient, userId: string, 
   const opened = await openSimTrade(sb, userId, settings, robot, null, newSide, quote, Number(quote.last ?? 0), newSide === "buy" ? "manual_reverse_to_buy" : "manual_reverse_to_sell");
   return opened;
 }
-
