@@ -403,6 +403,97 @@ async function updateTradeTelemetry(sb: SupabaseClient, settings: Settings, trad
     .eq("id", trade.id);
 }
 
+/**
+ * Fase 2 — Aplica gestão de saída configurável por robô. Retorna `true` se a posição
+ * foi encerrada por essa gestão. Não altera saídas duras (stop/alvo/trava_diária).
+ */
+async function applyExitMode(
+  sb: SupabaseClient,
+  userId: string,
+  settings: Settings,
+  robot: Robot,
+  trade: any,
+  quote: Quote,
+  refPrice: number,
+): Promise<{ closed: boolean; reason?: string; exitPx?: number }> {
+  const side: SimSide = trade.side;
+  const entry = Number(trade.price_entry_sim);
+  const tick = Number(settings.tick_size) || 5;
+  const gainPts = side === "buy" ? refPrice - entry : entry - refPrice;
+  const entryTs = trade.ts_entry ? new Date(trade.ts_entry).getTime() : Date.now();
+  const ageS = Math.max(0, Math.round((Date.now() - entryTs) / 1000));
+  const mode = robot.exit_mode ?? "fixed";
+
+  // Fechamento por horário: fim do pregão
+  if (mode === "session_close") {
+    if (!isInsideSession(new Date(), settings.session_start, settings.session_end)) {
+      return { closed: true, reason: "session_close" };
+    }
+  }
+
+  // Fechamento por tempo máximo em posição
+  if ((mode === "time_based" || robot.max_duration_s > 0) && robot.max_duration_s > 0 && ageS >= robot.max_duration_s) {
+    return { closed: true, reason: "time_based" };
+  }
+
+  // Perda de momento: MFE regrediu mais que trailing_step_pts a partir do pico
+  if (mode === "loss_of_momentum" && robot.trailing_step_pts > 0) {
+    const bestPx = Number(trade.best_price ?? entry);
+    const mfePts = side === "buy" ? bestPx - entry : entry - bestPx;
+    if (mfePts >= (robot.trailing_start_pts || 0)) {
+      const giveback = side === "buy" ? bestPx - refPrice : refPrice - bestPx;
+      if (giveback >= robot.trailing_step_pts) {
+        return { closed: true, reason: "loss_of_momentum", exitPx: refPrice };
+      }
+    }
+  }
+
+  // Break-even: quando ganho >= gatilho, sobe stop para o preço de entrada
+  if ((mode === "breakeven" || mode === "trailing") && robot.breakeven_trigger_pts > 0 && !trade.breakeven_active) {
+    if (gainPts >= robot.breakeven_trigger_pts) {
+      const newStop = entry;
+      const better = side === "buy"
+        ? (trade.stop_price == null || newStop > Number(trade.stop_price))
+        : (trade.stop_price == null || newStop < Number(trade.stop_price));
+      if (better) {
+        await (sb as any)
+          .from("b3_mt5sim_trades")
+          .update({ stop_price: newStop, breakeven_active: true })
+          .eq("id", trade.id);
+        trade.stop_price = newStop;
+        trade.breakeven_active = true;
+      }
+    }
+  }
+
+  // Trailing stop: após atingir start, sobe stop a cada passo
+  if (mode === "trailing" && robot.trailing_start_pts > 0 && robot.trailing_step_pts > 0) {
+    if (gainPts >= robot.trailing_start_pts) {
+      const trailFromRef = side === "buy" ? refPrice - robot.trailing_step_pts * tick : refPrice + robot.trailing_step_pts * tick;
+      const prevTrail = trade.trailing_stop_price != null ? Number(trade.trailing_stop_price) : null;
+      const better = side === "buy"
+        ? (prevTrail == null || trailFromRef > prevTrail)
+        : (prevTrail == null || trailFromRef < prevTrail);
+      if (better) {
+        const currentStop = trade.stop_price != null ? Number(trade.stop_price) : null;
+        const stopBetter = side === "buy"
+          ? (currentStop == null || trailFromRef > currentStop)
+          : (currentStop == null || trailFromRef < currentStop);
+        await (sb as any)
+          .from("b3_mt5sim_trades")
+          .update({
+            trailing_stop_price: trailFromRef,
+            ...(stopBetter ? { stop_price: trailFromRef } : {}),
+          })
+          .eq("id", trade.id);
+        trade.trailing_stop_price = trailFromRef;
+        if (stopBetter) trade.stop_price = trailFromRef;
+      }
+    }
+  }
+
+  return { closed: false };
+
 /** Chave de deduplicação entre robôs para o mesmo tick/janela. */
 function buildSignalHash(symbol: string, side: SimSide, price: number, tsMs: number): string {
   const bucket = Math.floor(tsMs / 60_000); // 1 minuto
