@@ -64,6 +64,12 @@ interface Robot {
   max_spread_ticks: number;
   stop_loss_points: number;
   take_profit_points: number;
+  // Fase 2 — gestão de saída configurável
+  exit_mode: "fixed" | "breakeven" | "trailing" | "loss_of_momentum" | "time_based" | "session_close";
+  breakeven_trigger_pts: number;
+  trailing_start_pts: number;
+  trailing_step_pts: number;
+  max_duration_s: number;
 }
 
 
