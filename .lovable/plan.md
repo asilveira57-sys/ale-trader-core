@@ -1,152 +1,72 @@
-## Diagnóstico
+## Correção do motor MT5 XP DEMO — Fase 1 (crítica) + Fases 2 e 3
 
-O Bid/Ask exibido no topo já vem corretamente da ponte MT5 XP DEMO. O problema está abaixo, na camada de simulação/histórico do B3:
+Escopo isolado ao módulo **Simulação Local MT5 XP** (`b3_mt5sim_*`). Não toca B3 Day Trade, Binance, ponte MT5, endpoint de ingestão nem tabelas existentes fora do módulo.
 
-1. A tabela de “Últimas operações simuladas” ainda mostra operações antigas/legadas do `b3_simulation_orders` com `quote_source` nulo/desconhecido.
-2. Ao ativar MT5, o código atual cancela principalmente posições abertas legadas, mas não remove/quarentena operações já fechadas ou registros antigos da run ativa.
-3. O painel de diagnóstico ignora esses registros para “última entrada/saída”, mas a tabela continua exibindo-os; por isso o topo mostra MT5 real e a tabela mostra 129.xxx/131.xxx.
-4. Falta uma trava definitiva em múltiplas camadas para impedir qualquer inserção futura em modo MT5 se o preço não vier explicitamente do `B3QuoteProvider` com `quote_source = MT5 XP DEMO`.
+---
 
-## Objetivo da correção
+### Fase 1 — Entrega imediata (o que a resposta final vai instruir a implantar primeiro)
 
-Quando a fonte estiver em `MT5 XP DEMO`, o módulo B3 Day Trade WIN deve ficar em modo estrito:
+Corrige exatamente as 3 causas apontadas: matemática ruim, posição sem watchdog, sinais duplicados.
 
-- Entrada BUY sempre pelo Ask MT5.
-- Entrada SELL sempre pelo Bid MT5.
-- Fechamento de BUY sempre pelo Bid MT5.
-- Fechamento de SELL sempre pelo Ask MT5.
-- Nenhum preço 128.xxx/129.xxx/130.xxx/131.xxx pode aparecer como nova operação em modo MT5.
-- Operações legadas não devem aparecer misturadas como se fossem operações atuais MT5.
-- Ordem real enviada continua sempre zero.
+**1.1 Validação R:R antes da entrada** (`b3-mt5sim.server.ts` → `openTrade`)
+- Novo cálculo por trade: `risco_bruto = stop_pts × R$/pt`, `custo = fee + spread_ticks × R$/tick + slippage_ticks × R$/tick`, `risco_liquido = risco_bruto + custo`, `ganho_liquido = alvo_pts × R$/pt − custo`.
+- Bloqueia se `ganho_liquido < min_rr × risco_liquido`.
+- Novos campos em `b3_mt5sim_settings`: `min_risk_reward numeric default 1.2`, `max_tick_age_seconds int default 5`, `max_tick_jump_pts int default 500`, `slippage_ticks_entry`, `slippage_ticks_exit`.
+- Registra `b3_mt5sim_blocks` com motivo `risk_reward_below_threshold` e payload `{risk_net, reward_net, rr}`.
 
-## Plano de implementação
+**1.2 Watchdog independente de saída** (`runMt5SimTick`)
+- Refatorado em 2 fases sequenciais por tick:
+  1. **manageOpenPositions()** — sempre roda, mesmo se tick antigo ou entradas bloqueadas. Checa stop/alvo/trailing/tempo/horário e atualiza MFE/MAE. Se posição ficou > 60s sem atualização → grava `position_management_alert` em `b3_mt5sim_blocks`.
+  2. **evaluateNewEntries()** — só roda se watchdog aprovar o tick.
+- Try/catch isola cada fase: falha em entrada nunca impede saída.
 
-### 1. Criar uma barreira única de execução MT5 no backend
+**1.3 Proteção de tick antigo e gap** (novo helper `assessTick`)
+- Grava `last_tick_at` em `b3_mt5sim_runs`.
+- Se `age > max_tick_age_seconds` → bloqueia entradas (mantém gestão).
+- Se `|price_new − price_prev| > max_tick_jump_pts` → marca `gap_detected`, não executa entrada no tick do gap, mas permite gestão usando último preço conhecido conservador.
+- Loga `{prev_price, new_price, gap_pts, interval_ms, rule}` em `b3_mt5sim_blocks`.
 
-Adicionar um helper server-side específico para execução B3 em modo MT5 estrito:
+**1.4 Deduplicação de sinais entre perfis** (`evaluateNewEntries`)
+- Cada sinal recebe `signal_id = hash(symbol|side|bucket_1min|context_key)`.
+- Se ≥2 perfis geram mesmo `signal_id` no mesmo tick → escolhe o de maior `score`; demais entram em `b3_mt5sim_blocks` com motivo `duplicate_signal` e `winning_profile`.
+- Adiciona coluna `signal_id text` em `b3_mt5sim_signals` (nullable).
 
-```text
-resolveB3StrictExecutionPrice(side, action)
-  -> lê B3QuoteProvider
-  -> exige fonte mt5_xp_demo
-  -> exige quote_source MT5 XP DEMO
-  -> exige server XPMT5-DEMO
-  -> exige symbol WINQ26
-  -> exige tick <= 5s
-  -> calcula preço por bid/ask
-  -> rejeita qualquer preço fora da banda do tick MT5
-```
+**1.5 Telemetria mínima** (para viabilizar Fase 3)
+- Adiciona colunas em `b3_mt5sim_trades`: `mfe_pts, mae_pts, mfe_brl, mae_brl, best_price, worst_price, duration_s, initial_risk_brl, initial_target_brl, max_open_profit_brl, exit_reason_detail, tick_age_entry_s, tick_age_exit_s, spread_entry_ticks, spread_exit_ticks`.
+- `manageOpenPositions()` atualiza MFE/MAE/best/worst a cada tick.
+- `closeSimTrade` preenche o restante.
 
-Esse helper será usado por:
+---
 
-- abertura automática da Simulação 3 Modos;
-- fechamento automático por stop/gain/zeragem;
-- marcação a mercado;
-- ordem manual simulada;
-- fechamento manual simulado;
-- comitê B3 quando gerar contexto de decisão.
+### Fase 2 — Gestão de saída configurável (entrega em seguida)
+- Novo bloco em `b3_mt5sim_robots`: `exit_mode` (`fixed | breakeven | trailing | loss_of_momentum | time_based | session_close`), `breakeven_trigger_pts`, `trailing_start_pts`, `trailing_step_pts`, `max_duration_s`.
+- Implementa cada modo dentro de `manageOpenPositions()`. `force_close` fica só como proteção final por horário/erro.
 
-### 2. Blindar a run ativa ao entrar em MT5
+---
 
-Quando o usuário selecionar MT5 XP DEMO ou quando o tick da simulação rodar com MT5 ativo:
+### Fase 3 — Painel de expectativa matemática e diferenciação por perfil
+- Server fn `getMt5SimExpectancy` agrega por robô: ganho médio, perda média, payoff, breakeven hit-rate, expectancy, profit factor, drawdown, resultado por saída/horário/direção.
+- Aba nova "Expectativa" em `/b3-mt5sim` (usa componentes existentes de tabela/card).
+- Diferenciação real por perfil: cada `profile` ganha filtros próprios de volatilidade mínima, confirmação (n candles), duração máxima e trailing — expostos no dialog de configuração do robô já existente.
+- Trava de promoção: server fn `evaluatePromotionReadiness` exige amostra mínima + expectancy > 0 + profit factor ≥ 1.3 + drawdown ≤ limite + estabilidade por período (não só lucro total).
 
-- localizar ordens da run ativa com `quote_source` diferente de `MT5 XP DEMO`;
-- marcar essas ordens como `cancelled` ou `legacy_invalidated`, sem recalcular resultado;
-- registrar evento de bloqueio/auditoria explicando:
+---
 
-```text
-Operação legada ocultada/invalida — modo MT5 XP DEMO exige preço B3QuoteProvider
-```
+### Preservação garantida
+- Nenhum `DROP`, nenhum rename de tabela, histórico intacto.
+- Ponte MT5 e endpoint `/api/public/hooks/b3-mt5sim-tick-ingest` não são tocados.
+- Guard `assertNoRealOrderIfSimActive` permanece; contador de ordens reais continua zero.
+- Zero mudança em B3 Day Trade WIN, Binance ou cripto.
 
-Isso elimina a mistura visual e operacional entre CSV antigo e MT5.
+---
 
-### 3. Filtrar a tela de “Últimas operações simuladas” em modo MT5
+### Ordem de implementação e arquivos
+1. **Migração**: colunas novas em `b3_mt5sim_settings`, `b3_mt5sim_trades`, `b3_mt5sim_signals`, `b3_mt5sim_runs`.
+2. **`src/lib/b3-mt5sim.server.ts`**: refatora `runMt5SimTick` em `assessTick` + `manageOpenPositions` + `evaluateNewEntries`; adiciona R:R gate, dedup, telemetria MFE/MAE.
+3. **`src/lib/b3-mt5sim.functions.ts`**: expõe novos campos de settings em `settingsSchema` e `robotSchema`.
+4. **Fase 2**: modos de saída no watchdog + campos por robô.
+5. **Fase 3**: `getMt5SimExpectancy`, `evaluatePromotionReadiness`, aba nova no painel.
 
-Na aba Simulação 3 Modos, quando a fonte ativa for MT5:
+Ao final da Fase 1 entrego relatório curto com: arquivos alterados, colunas novas, comportamentos antes/depois e validação (compila + smoke test de dedup + R:R).
 
-- exibir por padrão somente operações com `quote_source = MT5 XP DEMO`;
-- mostrar um aviso se houver registros legados ocultados;
-- opcionalmente listar esses registros em uma seção separada “Legado invalidado”, sem entrar no ranking/resultado atual.
-
-Assim, a tabela principal nunca mais mostrará 129.xxx como operação válida MT5.
-
-### 4. Corrigir ranking, score e resultado para ignorarem legado em MT5
-
-Em modo MT5, todos os cálculos de:
-
-- PnL;
-- ranking;
-- score;
-- modo sugerido;
-- estatísticas;
-- últimas operações;
-- relatório;
-
-devem considerar somente ordens com auditoria MT5 válida.
-
-Regra:
-
-```text
-Se price_source = mt5_xp_demo:
-  aceitar apenas quote_source = MT5 XP DEMO e provider_name = B3QuoteProvider
-```
-
-### 5. Adicionar trava de banco para impedir novas escritas inválidas
-
-Criar uma validação no banco para `b3_simulation_orders` e `b3_orders`:
-
-- se o usuário estiver com `b3_trading_settings.price_source = mt5_xp_demo`;
-- e a linha nova/alterada for uma ordem B3;
-- então exigir:
-  - `quote_source = 'MT5 XP DEMO'`;
-  - `provider_name = 'B3QuoteProvider'`;
-  - `quote_server = 'XPMT5-DEMO'`;
-  - `quote_symbol = 'WINQ26'`;
-  - `legacy_price_detected = false`.
-
-Se algum caminho antigo tentar gravar preço legado, a gravação falha imediatamente.
-
-### 6. Auditoria explícita de tentativa bloqueada
-
-Quando qualquer rotina tentar abrir/fechar com preço não-MT5 em modo MT5, registrar em `b3_simulation_block_events`:
-
-```text
-Tentativa de preço legado bloqueada — modo MT5 XP DEMO ativo
-```
-
-Com payload contendo:
-
-- função que tentou executar;
-- preço rejeitado;
-- último Bid/Ask/Last MT5;
-- fonte esperada;
-- fonte recebida;
-- run/mode/side/action.
-
-### 7. Ajustar o painel de diagnóstico
-
-No card “Diagnóstico de Fonte do Motor B3”, deixar explícito:
-
-- Fonte ativa: MT5 XP DEMO;
-- Provider usado: B3QuoteProvider;
-- Chamadas MT5: maior que zero;
-- Chamadas legado: zero;
-- Operações MT5 válidas: quantidade;
-- Operações legadas ocultadas/invalidadas: quantidade;
-- Última entrada/saída válida MT5.
-
-### 8. Validação final
-
-Depois da implementação, validar com uma run ativa:
-
-- se Bid/Ask estão em torno de 177.xxx;
-- uma nova compra abre próxima do Ask;
-- uma nova venda abre próxima do Bid;
-- fechamento usa lado oposto do book;
-- a tabela não mostra mais operações 128.xxx/129.xxx/130.xxx/131.xxx como válidas em MT5;
-- se uma rotina tentar gravar legado, ela é bloqueada e auditada;
-- ordens reais enviadas permanecem zero.
-
-## Resultado esperado
-
-O B3 Day Trade WIN continuará sendo o cérebro dos robôs, mas em modo MT5 XP DEMO toda execução, fechamento, resultado e exibição operacional passarão obrigatoriamente por preço real da ponte MT5. O histórico legado será separado/invalidationado e não contaminará mais a simulação atual.
+Confirma que sigo por essa ordem (Fase 1 agora, depois Fase 2 e 3)?
