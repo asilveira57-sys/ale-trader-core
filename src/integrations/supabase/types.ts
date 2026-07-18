@@ -1187,16 +1187,19 @@ export type Database = {
       }
       b3_mt5sim_robots: {
         Row: {
+          breakeven_trigger_pts: number
           cooldown_s: number
           cooldown_until: string | null
           created_at: string
           daily_gain_limit_brl: number
           daily_loss_limit_brl: number
           enabled: boolean
+          exit_mode: string
           id: string
           initial_balance_brl: number
           max_consec_losses: number
           max_drawdown_brl: number
+          max_duration_s: number
           max_spread_ticks: number
           max_trades_day: number
           min_score: number
@@ -1206,21 +1209,26 @@ export type Database = {
           stop_loss_points: number
           strategy_params: Json
           take_profit_points: number
+          trailing_start_pts: number
+          trailing_step_pts: number
           updated_at: string
           user_id: string
           volume: number
         }
         Insert: {
+          breakeven_trigger_pts?: number
           cooldown_s?: number
           cooldown_until?: string | null
           created_at?: string
           daily_gain_limit_brl?: number
           daily_loss_limit_brl?: number
           enabled?: boolean
+          exit_mode?: string
           id?: string
           initial_balance_brl?: number
           max_consec_losses?: number
           max_drawdown_brl?: number
+          max_duration_s?: number
           max_spread_ticks?: number
           max_trades_day?: number
           min_score?: number
@@ -1230,21 +1238,26 @@ export type Database = {
           stop_loss_points?: number
           strategy_params?: Json
           take_profit_points?: number
+          trailing_start_pts?: number
+          trailing_step_pts?: number
           updated_at?: string
           user_id: string
           volume?: number
         }
         Update: {
+          breakeven_trigger_pts?: number
           cooldown_s?: number
           cooldown_until?: string | null
           created_at?: string
           daily_gain_limit_brl?: number
           daily_loss_limit_brl?: number
           enabled?: boolean
+          exit_mode?: string
           id?: string
           initial_balance_brl?: number
           max_consec_losses?: number
           max_drawdown_brl?: number
+          max_duration_s?: number
           max_spread_ticks?: number
           max_trades_day?: number
           min_score?: number
@@ -1254,6 +1267,8 @@ export type Database = {
           stop_loss_points?: number
           strategy_params?: Json
           take_profit_points?: number
+          trailing_start_pts?: number
+          trailing_step_pts?: number
           updated_at?: string
           user_id?: string
           volume?: number
@@ -1469,6 +1484,7 @@ export type Database = {
       b3_mt5sim_trades: {
         Row: {
           best_price: number | null
+          breakeven_active: boolean
           created_at: string
           duration_s: number | null
           entry_reason: string | null
@@ -1508,6 +1524,7 @@ export type Database = {
           target_price: number | null
           tick_age_entry_s: number | null
           tick_age_exit_s: number | null
+          trailing_stop_price: number | null
           ts_entry: string
           ts_exit: string | null
           ts_signal: string | null
@@ -1518,6 +1535,7 @@ export type Database = {
         }
         Insert: {
           best_price?: number | null
+          breakeven_active?: boolean
           created_at?: string
           duration_s?: number | null
           entry_reason?: string | null
@@ -1557,6 +1575,7 @@ export type Database = {
           target_price?: number | null
           tick_age_entry_s?: number | null
           tick_age_exit_s?: number | null
+          trailing_stop_price?: number | null
           ts_entry?: string
           ts_exit?: string | null
           ts_signal?: string | null
@@ -1567,6 +1586,7 @@ export type Database = {
         }
         Update: {
           best_price?: number | null
+          breakeven_active?: boolean
           created_at?: string
           duration_s?: number | null
           entry_reason?: string | null
@@ -1606,6 +1626,7 @@ export type Database = {
           target_price?: number | null
           tick_age_entry_s?: number | null
           tick_age_exit_s?: number | null
+          trailing_stop_price?: number | null
           ts_entry?: string
           ts_exit?: string | null
           ts_signal?: string | null
