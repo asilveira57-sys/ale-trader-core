@@ -90,6 +90,11 @@ const settingsSchema = z.object({
   max_drawdown_brl: z.number().min(0).optional(),
   min_hit_rate: z.number().min(0).max(1).optional(),
   min_net_pnl_brl: z.number().optional(),
+  min_risk_reward: z.number().min(0).max(10).optional(),
+  max_tick_age_seconds: z.number().int().min(1).max(120).optional(),
+  max_tick_jump_pts: z.number().int().min(10).max(10000).optional(),
+  slippage_ticks_entry: z.number().int().min(0).max(50).optional(),
+  slippage_ticks_exit: z.number().int().min(0).max(50).optional(),
 });
 
 export const updateMt5SimSettings = createServerFn({ method: "POST" })
