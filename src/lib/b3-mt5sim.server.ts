@@ -493,6 +493,7 @@ async function applyExitMode(
   }
 
   return { closed: false };
+}
 
 /** Chave de deduplicação entre robôs para o mesmo tick/janela. */
 function buildSignalHash(symbol: string, side: SimSide, price: number, tsMs: number): string {
