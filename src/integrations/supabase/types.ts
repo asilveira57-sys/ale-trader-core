@@ -1264,6 +1264,8 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          last_tick_at: string | null
+          last_tick_price: number | null
           note: string | null
           started_at: string
           status: string
@@ -1273,6 +1275,8 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          last_tick_at?: string | null
+          last_tick_price?: number | null
           note?: string | null
           started_at?: string
           status?: string
@@ -1282,6 +1286,8 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          last_tick_at?: string | null
+          last_tick_price?: number | null
           note?: string | null
           started_at?: string
           status?: string
@@ -1305,9 +1311,12 @@ export type Database = {
           market: string
           max_drawdown_brl: number
           max_price_divergence_pts: number
+          max_tick_age_seconds: number
+          max_tick_jump_pts: number
           min_days: number
           min_hit_rate: number
           min_net_pnl_brl: number
+          min_risk_reward: number
           min_trades_per_robot: number
           mt5_symbol: string
           point_value_brl: number
@@ -1318,6 +1327,8 @@ export type Database = {
           session_end: string
           session_start: string
           slippage_ticks: number
+          slippage_ticks_entry: number
+          slippage_ticks_exit: number
           tick_size: number
           tick_value_brl: number
           updated_at: string
@@ -1338,9 +1349,12 @@ export type Database = {
           market?: string
           max_drawdown_brl?: number
           max_price_divergence_pts?: number
+          max_tick_age_seconds?: number
+          max_tick_jump_pts?: number
           min_days?: number
           min_hit_rate?: number
           min_net_pnl_brl?: number
+          min_risk_reward?: number
           min_trades_per_robot?: number
           mt5_symbol?: string
           point_value_brl?: number
@@ -1351,6 +1365,8 @@ export type Database = {
           session_end?: string
           session_start?: string
           slippage_ticks?: number
+          slippage_ticks_entry?: number
+          slippage_ticks_exit?: number
           tick_size?: number
           tick_value_brl?: number
           updated_at?: string
@@ -1371,9 +1387,12 @@ export type Database = {
           market?: string
           max_drawdown_brl?: number
           max_price_divergence_pts?: number
+          max_tick_age_seconds?: number
+          max_tick_jump_pts?: number
           min_days?: number
           min_hit_rate?: number
           min_net_pnl_brl?: number
+          min_risk_reward?: number
           min_trades_per_robot?: number
           mt5_symbol?: string
           point_value_brl?: number
@@ -1384,6 +1403,8 @@ export type Database = {
           session_end?: string
           session_start?: string
           slippage_ticks?: number
+          slippage_ticks_entry?: number
+          slippage_ticks_exit?: number
           tick_size?: number
           tick_value_brl?: number
           updated_at?: string
@@ -1402,6 +1423,7 @@ export type Database = {
           robot_id: string
           score: number
           side: string
+          signal_hash: string | null
           status: string
           ts: string
           user_id: string
@@ -1415,6 +1437,7 @@ export type Database = {
           robot_id: string
           score?: number
           side: string
+          signal_hash?: string | null
           status?: string
           ts?: string
           user_id: string
@@ -1428,6 +1451,7 @@ export type Database = {
           robot_id?: string
           score?: number
           side?: string
+          signal_hash?: string | null
           status?: string
           ts?: string
           user_id?: string
@@ -1444,15 +1468,25 @@ export type Database = {
       }
       b3_mt5sim_trades: {
         Row: {
+          best_price: number | null
           created_at: string
+          duration_s: number | null
           entry_reason: string | null
           exit_reason: string | null
+          exit_reason_detail: string | null
           fee_brl: number
           gross_brl: number | null
           id: string
+          initial_risk_brl: number | null
+          initial_target_brl: number | null
           locks_triggered: Json
           logical_symbol: string
+          mae_brl: number | null
+          mae_pts: number | null
           market: string
+          max_open_profit_brl: number | null
+          mfe_brl: number | null
+          mfe_pts: number | null
           mt5_symbol: string
           net_brl: number | null
           observations: string | null
@@ -1460,32 +1494,48 @@ export type Database = {
           price_entry_sim: number
           price_exit_sim: number | null
           price_signal: number | null
+          risk_reward_ratio: number | null
           robot_id: string
           session_date: string
           side: string
           signal_id: string | null
           slippage_ticks: number | null
           spread: number | null
+          spread_entry_ticks: number | null
+          spread_exit_ticks: number | null
           status: string
           stop_price: number | null
           target_price: number | null
+          tick_age_entry_s: number | null
+          tick_age_exit_s: number | null
           ts_entry: string
           ts_exit: string | null
           ts_signal: string | null
           updated_at: string
           user_id: string
           volume: number
+          worst_price: number | null
         }
         Insert: {
+          best_price?: number | null
           created_at?: string
+          duration_s?: number | null
           entry_reason?: string | null
           exit_reason?: string | null
+          exit_reason_detail?: string | null
           fee_brl?: number
           gross_brl?: number | null
           id?: string
+          initial_risk_brl?: number | null
+          initial_target_brl?: number | null
           locks_triggered?: Json
           logical_symbol?: string
+          mae_brl?: number | null
+          mae_pts?: number | null
           market?: string
+          max_open_profit_brl?: number | null
+          mfe_brl?: number | null
+          mfe_pts?: number | null
           mt5_symbol: string
           net_brl?: number | null
           observations?: string | null
@@ -1493,32 +1543,48 @@ export type Database = {
           price_entry_sim: number
           price_exit_sim?: number | null
           price_signal?: number | null
+          risk_reward_ratio?: number | null
           robot_id: string
           session_date?: string
           side: string
           signal_id?: string | null
           slippage_ticks?: number | null
           spread?: number | null
+          spread_entry_ticks?: number | null
+          spread_exit_ticks?: number | null
           status?: string
           stop_price?: number | null
           target_price?: number | null
+          tick_age_entry_s?: number | null
+          tick_age_exit_s?: number | null
           ts_entry?: string
           ts_exit?: string | null
           ts_signal?: string | null
           updated_at?: string
           user_id: string
           volume?: number
+          worst_price?: number | null
         }
         Update: {
+          best_price?: number | null
           created_at?: string
+          duration_s?: number | null
           entry_reason?: string | null
           exit_reason?: string | null
+          exit_reason_detail?: string | null
           fee_brl?: number
           gross_brl?: number | null
           id?: string
+          initial_risk_brl?: number | null
+          initial_target_brl?: number | null
           locks_triggered?: Json
           logical_symbol?: string
+          mae_brl?: number | null
+          mae_pts?: number | null
           market?: string
+          max_open_profit_brl?: number | null
+          mfe_brl?: number | null
+          mfe_pts?: number | null
           mt5_symbol?: string
           net_brl?: number | null
           observations?: string | null
@@ -1526,21 +1592,27 @@ export type Database = {
           price_entry_sim?: number
           price_exit_sim?: number | null
           price_signal?: number | null
+          risk_reward_ratio?: number | null
           robot_id?: string
           session_date?: string
           side?: string
           signal_id?: string | null
           slippage_ticks?: number | null
           spread?: number | null
+          spread_entry_ticks?: number | null
+          spread_exit_ticks?: number | null
           status?: string
           stop_price?: number | null
           target_price?: number | null
+          tick_age_entry_s?: number | null
+          tick_age_exit_s?: number | null
           ts_entry?: string
           ts_exit?: string | null
           ts_signal?: string | null
           updated_at?: string
           user_id?: string
           volume?: number
+          worst_price?: number | null
         }
         Relationships: [
           {
