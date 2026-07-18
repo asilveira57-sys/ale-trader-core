@@ -602,6 +602,17 @@ export async function runMt5SimTick(sb: SupabaseClient, userId: string, opts: { 
         // Telemetria contínua (MFE/MAE)
         try { await updateTradeTelemetry(sb, s, t, ref); } catch { /* isolado */ }
 
+        // Fase 2 — gestão de saída configurável (breakeven/trailing/tempo/momento/session)
+        try {
+          const exitDecision = await applyExitMode(sb, userId, s, robot, t, q, ref);
+          if (exitDecision.closed) {
+            await closeSimTrade(sb, userId, s, robot, t, q, exitDecision.reason ?? "exit_mode", exitDecision.exitPx);
+            res.closed++;
+            continue;
+          }
+        } catch { /* isolado */ }
+
+
         // Stop
         if (t.stop_price != null) {
           const hit = side === "buy" ? ref <= Number(t.stop_price) : ref >= Number(t.stop_price);
