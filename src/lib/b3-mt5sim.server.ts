@@ -229,6 +229,13 @@ export async function closeSimTrade(
   reason: string,
   explicitExitPx?: number,
 ) {
+  // Guarda de isolamento: um robô jamais pode fechar posição de outro.
+  if (String(trade.robot_id) !== String(robot.id) || String(trade.user_id) !== String(userId)) {
+    throw new Error(`isolamento violado: trade ${trade.id} não pertence ao robô ${robot.id}`);
+  }
+  if (trade.status !== "open") {
+    throw new Error(`trade ${trade.id} não está aberta (status=${trade.status})`);
+  }
   const side: SimSide = trade.side;
   const oppSide: SimSide = side === "buy" ? "sell" : "buy";
   const exitPx =
@@ -238,6 +245,7 @@ export async function closeSimTrade(
         ? priceForSide(quote, settings, oppSide)
         : null;
   if (exitPx == null) return null;
+
   const points = pointsPnl(Number(trade.price_entry_sim), exitPx, side, settings.tick_size);
   const gross = points * Number(settings.point_value_brl) * Number(trade.volume);
   const fee = Number(settings.fee_per_contract_brl) * Number(trade.volume) * 2;
