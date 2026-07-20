@@ -229,6 +229,13 @@ export async function closeSimTrade(
   reason: string,
   explicitExitPx?: number,
 ) {
+  // Guarda de isolamento: um robô jamais pode fechar posição de outro.
+  if (String(trade.robot_id) !== String(robot.id) || String(trade.user_id) !== String(userId)) {
+    throw new Error(`isolamento violado: trade ${trade.id} não pertence ao robô ${robot.id}`);
+  }
+  if (trade.status !== "open") {
+    throw new Error(`trade ${trade.id} não está aberta (status=${trade.status})`);
+  }
   const side: SimSide = trade.side;
   const oppSide: SimSide = side === "buy" ? "sell" : "buy";
   const exitPx =
@@ -238,6 +245,7 @@ export async function closeSimTrade(
         ? priceForSide(quote, settings, oppSide)
         : null;
   if (exitPx == null) return null;
+
   const points = pointsPnl(Number(trade.price_entry_sim), exitPx, side, settings.tick_size);
   const gross = points * Number(settings.point_value_brl) * Number(trade.volume);
   const fee = Number(settings.fee_per_contract_brl) * Number(trade.volume) * 2;
@@ -264,7 +272,11 @@ export async function closeSimTrade(
       tick_age_exit_s: tickAgeExit,
       spread_exit_ticks: spreadExitTicks,
     })
-    .eq("id", trade.id);
+    .eq("id", trade.id)
+    .eq("robot_id", robot.id)
+    .eq("user_id", userId)
+    .eq("status", "open");
+
 
   const today = new Date().toISOString().slice(0, 10);
   const wallet = await ensureWallet(sb, userId, robot, today);
@@ -312,6 +324,20 @@ export async function closeSimTrade(
 export async function openSimTrade(sb: SupabaseClient, userId: string, settings: Settings, robot: Robot, signalId: string | null, side: SimSide, quote: Quote, priceSignal: number, reason: string) {
   const px = priceForSide(quote, settings, side);
   if (px == null) return null;
+  // Guarda de isolamento: um robô nunca abre segunda posição no mesmo ativo enquanto tiver outra aberta.
+  const { data: alreadyOpen } = await (sb as any)
+    .from("b3_mt5sim_trades")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("robot_id", robot.id)
+    .eq("mt5_symbol", settings.mt5_symbol)
+    .eq("status", "open")
+    .limit(1)
+    .maybeSingle();
+  if (alreadyOpen) {
+    throw new Error(`robô ${robot.id} já possui posição aberta em ${settings.mt5_symbol}`);
+  }
+
   const stopPx = side === "buy" ? px - robot.stop_loss_points : px + robot.stop_loss_points;
   const tgtPx = side === "buy" ? px + robot.take_profit_points : px - robot.take_profit_points;
   const rr = evaluateRiskReward(robot, settings, quote);
@@ -416,7 +442,12 @@ async function applyExitMode(
   quote: Quote,
   refPrice: number,
 ): Promise<{ closed: boolean; reason?: string; exitPx?: number }> {
+  // Guarda de isolamento: só age em trade do próprio robô/usuário.
+  if (String(trade.robot_id) !== String(robot.id) || String(trade.user_id) !== String(userId)) {
+    return { closed: false };
+  }
   const side: SimSide = trade.side;
+
   const entry = Number(trade.price_entry_sim);
   const tick = Number(settings.tick_size) || 5;
   const gainPts = side === "buy" ? refPrice - entry : entry - refPrice;
