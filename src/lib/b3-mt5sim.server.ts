@@ -442,7 +442,12 @@ async function applyExitMode(
   quote: Quote,
   refPrice: number,
 ): Promise<{ closed: boolean; reason?: string; exitPx?: number }> {
+  // Guarda de isolamento: só age em trade do próprio robô/usuário.
+  if (String(trade.robot_id) !== String(robot.id) || String(trade.user_id) !== String(userId)) {
+    return { closed: false };
+  }
   const side: SimSide = trade.side;
+
   const entry = Number(trade.price_entry_sim);
   const tick = Number(settings.tick_size) || 5;
   const gainPts = side === "buy" ? refPrice - entry : entry - refPrice;
