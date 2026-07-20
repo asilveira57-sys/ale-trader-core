@@ -272,7 +272,11 @@ export async function closeSimTrade(
       tick_age_exit_s: tickAgeExit,
       spread_exit_ticks: spreadExitTicks,
     })
-    .eq("id", trade.id);
+    .eq("id", trade.id)
+    .eq("robot_id", robot.id)
+    .eq("user_id", userId)
+    .eq("status", "open");
+
 
   const today = new Date().toISOString().slice(0, 10);
   const wallet = await ensureWallet(sb, userId, robot, today);
