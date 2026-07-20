@@ -324,6 +324,20 @@ export async function closeSimTrade(
 export async function openSimTrade(sb: SupabaseClient, userId: string, settings: Settings, robot: Robot, signalId: string | null, side: SimSide, quote: Quote, priceSignal: number, reason: string) {
   const px = priceForSide(quote, settings, side);
   if (px == null) return null;
+  // Guarda de isolamento: um robô nunca abre segunda posição no mesmo ativo enquanto tiver outra aberta.
+  const { data: alreadyOpen } = await (sb as any)
+    .from("b3_mt5sim_trades")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("robot_id", robot.id)
+    .eq("mt5_symbol", settings.mt5_symbol)
+    .eq("status", "open")
+    .limit(1)
+    .maybeSingle();
+  if (alreadyOpen) {
+    throw new Error(`robô ${robot.id} já possui posição aberta em ${settings.mt5_symbol}`);
+  }
+
   const stopPx = side === "buy" ? px - robot.stop_loss_points : px + robot.stop_loss_points;
   const tgtPx = side === "buy" ? px + robot.take_profit_points : px - robot.take_profit_points;
   const rr = evaluateRiskReward(robot, settings, quote);
