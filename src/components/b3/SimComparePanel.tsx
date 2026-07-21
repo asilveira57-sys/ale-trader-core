@@ -245,15 +245,25 @@ export function SimComparePanel() {
       </Card>
 
       {/* Painel comparativo (período selecionado) */}
-      {reportQ.data && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-          {reportQ.data.modes.map((mm: any) => (
-            <ModeReportCard key={mm.mode} mm={mm} period={period} runId={runId!}
-              isWinner={detail?.run.winner_mode === mm.mode}
-              onPick={() => winnerM.mutate(mm.mode)} />
-          ))}
-        </div>
-      )}
+      {reportQ.data && (() => {
+        const auditModes: any[] = (detail?.snapshots?.[0] as any)?.extra?.engine_audit?.modes ?? [];
+        const auditByMode: Record<string, any> = Object.fromEntries(auditModes.map((a: any) => [a.mode, a]));
+        const openByMode: Record<string, any> = {};
+        for (const o of (detail?.orders ?? []) as any[]) {
+          if (o.status === "open" && !openByMode[o.mode]) openByMode[o.mode] = o;
+        }
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+            {reportQ.data.modes.map((mm: any) => (
+              <ModeReportCard key={mm.mode} mm={mm} period={period} runId={runId!}
+                isWinner={detail?.run.winner_mode === mm.mode}
+                audit={auditByMode[mm.mode] ?? null}
+                openOrder={openByMode[mm.mode] ?? null}
+                onPick={() => winnerM.mutate(mm.mode)} />
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Painel de Stops e Bloqueios */}
       {reportQ.data && (
