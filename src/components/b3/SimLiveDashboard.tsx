@@ -214,6 +214,8 @@ export function SimLiveDashboard() {
         {(d?.modes ?? []).map((m: any) => {
           const openOrders = (d?.orders ?? []).filter((o: any) => o.simulation_mode_id === m.id && o.status === "open");
           const pnl = Number(m.realized_pnl ?? 0);
+          const lastPrice = Number((d as any)?.last_price ?? 0);
+          const pointValue = Number((d as any)?.point_value_brl ?? 0.2);
           return (
             <Card key={m.id} style={{ borderColor: COLOR[m.mode as Mode] + "55" }}>
               <CardHeader className="pb-2 flex flex-row items-center justify-between">
@@ -228,14 +230,35 @@ export function SimLiveDashboard() {
                 <p className="text-xs text-muted-foreground">Trades: {m.total_trades ?? 0} · ganhos {m.winning_trades ?? 0} · perdas {m.losing_trades ?? 0}</p>
                 <p className="text-xs text-muted-foreground">Taxas: {BRL(Number(m.total_fees ?? 0))} · pontos {NUM(Number(m.points_result ?? 0))}</p>
                 {openOrders.length > 0 ? (
-                  <div className="mt-2 pt-2 border-t border-border/40">
-                    <p className="text-xs font-medium">Posição aberta:</p>
-                    {openOrders.map((o: any) => (
-                      <p key={o.id} className="text-xs">
-                        <Badge variant="outline" className="mr-1">{o.side === "buy" ? "LONG" : "SHORT"}</Badge>
-                        {NUM(Number(o.entry_price))} pts · {o.quantity}c · desde {fmtTime(o.entry_time)}
-                      </p>
-                    ))}
+                  <div className="mt-2 pt-2 border-t border-border/40 space-y-1">
+                    <p className="text-xs font-medium text-emerald-400">Posição aberta: SIM</p>
+                    {openOrders.map((o: any) => {
+                      const entry = Number(o.entry_price);
+                      const qty = Number(o.quantity ?? 1);
+                      const dir = o.side === "buy" ? 1 : -1;
+                      const openPts = lastPrice > 0 ? (lastPrice - entry) * dir : 0;
+                      const floatPnl = openPts * qty * pointValue;
+                      return (
+                        <div key={o.id} className="text-xs space-y-0.5">
+                          <p>
+                            <Badge variant="outline" className="mr-1">{o.side === "buy" ? "LONG" : "SHORT"}</Badge>
+                            {qty}c · entrada {NUM(entry)} · desde {fmtTime(o.entry_time)}
+                          </p>
+                          <p className="text-muted-foreground">
+                            Último tick: {lastPrice > 0 ? NUM(lastPrice) : "—"}
+                            {(d as any)?.last_price_at ? ` (${fmtTime((d as any).last_price_at)})` : ""}
+                          </p>
+                          <p>
+                            Pontos em aberto: <span className={openPts >= 0 ? "text-emerald-400" : "text-red-400"}>{NUM(openPts, 0)} pts</span>
+                            {" · PnL flutuante: "}
+                            <span className={floatPnl >= 0 ? "text-emerald-400 font-medium" : "text-red-400 font-medium"}>{BRL(floatPnl)}</span>
+                          </p>
+                          <p className="text-muted-foreground">
+                            Stop {o.stop_loss ? NUM(Number(o.stop_loss)) : "—"} · Alvo {o.take_profit ? NUM(Number(o.take_profit)) : "—"} · Zeragem 17:10
+                          </p>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : <p className="text-xs text-muted-foreground italic">Sem posição aberta</p>}
               </CardContent>
@@ -243,6 +266,7 @@ export function SimLiveDashboard() {
           );
         })}
       </div>
+
 
       {/* Preço do WIN ao vivo com marcadores */}
       <Card>

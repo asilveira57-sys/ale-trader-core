@@ -17,8 +17,14 @@ export const listAllB3SimOrders = createServerFn({ method: "POST" })
     if (!runR.data) throw new Error("Run não encontrada");
     const isMt5 = settingsR.data?.price_source === "mt5_xp_demo";
     const allOrders = (ordersR.data ?? []) as any[];
+    // Ordens abertas SEMPRE aparecem — filtro legado só esconde ordens já encerradas/canceladas
+    // que não tenham auditoria MT5, para evitar reintroduzir preços antigos no histórico.
     const orders = isMt5
-      ? allOrders.filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider")
+      ? allOrders.filter((o) =>
+          o.status === "open"
+            ? true
+            : o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider",
+        )
       : allOrders;
     return {
       run: runR.data,
@@ -28,6 +34,7 @@ export const listAllB3SimOrders = createServerFn({ method: "POST" })
       legacy_orders_hidden: isMt5 ? allOrders.length - orders.length : 0,
     };
   });
+
 
 export const listB3SimVotesForOrder = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -73,16 +80,30 @@ export const getB3SimLiveDashboard = createServerFn({ method: "POST" })
     if (!runR.data) throw new Error("Run não encontrada");
     const isMt5 = settingsR.data?.price_source === "mt5_xp_demo";
     const allOrders = (ordersR.data ?? []) as any[];
+    // Ordens abertas SEMPRE são retornadas — o filtro legado só oculta ordens já
+    // encerradas sem auditoria MT5, para não poluir o histórico com preços antigos.
     const orders = isMt5
-      ? allOrders.filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider")
+      ? allOrders.filter((o) =>
+          o.status === "open"
+            ? true
+            : o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider",
+        )
       : allOrders;
+    const snapshots = snapsR.data ?? [];
+    const lastSnap = snapshots.length ? snapshots[snapshots.length - 1] : null;
+    const lastPrice = lastSnap ? Number((lastSnap as any).price ?? (lastSnap as any).candle_close ?? 0) : null;
+    const lastPriceAt = lastSnap ? (lastSnap as any).market_time : null;
     return {
       run: runR.data,
       modes: modesR.data ?? [],
       orders,
-      snapshots: snapsR.data ?? [],
+      snapshots,
       recent_votes: votesR.data ?? [],
       price_source: settingsR.data?.price_source ?? "csv",
       legacy_orders_hidden: isMt5 ? allOrders.length - orders.length : 0,
+      last_price: lastPrice,
+      last_price_at: lastPriceAt,
+      point_value_brl: 0.2,
     };
   });
+
