@@ -245,15 +245,25 @@ export function SimComparePanel() {
       </Card>
 
       {/* Painel comparativo (período selecionado) */}
-      {reportQ.data && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-          {reportQ.data.modes.map((mm: any) => (
-            <ModeReportCard key={mm.mode} mm={mm} period={period} runId={runId!}
-              isWinner={detail?.run.winner_mode === mm.mode}
-              onPick={() => winnerM.mutate(mm.mode)} />
-          ))}
-        </div>
-      )}
+      {reportQ.data && (() => {
+        const auditModes: any[] = (detail?.snapshots?.[0] as any)?.extra?.engine_audit?.modes ?? [];
+        const auditByMode: Record<string, any> = Object.fromEntries(auditModes.map((a: any) => [a.mode, a]));
+        const openByMode: Record<string, any> = {};
+        for (const o of (detail?.orders ?? []) as any[]) {
+          if (o.status === "open" && !openByMode[o.mode]) openByMode[o.mode] = o;
+        }
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+            {reportQ.data.modes.map((mm: any) => (
+              <ModeReportCard key={mm.mode} mm={mm} period={period} runId={runId!}
+                isWinner={detail?.run.winner_mode === mm.mode}
+                audit={auditByMode[mm.mode] ?? null}
+                openOrder={openByMode[mm.mode] ?? null}
+                onPick={() => winnerM.mutate(mm.mode)} />
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Painel de Stops e Bloqueios */}
       {reportQ.data && (
@@ -718,9 +728,44 @@ function MacroEventsCard() {
   );
 }
 
-function ModeReportCard({ mm, period, runId, isWinner, onPick }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void }) {
-  const status = STATUS_META[mm.current_status] ?? STATUS_META.operando;
+function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void; audit?: any; openOrder?: any }) {
+  const baseStatus = STATUS_META[mm.current_status] ?? STATUS_META.operando;
   const pnl = Number(mm.pnl_periodo ?? 0);
+
+  // ─────── Status ao vivo derivado do último tick auditado ───────
+  const firstBlock = audit?.checks?.find?.((c: any) => c.blocking && !c.ok) ?? audit?.first_stop ?? null;
+  const committee = audit?.committee ?? null;
+  const cfgLoaded = audit?.config_loaded ?? null;
+  const minScore = cfgLoaded?.score != null ? Number(cfgLoaded.score) : null;
+  const minConfidence = cfgLoaded?.confidence != null ? Number(cfgLoaded.confidence) : null;
+  const minVotes = cfgLoaded?.min_approve_votes != null ? Number(cfgLoaded.min_approve_votes) : null;
+  const curScore = audit?.last_score != null ? Number(audit.last_score) : null;
+  const curConf = audit?.last_confidence != null ? Number(audit.last_confidence) : null;
+  const curVotes = committee?.approve_votes != null ? Number(committee.approve_votes) : null;
+  const vetoes: string[] = Array.isArray(committee?.vetoes) ? committee.vetoes : [];
+  const signalSide = audit?.signals?.evaluated_side ?? committee?.side ?? null;
+  const canResumeToday = baseStatus.canResumeToday;
+
+  let liveLabel = baseStatus.label;
+  let liveCls = baseStatus.cls;
+  if (openOrder) {
+    liveLabel = `Posição ${String(openOrder.side).toUpperCase()} aberta`;
+    liveCls = "bg-sky-500/15 text-sky-300 border-sky-500/30";
+  } else if (audit && canResumeToday && mm.current_status !== "bloqueado_perda_diaria" && mm.current_status !== "bloqueado_meta_diaria") {
+    if (firstBlock) {
+      liveLabel = `Bloqueado para entrada · ${firstBlock.label ?? firstBlock.key}`;
+      liveCls = "bg-rose-500/15 text-rose-300 border-rose-500/30";
+    } else if (committee && committee.final !== "approved") {
+      liveLabel = "Aguardando aprovação";
+      liveCls = "bg-slate-500/15 text-slate-300 border-slate-500/30";
+    }
+  }
+
+  const gaps: string[] = [];
+  if (curScore != null && minScore != null && curScore < minScore) gaps.push(`+${(minScore - curScore).toFixed(0)} score`);
+  if (curConf != null && minConfidence != null && curConf < minConfidence) gaps.push(`+${(minConfidence - curConf).toFixed(0)} confiança`);
+  if (curVotes != null && minVotes != null && curVotes < minVotes) gaps.push(`+${(minVotes - curVotes)} voto(s)`);
+
   return (
     <Card className={isWinner ? "ring-2 ring-amber-400/60" : ""}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -734,11 +779,68 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick }: { mm: any; peri
         </div>
       </CardHeader>
       <CardContent className="text-sm space-y-1">
-        <Badge variant="outline" className={`${status.cls} text-[10px] mb-1`}>
-          {status.type === "stop_dia" || status.type === "meta" || status.type === "zeragem" ? <ShieldAlert className="w-3 h-3 mr-1 inline" /> : null}
-          {status.label}
+        <Badge variant="outline" className={`${liveCls} text-[10px] mb-1`}>
+          {baseStatus.type === "stop_dia" || baseStatus.type === "meta" || baseStatus.type === "zeragem" ? <ShieldAlert className="w-3 h-3 mr-1 inline" /> : null}
+          {liveLabel}
         </Badge>
         {mm.status_reason && <p className="text-[10px] text-muted-foreground italic">{mm.status_reason}</p>}
+
+        {audit && (
+          <div className="rounded-md border border-border/40 bg-muted/20 p-2 space-y-1 my-2">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Decisão ao vivo</p>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">Sinal avaliado</span>
+              <span className="font-mono">
+                {signalSide ? (
+                  <Badge variant="outline" className={signalSide === "buy" ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" : "bg-rose-500/15 text-rose-300 border-rose-500/30"}>
+                    {String(signalSide).toUpperCase()}
+                  </Badge>
+                ) : "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">Score</span>
+              <span className={`font-mono ${curScore != null && minScore != null ? (curScore >= minScore ? "text-emerald-300" : "text-rose-300") : ""}`}>
+                {curScore != null ? curScore.toFixed(0) : "—"} / mín {minScore ?? "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">Confiança</span>
+              <span className={`font-mono ${curConf != null && minConfidence != null ? (curConf >= minConfidence ? "text-emerald-300" : "text-rose-300") : ""}`}>
+                {curConf != null ? curConf.toFixed(0) : "—"} / mín {minConfidence ?? "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">Votos aprovados</span>
+              <span className={`font-mono ${curVotes != null && minVotes != null ? (curVotes >= minVotes ? "text-emerald-300" : "text-rose-300") : ""}`}>
+                {curVotes != null ? curVotes : "—"} / mín {minVotes ?? "—"}
+              </span>
+            </div>
+            {vetoes.length > 0 && (
+              <div className="text-[10px] pt-1">
+                <p className="text-rose-300 font-medium">Veto do comitê ({vetoes.length}):</p>
+                <ul className="text-rose-200/90 list-disc pl-4">
+                  {vetoes.slice(0, 3).map((v, i) => <li key={i}>{v}</li>)}
+                </ul>
+              </div>
+            )}
+            {firstBlock && !openOrder && (
+              <div className="text-[10px] pt-1 text-amber-300">
+                <span className="font-medium">Primeiro bloqueio:</span> {firstBlock.label ?? firstBlock.key}
+                {firstBlock.detail ? ` — ${firstBlock.detail}` : ""}
+              </div>
+            )}
+            {gaps.length > 0 && !openOrder && (
+              <div className="text-[10px] pt-1 text-muted-foreground">
+                <span className="font-medium text-foreground">Falta para liberar:</span> {gaps.join(" · ")}
+              </div>
+            )}
+            {!firstBlock && committee?.final === "approved" && !openOrder && (
+              <p className="text-[10px] text-emerald-300 pt-1">Comitê aprovou — aguardando execução da ordem.</p>
+            )}
+          </div>
+        )}
+
         {(() => {
           const s = sampleStatus(Number(mm.cumulative?.total_trades ?? 0));
           return s ? <Badge variant="outline" className={`${s.cls} text-[10px] mb-1`}>{s.label}</Badge> : null;
