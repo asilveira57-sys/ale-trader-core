@@ -17,8 +17,14 @@ export const listAllB3SimOrders = createServerFn({ method: "POST" })
     if (!runR.data) throw new Error("Run não encontrada");
     const isMt5 = settingsR.data?.price_source === "mt5_xp_demo";
     const allOrders = (ordersR.data ?? []) as any[];
+    // Ordens abertas SEMPRE aparecem — filtro legado só esconde ordens já encerradas/canceladas
+    // que não tenham auditoria MT5, para evitar reintroduzir preços antigos no histórico.
     const orders = isMt5
-      ? allOrders.filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider")
+      ? allOrders.filter((o) =>
+          o.status === "open"
+            ? true
+            : o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider",
+        )
       : allOrders;
     return {
       run: runR.data,
@@ -28,6 +34,7 @@ export const listAllB3SimOrders = createServerFn({ method: "POST" })
       legacy_orders_hidden: isMt5 ? allOrders.length - orders.length : 0,
     };
   });
+
 
 export const listB3SimVotesForOrder = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
