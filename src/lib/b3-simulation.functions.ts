@@ -1342,8 +1342,12 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
       totals: {
         snapshots_scanned: list.length,
       },
+      executions: scope.executions,
+      restart_count: scope.restartCount,
+      session_date: scope.sessionDate,
     };
   });
+
 
 // ─────────────────── Auditoria de Entradas (Fase 1, read-only) ───────────────────
 // Lê os snapshots do período, monta funil por robô, agrega motivos de bloqueio
