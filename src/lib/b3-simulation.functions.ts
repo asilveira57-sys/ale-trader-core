@@ -1748,7 +1748,7 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
 
 
 
-async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string) {
+async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string, marketHistory: any[] = []) {
   if (exitAudit.quote_source === "MT5 XP DEMO") assertB3StrictMt5ExecutionAudit(exitAudit, "closeOrder");
   const exitPrice = exitAudit.execution_price;
   const dir = order.side === "buy" ? 1 : -1;
@@ -1757,6 +1757,23 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
   const grossBrl = grossPts * POINT_VALUE_BRL * qty;
   const fees = (Number(run.simulated_fee_brl) || 0) * 2 * qty; // round-trip
   const netBrl = grossBrl - fees;
+
+  // MFE / MAE (em pontos) a partir dos snapshots entre entry_time e agora.
+  const entryTimeMs = order.entry_time ? new Date(order.entry_time).getTime() : null;
+  const nowMs = Date.now();
+  let mfePts = 0, maePts = 0;
+  if (entryTimeMs) {
+    for (const h of marketHistory) {
+      const t = new Date(h.market_time).getTime();
+      if (t < entryTimeMs || t > nowMs) continue;
+      const p = Number(h.quote_last ?? h.price ?? 0);
+      if (!Number.isFinite(p) || p <= 0) continue;
+      const move = (p - Number(order.entry_price)) * dir;
+      if (move > mfePts) mfePts = move;
+      if (move < maePts) maePts = move;
+    }
+  }
+  const durationS = entryTimeMs ? Math.max(0, Math.round((nowMs - entryTimeMs) / 1000)) : null;
 
   await supabase.from("b3_simulation_orders").update({
     exit_price: Math.round(exitPrice / TICK) * TICK,
@@ -1804,7 +1821,28 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
   mode.winning_trades = wins; mode.losing_trades = losses;
   mode.max_gain = maxGain; mode.max_loss = maxLoss; mode.max_drawdown = dd;
   mode.points_result = totalPts;
+
+  return {
+    order_id: order.id,
+    mode: mode.mode ?? null,
+    side: order.side,
+    entry_reason: order.entry_reason ?? null,
+    exit_reason: reason,
+    entry_price: Number(order.entry_price),
+    exit_price: Math.round(exitPrice / TICK) * TICK,
+    entry_time: order.entry_time,
+    exit_time: new Date().toISOString(),
+    duration_s: durationS,
+    gross_pts: grossPts,
+    gross_brl: grossBrl,
+    fees,
+    net_brl: netBrl,
+    quantity: qty,
+    mfe_pts: Math.round(mfePts),
+    mae_pts: Math.round(maePts),
+  };
 }
+
 
 // ───────────────────── macro events ─────────────────────
 export const listB3MacroEvents = createServerFn({ method: "GET" })
