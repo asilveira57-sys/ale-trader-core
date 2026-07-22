@@ -1578,6 +1578,9 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
       reasons,
       config_mismatches: configMismatchesLatest,
       totals: { snapshots_scanned: list.length },
+      executions: scope.executions,
+      restart_count: scope.restartCount,
+      session_date: scope.sessionDate,
     };
   });
 
