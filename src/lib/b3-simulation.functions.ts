@@ -1479,6 +1479,16 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
         bucket.last_score = m.last_score ?? bucket.last_score;
         bucket.last_confidence = m.last_confidence ?? bucket.last_confidence;
         bucket.last_setup = m.last_setup ?? bucket.last_setup;
+        if (m.decision_context) {
+          bucket.last_decision_context = m.decision_context;
+          const dec = { ...m.decision_context, at: s.market_time };
+          bucket.decisions.push(dec);
+          allDecisions.push(dec);
+        }
+        if (m.trade_event) {
+          bucket.trade_events.push({ ...m.trade_event, at: s.market_time });
+          allTradeEvents.push({ ...m.trade_event, at: s.market_time, mode: m.mode });
+        }
 
         const byKey: Record<string, any> = {};
         for (const c of m.checks ?? []) byKey[c.key] = c;
@@ -1500,6 +1510,14 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
     }
 
     history.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    allDecisions.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    allTradeEvents.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    for (const mk of MODES) {
+      const b = perMode[mk];
+      b.decisions = b.decisions.slice(-50).reverse();
+      b.trade_events = b.trade_events.slice(-20).reverse();
+    }
+
 
     return {
       run,
