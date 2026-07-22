@@ -1250,20 +1250,18 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { data: runs } = await (supabase as any).from("b3_simulation_runs")
-      .select("id, status, started_at").eq("user_id", userId)
-      .in("status", ["running", "paused"])
-      .order("started_at", { ascending: false }).limit(1);
-    const run = runs?.[0] ?? null;
-    if (!run) return { run: null, modes: [], history: [], totals: null };
+    const scope = await resolveSessionScope(supabase as any, userId);
+    const run = scope.latest;
+    if (!run) return { run: null, modes: [], history: [], totals: null, executions: [], restart_count: 0, session_date: null };
 
     const { data: snaps } = await (supabase as any).from("b3_simulation_market_snapshots")
-      .select("id, market_time, extra")
-      .eq("simulation_run_id", run.id).eq("user_id", userId)
+      .select("id, market_time, extra, simulation_run_id")
+      .in("simulation_run_id", scope.runIds).eq("user_id", userId)
       .order("market_time", { ascending: false })
-      .limit(200);
+      .limit(2000);
 
     const list = (snaps ?? []).filter((s: any) => s?.extra?.engine_audit);
+
 
     // contadores por robô
     const perMode: Record<string, any> = {};
