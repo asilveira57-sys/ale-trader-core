@@ -830,6 +830,11 @@ export async function runB3SimulationTick(
       const addCheck = (key: string, label: string, ok: boolean, detail?: string, blocking = true) => checks.push(auditCheck(key, label, ok, detail, blocking));
       const finalizeAudit = (finalReason: string, extra: Record<string, any> = {}) => {
         const firstStop = checks.find((c) => c.blocking && !c.ok);
+        const decisionContext = buildDecisionContext({
+          ctxLocal: ctx, priceLocal: priceSrc, cfg, mode, intendedSide,
+          decision: extra.committee ?? null, derived, firstStop,
+          entry_reason: extra.entry_reason ?? null,
+        });
         tickAudit.modes.push({
           mode,
           timestamp: now.toISOString(),
@@ -848,8 +853,11 @@ export async function runB3SimulationTick(
           checks,
           signals: extra.signals ?? { evaluated_side: intendedSide, buy: false, sell: false },
           committee: extra.committee ?? null,
+          decision_context: decisionContext,
+          trade_event: extra.trade_event ?? null,
         });
       };
+
 
       addCheck("tick_received", "Tick recebido", priceSrc.source !== "mt5_xp_demo" || Boolean(priceSrc.raw), priceSrc.raw?.tick_ts ? `tick ${priceSrc.raw.tick_ts}` : "sem tick MT5");
       addCheck("mt5_server", "Servidor MT5", priceSrc.source !== "mt5_xp_demo" || priceSrc.server === "XPMT5-DEMO" || priceSrc.server === "XPMT5-PRD", priceSrc.server ? `recebido ${priceSrc.server}` : "sem servidor");
