@@ -43,15 +43,61 @@ export function PipelineAuditPanel() {
 
   return (
     <div className="space-y-4">
+      {(data.executions?.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">
+              Sessão do dia {data.session_date ?? "—"} — {data.executions.length} execução(ões)
+              {data.restart_count > 0 && (
+                <Badge variant="secondary" className="ml-2 text-[10px]">
+                  {data.restart_count} reinício{data.restart_count > 1 ? "s" : ""}
+                </Badge>
+              )}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Todos os ticks, auditorias, ordens, sinais e bloqueios das execuções abaixo são consolidados no diagnóstico. Nada é apagado ao reiniciar.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="text-muted-foreground border-b border-border/40">
+                  <tr className="text-left">
+                    <th className="py-1 pr-2">#</th>
+                    <th className="py-1 pr-2">Início</th>
+                    <th className="py-1 pr-2">Fim</th>
+                    <th className="py-1 pr-2">Duração</th>
+                    <th className="py-1 pr-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.executions.map((e: any, i: number) => (
+                    <tr key={e.run_id} className="border-b border-border/20">
+                      <td className="py-1 pr-2 font-mono">{i + 1}</td>
+                      <td className="py-1 pr-2 font-mono">{new Date(e.started_at).toLocaleTimeString("pt-BR")}</td>
+                      <td className="py-1 pr-2 font-mono">{e.finished_at ? new Date(e.finished_at).toLocaleTimeString("pt-BR") : "em andamento"}</td>
+                      <td className="py-1 pr-2 font-mono">{formatDuration(e.duration_s)}</td>
+                      <td className="py-1 pr-2">
+                        <Badge variant={e.ongoing ? "default" : "outline"} className="text-[10px]">{e.status}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <Activity className="w-4 h-4 text-primary" /> Pipeline de Decisão — por Robô
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Snapshots auditados: {data.totals?.snapshots_scanned ?? 0}. Auditoria somente-leitura — nenhuma regra é alterada.
+            Snapshots auditados: {data.totals?.snapshots_scanned ?? 0} (todas as execuções do dia). Auditoria somente-leitura — nenhuma regra é alterada.
           </p>
         </CardHeader>
+
         <CardContent className="grid gap-4 md:grid-cols-1 xl:grid-cols-2">
           {modes.map((m: any) => {
             const opened = m.orders_executed > 0;
