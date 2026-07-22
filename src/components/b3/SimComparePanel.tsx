@@ -980,3 +980,106 @@ function StopsAndBlocksPanel({ data }: { data: any }) {
   );
 }
 
+function DailyReadingPanel({ data, orders }: { data: any; orders: any[] }) {
+  const modes: any[] = data?.modes ?? [];
+  const fromMs = data?.from ? new Date(data.from).getTime() : null;
+  const toMs = data?.to ? new Date(data.to).getTime() : null;
+  const closed = (orders ?? []).filter((o: any) => {
+    if (o.status !== "closed" || !o.exit_time) return false;
+    const t = new Date(o.exit_time).getTime();
+    if (fromMs != null && t < fromMs) return false;
+    if (toMs != null && t > toMs) return false;
+    return true;
+  });
+
+  const totalTrades = modes.reduce((s, m) => s + Number(m.trades ?? 0), 0);
+  const totalWins = modes.reduce((s, m) => s + Number(m.vitorias ?? 0), 0);
+  const totalLosses = modes.reduce((s, m) => s + Number(m.perdas ?? 0), 0);
+  const totalPnl = modes.reduce((s, m) => s + Number(m.pnl_periodo ?? 0), 0);
+  const avgTrade = totalTrades > 0 ? totalPnl / totalTrades : 0;
+
+  const active = modes.filter((m) => Number(m.trades ?? 0) > 0);
+  const byPnlDesc = [...active].sort((a, b) => Number(b.pnl_periodo) - Number(a.pnl_periodo));
+  const best = byPnlDesc[0] ?? null;
+  const worst = byPnlDesc[byPnlDesc.length - 1] ?? null;
+  const bestAcc = [...active].sort((a, b) => Number(b.taxa_acerto) - Number(a.taxa_acerto))[0] ?? null;
+  const worstDD = [...active].sort((a, b) => Number(b.drawdown_maximo) - Number(a.drawdown_maximo))[0] ?? null;
+  const negatives = active.filter((m) => Number(m.pnl_periodo) < 0);
+  const mostHarmful = negatives.length ? [...negatives].sort((a, b) => Number(a.pnl_periodo) - Number(b.pnl_periodo))[0] : null;
+
+  // BUY vs SELL
+  let buyPnl = 0, sellPnl = 0, buyN = 0, sellN = 0;
+  for (const o of closed) {
+    const pnl = Number(o.net_result_brl ?? 0);
+    if (String(o.side).toUpperCase() === "BUY") { buyPnl += pnl; buyN++; }
+    else if (String(o.side).toUpperCase() === "SELL") { sellPnl += pnl; sellN++; }
+  }
+
+  // Horários (bucket por hora BRT)
+  const hourBuckets: Record<number, { pnl: number; n: number }> = {};
+  for (const o of closed) {
+    if (!o.exit_time) continue;
+    const h = Number(new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(new Date(o.exit_time)));
+    if (!Number.isFinite(h)) continue;
+    hourBuckets[h] = hourBuckets[h] ?? { pnl: 0, n: 0 };
+    hourBuckets[h].pnl += Number(o.net_result_brl ?? 0);
+    hourBuckets[h].n += 1;
+  }
+  const hourEntries = Object.entries(hourBuckets).map(([h, v]) => ({ h: Number(h), ...v }));
+  const bestHour = hourEntries.length >= 2 ? [...hourEntries].sort((a, b) => b.pnl - a.pnl)[0] : null;
+  const worstHour = hourEntries.length >= 2 ? [...hourEntries].sort((a, b) => a.pnl - b.pnl)[0] : null;
+
+  const bullets: string[] = [];
+  if (best) bullets.push(`Melhor resultado líquido: ${best.mode} (${BRL(best.pnl_periodo)}).`);
+  if (worst && worst !== best) bullets.push(`Pior resultado líquido: ${worst.mode} (${BRL(worst.pnl_periodo)}).`);
+  if (bestAcc && Number(bestAcc.trades) > 0) bullets.push(`Melhor taxa de acerto: ${bestAcc.mode} (${NUM(bestAcc.taxa_acerto, 1)}% em ${bestAcc.trades} ops).`);
+  if (worstDD && Number(worstDD.drawdown_maximo) > 0) bullets.push(`Maior drawdown: ${worstDD.mode} (${BRL(worstDD.drawdown_maximo)}).`);
+  if (mostHarmful) bullets.push(`Robô que mais prejudicou o consolidado: ${mostHarmful.mode} (${BRL(mostHarmful.pnl_periodo)}).`);
+  if (buyN + sellN > 0) bullets.push(`BUY: ${buyN} ops · ${BRL(buyPnl)}  ·  SELL: ${sellN} ops · ${BRL(sellPnl)}.`);
+  if (bestHour && worstHour && bestHour.h !== worstHour.h) {
+    bullets.push(`Faixa mais lucrativa: ${String(bestHour.h).padStart(2, "0")}h (${BRL(bestHour.pnl)}) · mais prejudicial: ${String(worstHour.h).padStart(2, "0")}h (${BRL(worstHour.pnl)}).`);
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Activity className="w-4 h-4 text-primary" /> Leitura do dia
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+          <div className="rounded-md border border-border/60 p-2">
+            <p className="text-muted-foreground">Resultado líquido consolidado</p>
+            <p className={`text-sm font-semibold ${totalPnl > 0 ? "text-emerald-400" : totalPnl < 0 ? "text-rose-400" : ""}`}>{BRL(totalPnl)}</p>
+          </div>
+          <div className="rounded-md border border-border/60 p-2">
+            <p className="text-muted-foreground">Total de trades</p>
+            <p className="text-sm font-semibold">{totalTrades}</p>
+          </div>
+          <div className="rounded-md border border-border/60 p-2">
+            <p className="text-muted-foreground">Gains</p>
+            <p className="text-sm font-semibold text-emerald-400">{totalWins}</p>
+          </div>
+          <div className="rounded-md border border-border/60 p-2">
+            <p className="text-muted-foreground">Stops</p>
+            <p className="text-sm font-semibold text-rose-400">{totalLosses}</p>
+          </div>
+          <div className="rounded-md border border-border/60 p-2">
+            <p className="text-muted-foreground">Resultado médio por trade</p>
+            <p className={`text-sm font-semibold ${avgTrade > 0 ? "text-emerald-400" : avgTrade < 0 ? "text-rose-400" : ""}`}>{BRL(avgTrade)}</p>
+          </div>
+        </div>
+        {bullets.length > 0 ? (
+          <ul className="text-sm space-y-1 list-disc pl-5">
+            {bullets.slice(0, 7).map((b, i) => <li key={i}>{b}</li>)}
+          </ul>
+        ) : (
+          <p className="text-xs text-muted-foreground">Sem operações no período para gerar leitura estatística.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+
