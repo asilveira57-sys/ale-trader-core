@@ -1444,9 +1444,15 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
         last_score: null,
         last_confidence: null,
         last_setup: null,
+        last_decision_context: null as any,
+        decisions: [] as any[],
+        trade_events: [] as any[],
       };
     }
     const history: any[] = [];
+    const allDecisions: any[] = [];
+    const allTradeEvents: any[] = [];
+
 
     // snapshots vêm em ordem decrescente; iterar reverso para popular "last_*" corretamente
     for (const s of [...list].reverse()) {
