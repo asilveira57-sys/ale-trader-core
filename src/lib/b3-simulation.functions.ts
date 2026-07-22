@@ -538,6 +538,153 @@ export async function runB3SimulationTick(
   }
 
 
+  async function fetchMarketHistory(): Promise<any[]> {
+    const nowIso = new Date().toISOString();
+    const startOfDayBr = (() => {
+      const d = new Date();
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+      }).formatToParts(d);
+      const y = parts.find(p => p.type === "year")?.value;
+      const mo = parts.find(p => p.type === "month")?.value;
+      const da = parts.find(p => p.type === "day")?.value;
+      return new Date(`${y}-${mo}-${da}T00:00:00-03:00`).toISOString();
+    })();
+    const { data } = await supabase.from("b3_simulation_market_snapshots")
+      .select("market_time, price, quote_bid, quote_ask, quote_last, volume, extra")
+      .eq("user_id", userId)
+      .gte("market_time", startOfDayBr)
+      .lte("market_time", nowIso)
+      .order("market_time", { ascending: false })
+      .limit(800);
+    return data ?? [];
+  }
+
+  function deriveMarketMetrics(history: any[], ctxLocal: any, priceLocal: any) {
+    const nowMs = Date.now();
+    const prices: number[] = [];
+    const volumes: number[] = [];
+    let dayHigh = -Infinity, dayLow = Infinity;
+    const priceAt = (targetOffsetMs: number) => {
+      let best: any = null;
+      let bestDiff = Infinity;
+      for (const h of history) {
+        const t = new Date(h.market_time).getTime();
+        const diff = Math.abs(nowMs - targetOffsetMs - t);
+        if (diff < bestDiff) { bestDiff = diff; best = h; }
+      }
+      if (!best) return null;
+      const p = Number(best.quote_last ?? best.price ?? 0);
+      return Number.isFinite(p) && p > 0 ? p : null;
+    };
+    for (const h of history) {
+      const p = Number(h.quote_last ?? h.price ?? 0);
+      if (Number.isFinite(p) && p > 0) {
+        prices.push(p);
+        if (p > dayHigh) dayHigh = p;
+        if (p < dayLow) dayLow = p;
+      }
+      const v = Number(h.volume ?? 0);
+      if (Number.isFinite(v)) volumes.push(v);
+    }
+    if (!Number.isFinite(dayHigh)) dayHigh = ctxLocal.price;
+    if (!Number.isFinite(dayLow)) dayLow = ctxLocal.price;
+    const p1 = priceAt(60 * 1000);
+    const p3 = priceAt(3 * 60 * 1000);
+    const p5 = priceAt(5 * 60 * 1000);
+    const cur = ctxLocal.price;
+    const var1 = p1 ? cur - p1 : null;
+    const var3 = p3 ? cur - p3 : null;
+    const var5 = p5 ? cur - p5 : null;
+    // aceleração = variação 1m vs variação 3m (média por minuto)
+    const accel = (var1 != null && var3 != null) ? (var1) - (var3 / 3) : null;
+    const avgVol = volumes.length ? volumes.reduce((a, b) => a + b, 0) / volumes.length : null;
+    return {
+      day_high: dayHigh, day_low: dayLow,
+      dist_day_high_pts: Math.round(dayHigh - cur),
+      dist_day_low_pts: Math.round(cur - dayLow),
+      var_1m_pts: var1 != null ? Math.round(var1) : null,
+      var_3m_pts: var3 != null ? Math.round(var3) : null,
+      var_5m_pts: var5 != null ? Math.round(var5) : null,
+      acceleration_pts_per_min: accel != null ? Math.round(accel * 100) / 100 : null,
+      avg_volume: avgVol != null ? Math.round(avgVol * 100) / 100 : null,
+      samples: prices.length,
+    };
+  }
+
+  function classifyTrend(ctxLocal: any): { direction: "alta" | "baixa" | "lateral"; strength: number } {
+    const emaGap = ctxLocal.ema9 - ctxLocal.ema21;
+    const abs = Math.abs(emaGap);
+    const direction = emaGap > 0 ? "alta" : emaGap < 0 ? "baixa" : "lateral";
+    // força: 0..100 baseado no gap absoluto normalizado por preço + momentum
+    const rel = ctxLocal.price ? (abs / ctxLocal.price) * 10000 : 0; // em basis points x10
+    const strength = Math.max(0, Math.min(100, Math.round(rel * 5 + Math.abs(ctxLocal.momentum ?? 0) / 3)));
+    return { direction: abs < 1e-6 ? "lateral" : direction, strength };
+  }
+
+  function classifyRegime(ctxLocal: any, derived: any): string | null {
+    if (!Number.isFinite(ctxLocal.volatility_pct)) return null;
+    const vol = ctxLocal.volatility_pct;
+    const trend = classifyTrend(ctxLocal);
+    if (vol > 3.5) return "alta_volatilidade";
+    if (trend.strength >= 50 && trend.direction !== "lateral") return `tendencia_${trend.direction}`;
+    if (Math.abs(derived?.var_5m_pts ?? 0) < 30 && vol < 1.5) return "range_estreito";
+    return "consolidacao";
+  }
+
+  function buildDecisionContext(params: {
+    ctxLocal: any; priceLocal: any; cfg: any; mode: string; intendedSide: string;
+    decision: any | null; derived: any; firstStop?: any;
+    entry_reason?: string | null;
+  }) {
+    const { ctxLocal, priceLocal, cfg, mode, intendedSide, decision, derived, firstStop, entry_reason } = params;
+    const trend = classifyTrend(ctxLocal);
+    return {
+      timestamp: new Date().toISOString(),
+      asset: priceLocal.quote_symbol ?? "WINQ26",
+      robot: mode,
+      suggested_side: intendedSide,
+      price: ctxLocal.price,
+      score: decision?.score ?? null,
+      score_min: Number(cfg.min_score),
+      confidence: decision?.avg_confidence ?? null,
+      confidence_min: Number(cfg.min_confidence),
+      approve_votes: decision?.approve_votes ?? null,
+      approve_votes_min: Number(cfg.min_approve_votes),
+      total_votes: decision?.total_votes ?? null,
+      vetoes: decision?.vetoes ?? [],
+      committee_result: decision?.final ?? null,
+      committee_justification: decision?.justification ?? null,
+      approval_or_first_block:
+        decision?.final === "approved"
+          ? `Aprovado: ${decision.justification ?? ""}`
+          : firstStop ? `Bloqueado em ${firstStop.label}: ${firstStop.detail ?? ""}` : (decision?.justification ?? null),
+      entry_reason: entry_reason ?? null,
+      trend_direction: trend.direction,
+      trend_strength: trend.strength,
+      volatility_pct: ctxLocal.volatility_pct,
+      spread_pts: Number(ctxLocal.spread_pts ?? priceLocal.raw?.spread ?? 0),
+      vwap: ctxLocal.vwap,
+      dist_vwap_pts: Math.round(ctxLocal.price - ctxLocal.vwap),
+      day_high: derived.day_high,
+      day_low: derived.day_low,
+      dist_day_high_pts: derived.dist_day_high_pts,
+      dist_day_low_pts: derived.dist_day_low_pts,
+      volume_current: ctxLocal.volume_ratio,
+      volume_avg: derived.avg_volume,
+      acceleration_pts_per_min: derived.acceleration_pts_per_min,
+      candle: {
+        open: ctxLocal.open, high: ctxLocal.high, low: ctxLocal.low, close: ctxLocal.price,
+      },
+      var_1m_pts: derived.var_1m_pts,
+      var_3m_pts: derived.var_3m_pts,
+      var_5m_pts: derived.var_5m_pts,
+      market_regime: classifyRegime(ctxLocal, derived),
+      session_phase: ctxLocal.session_phase,
+    };
+  }
+
+
   for (let i = 0; i < ticks; i++) {
     const now = new Date();
     const cur = saoPauloMinutes(now);
@@ -545,6 +692,9 @@ export async function runB3SimulationTick(
     const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
     rememberProvider(priceSrc);
     const ctx = priceSrc.ctx;
+    const marketHistory = await fetchMarketHistory();
+    const derived = deriveMarketMetrics(marketHistory, ctx, priceSrc);
+
     const invalidMt5 = mt5InvalidReason(priceSrc);
     await invalidateLegacyOrdersForMt5(priceSrc);
     const macroBlock = (macros ?? []).find((m: any) => {
@@ -680,6 +830,11 @@ export async function runB3SimulationTick(
       const addCheck = (key: string, label: string, ok: boolean, detail?: string, blocking = true) => checks.push(auditCheck(key, label, ok, detail, blocking));
       const finalizeAudit = (finalReason: string, extra: Record<string, any> = {}) => {
         const firstStop = checks.find((c) => c.blocking && !c.ok);
+        const decisionContext = buildDecisionContext({
+          ctxLocal: ctx, priceLocal: priceSrc, cfg, mode, intendedSide,
+          decision: extra.committee ?? null, derived, firstStop,
+          entry_reason: extra.entry_reason ?? null,
+        });
         tickAudit.modes.push({
           mode,
           timestamp: now.toISOString(),
@@ -698,8 +853,11 @@ export async function runB3SimulationTick(
           checks,
           signals: extra.signals ?? { evaluated_side: intendedSide, buy: false, sell: false },
           committee: extra.committee ?? null,
+          decision_context: decisionContext,
+          trade_event: extra.trade_event ?? null,
         });
       };
+
 
       addCheck("tick_received", "Tick recebido", priceSrc.source !== "mt5_xp_demo" || Boolean(priceSrc.raw), priceSrc.raw?.tick_ts ? `tick ${priceSrc.raw.tick_ts}` : "sem tick MT5");
       addCheck("mt5_server", "Servidor MT5", priceSrc.source !== "mt5_xp_demo" || priceSrc.server === "XPMT5-DEMO" || priceSrc.server === "XPMT5-PRD", priceSrc.server ? `recebido ${priceSrc.server}` : "sem servidor");
@@ -915,7 +1073,7 @@ export async function runB3SimulationTick(
         const hitGain = movePts >= Number(cfg.gain_pts);
         if (forceClose || hitStop || hitGain) {
           const reason = forceClose ? "force_close" : hitStop ? "stop" : "gain";
-          await closeOrder(supabase, userId, run, m, open, markAudit, reason);
+          const tradeCtx = await closeOrder(supabase, userId, run, m, open, markAudit, reason, marketHistory);
           providerStats.last_exit_price = markPrice;
           openOrdersCache = null;
           realizedTodayByMode = await getRealizedTodayByMode();
@@ -928,9 +1086,11 @@ export async function runB3SimulationTick(
           finalizeAudit(`Posição existente encerrada por ${reason}.`, {
             last_setup: `Posição ${open.side.toUpperCase()} em gestão`,
             signals: { evaluated_side: open.side, buy: false, sell: false },
+            trade_event: tradeCtx,
           });
           continue;
         }
+
       }
 
       // Bloqueio de proteção B3 substitui o antigo gate "meta atingida".
@@ -1284,9 +1444,15 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
         last_score: null,
         last_confidence: null,
         last_setup: null,
+        last_decision_context: null as any,
+        decisions: [] as any[],
+        trade_events: [] as any[],
       };
     }
     const history: any[] = [];
+    const allDecisions: any[] = [];
+    const allTradeEvents: any[] = [];
+
 
     // snapshots vêm em ordem decrescente; iterar reverso para popular "last_*" corretamente
     for (const s of [...list].reverse()) {
@@ -1313,6 +1479,16 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
         bucket.last_score = m.last_score ?? bucket.last_score;
         bucket.last_confidence = m.last_confidence ?? bucket.last_confidence;
         bucket.last_setup = m.last_setup ?? bucket.last_setup;
+        if (m.decision_context) {
+          bucket.last_decision_context = m.decision_context;
+          const dec = { ...m.decision_context, at: s.market_time };
+          bucket.decisions.push(dec);
+          allDecisions.push(dec);
+        }
+        if (m.trade_event) {
+          bucket.trade_events.push({ ...m.trade_event, at: s.market_time });
+          allTradeEvents.push({ ...m.trade_event, at: s.market_time, mode: m.mode });
+        }
 
         const byKey: Record<string, any> = {};
         for (const c of m.checks ?? []) byKey[c.key] = c;
@@ -1334,19 +1510,32 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
     }
 
     history.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    allDecisions.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    allTradeEvents.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    for (const mk of MODES) {
+      const b = perMode[mk];
+      b.decisions = b.decisions.slice(-50).reverse();
+      b.trade_events = b.trade_events.slice(-20).reverse();
+    }
+
 
     return {
       run,
       modes: MODES.map((m) => perMode[m]),
       history: history.slice(0, 100),
+      decisions: allDecisions.slice(0, 100),
+      trade_events: allTradeEvents.slice(0, 50),
       totals: {
         snapshots_scanned: list.length,
+        decisions_recorded: allDecisions.length,
+        trades_recorded: allTradeEvents.length,
       },
       executions: scope.executions,
       restart_count: scope.restartCount,
       session_date: scope.sessionDate,
     };
   });
+
 
 
 // ─────────────────── Auditoria de Entradas (Fase 1, read-only) ───────────────────
@@ -1588,7 +1777,7 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
 
 
 
-async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string) {
+async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string, marketHistory: any[] = []) {
   if (exitAudit.quote_source === "MT5 XP DEMO") assertB3StrictMt5ExecutionAudit(exitAudit, "closeOrder");
   const exitPrice = exitAudit.execution_price;
   const dir = order.side === "buy" ? 1 : -1;
@@ -1597,6 +1786,23 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
   const grossBrl = grossPts * POINT_VALUE_BRL * qty;
   const fees = (Number(run.simulated_fee_brl) || 0) * 2 * qty; // round-trip
   const netBrl = grossBrl - fees;
+
+  // MFE / MAE (em pontos) a partir dos snapshots entre entry_time e agora.
+  const entryTimeMs = order.entry_time ? new Date(order.entry_time).getTime() : null;
+  const nowMs = Date.now();
+  let mfePts = 0, maePts = 0;
+  if (entryTimeMs) {
+    for (const h of marketHistory) {
+      const t = new Date(h.market_time).getTime();
+      if (t < entryTimeMs || t > nowMs) continue;
+      const p = Number(h.quote_last ?? h.price ?? 0);
+      if (!Number.isFinite(p) || p <= 0) continue;
+      const move = (p - Number(order.entry_price)) * dir;
+      if (move > mfePts) mfePts = move;
+      if (move < maePts) maePts = move;
+    }
+  }
+  const durationS = entryTimeMs ? Math.max(0, Math.round((nowMs - entryTimeMs) / 1000)) : null;
 
   await supabase.from("b3_simulation_orders").update({
     exit_price: Math.round(exitPrice / TICK) * TICK,
@@ -1644,7 +1850,28 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
   mode.winning_trades = wins; mode.losing_trades = losses;
   mode.max_gain = maxGain; mode.max_loss = maxLoss; mode.max_drawdown = dd;
   mode.points_result = totalPts;
+
+  return {
+    order_id: order.id,
+    mode: mode.mode ?? null,
+    side: order.side,
+    entry_reason: order.entry_reason ?? null,
+    exit_reason: reason,
+    entry_price: Number(order.entry_price),
+    exit_price: Math.round(exitPrice / TICK) * TICK,
+    entry_time: order.entry_time,
+    exit_time: new Date().toISOString(),
+    duration_s: durationS,
+    gross_pts: grossPts,
+    gross_brl: grossBrl,
+    fees,
+    net_brl: netBrl,
+    quantity: qty,
+    mfe_pts: Math.round(mfePts),
+    mae_pts: Math.round(maePts),
+  };
 }
+
 
 // ───────────────────── macro events ─────────────────────
 export const listB3MacroEvents = createServerFn({ method: "GET" })
