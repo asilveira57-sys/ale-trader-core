@@ -1073,7 +1073,7 @@ export async function runB3SimulationTick(
         const hitGain = movePts >= Number(cfg.gain_pts);
         if (forceClose || hitStop || hitGain) {
           const reason = forceClose ? "force_close" : hitStop ? "stop" : "gain";
-          await closeOrder(supabase, userId, run, m, open, markAudit, reason);
+          const tradeCtx = await closeOrder(supabase, userId, run, m, open, markAudit, reason, marketHistory);
           providerStats.last_exit_price = markPrice;
           openOrdersCache = null;
           realizedTodayByMode = await getRealizedTodayByMode();
@@ -1086,9 +1086,11 @@ export async function runB3SimulationTick(
           finalizeAudit(`Posição existente encerrada por ${reason}.`, {
             last_setup: `Posição ${open.side.toUpperCase()} em gestão`,
             signals: { evaluated_side: open.side, buy: false, sell: false },
+            trade_event: tradeCtx,
           });
           continue;
         }
+
       }
 
       // Bloqueio de proteção B3 substitui o antigo gate "meta atingida".
