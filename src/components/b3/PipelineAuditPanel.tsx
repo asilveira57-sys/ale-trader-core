@@ -205,9 +205,135 @@ export function PipelineAuditPanel() {
           )}
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Contexto das decisões (últimas 100)</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Cada candidato de entrada — aprovado ou rejeitado — com o snapshot completo do mercado no momento da decisão.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {(data.decisions ?? []).length === 0 ? (
+            <p className="text-xs text-muted-foreground">Sem decisões registradas.</p>
+          ) : (
+            <div className="overflow-x-auto max-h-[520px]">
+              <table className="w-full text-[11px]">
+                <thead className="text-muted-foreground border-b border-border/40 sticky top-0 bg-background">
+                  <tr className="text-left">
+                    <th className="py-1 pr-2">Hora</th>
+                    <th className="py-1 pr-2">Robô</th>
+                    <th className="py-1 pr-2">Lado</th>
+                    <th className="py-1 pr-2">Preço</th>
+                    <th className="py-1 pr-2">Score</th>
+                    <th className="py-1 pr-2">Conf.</th>
+                    <th className="py-1 pr-2">Votos</th>
+                    <th className="py-1 pr-2">Tendência</th>
+                    <th className="py-1 pr-2">Vol.%</th>
+                    <th className="py-1 pr-2">Spread</th>
+                    <th className="py-1 pr-2">VWAP Δ</th>
+                    <th className="py-1 pr-2">Máx/Mín Δ</th>
+                    <th className="py-1 pr-2">Vol</th>
+                    <th className="py-1 pr-2">Accel</th>
+                    <th className="py-1 pr-2">Δ1m/3m/5m</th>
+                    <th className="py-1 pr-2">Regime</th>
+                    <th className="py-1 pr-2">Resultado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.decisions ?? []).map((d: any, i: number) => (
+                    <tr key={i} className="border-b border-border/20 align-top">
+                      <td className="py-1 pr-2 font-mono">{new Date(d.at).toLocaleTimeString("pt-BR")}</td>
+                      <td className="py-1 pr-2"><Badge variant="outline" className="text-[9px]">{MODE_LABEL[d.robot] ?? d.robot}</Badge></td>
+                      <td className="py-1 pr-2 font-mono uppercase">{d.suggested_side}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(d.price)}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(d.score)}/{fmt(d.score_min)}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(d.confidence)}/{fmt(d.confidence_min)}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(d.approve_votes)}/{fmt(d.approve_votes_min)}</td>
+                      <td className="py-1 pr-2">{d.trend_direction} ({fmt(d.trend_strength)})</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(d.volatility_pct)}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(d.spread_pts)}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(d.dist_vwap_pts)}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(d.dist_day_high_pts)}/{fmt(d.dist_day_low_pts)}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(d.volume_current)}<span className="text-muted-foreground"> (μ {fmt(d.volume_avg)})</span></td>
+                      <td className="py-1 pr-2 font-mono">{fmt(d.acceleration_pts_per_min)}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(d.var_1m_pts)}/{fmt(d.var_3m_pts)}/{fmt(d.var_5m_pts)}</td>
+                      <td className="py-1 pr-2">{d.market_regime ?? "—"}</td>
+                      <td className="py-1 pr-2">
+                        <Badge variant={d.committee_result === "approved" ? "default" : "secondary"} className="text-[9px]">
+                          {d.committee_result ?? "—"}
+                        </Badge>
+                        <div className="text-muted-foreground text-[10px] max-w-[240px]" title={d.approval_or_first_block ?? ""}>
+                          {d.approval_or_first_block ?? ""}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Operações executadas — contexto de entrada e saída</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Preço de entrada/saída, resultado bruto e líquido, maior movimento favorável (MFE) e contrário (MAE), duração.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {(data.trade_events ?? []).length === 0 ? (
+            <p className="text-xs text-muted-foreground">Sem operações fechadas no período.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px]">
+                <thead className="text-muted-foreground border-b border-border/40">
+                  <tr className="text-left">
+                    <th className="py-1 pr-2">Hora fim</th>
+                    <th className="py-1 pr-2">Robô</th>
+                    <th className="py-1 pr-2">Lado</th>
+                    <th className="py-1 pr-2">Entrada</th>
+                    <th className="py-1 pr-2">Saída</th>
+                    <th className="py-1 pr-2">Duração</th>
+                    <th className="py-1 pr-2">Bruto (pts)</th>
+                    <th className="py-1 pr-2">Bruto (R$)</th>
+                    <th className="py-1 pr-2">Líquido (R$)</th>
+                    <th className="py-1 pr-2">MFE</th>
+                    <th className="py-1 pr-2">MAE</th>
+                    <th className="py-1 pr-2">Motivo saída</th>
+                    <th className="py-1 pr-2">Motivo entrada</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.trade_events ?? []).map((t: any, i: number) => (
+                    <tr key={i} className="border-b border-border/20">
+                      <td className="py-1 pr-2 font-mono">{new Date(t.at).toLocaleTimeString("pt-BR")}</td>
+                      <td className="py-1 pr-2"><Badge variant="outline" className="text-[9px]">{MODE_LABEL[t.mode] ?? t.mode}</Badge></td>
+                      <td className="py-1 pr-2 font-mono uppercase">{t.side}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(t.entry_price)}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(t.exit_price)}</td>
+                      <td className="py-1 pr-2 font-mono">{formatDuration(t.duration_s)}</td>
+                      <td className={`py-1 pr-2 font-mono ${t.gross_pts >= 0 ? "text-emerald-500" : "text-red-500"}`}>{fmt(t.gross_pts)}</td>
+                      <td className="py-1 pr-2 font-mono">{fmt(t.gross_brl)}</td>
+                      <td className={`py-1 pr-2 font-mono ${t.net_brl >= 0 ? "text-emerald-500" : "text-red-500"}`}>{fmt(t.net_brl)}</td>
+                      <td className="py-1 pr-2 font-mono text-emerald-500">{fmt(t.mfe_pts)}</td>
+                      <td className="py-1 pr-2 font-mono text-red-500">{fmt(t.mae_pts)}</td>
+                      <td className="py-1 pr-2"><Badge variant="secondary" className="text-[9px]">{t.exit_reason}</Badge></td>
+                      <td className="py-1 pr-2 text-muted-foreground max-w-[280px] truncate" title={t.entry_reason ?? ""}>{t.entry_reason ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
+
 
 function Stat({ label, v, accent }: { label: string; v: number; accent?: "pos" | "neg" }) {
   const cls = accent === "pos" ? "text-emerald-500" : accent === "neg" ? "text-red-500" : "";
