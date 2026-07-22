@@ -1392,24 +1392,22 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const since = new Date(Date.now() - data.hours * 3600_000).toISOString();
 
-    const { data: runs } = await (supabase as any).from("b3_simulation_runs")
-      .select("id, status, started_at").eq("user_id", userId)
-      .in("status", ["running", "paused", "completed"])
-      .order("started_at", { ascending: false }).limit(1);
-    const run = runs?.[0] ?? null;
-    if (!run) return { run: null, period: { since, hours: data.hours }, modes: [], reasons: [], config_mismatches: [], totals: { snapshots_scanned: 0 } };
+    const scope = await resolveSessionScope(supabase as any, userId);
+    const run = scope.latest;
+    if (!run) return { run: null, period: { since, hours: data.hours }, modes: [], reasons: [], config_mismatches: [], totals: { snapshots_scanned: 0 }, executions: [], restart_count: 0, session_date: null };
 
     const { data: snaps } = await (supabase as any).from("b3_simulation_market_snapshots")
       .select("market_time, extra")
-      .eq("simulation_run_id", run.id).eq("user_id", userId)
+      .in("simulation_run_id", scope.runIds).eq("user_id", userId)
       .gte("market_time", since)
       .order("market_time", { ascending: true })
-      .limit(5000);
+      .limit(10000);
 
     const { data: orders } = await (supabase as any).from("b3_simulation_orders")
       .select("mode, status, net_result_brl, entry_time")
-      .eq("simulation_run_id", run.id).eq("user_id", userId)
+      .in("simulation_run_id", scope.runIds).eq("user_id", userId)
       .gte("entry_time", since);
+
 
     const ordersByMode: Record<string, { total: number; net: number }> = {};
     for (const m of MODES) ordersByMode[m] = { total: 0, net: 0 };
