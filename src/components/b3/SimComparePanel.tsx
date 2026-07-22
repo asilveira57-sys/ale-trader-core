@@ -265,6 +265,11 @@ export function SimComparePanel() {
         );
       })()}
 
+      {/* Leitura do dia (conclusão estatística automática) */}
+      {reportQ.data && (
+        <DailyReadingPanel data={reportQ.data} orders={detail?.orders ?? []} />
+      )}
+
       {/* Painel de Stops e Bloqueios */}
       {reportQ.data && (
         <StopsAndBlocksPanel data={reportQ.data} />
