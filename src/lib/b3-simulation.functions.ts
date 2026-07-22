@@ -66,12 +66,47 @@ interface StartInput {
   force_close_time?: string;
   notes?: string;
 }
+// Fuso do pregão B3 — usado para agrupar reinícios do mesmo dia num session_day_id único.
+function currentB3SessionDate(): string {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  const y = parts.find(p => p.type === "year")?.value;
+  const m = parts.find(p => p.type === "month")?.value;
+  const d = parts.find(p => p.type === "day")?.value;
+  return `${y}-${m}-${d}`;
+}
+
+async function resolveSessionDayId(supabase: any, userId: string, symbol: string, sessionDate: string): Promise<string> {
+  const { data } = await supabase
+    .from("b3_simulation_runs")
+    .select("session_day_id")
+    .eq("user_id", userId)
+    .eq("symbol", symbol)
+    .eq("session_date", sessionDate)
+    .not("session_day_id", "is", null)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (data?.session_day_id) return data.session_day_id as string;
+  return (globalThis.crypto?.randomUUID?.() ?? cryptoRandomFallback());
+}
+function cryptoRandomFallback(): string {
+  // fallback determinístico-suficiente; runtime Workers já expõe crypto.randomUUID
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 export const startB3Simulation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: StartInput) => d ?? {})
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const initial = Number(data.initial_balance ?? 10000);
+    const symbol = "WINQ26";
+    const sessionDate = currentB3SessionDate();
+    const sessionDayId = await resolveSessionDayId(supabase as any, userId, symbol, sessionDate);
     const { data: run, error } = await (supabase as any)
       .from("b3_simulation_runs")
       .insert({
@@ -85,6 +120,9 @@ export const startB3Simulation = createServerFn({ method: "POST" })
         force_close_time: data.force_close_time ?? "16:55",
         notes: data.notes ?? null,
         status: "running",
+        symbol,
+        session_date: sessionDate,
+        session_day_id: sessionDayId,
       })
       .select("*").single();
     if (error) throw error;
@@ -105,6 +143,7 @@ export const startB3Simulation = createServerFn({ method: "POST" })
     await (supabase as any).from("b3_simulation_mode_settings").insert(settingRows);
     return run;
   });
+
 
 // ───────────────────── controls ─────────────────────
 export const setB3SimulationStatus = createServerFn({ method: "POST" })
@@ -1102,31 +1141,79 @@ export const tickB3Simulation = createServerFn({ method: "POST" })
     return runB3SimulationTick(context.supabase, context.userId, data.run_id, data.ticks ?? 1);
   });
 
+// ─────────────────── Escopo de sessão diária ───────────────────
+// Retorna todos os runs que compartilham o session_day_id do run mais recente
+// (rodando, pausado ou finalizado). Reinícios no mesmo dia = mesmo session_day_id
+// = execuções consolidadas no diagnóstico.
+async function resolveSessionScope(supabase: any, userId: string) {
+  const { data: latest } = await supabase.from("b3_simulation_runs")
+    .select("id, status, started_at, ended_at, session_day_id, session_date, symbol")
+    .eq("user_id", userId)
+    .order("started_at", { ascending: false })
+    .limit(1).maybeSingle();
+  if (!latest) return { latest: null, runs: [] as any[], runIds: [] as string[], executions: [] as any[], restartCount: 0 };
+  const sid = latest.session_day_id;
+  let runs: any[] = [];
+  if (sid) {
+    const { data } = await supabase.from("b3_simulation_runs")
+      .select("id, status, started_at, ended_at, session_day_id, session_date, symbol, notes")
+      .eq("user_id", userId).eq("session_day_id", sid)
+      .order("started_at", { ascending: true });
+    runs = data ?? [latest];
+  } else {
+    runs = [latest];
+  }
+  const executions = runs.map((r) => {
+    const start = new Date(r.started_at).getTime();
+    const end = r.ended_at ? new Date(r.ended_at).getTime() : Date.now();
+    return {
+      run_id: r.id,
+      status: r.status,
+      started_at: r.started_at,
+      finished_at: r.ended_at,
+      duration_s: Math.max(0, Math.round((end - start) / 1000)),
+      ongoing: !r.ended_at,
+    };
+  });
+  return {
+    latest,
+    runs,
+    runIds: runs.map((r) => r.id),
+    executions,
+    restartCount: Math.max(0, executions.length - 1),
+    sessionDate: latest.session_date,
+    sessionDayId: sid,
+  };
+}
+
 export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { data: runs } = await (supabase as any).from("b3_simulation_runs")
-      .select("*").eq("user_id", userId).in("status", ["running", "paused"])
-      .order("started_at", { ascending: false }).limit(1);
-    const run = runs?.[0] ?? null;
-    if (!run) return { run: null, audit: null, snapshot: null, settings: [], price_source: null };
+    const scope = await resolveSessionScope(supabase as any, userId);
+    if (!scope.latest) return { run: null, audit: null, snapshot: null, settings: [], price_source: null, executions: [], restart_count: 0, session_date: null };
+    const activeRun = scope.runs.find((r) => r.status === "running" || r.status === "paused") ?? scope.latest;
     const [{ data: snapshot }, { data: settings }, { data: tradeSettings }] = await Promise.all([
       (supabase as any).from("b3_simulation_market_snapshots").select("*")
-        .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1).maybeSingle(),
+        .in("simulation_run_id", scope.runIds).eq("user_id", userId)
+        .order("market_time", { ascending: false }).limit(1).maybeSingle(),
       (supabase as any).from("b3_simulation_mode_settings").select("*")
-        .eq("simulation_run_id", run.id).eq("user_id", userId),
+        .eq("simulation_run_id", activeRun.id).eq("user_id", userId),
       (supabase as any).from("b3_trading_settings").select("price_source")
         .eq("user_id", userId).maybeSingle(),
     ]);
     return {
-      run,
+      run: activeRun,
       snapshot: snapshot ?? null,
       audit: (snapshot?.extra as any)?.engine_audit ?? null,
       settings: settings ?? [],
       price_source: tradeSettings?.price_source ?? "csv",
+      executions: scope.executions,
+      restart_count: scope.restartCount,
+      session_date: scope.sessionDate,
     };
   });
+
 
 // ─────────────────── Pipeline de Diagnóstico (read-only) ───────────────────
 // Agrega os últimos snapshots com engine_audit e produz, por robô:
@@ -1163,20 +1250,18 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { data: runs } = await (supabase as any).from("b3_simulation_runs")
-      .select("id, status, started_at").eq("user_id", userId)
-      .in("status", ["running", "paused"])
-      .order("started_at", { ascending: false }).limit(1);
-    const run = runs?.[0] ?? null;
-    if (!run) return { run: null, modes: [], history: [], totals: null };
+    const scope = await resolveSessionScope(supabase as any, userId);
+    const run = scope.latest;
+    if (!run) return { run: null, modes: [], history: [], totals: null, executions: [], restart_count: 0, session_date: null };
 
     const { data: snaps } = await (supabase as any).from("b3_simulation_market_snapshots")
-      .select("id, market_time, extra")
-      .eq("simulation_run_id", run.id).eq("user_id", userId)
+      .select("id, market_time, extra, simulation_run_id")
+      .in("simulation_run_id", scope.runIds).eq("user_id", userId)
       .order("market_time", { ascending: false })
-      .limit(200);
+      .limit(2000);
 
     const list = (snaps ?? []).filter((s: any) => s?.extra?.engine_audit);
+
 
     // contadores por robô
     const perMode: Record<string, any> = {};
@@ -1257,8 +1342,12 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
       totals: {
         snapshots_scanned: list.length,
       },
+      executions: scope.executions,
+      restart_count: scope.restartCount,
+      session_date: scope.sessionDate,
     };
   });
+
 
 // ─────────────────── Auditoria de Entradas (Fase 1, read-only) ───────────────────
 // Lê os snapshots do período, monta funil por robô, agrega motivos de bloqueio
@@ -1303,24 +1392,22 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const since = new Date(Date.now() - data.hours * 3600_000).toISOString();
 
-    const { data: runs } = await (supabase as any).from("b3_simulation_runs")
-      .select("id, status, started_at").eq("user_id", userId)
-      .in("status", ["running", "paused", "completed"])
-      .order("started_at", { ascending: false }).limit(1);
-    const run = runs?.[0] ?? null;
-    if (!run) return { run: null, period: { since, hours: data.hours }, modes: [], reasons: [], config_mismatches: [], totals: { snapshots_scanned: 0 } };
+    const scope = await resolveSessionScope(supabase as any, userId);
+    const run = scope.latest;
+    if (!run) return { run: null, period: { since, hours: data.hours }, modes: [], reasons: [], config_mismatches: [], totals: { snapshots_scanned: 0 }, executions: [], restart_count: 0, session_date: null };
 
     const { data: snaps } = await (supabase as any).from("b3_simulation_market_snapshots")
       .select("market_time, extra")
-      .eq("simulation_run_id", run.id).eq("user_id", userId)
+      .in("simulation_run_id", scope.runIds).eq("user_id", userId)
       .gte("market_time", since)
       .order("market_time", { ascending: true })
-      .limit(5000);
+      .limit(10000);
 
     const { data: orders } = await (supabase as any).from("b3_simulation_orders")
       .select("mode, status, net_result_brl, entry_time")
-      .eq("simulation_run_id", run.id).eq("user_id", userId)
+      .in("simulation_run_id", scope.runIds).eq("user_id", userId)
       .gte("entry_time", since);
+
 
     const ordersByMode: Record<string, { total: number; net: number }> = {};
     for (const m of MODES) ordersByMode[m] = { total: 0, net: 0 };
@@ -1491,6 +1578,9 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
       reasons,
       config_mismatches: configMismatchesLatest,
       totals: { snapshots_scanned: list.length },
+      executions: scope.executions,
+      restart_count: scope.restartCount,
+      session_date: scope.sessionDate,
     };
   });
 

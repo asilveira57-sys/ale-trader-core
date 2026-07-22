@@ -2444,11 +2444,14 @@ export type Database = {
           market_source: string
           max_contracts: number
           notes: string | null
+          session_date: string | null
+          session_day_id: string | null
           simulated_fee_brl: number
           simulated_slippage_pts: number
           start_date: string | null
           started_at: string
           status: string
+          symbol: string
           trading_start_time: string
           updated_at: string
           user_id: string
@@ -2465,11 +2468,14 @@ export type Database = {
           market_source?: string
           max_contracts?: number
           notes?: string | null
+          session_date?: string | null
+          session_day_id?: string | null
           simulated_fee_brl?: number
           simulated_slippage_pts?: number
           start_date?: string | null
           started_at?: string
           status?: string
+          symbol?: string
           trading_start_time?: string
           updated_at?: string
           user_id: string
@@ -2486,11 +2492,14 @@ export type Database = {
           market_source?: string
           max_contracts?: number
           notes?: string | null
+          session_date?: string | null
+          session_day_id?: string | null
           simulated_fee_brl?: number
           simulated_slippage_pts?: number
           start_date?: string | null
           started_at?: string
           status?: string
+          symbol?: string
           trading_start_time?: string
           updated_at?: string
           user_id?: string
