@@ -1141,31 +1141,79 @@ export const tickB3Simulation = createServerFn({ method: "POST" })
     return runB3SimulationTick(context.supabase, context.userId, data.run_id, data.ticks ?? 1);
   });
 
+// ─────────────────── Escopo de sessão diária ───────────────────
+// Retorna todos os runs que compartilham o session_day_id do run mais recente
+// (rodando, pausado ou finalizado). Reinícios no mesmo dia = mesmo session_day_id
+// = execuções consolidadas no diagnóstico.
+async function resolveSessionScope(supabase: any, userId: string) {
+  const { data: latest } = await supabase.from("b3_simulation_runs")
+    .select("id, status, started_at, ended_at, session_day_id, session_date, symbol")
+    .eq("user_id", userId)
+    .order("started_at", { ascending: false })
+    .limit(1).maybeSingle();
+  if (!latest) return { latest: null, runs: [] as any[], runIds: [] as string[], executions: [] as any[], restartCount: 0 };
+  const sid = latest.session_day_id;
+  let runs: any[] = [];
+  if (sid) {
+    const { data } = await supabase.from("b3_simulation_runs")
+      .select("id, status, started_at, ended_at, session_day_id, session_date, symbol, notes")
+      .eq("user_id", userId).eq("session_day_id", sid)
+      .order("started_at", { ascending: true });
+    runs = data ?? [latest];
+  } else {
+    runs = [latest];
+  }
+  const executions = runs.map((r) => {
+    const start = new Date(r.started_at).getTime();
+    const end = r.ended_at ? new Date(r.ended_at).getTime() : Date.now();
+    return {
+      run_id: r.id,
+      status: r.status,
+      started_at: r.started_at,
+      finished_at: r.ended_at,
+      duration_s: Math.max(0, Math.round((end - start) / 1000)),
+      ongoing: !r.ended_at,
+    };
+  });
+  return {
+    latest,
+    runs,
+    runIds: runs.map((r) => r.id),
+    executions,
+    restartCount: Math.max(0, executions.length - 1),
+    sessionDate: latest.session_date,
+    sessionDayId: sid,
+  };
+}
+
 export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { data: runs } = await (supabase as any).from("b3_simulation_runs")
-      .select("*").eq("user_id", userId).in("status", ["running", "paused"])
-      .order("started_at", { ascending: false }).limit(1);
-    const run = runs?.[0] ?? null;
-    if (!run) return { run: null, audit: null, snapshot: null, settings: [], price_source: null };
+    const scope = await resolveSessionScope(supabase as any, userId);
+    if (!scope.latest) return { run: null, audit: null, snapshot: null, settings: [], price_source: null, executions: [], restart_count: 0, session_date: null };
+    const activeRun = scope.runs.find((r) => r.status === "running" || r.status === "paused") ?? scope.latest;
     const [{ data: snapshot }, { data: settings }, { data: tradeSettings }] = await Promise.all([
       (supabase as any).from("b3_simulation_market_snapshots").select("*")
-        .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1).maybeSingle(),
+        .in("simulation_run_id", scope.runIds).eq("user_id", userId)
+        .order("market_time", { ascending: false }).limit(1).maybeSingle(),
       (supabase as any).from("b3_simulation_mode_settings").select("*")
-        .eq("simulation_run_id", run.id).eq("user_id", userId),
+        .eq("simulation_run_id", activeRun.id).eq("user_id", userId),
       (supabase as any).from("b3_trading_settings").select("price_source")
         .eq("user_id", userId).maybeSingle(),
     ]);
     return {
-      run,
+      run: activeRun,
       snapshot: snapshot ?? null,
       audit: (snapshot?.extra as any)?.engine_audit ?? null,
       settings: settings ?? [],
       price_source: tradeSettings?.price_source ?? "csv",
+      executions: scope.executions,
+      restart_count: scope.restartCount,
+      session_date: scope.sessionDate,
     };
   });
+
 
 // ─────────────────── Pipeline de Diagnóstico (read-only) ───────────────────
 // Agrega os últimos snapshots com engine_audit e produz, por robô:
