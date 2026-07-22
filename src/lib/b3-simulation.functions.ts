@@ -66,12 +66,47 @@ interface StartInput {
   force_close_time?: string;
   notes?: string;
 }
+// Fuso do pregão B3 — usado para agrupar reinícios do mesmo dia num session_day_id único.
+function currentB3SessionDate(): string {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  const y = parts.find(p => p.type === "year")?.value;
+  const m = parts.find(p => p.type === "month")?.value;
+  const d = parts.find(p => p.type === "day")?.value;
+  return `${y}-${m}-${d}`;
+}
+
+async function resolveSessionDayId(supabase: any, userId: string, symbol: string, sessionDate: string): Promise<string> {
+  const { data } = await supabase
+    .from("b3_simulation_runs")
+    .select("session_day_id")
+    .eq("user_id", userId)
+    .eq("symbol", symbol)
+    .eq("session_date", sessionDate)
+    .not("session_day_id", "is", null)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (data?.session_day_id) return data.session_day_id as string;
+  return (globalThis.crypto?.randomUUID?.() ?? cryptoRandomFallback());
+}
+function cryptoRandomFallback(): string {
+  // fallback determinístico-suficiente; runtime Workers já expõe crypto.randomUUID
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 export const startB3Simulation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: StartInput) => d ?? {})
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const initial = Number(data.initial_balance ?? 10000);
+    const symbol = "WINQ26";
+    const sessionDate = currentB3SessionDate();
+    const sessionDayId = await resolveSessionDayId(supabase as any, userId, symbol, sessionDate);
     const { data: run, error } = await (supabase as any)
       .from("b3_simulation_runs")
       .insert({
@@ -85,6 +120,9 @@ export const startB3Simulation = createServerFn({ method: "POST" })
         force_close_time: data.force_close_time ?? "16:55",
         notes: data.notes ?? null,
         status: "running",
+        symbol,
+        session_date: sessionDate,
+        session_day_id: sessionDayId,
       })
       .select("*").single();
     if (error) throw error;
@@ -105,6 +143,7 @@ export const startB3Simulation = createServerFn({ method: "POST" })
     await (supabase as any).from("b3_simulation_mode_settings").insert(settingRows);
     return run;
   });
+
 
 // ───────────────────── controls ─────────────────────
 export const setB3SimulationStatus = createServerFn({ method: "POST" })
