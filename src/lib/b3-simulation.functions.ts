@@ -1523,14 +1523,19 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
       run,
       modes: MODES.map((m) => perMode[m]),
       history: history.slice(0, 100),
+      decisions: allDecisions.slice(0, 100),
+      trade_events: allTradeEvents.slice(0, 50),
       totals: {
         snapshots_scanned: list.length,
+        decisions_recorded: allDecisions.length,
+        trades_recorded: allTradeEvents.length,
       },
       executions: scope.executions,
       restart_count: scope.restartCount,
       session_date: scope.sessionDate,
     };
   });
+
 
 
 // ─────────────────── Auditoria de Entradas (Fase 1, read-only) ───────────────────
