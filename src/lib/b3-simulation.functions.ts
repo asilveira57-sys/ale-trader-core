@@ -1298,7 +1298,23 @@ export async function runB3SimulationTick(
       }));
       await supabase.from("b3_simulation_agent_votes").insert(voteRows);
 
-      if (decision.final === "approved") {
+      if (decision.final === "approved" && !setupAllowed) {
+        // Comitê aprovou, mas o setup técnico não é operável (Fase 1: só trend_pullback).
+        const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "critérios de trend_pullback não atendidos"}`;
+        await supabase.from("b3_simulation_modes")
+          .update({ committee_rejections: (Number(m.committee_rejections) || 0) + 1 }).eq("id", m.id);
+        m.committee_rejections = (Number(m.committee_rejections) || 0) + 1;
+        log.push({ mode, action: "reject", reason: "no_valid_setup", setup: setupInfo.name, side: intendedSide });
+        finalizeAudit(reason, {
+          last_analysis: decision.justification,
+          last_score: decision.score,
+          last_confidence: decision.avg_confidence,
+          last_setup: `Bloqueado: ${setupInfo.name}`,
+          signals: { evaluated_side: intendedSide, buy: false, sell: false },
+          committee: decision,
+          setup: setupInfo,
+        });
+      } else if (decision.final === "approved") {
         let entryAudit: B3QuoteExecutionAudit;
         try {
           entryAudit = getB3ExecutionAudit(priceSrc, intendedSide, "entry", "runB3SimulationTick.openOrder");
@@ -1323,6 +1339,7 @@ export async function runB3SimulationTick(
             last_setup: `Setup ${intendedSide.toUpperCase()} aprovado, bloqueado no preço`,
             signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
             committee: decision,
+            setup: setupInfo,
           });
           continue;
         }
@@ -1354,14 +1371,15 @@ export async function runB3SimulationTick(
           }).eq("id", m.id);
         m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
         m.contracts_traded = (Number(m.contracts_traded) || 0) + 1;
-        log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin });
-        finalizeAudit(`Setup ${intendedSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
+        log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin, setup: setupInfo.name });
+        finalizeAudit(`Setup trend_pullback ${intendedSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
           last_analysis: decision.justification,
           last_score: decision.score,
           last_confidence: decision.avg_confidence,
-          last_setup: `Setup ${intendedSide.toUpperCase()}`,
+          last_setup: `trend_pullback ${intendedSide.toUpperCase()}`,
           signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
           committee: decision,
+          setup: setupInfo,
         });
       } else {
         const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
@@ -1376,6 +1394,7 @@ export async function runB3SimulationTick(
           last_setup: "Nenhum setup aprovado",
           signals: { evaluated_side: intendedSide, buy: false, sell: false },
           committee: decision,
+          setup: setupInfo,
         });
       }
     }
