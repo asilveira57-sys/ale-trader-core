@@ -917,6 +917,7 @@ export async function runB3SimulationTick(
           ctxLocal: ctx, priceLocal: priceSrc, cfg, mode, intendedSide,
           decision: extra.committee ?? null, derived, firstStop,
           entry_reason: extra.entry_reason ?? null,
+          setup: extra.setup ?? null,
         });
         tickAudit.modes.push({
           mode,
