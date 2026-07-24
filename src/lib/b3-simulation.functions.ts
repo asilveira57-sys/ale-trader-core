@@ -712,8 +712,9 @@ export async function runB3SimulationTick(
     ctxLocal: any; priceLocal: any; cfg: any; mode: string; intendedSide: string;
     decision: any | null; derived: any; firstStop?: any;
     entry_reason?: string | null;
+    setup?: { name: string; ok: boolean; reasons: string[]; details: Record<string, any> } | null;
   }) {
-    const { ctxLocal, priceLocal, cfg, mode, intendedSide, decision, derived, firstStop, entry_reason } = params;
+    const { ctxLocal, priceLocal, cfg, mode, intendedSide, decision, derived, firstStop, entry_reason, setup } = params;
     const trend = classifyTrend(ctxLocal);
     return {
       timestamp: new Date().toISOString(),
