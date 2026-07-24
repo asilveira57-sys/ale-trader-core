@@ -632,12 +632,89 @@ export async function runB3SimulationTick(
     return "consolidacao";
   }
 
+  // Classifica o cenário técnico antes da aprovação final da entrada.
+  // Fase 1: somente `trend_pullback` é operável. Os demais tipos são registrados
+  // apenas para auditoria e bloqueiam a entrada com motivo `no_valid_setup`.
+  type B3SetupName =
+    | "trend_pullback"
+    | "breakout_retest"
+    | "consolidation_breakout"
+    | "support_resistance_rejection"
+    | "no_valid_setup";
+  function classifySetup(params: {
+    ctxLocal: any; derived: any; intendedSide: "buy" | "sell"; cfg: any;
+  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
+    const { ctxLocal, derived, intendedSide, cfg } = params;
+    const trend = classifyTrend(ctxLocal);
+    const price = Number(ctxLocal.price);
+    const vwap = Number(ctxLocal.vwap);
+    const ema9 = Number(ctxLocal.ema9);
+    const ema21 = Number(ctxLocal.ema21);
+    const open = Number(ctxLocal.open);
+    const vol = Number(ctxLocal.volatility_pct ?? 0);
+    const stopPts = Math.max(1, Number(cfg.stop_pts) || 0);
+    const gainPts = Math.max(0, Number(cfg.gain_pts) || 0);
+    const rr = stopPts > 0 ? gainPts / stopPts : 0;
+    const distHigh = Number(derived?.dist_day_high_pts ?? 0);
+    const distLow = Number(derived?.dist_day_low_pts ?? 0);
+    const nearResistancePts = Math.max(stopPts, 50);
+    const details: Record<string, any> = {
+      trend_direction: trend.direction, trend_strength: trend.strength,
+      price, vwap, ema9, ema21, open, volatility_pct: vol,
+      risk_reward: Number(rr.toFixed(2)), min_risk_reward: 1.5,
+      dist_day_high_pts: distHigh, dist_day_low_pts: distLow,
+      near_resistance_pts: nearResistancePts,
+    };
+
+    // Lateral bloqueia setup direcional.
+    const lateral = trend.direction === "lateral" || trend.strength < 30 || vol < 0.3;
+
+    const failures: string[] = [];
+    if (intendedSide === "buy") {
+      if (trend.direction !== "alta") failures.push("tendência não confirmada de alta");
+      if (trend.strength < 40) failures.push(`força de tendência ${trend.strength} < 40`);
+      if (!(price > vwap)) failures.push("preço abaixo da VWAP");
+      if (!(ema9 > ema21)) failures.push("EMA9 não acima da EMA21");
+      // Correção sem perda da estrutura: pullback à EMA9 mantendo EMA21 como piso.
+      if (!(price <= ema9 * 1.0015)) failures.push("sem correção para a EMA9 (sem pullback)");
+      if (!(price > ema21)) failures.push("estrutura perdida (preço abaixo da EMA21)");
+      // Candle de confirmação comprador.
+      if (!(price > open)) failures.push("candle atual não é comprador");
+      // Resistência (topo do dia) não pode estar próxima.
+      if (distHigh > 0 && distHigh < nearResistancePts) failures.push(`resistência próxima (${distHigh} pts do topo)`);
+    } else {
+      if (trend.direction !== "baixa") failures.push("tendência não confirmada de baixa");
+      if (trend.strength < 40) failures.push(`força de tendência ${trend.strength} < 40`);
+      if (!(price < vwap)) failures.push("preço acima da VWAP");
+      if (!(ema9 < ema21)) failures.push("EMA9 não abaixo da EMA21");
+      if (!(price >= ema9 * 0.9985)) failures.push("sem correção para a EMA9 (sem pullback)");
+      if (!(price < ema21)) failures.push("estrutura perdida (preço acima da EMA21)");
+      if (!(price < open)) failures.push("candle atual não é vendedor");
+      if (distLow > 0 && distLow < nearResistancePts) failures.push(`suporte próximo (${distLow} pts do fundo)`);
+    }
+    if (lateral) failures.push("mercado lateral — entrada bloqueada");
+    if (rr < 1.5) failures.push(`R:R ${rr.toFixed(2)} < 1.5`);
+
+    if (failures.length === 0) {
+      return { name: "trend_pullback", ok: true, reasons: [], details };
+    }
+    // Tenta classificar em outros setups apenas para telemetria.
+    let name: B3SetupName = "no_valid_setup";
+    if (intendedSide === "buy" && distHigh <= 20 && trend.direction === "alta") name = "breakout_retest";
+    else if (intendedSide === "sell" && distLow <= 20 && trend.direction === "baixa") name = "breakout_retest";
+    else if (Math.abs(Number(derived?.var_5m_pts ?? 0)) < 40 && vol < 1.5) name = "consolidation_breakout";
+    else if (intendedSide === "buy" && distLow <= nearResistancePts) name = "support_resistance_rejection";
+    else if (intendedSide === "sell" && distHigh <= nearResistancePts) name = "support_resistance_rejection";
+    return { name, ok: false, reasons: failures, details };
+  }
+
   function buildDecisionContext(params: {
     ctxLocal: any; priceLocal: any; cfg: any; mode: string; intendedSide: string;
     decision: any | null; derived: any; firstStop?: any;
     entry_reason?: string | null;
+    setup?: { name: string; ok: boolean; reasons: string[]; details: Record<string, any> } | null;
   }) {
-    const { ctxLocal, priceLocal, cfg, mode, intendedSide, decision, derived, firstStop, entry_reason } = params;
+    const { ctxLocal, priceLocal, cfg, mode, intendedSide, decision, derived, firstStop, entry_reason, setup } = params;
     const trend = classifyTrend(ctxLocal);
     return {
       timestamp: new Date().toISOString(),
@@ -681,6 +758,12 @@ export async function runB3SimulationTick(
       var_5m_pts: derived.var_5m_pts,
       market_regime: classifyRegime(ctxLocal, derived),
       session_phase: ctxLocal.session_phase,
+      setup: setup ? {
+        name: setup.name,
+        ok: setup.ok,
+        reasons: setup.reasons,
+        details: setup.details,
+      } : null,
     };
   }
 
@@ -834,6 +917,7 @@ export async function runB3SimulationTick(
           ctxLocal: ctx, priceLocal: priceSrc, cfg, mode, intendedSide,
           decision: extra.committee ?? null, derived, firstStop,
           entry_reason: extra.entry_reason ?? null,
+          setup: extra.setup ?? null,
         });
         tickAudit.modes.push({
           mode,
@@ -1192,6 +1276,18 @@ export async function runB3SimulationTick(
       addCheck("signal_buy", "Sinal BUY", decision.final === "approved" && intendedSide === "buy", intendedSide === "buy" ? decision.final : "lado avaliado SELL", false);
       addCheck("signal_sell", "Sinal SELL", decision.final === "approved" && intendedSide === "sell", intendedSide === "sell" ? decision.final : "lado avaliado BUY", false);
 
+      // Classificação de setup técnico — Fase 1: somente trend_pullback opera.
+      const setupInfo = classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
+      const setupAllowed = setupInfo.name === "trend_pullback" && setupInfo.ok;
+      addCheck(
+        "setup",
+        "Setup técnico",
+        setupAllowed,
+        setupAllowed
+          ? "trend_pullback validado"
+          : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
+      );
+
       const voteRows = votes.map(v => ({
         simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
         mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
@@ -1202,7 +1298,23 @@ export async function runB3SimulationTick(
       }));
       await supabase.from("b3_simulation_agent_votes").insert(voteRows);
 
-      if (decision.final === "approved") {
+      if (decision.final === "approved" && !setupAllowed) {
+        // Comitê aprovou, mas o setup técnico não é operável (Fase 1: só trend_pullback).
+        const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "critérios de trend_pullback não atendidos"}`;
+        await supabase.from("b3_simulation_modes")
+          .update({ committee_rejections: (Number(m.committee_rejections) || 0) + 1 }).eq("id", m.id);
+        m.committee_rejections = (Number(m.committee_rejections) || 0) + 1;
+        log.push({ mode, action: "reject", reason: "no_valid_setup", setup: setupInfo.name, side: intendedSide });
+        finalizeAudit(reason, {
+          last_analysis: decision.justification,
+          last_score: decision.score,
+          last_confidence: decision.avg_confidence,
+          last_setup: `Bloqueado: ${setupInfo.name}`,
+          signals: { evaluated_side: intendedSide, buy: false, sell: false },
+          committee: decision,
+          setup: setupInfo,
+        });
+      } else if (decision.final === "approved") {
         let entryAudit: B3QuoteExecutionAudit;
         try {
           entryAudit = getB3ExecutionAudit(priceSrc, intendedSide, "entry", "runB3SimulationTick.openOrder");
@@ -1227,6 +1339,7 @@ export async function runB3SimulationTick(
             last_setup: `Setup ${intendedSide.toUpperCase()} aprovado, bloqueado no preço`,
             signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
             committee: decision,
+            setup: setupInfo,
           });
           continue;
         }
@@ -1258,14 +1371,15 @@ export async function runB3SimulationTick(
           }).eq("id", m.id);
         m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
         m.contracts_traded = (Number(m.contracts_traded) || 0) + 1;
-        log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin });
-        finalizeAudit(`Setup ${intendedSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
+        log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin, setup: setupInfo.name });
+        finalizeAudit(`Setup trend_pullback ${intendedSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
           last_analysis: decision.justification,
           last_score: decision.score,
           last_confidence: decision.avg_confidence,
-          last_setup: `Setup ${intendedSide.toUpperCase()}`,
+          last_setup: `trend_pullback ${intendedSide.toUpperCase()}`,
           signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
           committee: decision,
+          setup: setupInfo,
         });
       } else {
         const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
@@ -1280,6 +1394,7 @@ export async function runB3SimulationTick(
           last_setup: "Nenhum setup aprovado",
           signals: { evaluated_side: intendedSide, buy: false, sell: false },
           committee: decision,
+          setup: setupInfo,
         });
       }
     }
