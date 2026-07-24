@@ -1275,6 +1275,18 @@ export async function runB3SimulationTick(
       addCheck("signal_buy", "Sinal BUY", decision.final === "approved" && intendedSide === "buy", intendedSide === "buy" ? decision.final : "lado avaliado SELL", false);
       addCheck("signal_sell", "Sinal SELL", decision.final === "approved" && intendedSide === "sell", intendedSide === "sell" ? decision.final : "lado avaliado BUY", false);
 
+      // Classificação de setup técnico — Fase 1: somente trend_pullback opera.
+      const setupInfo = classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
+      const setupAllowed = setupInfo.name === "trend_pullback" && setupInfo.ok;
+      addCheck(
+        "setup",
+        "Setup técnico",
+        setupAllowed,
+        setupAllowed
+          ? "trend_pullback validado"
+          : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
+      );
+
       const voteRows = votes.map(v => ({
         simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
         mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
