@@ -758,6 +758,12 @@ export async function runB3SimulationTick(
       var_5m_pts: derived.var_5m_pts,
       market_regime: classifyRegime(ctxLocal, derived),
       session_phase: ctxLocal.session_phase,
+      setup: setup ? {
+        name: setup.name,
+        ok: setup.ok,
+        reasons: setup.reasons,
+        details: setup.details,
+      } : null,
     };
   }
 
