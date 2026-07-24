@@ -420,6 +420,33 @@ export function EngineDiagnosticPanel({ detail }: { detail: any }) {
               {modes.map((m: any) => {
                 const checks = m.checks ?? [];
                 const cfg = m.config_comparison ?? {};
+                const dc = m.decision_context ?? {};
+                const setup = dc.setup ?? null;
+                const sd = setup?.details ?? {};
+                const setupOk = setup?.name === "trend_pullback" && setup?.ok;
+                const side = dc.suggested_side ?? "buy";
+                const priceN = Number(sd.price);
+                const vwapN = Number(sd.vwap);
+                const priceVsVwap = Number.isFinite(priceN) && Number.isFinite(vwapN)
+                  ? priceN > vwapN
+                    ? `acima (+${NUM(priceN - vwapN, 0)} pts)`
+                    : `abaixo (${NUM(priceN - vwapN, 0)} pts)`
+                  : "—";
+                const ema9 = Number(sd.ema9);
+                const ema21 = Number(sd.ema21);
+                const pullback = Number.isFinite(ema9) && Number.isFinite(ema21) && Number.isFinite(priceN)
+                  ? side === "buy"
+                    ? (priceN <= ema9 * 1.0015 && priceN > ema21 ? "válida (pullback na EMA9, EMA21 preservada)" : "inválida (sem correção ou estrutura rompida)")
+                    : (priceN >= ema9 * 0.9985 && priceN < ema21 ? "válida (pullback na EMA9, EMA21 preservada)" : "inválida (sem correção ou estrutura rompida)")
+                  : "—";
+                const openPx = Number(sd.open);
+                const candle = Number.isFinite(priceN) && Number.isFinite(openPx)
+                  ? side === "buy"
+                    ? (priceN > openPx ? "comprador ✓" : "não comprador ✗")
+                    : (priceN < openPx ? "vendedor ✓" : "não vendedor ✗")
+                  : "—";
+                const rr = Number(sd.risk_reward);
+                const rrMin = Number(sd.min_risk_reward ?? 1.5);
                 return (
                   <div key={m.mode} className="rounded-md border border-border/60 p-3 space-y-3">
                     <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -434,6 +461,32 @@ export function EngineDiagnosticPanel({ detail }: { detail: any }) {
                         <p>Setup: {m.last_setup ?? "—"}</p>
                       </div>
                     </div>
+                    {setup && (
+                      <div className="rounded-md border border-border/50 bg-background/40 p-2 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium">Diagnóstico do setup técnico ({String(side).toUpperCase()})</p>
+                          <Badge variant={setupOk ? "outline" : "destructive"} className="text-[10px]">
+                            {setupOk ? "trend_pullback_valid" : "no_valid_setup"}
+                          </Badge>
+                        </div>
+                        <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3 text-[11px]">
+                          <div><span className="text-muted-foreground">Setup detectado: </span><span className="font-mono">{setup.name}</span></div>
+                          <div><span className="text-muted-foreground">Regime: </span><span className="font-mono">{dc.market_regime ?? "—"}</span></div>
+                          <div><span className="text-muted-foreground">Tendência: </span><span className="font-mono">{(sd.trend_direction ?? dc.trend_direction) ?? "—"} · força {(sd.trend_strength ?? dc.trend_strength) ?? "—"}</span></div>
+                          <div><span className="text-muted-foreground">VWAP: </span><span className="font-mono">{priceVsVwap}</span></div>
+                          <div><span className="text-muted-foreground">Correção (pullback): </span><span className="font-mono">{pullback}</span></div>
+                          <div><span className="text-muted-foreground">Candle confirmação: </span><span className="font-mono">{candle}</span></div>
+                          <div><span className="text-muted-foreground">R:R estimado: </span><span className="font-mono">{Number.isFinite(rr) ? `${rr.toFixed(2)} / mín ${rrMin.toFixed(2)}` : "—"}</span></div>
+                          <div><span className="text-muted-foreground">Dist. topo/fundo: </span><span className="font-mono">{sd.dist_day_high_pts ?? "—"} / {sd.dist_day_low_pts ?? "—"} pts</span></div>
+                          <div><span className="text-muted-foreground">Volatilidade: </span><span className="font-mono">{Number(sd.volatility_pct ?? 0).toFixed(2)}%</span></div>
+                        </div>
+                        {!setupOk && setup.reasons?.length > 0 && (
+                          <div className="text-[11px] text-destructive">
+                            <span className="text-muted-foreground">Motivo do bloqueio: </span>{setup.reasons.join("; ")}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4 text-xs">
                       {checks.map((c: any) => (
                         <div key={c.key} className="flex items-center justify-between gap-2 rounded border border-border/40 px-2 py-1">
