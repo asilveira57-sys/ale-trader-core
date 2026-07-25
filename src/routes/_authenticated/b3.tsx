@@ -31,8 +31,15 @@ import { PipelineAuditPanel } from "@/components/b3/PipelineAuditPanel";
 
 import { SimLiveDashboard } from "@/components/b3/SimLiveDashboard";
 
+const TAB_VALUES = ["panel", "trade", "committee", "sim3", "live", "diagnostic", "report", "settings"] as const;
+type TabValue = (typeof TAB_VALUES)[number];
+
 export const Route = createFileRoute("/_authenticated/b3")({
   head: () => ({ meta: [{ title: "B3 Day Trade (WIN) — AleTrader AI" }] }),
+  validateSearch: (search: Record<string, unknown>): { tab: TabValue } => {
+    const t = search.tab;
+    return { tab: (TAB_VALUES as readonly string[]).includes(t as string) ? (t as TabValue) : "panel" };
+  },
   component: B3Page,
 });
 
