@@ -126,7 +126,7 @@ function B3Page() {
   const { tab } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const setTab = (value: string) =>
-    navigate({ search: (prev) => ({ ...prev, tab: value as TabValue }), replace: true });
+    navigate({ search: { tab: value as TabValue }, replace: true });
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
