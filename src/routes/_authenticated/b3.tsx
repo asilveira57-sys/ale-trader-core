@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,8 +31,15 @@ import { PipelineAuditPanel } from "@/components/b3/PipelineAuditPanel";
 
 import { SimLiveDashboard } from "@/components/b3/SimLiveDashboard";
 
+const TAB_VALUES = ["panel", "trade", "committee", "sim3", "live", "diagnostic", "report", "settings"] as const;
+type TabValue = (typeof TAB_VALUES)[number];
+
 export const Route = createFileRoute("/_authenticated/b3")({
   head: () => ({ meta: [{ title: "B3 Day Trade (WIN) — AleTrader AI" }] }),
+  validateSearch: (search: Record<string, unknown>): { tab: TabValue } => {
+    const t = search.tab;
+    return { tab: (TAB_VALUES as readonly string[]).includes(t as string) ? (t as TabValue) : "panel" };
+  },
   component: B3Page,
 });
 
@@ -116,6 +123,10 @@ const DEFAULTS: B3Settings = {
 function B3Page() {
   const qc = useQueryClient();
   const [userId, setUserId] = useState<string | null>(null);
+  const { tab } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const setTab = (value: string) =>
+    navigate({ search: { tab: value as TabValue }, replace: true });
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
@@ -180,7 +191,7 @@ function B3Page() {
 
       <PriceSourceCard />
 
-      <Tabs defaultValue="panel">
+      <Tabs value={tab} onValueChange={setTab}>
 
         <TabsList>
           <TabsTrigger value="panel"><Activity className="w-4 h-4 mr-1" />Painel</TabsTrigger>
