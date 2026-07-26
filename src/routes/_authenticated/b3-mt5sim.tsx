@@ -606,3 +606,176 @@ while True:
   );
 }
 
+function ManualDeskPanel({ symbol, feedingServer, getState, openFn, closeFn, invertFn }: { symbol: string; feedingServer: string; getState: any; openFn: any; closeFn: any; invertFn: any }) {
+  const qc = useQueryClient();
+  const { data: st, isLoading } = useQuery({ queryKey: ["b3-mt5sim-manual"], queryFn: () => getState({}), refetchInterval: 2000 });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["b3-mt5sim-manual"] });
+  const [contracts, setContracts] = useState<number>(1);
+
+  const mOpen = useMutation({
+    mutationFn: (side: "buy" | "sell") => openFn({ data: { side, volume: contracts } }),
+    onSuccess: (_r: any, side) => { toast.success(side === "buy" ? "Compra manual aberta" : "Venda manual aberta"); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const mClose = useMutation({
+    mutationFn: () => closeFn({}),
+    onSuccess: () => { toast.success("Posição manual encerrada"); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const mInvert = useMutation({
+    mutationFn: () => invertFn({ data: {} }),
+    onSuccess: () => { toast.success("Posição invertida"); invalidate(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  if (isLoading || !st) return <Card><CardContent className="p-6 text-muted-foreground">Carregando…</CardContent></Card>;
+
+  const pos = st.position as { side: "buy" | "sell"; volume: number; price_entry: number; ts_entry: string } | null;
+  const stale = !!st.quote_stale;
+  const busy = mOpen.isPending || mClose.isPending || mInvert.isPending;
+  const locked = stale || busy;
+  const hasPos = !!pos;
+
+  const buyDisabled = locked || hasPos;
+  const sellDisabled = locked || hasPos;
+  const closeDisabled = locked || !hasPos;
+  const invertDisabled = locked || !hasPos;
+
+  const positionLabel = !pos ? "Zerado" : pos.side === "buy" ? `Comprado ${pos.volume}` : `Vendido ${pos.volume}`;
+  const positionColor = !pos ? "text-muted-foreground" : pos.side === "buy" ? "text-emerald-400" : "text-red-400";
+  const closeLabel = pos?.side === "buy" ? "Fechar compra" : pos?.side === "sell" ? "Fechar venda" : "Fechar";
+  const invertLabel = pos?.side === "buy" ? "Inverter para venda" : pos?.side === "sell" ? "Inverter para compra" : "Inverter";
+
+  const bidTxt = st.quote.bid != null ? Number(st.quote.bid).toLocaleString("pt-BR") : "—";
+  const askTxt = st.quote.ask != null ? Number(st.quote.ask).toLocaleString("pt-BR") : "—";
+
+  const confirmClose = () => {
+    if (!pos) return;
+    const px = pos.side === "buy" ? st.quote.bid : st.quote.ask;
+    if (window.confirm(`${closeLabel} agora?\nPreço esperado: ${px != null ? Number(px).toLocaleString("pt-BR") : "—"} · Contratos: ${pos.volume}`)) {
+      mClose.mutate();
+    }
+  };
+  const confirmInvert = () => {
+    if (!pos) return;
+    const newSide = pos.side === "buy" ? "venda" : "compra";
+    if (window.confirm(`${invertLabel}?\nFecha a posição atual e abre ${newSide} com ${pos.volume} contrato(s).`)) {
+      mInvert.mutate();
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Operação Manual — {symbol}</CardTitle></CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+          <Stat label="Bid" value={bidTxt} />
+          <Stat label="Ask" value={askTxt} />
+          <Stat label="Idade tick" value={st.quote.age_s != null ? `${Math.round(st.quote.age_s)}s` : "—"} className={stale ? "text-red-400" : ""} />
+          <Stat label="Posição" value={positionLabel} className={positionColor} />
+          <Stat label="Preço entrada" value={pos ? Number(pos.price_entry).toLocaleString("pt-BR") : "—"} />
+          <Stat label="Realizado dia" value={BRL(st.realized_day_brl)} className={st.realized_day_brl >= 0 ? "text-emerald-400" : "text-red-400"} />
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <Stat label="Marcação" value={st.mark_price != null ? Number(st.mark_price).toLocaleString("pt-BR") : "—"} />
+          <Stat label="Pts flut." value={st.float_pts != null ? Number(st.float_pts).toFixed(1) : "—"} className={st.float_pts != null ? (st.float_pts >= 0 ? "text-emerald-400" : "text-red-400") : ""} />
+          <Stat label="Result. flut." value={st.float_brl != null ? BRL(st.float_brl) : "—"} className={st.float_brl != null ? (st.float_brl >= 0 ? "text-emerald-400" : "text-red-400") : ""} />
+          <div className="rounded border border-border p-2">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Contratos</div>
+            <Input
+              type="number"
+              min={1}
+              max={50}
+              value={contracts}
+              disabled={hasPos}
+              onChange={(e) => setContracts(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+              className="h-8 mt-1 font-mono"
+            />
+            {hasPos && <div className="text-[10px] text-muted-foreground mt-1">Ajuste desabilitado com posição aberta.</div>}
+          </div>
+        </div>
+
+        {stale && (
+          <div className="text-sm text-red-300 border border-red-500/40 bg-red-500/10 rounded p-2">
+            Aguardando cotação válida do MT5 — operações desabilitadas.
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            className="bg-emerald-600 hover:bg-emerald-700"
+            disabled={buyDisabled}
+            title={hasPos ? "Feche ou inverta a posição antes" : stale ? "Aguardando cotação válida" : "Comprar no ASK"}
+            onClick={() => mOpen.mutate("buy")}
+          >Comprar</Button>
+          <Button
+            className="bg-red-600 hover:bg-red-700"
+            disabled={sellDisabled}
+            title={hasPos ? "Feche ou inverta a posição antes" : stale ? "Aguardando cotação válida" : "Vender no BID"}
+            onClick={() => mOpen.mutate("sell")}
+          >Vender</Button>
+          <Button
+            variant="outline"
+            disabled={closeDisabled}
+            title={!hasPos ? "Sem posição para fechar" : ""}
+            onClick={confirmClose}
+          >{closeLabel}</Button>
+          <Button
+            variant="outline"
+            disabled={invertDisabled}
+            title={!hasPos ? "Sem posição para inverter" : ""}
+            onClick={confirmInvert}
+          >{invertLabel}</Button>
+        </div>
+
+        <div className="text-xs text-muted-foreground">
+          Carteira independente. Não usa score, votos, confiança, regime ou aprovação dos robôs. Ordens reais enviadas: <span className="text-emerald-400 font-mono">0</span>. Cotação: {feedingServer}.
+        </div>
+
+        <div>
+          <div className="text-sm font-medium mb-2">Histórico manual (últimas {(st.history as any[]).length})</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-muted-foreground border-b border-border">
+                <tr>
+                  <th className="text-left py-1">Entrada</th>
+                  <th>Lado</th>
+                  <th className="text-right">Contr.</th>
+                  <th className="text-right">Preço ent.</th>
+                  <th className="text-right">Preço saída</th>
+                  <th className="text-right">Pts</th>
+                  <th className="text-right">Líq.</th>
+                  <th>Motivo saída</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(st.history as any[]).map((h) => (
+                  <tr key={h.id} className="border-b border-border/40">
+                    <td className="font-mono">{new Date(h.ts_entry).toLocaleTimeString("pt-BR")}</td>
+                    <td>
+                      <Badge className={h.side === "buy" ? "bg-emerald-600" : "bg-red-600"}>{h.side === "buy" ? "compra" : "venda"}</Badge>
+                    </td>
+                    <td className="text-right font-mono">{h.volume}</td>
+                    <td className="text-right font-mono">{Number(h.price_entry).toLocaleString("pt-BR")}</td>
+                    <td className="text-right font-mono">{h.price_exit != null ? Number(h.price_exit).toLocaleString("pt-BR") : "—"}</td>
+                    <td className="text-right font-mono">{h.points_result != null ? Number(h.points_result).toFixed(1) : "—"}</td>
+                    <td className={`text-right font-mono ${Number(h.net_brl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>{h.net_brl != null ? BRL(Number(h.net_brl)) : "—"}</td>
+                    <td className="text-xs">{h.exit_reason ?? "—"}</td>
+                    <td><Badge variant="outline">{h.status}</Badge></td>
+                  </tr>
+                ))}
+                {(st.history as any[]).length === 0 && (
+                  <tr><td colSpan={9} className="py-4 text-muted-foreground text-center">Sem operações manuais ainda.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+
