@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getMt5SimDashboard, updateMt5SimSettings, upsertMt5SimRobot, startMt5SimRun, stopMt5SimRun, tickMt5SimNow, closeMt5SimTrade, manualBuyMt5Sim, manualSellMt5Sim, manualReverseMt5Sim, setMt5SimRobotMode } from "@/lib/b3-mt5sim.functions";
+import { getMt5SimDashboard, updateMt5SimSettings, upsertMt5SimRobot, startMt5SimRun, stopMt5SimRun, tickMt5SimNow, closeMt5SimTrade } from "@/lib/b3-mt5sim.functions";
 import { setMt5SimEngine, getLegacyMt5Dashboard, getLegacyVsMt5Comparative, tickLegacyMt5Now } from "@/lib/b3-legacy-mt5.functions";
+import { getManualDeskState, openManualDeskTrade, closeManualDeskTrade, invertManualDeskTrade } from "@/lib/b3-mt5sim-manual.functions";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
