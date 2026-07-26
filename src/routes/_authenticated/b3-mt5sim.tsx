@@ -32,10 +32,10 @@ function Mt5SimPage() {
   const stopFn = useServerFn(stopMt5SimRun);
   const tickFn = useServerFn(tickMt5SimNow);
   const closeFn = useServerFn(closeMt5SimTrade);
-  const buyFn = useServerFn(manualBuyMt5Sim);
-  const sellFn = useServerFn(manualSellMt5Sim);
-  const reverseFn = useServerFn(manualReverseMt5Sim);
-  const modeFn = useServerFn(setMt5SimRobotMode);
+  const manualStateFn = useServerFn(getManualDeskState);
+  const manualOpenFn = useServerFn(openManualDeskTrade);
+  const manualCloseFn = useServerFn(closeManualDeskTrade);
+  const manualInvertFn = useServerFn(invertManualDeskTrade);
   const engineFn = useServerFn(setMt5SimEngine);
   const legacyFetch = useServerFn(getLegacyMt5Dashboard);
   const cmpFetch = useServerFn(getLegacyVsMt5Comparative);
