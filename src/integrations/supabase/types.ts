@@ -1101,6 +1101,72 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_mt5sim_manual_trades: {
+        Row: {
+          created_at: string
+          entry_reason: string | null
+          exit_reason: string | null
+          fees_brl: number | null
+          gross_brl: number | null
+          id: string
+          linked_trade_id: string | null
+          net_brl: number | null
+          points_result: number | null
+          price_entry: number
+          price_exit: number | null
+          side: string
+          status: string
+          symbol: string
+          ts_entry: string
+          ts_exit: string | null
+          updated_at: string
+          user_id: string
+          volume: number
+        }
+        Insert: {
+          created_at?: string
+          entry_reason?: string | null
+          exit_reason?: string | null
+          fees_brl?: number | null
+          gross_brl?: number | null
+          id?: string
+          linked_trade_id?: string | null
+          net_brl?: number | null
+          points_result?: number | null
+          price_entry: number
+          price_exit?: number | null
+          side: string
+          status?: string
+          symbol?: string
+          ts_entry?: string
+          ts_exit?: string | null
+          updated_at?: string
+          user_id: string
+          volume: number
+        }
+        Update: {
+          created_at?: string
+          entry_reason?: string | null
+          exit_reason?: string | null
+          fees_brl?: number | null
+          gross_brl?: number | null
+          id?: string
+          linked_trade_id?: string | null
+          net_brl?: number | null
+          points_result?: number | null
+          price_entry?: number
+          price_exit?: number | null
+          side?: string
+          status?: string
+          symbol?: string
+          ts_entry?: string
+          ts_exit?: string | null
+          updated_at?: string
+          user_id?: string
+          volume?: number
+        }
+        Relationships: []
+      }
       b3_mt5sim_order_attempts: {
         Row: {
           action: string
