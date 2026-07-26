@@ -58,6 +58,8 @@ function Mt5SimPage() {
   const mReverse = useMutation({ mutationFn: (id: string) => reverseFn({ data: { robot_id: id } }), onSuccess: () => { toast.success("Virada simulada aplicada"); invalidate(); }, onError: (e: any) => toast.error(e.message) });
   const mMode = useMutation({ mutationFn: (p: { robot_id: string; mode: "manual"|"auto"|"paused" }) => modeFn({ data: p }), onSuccess: () => { toast.success("Modo do robô atualizado"); invalidate(); } });
 
+  const [pauseModal, setPauseModal] = useState<{ robotId: string; profile: string; tradeId: string } | null>(null);
+
 
   if (isLoading || !data) return <div className="p-8 text-muted-foreground">Carregando…</div>;
 
