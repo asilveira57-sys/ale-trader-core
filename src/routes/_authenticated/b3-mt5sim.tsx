@@ -627,6 +627,40 @@ function Mt5SimPage() {
           </CardContent>
         </Card>
       )}
+
+      {pauseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setPauseModal(null)}>
+          <div className="panel p-5 max-w-md w-[92%] border border-orange-500/40 bg-background" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-2">Pausar robô {pauseModal.profile}</h3>
+            <p className="text-sm text-muted-foreground mb-4">Há uma posição aberta. Como deseja pausar? Nenhuma posição será fechada silenciosamente.</p>
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  mMode.mutate({ robot_id: pauseModal.robotId, mode: "paused" });
+                  setPauseModal(null);
+                }}
+              >Pausar e manter posição aberta</Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const tradeId = pauseModal.tradeId;
+                  const robotId = pauseModal.robotId;
+                  closeFn({ data: { trade_id: tradeId } })
+                    .then(() => {
+                      mMode.mutate({ robot_id: robotId, mode: "paused" });
+                      toast.success("Posição fechada e robô pausado");
+                      invalidate();
+                    })
+                    .catch((e: any) => toast.error(e.message));
+                  setPauseModal(null);
+                }}
+              >Fechar posição e pausar</Button>
+              <Button variant="ghost" onClick={() => setPauseModal(null)}>Cancelar</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
