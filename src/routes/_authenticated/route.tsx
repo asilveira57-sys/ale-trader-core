@@ -5,33 +5,92 @@ import { LayoutDashboard, Coins, Bot, Bell, ScrollText, Settings, LogOut, Activi
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 
+const AUTH_RECOVERY_RETRY_MS = 1_500;
+const AUTH_RECOVERY_ATTEMPTS = 3;
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isAuthErrorMessage(message: string) {
+  return /unauthorized|no authorization header|invalid token|jwt/i.test(message);
+}
+
+function isDefinitiveSessionError(message: string) {
+  return /refresh token.*not found|invalid refresh token|token.*revoked|session.*not found|user from sub claim in jwt does not exist/i.test(message);
+}
+
+async function recoverSession() {
+  for (let attempt = 0; attempt < AUTH_RECOVERY_ATTEMPTS; attempt += 1) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) return { recovered: false, definitive: true };
+
+    const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+    if (!refreshErr && refreshed.session) return { recovered: true, definitive: false };
+
+    const message = refreshErr?.message ?? "";
+    if (isDefinitiveSessionError(message)) return { recovered: false, definitive: true };
+
+    await wait(AUTH_RECOVERY_RETRY_MS);
+  }
+
+  return { recovered: false, definitive: false };
+}
+
+async function getUserWithTransientTolerance() {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) throw redirect({ to: "/auth" });
+
+  const { data, error } = await supabase.auth.getUser();
+  if (data.user) return { user: data.user };
+
+  const message = error?.message ?? "";
+  if (isDefinitiveSessionError(message)) throw redirect({ to: "/auth" });
+
+  // If Lovable Cloud auth has a transient /user timeout, keep the protected
+  // route mounted. ServerFns still validate the bearer token on each call.
+  return { user: sessionData.session.user };
+}
+
 function AuthErrorBoundary({ error, reset }: { error: Error; reset: () => void }) {
   const navigate = useNavigate();
   const router = useRouter();
   const qc = useQueryClient();
-  const [status, setStatus] = useState<"recovering" | "failed">("recovering");
-  const isAuthError = /unauthorized|no authorization header|invalid token|jwt/i.test(error?.message ?? "");
+  const [status, setStatus] = useState<"recovering" | "retrying" | "failed">("recovering");
+  const isAuthError = isAuthErrorMessage(error?.message ?? "");
 
   useEffect(() => {
     if (!isAuthError) return;
     let cancelled = false;
     (async () => {
-      // Try silent recovery: refresh the Supabase session, then retry the failing route.
       try {
-        const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
-        if (!cancelled && !refreshErr && refreshed.session) {
+        const recovery = await recoverSession();
+        if (!cancelled && recovery.recovered) {
           await qc.cancelQueries();
-          qc.clear();
+          await router.invalidate();
+          reset();
+          qc.invalidateQueries();
+          return;
+        }
+        if (!cancelled && !recovery.definitive) {
+          setStatus("retrying");
+          await wait(AUTH_RECOVERY_RETRY_MS);
           await router.invalidate();
           reset();
           qc.invalidateQueries();
           return;
         }
       } catch {
-        // fall through to sign-out
+        if (!cancelled) setStatus("retrying");
+        await wait(AUTH_RECOVERY_RETRY_MS);
+        if (!cancelled) {
+          await router.invalidate();
+          reset();
+          qc.invalidateQueries();
+        }
+        return;
       }
       if (cancelled) return;
-      // Refresh failed: session is truly gone. Sign out and go to /auth.
       await qc.cancelQueries();
       qc.clear();
       await supabase.auth.signOut();
@@ -44,7 +103,7 @@ function AuthErrorBoundary({ error, reset }: { error: Error; reset: () => void }
   if (isAuthError) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-        {status === "recovering" ? "Restaurando sessão…" : "Sessão expirada. Redirecionando…"}
+        {status === "recovering" ? "Restaurando sessão…" : status === "retrying" ? "Reconectando sem sair da tela…" : "Sessão expirada. Redirecionando…"}
       </div>
     );
   }
@@ -53,11 +112,7 @@ function AuthErrorBoundary({ error, reset }: { error: Error; reset: () => void }
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
-  beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/auth" });
-    return { user: data.user };
-  },
+  beforeLoad: getUserWithTransientTolerance,
   component: AuthedLayout,
   errorComponent: AuthErrorBoundary,
 });
