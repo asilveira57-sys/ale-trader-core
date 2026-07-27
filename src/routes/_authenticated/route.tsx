@@ -1,25 +1,52 @@
-import { createFileRoute, Outlet, redirect, Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { createFileRoute, Outlet, redirect, Link, useNavigate, useRouterState, useRouter } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { LayoutDashboard, Coins, Bot, Bell, ScrollText, Settings, LogOut, Activity, Users, Wallet, Receipt, BookOpen, Trophy, Brain, FlaskConical, Radio, ListChecks, ShieldAlert, BarChart3, ShieldCheck, FileText, Gauge, PowerOff, Eye, AlertTriangle, FileBarChart, Lightbulb, Database, Radar, Calendar, BookMarked, Sparkles, FileSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 
-function AuthErrorBoundary({ error }: { error: Error }) {
+function AuthErrorBoundary({ error, reset }: { error: Error; reset: () => void }) {
   const navigate = useNavigate();
+  const router = useRouter();
   const qc = useQueryClient();
-  const isAuthError = /unauthorized|no authorization header|invalid token/i.test(error?.message ?? "");
+  const [status, setStatus] = useState<"recovering" | "failed">("recovering");
+  const isAuthError = /unauthorized|no authorization header|invalid token|jwt/i.test(error?.message ?? "");
+
   useEffect(() => {
     if (!isAuthError) return;
+    let cancelled = false;
     (async () => {
+      // Try silent recovery: refresh the Supabase session, then retry the failing route.
+      try {
+        const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+        if (!cancelled && !refreshErr && refreshed.session) {
+          await qc.cancelQueries();
+          qc.clear();
+          await router.invalidate();
+          reset();
+          qc.invalidateQueries();
+          return;
+        }
+      } catch {
+        // fall through to sign-out
+      }
+      if (cancelled) return;
+      // Refresh failed: session is truly gone. Sign out and go to /auth.
       await qc.cancelQueries();
       qc.clear();
       await supabase.auth.signOut();
+      setStatus("failed");
       navigate({ to: "/auth", replace: true });
     })();
-  }, [isAuthError, navigate, qc]);
+    return () => { cancelled = true; };
+  }, [isAuthError, navigate, qc, router, reset]);
+
   if (isAuthError) {
-    return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Sessão expirada. Redirecionando…</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+        {status === "recovering" ? "Restaurando sessão…" : "Sessão expirada. Redirecionando…"}
+      </div>
+    );
   }
   throw error;
 }
