@@ -13,6 +13,38 @@ export const Route = createFileRoute("/auth")({
 });
 
 const ALLOWED_EMAIL = "asilveira57@gmail.com";
+const RETRYABLE_AUTH_STATUSES = new Set([0, 408, 429, 500, 502, 503, 504]);
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getAuthStatus(error: unknown) {
+  if (error && typeof error === "object" && "status" in error) {
+    const status = Number((error as { status?: unknown }).status);
+    return Number.isFinite(status) ? status : undefined;
+  }
+  return undefined;
+}
+
+function isRetryableAuthError(error: unknown) {
+  const status = getAuthStatus(error);
+  if (status != null && RETRYABLE_AUTH_STATUSES.has(status)) return true;
+  const message = error instanceof Error ? error.message : "";
+  return /timeout|network|fetch|temporar/i.test(message);
+}
+
+async function signInWithRetry(email: string, password: string) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (!error && data.session) return data;
+    lastError = error;
+    if (!isRetryableAuthError(error)) break;
+    await wait(1_200);
+  }
+  throw lastError instanceof Error ? lastError : new Error("Falha de autenticação");
+}
 
 function AuthPage() {
   const navigate = useNavigate();
@@ -21,14 +53,16 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) return;
-      if (data.session.user.email?.toLowerCase() === ALLOWED_EMAIL) {
+    let cancelled = false;
+    supabase.auth.getUser().then(({ data, error }) => {
+      if (cancelled) return;
+      if (data.user?.email?.toLowerCase() === ALLOWED_EMAIL) {
         navigate({ to: "/dashboard", replace: true });
-      } else {
-        supabase.auth.signOut();
+        return;
       }
+      if (error) supabase.auth.signOut({ scope: "local" });
     });
+    return () => { cancelled = true; };
   }, [navigate]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -39,11 +73,20 @@ function AuthPage() {
       if (normalized !== ALLOWED_EMAIL) {
         throw new Error("Acesso restrito.");
       }
-      const { error } = await supabase.auth.signInWithPassword({ email: normalized, password });
-      if (error) throw error;
+      await supabase.auth.signOut({ scope: "local" });
+      const data = await signInWithRetry(normalized, password);
+      if (data.user?.email?.toLowerCase() !== ALLOWED_EMAIL) {
+        await supabase.auth.signOut({ scope: "local" });
+        throw new Error("Não foi possível validar a sessão. Tente novamente.");
+      }
       navigate({ to: "/dashboard", replace: true });
     } catch (err: any) {
-      toast.error(err.message ?? "Falha de autenticação");
+      const status = getAuthStatus(err);
+      if (status === 504 || isRetryableAuthError(err)) {
+        toast.error("Autenticação demorou para responder. Tente entrar novamente em alguns segundos.");
+      } else {
+        toast.error(err.message ?? "Falha de autenticação");
+      }
     } finally {
       setBusy(false);
     }
