@@ -1,8 +1,28 @@
 import { createFileRoute, Outlet, redirect, Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { LayoutDashboard, Coins, Bot, Bell, ScrollText, Settings, LogOut, Activity, Users, Wallet, Receipt, BookOpen, Trophy, Brain, FlaskConical, Radio, ListChecks, ShieldAlert, BarChart3, ShieldCheck, FileText, Gauge, PowerOff, Eye, AlertTriangle, FileBarChart, Lightbulb, Database, Radar, Calendar, BookMarked, Sparkles, FileSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
+
+function AuthErrorBoundary({ error }: { error: Error }) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const isAuthError = /unauthorized|no authorization header|invalid token/i.test(error?.message ?? "");
+  useEffect(() => {
+    if (!isAuthError) return;
+    (async () => {
+      await qc.cancelQueries();
+      qc.clear();
+      await supabase.auth.signOut();
+      navigate({ to: "/auth", replace: true });
+    })();
+  }, [isAuthError, navigate, qc]);
+  if (isAuthError) {
+    return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Sessão expirada. Redirecionando…</div>;
+  }
+  throw error;
+}
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -12,6 +32,7 @@ export const Route = createFileRoute("/_authenticated")({
     return { user: data.user };
   },
   component: AuthedLayout,
+  errorComponent: AuthErrorBoundary,
 });
 
 const NAV = [
