@@ -141,11 +141,11 @@ function DashboardPage() {
             <p className="text-xs uppercase tracking-wider text-muted-foreground">Status do robô</p>
             <Activity className="size-4 text-muted-foreground" />
           </div>
-          <p className="mt-3 text-2xl font-semibold">
+          <div className="mt-3 text-2xl font-semibold">
             <Badge variant={status === "active" ? "default" : status === "paused" ? "secondary" : "destructive"} className="text-sm">
               {status === "active" ? "Ativo" : status === "paused" ? "Pausado" : "Erro"}
             </Badge>
-          </p>
+          </div>
           <p className="mt-2 text-xs text-muted-foreground">Atualizado {new Date(data.settings?.updated_at ?? Date.now()).toLocaleTimeString()}</p>
         </div>
 
