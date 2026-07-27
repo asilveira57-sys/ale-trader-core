@@ -37,8 +37,8 @@ function isRetryableAuthError(error: unknown) {
 async function signInWithRetry(email: string, password: string) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (!error) return;
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (!error && data.session) return data;
     lastError = error;
     if (!isRetryableAuthError(error)) break;
     await wait(1_200);
@@ -74,9 +74,8 @@ function AuthPage() {
         throw new Error("Acesso restrito.");
       }
       await supabase.auth.signOut({ scope: "local" });
-      await signInWithRetry(normalized, password);
-      const { data, error: userError } = await supabase.auth.getUser();
-      if (userError || data.user?.email?.toLowerCase() !== ALLOWED_EMAIL) {
+      const data = await signInWithRetry(normalized, password);
+      if (data.user?.email?.toLowerCase() !== ALLOWED_EMAIL) {
         await supabase.auth.signOut({ scope: "local" });
         throw new Error("Não foi possível validar a sessão. Tente novamente.");
       }
