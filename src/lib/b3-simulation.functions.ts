@@ -939,6 +939,8 @@ export async function runB3SimulationTick(
           committee: extra.committee ?? null,
           decision_context: decisionContext,
           trade_event: extra.trade_event ?? null,
+          volatility_debug: (priceSrc as any).volatility_debug ?? null,
+          volatility_limit_pct: Number(cfg.max_volatility_pct),
         });
       };
 
@@ -1202,9 +1204,11 @@ export async function runB3SimulationTick(
         await recordStatusIfChanged(mode, m, "bloqueado_risco", "macro_risk",
           { pnl: realizedToday, message: `Evento macro: ${macroBlock.name}.` });
       } else if (ctx.volatility_pct > Number(cfg.max_volatility_pct)) {
+        const vdbg = (priceSrc as any).volatility_debug ?? null;
         await recordStatusIfChanged(mode, m, "bloqueado_volatilidade", "volatility",
           { observed: ctx.volatility_pct, limit: Number(cfg.max_volatility_pct), pnl: realizedToday,
-            message: `Volatilidade ${ctx.volatility_pct.toFixed(2)}% acima do limite.` });
+            message: `Volatilidade ${ctx.volatility_pct.toFixed(2)}% acima do limite ${Number(cfg.max_volatility_pct).toFixed(2)}%${vdbg ? ` (raw ${vdbg.raw_pct}%, ${vdbg.formula}, amostras ${vdbg.samples})` : ""}.`,
+            diagnostic_payload: vdbg ? { volatility_debug: vdbg } : undefined });
       } else if (protDec.next.protection_state === "target_reached_observing") {
         await recordStatusIfChanged(mode, m, "target_reached_observing", "protection",
           { pnl: realizedToday, message: "Meta atingida — em observação (size reduzido)." });
