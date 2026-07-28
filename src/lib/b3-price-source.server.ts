@@ -451,7 +451,22 @@ export async function getB3PriceContext(
   const rsi = rsi14(prices);
   const meanPrice = prices.reduce((s, v) => s + v, 0) / Math.max(1, prices.length);
   const sd = stddev(prices);
-  const volatility_pct = meanPrice > 0 ? Math.min(6, (sd / meanPrice) * 100 * 20) : 1;
+  // Volatilidade intraday em %: desvio-padrão da série de preços / média × 100.
+  // Fórmula anterior aplicava um multiplicador ×20 e saturava em 6% (bug de escala),
+  // fazendo todo tick reportar "6,00%" e bloquear qualquer entrada por volatilidade.
+  const volatility_pct_raw = meanPrice > 0 ? (sd / meanPrice) * 100 : 0;
+  const volatility_pct = Number.isFinite(volatility_pct_raw)
+    ? Math.min(10, Math.max(0, volatility_pct_raw))
+    : 0;
+  const volatility_debug = {
+    formula: "(stddev(prices) / mean(prices)) * 100",
+    samples: prices.length,
+    stddev: Number.isFinite(sd) ? Number(sd.toFixed(4)) : null,
+    mean_price: Number.isFinite(meanPrice) ? Number(meanPrice.toFixed(2)) : null,
+    raw_pct: Number.isFinite(volatility_pct_raw) ? Number(volatility_pct_raw.toFixed(4)) : null,
+    normalized_pct: Number(volatility_pct.toFixed(4)),
+    cap_pct: 10,
+  };
   const momentum = prices.length >= 10 ? ((price - prices[prices.length - 10]) / price) * 1000 : 0;
   const avgVol = volumes.length ? volumes.reduce((s, v) => s + v, 0) / volumes.length : 0;
   const volume_ratio = avgVol > 0 ? Number(latest.volume ?? avgVol) / avgVol : 1;
