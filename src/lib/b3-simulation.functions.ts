@@ -939,6 +939,8 @@ export async function runB3SimulationTick(
           committee: extra.committee ?? null,
           decision_context: decisionContext,
           trade_event: extra.trade_event ?? null,
+          volatility_debug: (priceSrc as any).volatility_debug ?? null,
+          volatility_limit_pct: Number(cfg.max_volatility_pct),
         });
       };
 
