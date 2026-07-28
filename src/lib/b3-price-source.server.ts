@@ -158,6 +158,15 @@ export interface B3PriceContextResult {
   legacy_provider_calls: number;
   guard: B3GuardSettings;
   guard_evaluation: B3GuardEvaluation | null;
+  volatility_debug?: {
+    formula: string;
+    samples: number;
+    stddev: number | null;
+    mean_price: number | null;
+    raw_pct: number | null;
+    normalized_pct: number;
+    cap_pct: number;
+  };
 }
 
 function emptyContext(symbol: string, contract: string): B3Context {
