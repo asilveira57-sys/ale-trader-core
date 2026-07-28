@@ -510,6 +510,7 @@ export async function getB3PriceContext(
     legacy_provider_calls: 0,
     guard,
     guard_evaluation: evaluateMt5Guard(info),
+    volatility_debug,
   };
 }
 
