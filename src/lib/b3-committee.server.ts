@@ -262,6 +262,29 @@ export function runB3Agents(c: B3Context, side: B3Side, risk: B3RiskState): B3Ag
   ];
 }
 
+export interface B3ScoreComposition {
+  agents_consulted: number;
+  consensus_pct: number;         // (approve/total)*100
+  reject_pct: number;            // (reject/total)*100
+  avg_confidence: number;        // média das confianças
+  consensus_component: number;   // 0.45 * consensus_pct
+  confidence_component: number;  // 0.35 * avg
+  reject_penalty_component: number; // 0.20 * (100 - reject_pct)
+  raw_score: number;             // soma antes do cap por veto
+  veto_cap_applied: boolean;
+  veto_cap_value: number;        // 25 quando aplicado, senão 100
+  final_score: number;           // após veto e clamp
+}
+
+export interface B3AgentBreakdown {
+  agent_name: string;
+  vote: B3Vote;
+  confidence: number;
+  reason: string;
+  has_veto: boolean;
+  veto_reason?: string;
+}
+
 export interface B3Decision {
   final: "approved" | "rejected" | "blocked" | "hold";
   side: B3Side;
@@ -269,10 +292,13 @@ export interface B3Decision {
   approve_votes: number;
   reject_votes: number;
   neutral_votes: number;
+  total_votes: number;
   avg_confidence: number;
   vetoes: string[];
   classification: string;
   justification: string;
+  composition: B3ScoreComposition;
+  agent_votes: B3AgentBreakdown[];
 }
 
 export interface B3CommitteeSettings {
