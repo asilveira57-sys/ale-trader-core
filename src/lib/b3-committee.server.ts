@@ -201,20 +201,28 @@ function aHorario(c: B3Context, risk: B3RiskState): B3AgentVote {
 }
 
 function aAntiTendencia(c: B3Context, side: B3Side): B3AgentVote {
+  // Somente RSI extremo caracteriza euforia/pânico. As checagens antigas
+  // `price > high*0.999` / `price < low*1.001` usavam c.high/c.low do próprio
+  // buffer, que sempre inclui o preço atual como max/min quando ele faz um
+  // novo extremo local — isso disparava veto em quase todo tick com
+  // tendência real, cravando o score final em 25. Mantida como proteção,
+  // porém sem o falso-positivo do "extremo de janela".
   const overbought = c.rsi > 78 && side === "buy";
   const oversold = c.rsi < 22 && side === "sell";
-  const blow = c.price > c.high * 0.999 && side === "buy";
-  const blowDn = c.price < c.low * 1.001 && side === "sell";
-  const block = overbought || oversold || blow || blowDn;
+  const block = overbought || oversold;
+  const reason = overbought
+    ? `RSI ${c.rsi.toFixed(0)} sobrecomprado — evitar FOMO em compra.`
+    : oversold
+    ? `RSI ${c.rsi.toFixed(0)} sobrevendido — evitar pânico em venda.`
+    : `RSI ${c.rsi.toFixed(0)} em zona neutra — sem sinais de euforia.`;
   return {
     agent_name: "Anti-Euforia",
     vote: block ? "reject" : "neutral",
     confidence: block ? 85 : 50,
-    reason: block ? `Entrada em extremo (RSI ${c.rsi.toFixed(0)}). Evitar FOMO.` :
-            "Sem sinais de euforia.",
+    reason,
     has_veto: block,
-    veto_reason: block ? "Entrada em extremo do dia." : undefined,
-    data: { rsi: c.rsi, high: c.high, low: c.low },
+    veto_reason: block ? "RSI em extremo (>78 compra / <22 venda)." : undefined,
+    data: { rsi: c.rsi, high: c.high, low: c.low, rule: "rsi_only" },
   };
 }
 
@@ -254,6 +262,29 @@ export function runB3Agents(c: B3Context, side: B3Side, risk: B3RiskState): B3Ag
   ];
 }
 
+export interface B3ScoreComposition {
+  agents_consulted: number;
+  consensus_pct: number;         // (approve/total)*100
+  reject_pct: number;            // (reject/total)*100
+  avg_confidence: number;        // média das confianças
+  consensus_component: number;   // 0.45 * consensus_pct
+  confidence_component: number;  // 0.35 * avg
+  reject_penalty_component: number; // 0.20 * (100 - reject_pct)
+  raw_score: number;             // soma antes do cap por veto
+  veto_cap_applied: boolean;
+  veto_cap_value: number;        // 25 quando aplicado, senão 100
+  final_score: number;           // após veto e clamp
+}
+
+export interface B3AgentBreakdown {
+  agent_name: string;
+  vote: B3Vote;
+  confidence: number;
+  reason: string;
+  has_veto: boolean;
+  veto_reason?: string;
+}
+
 export interface B3Decision {
   final: "approved" | "rejected" | "blocked" | "hold";
   side: B3Side;
@@ -261,10 +292,13 @@ export interface B3Decision {
   approve_votes: number;
   reject_votes: number;
   neutral_votes: number;
+  total_votes: number;
   avg_confidence: number;
   vetoes: string[];
   classification: string;
   justification: string;
+  composition: B3ScoreComposition;
+  agent_votes: B3AgentBreakdown[];
 }
 
 export interface B3CommitteeSettings {
@@ -291,12 +325,18 @@ export function buildB3Decision(
   const avg = conf / total;
   const consensusPct = (approve / total) * 100;
   const rejectPct = (reject / total) * 100;
-  let score = 0.45 * consensusPct + 0.35 * avg + 0.20 * (100 - rejectPct);
-  if (vetoes.length) score = Math.min(score, 25);
+  const consensusComponent = 0.45 * consensusPct;
+  const confidenceComponent = 0.35 * avg;
+  const rejectPenaltyComponent = 0.20 * (100 - rejectPct);
+  const rawScore = consensusComponent + confidenceComponent + rejectPenaltyComponent;
+  const vetoCapApplied = vetoes.length > 0;
+  const vetoCapValue = vetoCapApplied ? 25 : 100;
+  let score = rawScore;
+  if (vetoCapApplied) score = Math.min(score, vetoCapValue);
   score = clamp(score);
 
   let final: B3Decision["final"];
-  if (vetoes.length) final = "blocked";
+  if (vetoCapApplied) final = "blocked";
   else if (approve >= settings.min_approve_votes && avg >= settings.min_confidence && score >= settings.min_score)
     final = "approved";
   else if (reject > approve) final = "rejected";
@@ -316,8 +356,33 @@ export function buildB3Decision(
       ? `Rejeitado: ${reject}/${total} contrários.`
       : `Sem consenso (${approve}A/${reject}R/${neutral}N).`;
 
+  const composition: B3ScoreComposition = {
+    agents_consulted: votes.length,
+    consensus_pct: Number(consensusPct.toFixed(2)),
+    reject_pct: Number(rejectPct.toFixed(2)),
+    avg_confidence: Number(avg.toFixed(2)),
+    consensus_component: Number(consensusComponent.toFixed(2)),
+    confidence_component: Number(confidenceComponent.toFixed(2)),
+    reject_penalty_component: Number(rejectPenaltyComponent.toFixed(2)),
+    raw_score: Number(rawScore.toFixed(2)),
+    veto_cap_applied: vetoCapApplied,
+    veto_cap_value: vetoCapValue,
+    final_score: Number(score.toFixed(2)),
+  };
+  const agent_votes: B3AgentBreakdown[] = votes.map((v) => ({
+    agent_name: v.agent_name,
+    vote: v.vote,
+    confidence: v.confidence,
+    reason: v.reason,
+    has_veto: v.has_veto,
+    veto_reason: v.veto_reason,
+  }));
+
   return {
-    final, side, score, approve_votes: approve, reject_votes: reject, neutral_votes: neutral,
+    final, side, score,
+    approve_votes: approve, reject_votes: reject, neutral_votes: neutral,
+    total_votes: votes.length,
     avg_confidence: avg, vetoes, classification, justification,
+    composition, agent_votes,
   };
 }

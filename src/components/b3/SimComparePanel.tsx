@@ -487,6 +487,59 @@ export function EngineDiagnosticPanel({ detail }: { detail: any }) {
                         )}
                       </div>
                     )}
+                    {dc.score_composition && (
+                      <div className="rounded-md border border-border/50 bg-background/40 p-2 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium">Composição do score</p>
+                          <Badge variant={dc.score_composition.veto_cap_applied ? "destructive" : "outline"} className="text-[10px]">
+                            {dc.score_composition.veto_cap_applied ? `veto → cap ${dc.score_composition.veto_cap_value}` : `sem veto`}
+                          </Badge>
+                        </div>
+                        <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4 text-[11px]">
+                          <div><span className="text-muted-foreground">Agentes consultados: </span><span className="font-mono">{dc.score_composition.agents_consulted}</span></div>
+                          <div><span className="text-muted-foreground">Consenso (aprovações): </span><span className="font-mono">{dc.score_composition.consensus_pct}% · +{dc.score_composition.consensus_component}</span></div>
+                          <div><span className="text-muted-foreground">Confiança média: </span><span className="font-mono">{dc.score_composition.avg_confidence} · +{dc.score_composition.confidence_component}</span></div>
+                          <div><span className="text-muted-foreground">Penalização rejeições: </span><span className="font-mono">{dc.score_composition.reject_pct}% · +{dc.score_composition.reject_penalty_component}</span></div>
+                          <div><span className="text-muted-foreground">Score bruto: </span><span className="font-mono">{dc.score_composition.raw_score}</span></div>
+                          <div><span className="text-muted-foreground">Cap por veto: </span><span className="font-mono">{dc.score_composition.veto_cap_applied ? `sim (≤ ${dc.score_composition.veto_cap_value})` : "não"}</span></div>
+                          <div><span className="text-muted-foreground">Score final: </span><span className="font-mono font-medium">{dc.score_composition.final_score}</span></div>
+                          <div><span className="text-muted-foreground">Mínimo do modo: </span><span className="font-mono">{dc.score_min ?? "—"}</span></div>
+                        </div>
+                        {Array.isArray(dc.agent_votes) && dc.agent_votes.length > 0 && (
+                          <div className="pt-1 space-y-1">
+                            <p className="text-[11px] text-muted-foreground">Votos por agente ({dc.agent_votes.length})</p>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-[11px]">
+                                <thead className="text-muted-foreground border-b border-border/40">
+                                  <tr className="text-left">
+                                    <th className="py-1 pr-2">Agente</th>
+                                    <th className="pr-2">Voto</th>
+                                    <th className="pr-2">Conf.</th>
+                                    <th className="pr-2">Veto</th>
+                                    <th>Motivo</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {dc.agent_votes.map((av: any, i: number) => (
+                                    <tr key={i} className="border-b border-border/20 align-top">
+                                      <td className="py-1 pr-2 font-medium">{av.agent_name}</td>
+                                      <td className="pr-2">
+                                        <Badge variant={av.vote === "approve" ? "outline" : av.vote === "reject" ? "destructive" : "secondary"} className="text-[10px]">
+                                          {av.vote}
+                                        </Badge>
+                                      </td>
+                                      <td className="pr-2 font-mono">{Number(av.confidence ?? 0).toFixed(0)}</td>
+                                      <td className="pr-2">{av.has_veto ? <Badge variant="destructive" className="text-[10px]">VETO</Badge> : "—"}</td>
+                                      <td className="text-muted-foreground">{av.veto_reason || av.reason}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4 text-xs">
                       {checks.map((c: any) => (
                         <div key={c.key} className="flex items-center justify-between gap-2 rounded border border-border/40 px-2 py-1">

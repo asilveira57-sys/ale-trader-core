@@ -732,6 +732,8 @@ export async function runB3SimulationTick(
       vetoes: decision?.vetoes ?? [],
       committee_result: decision?.final ?? null,
       committee_justification: decision?.justification ?? null,
+      score_composition: decision?.composition ?? null,
+      agent_votes: decision?.agent_votes ?? [],
       approval_or_first_block:
         decision?.final === "approved"
           ? `Aprovado: ${decision.justification ?? ""}`
