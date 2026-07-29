@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Trophy, Play, Pause, StopCircle, RotateCcw, ListPlus, Trash2, Activity, History, Info, Settings as SettingsIcon, ShieldAlert, Clock } from "lucide-react";
+import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import {
   startB3Simulation, setB3SimulationStatus, setB3SimulationWinner,
   listB3Simulations, getB3SimulationDetail, tickB3Simulation,
@@ -102,6 +103,8 @@ export function SimComparePanel() {
   const setWinner = useServerFn(setB3SimulationWinner);
   const tick = useServerFn(tickB3Simulation);
   const getReport = useServerFn(getB3SimulationReport);
+  const detailInterval = useVisibleRefetchInterval(10000);
+  const reportInterval = useVisibleRefetchInterval(30000);
 
   const runsQ = useQuery({ queryKey: ["b3-sim-runs"], queryFn: () => listRuns() });
   const runId = selectedRun ?? runsQ.data?.[0]?.id ?? null;
@@ -109,7 +112,8 @@ export function SimComparePanel() {
     queryKey: ["b3-sim-detail", runId],
     queryFn: () => getDetail({ data: { run_id: runId! } }),
     enabled: !!runId,
-    refetchInterval: 4000,
+    refetchInterval: detailInterval,
+    refetchIntervalInBackground: false,
   });
 
   const reportQ = useQuery({
@@ -120,7 +124,8 @@ export function SimComparePanel() {
       to: period === "custom" ? new Date(toInput).toISOString() : undefined,
     }}),
     enabled: !!runId,
-    refetchInterval: 8000,
+    refetchInterval: reportInterval,
+    refetchIntervalInBackground: false,
   });
 
 

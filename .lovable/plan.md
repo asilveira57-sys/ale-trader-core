@@ -1,80 +1,59 @@
-## Diagnóstico encontrado
+## Objetivo
+Corrigir o problema recorrente de login/Auth sem reconstruir módulos e sem alterar a ponte MT5, ingestão de ticks, estratégias, stops, gains, contratos ou execução.
 
-O problema atual de login não parece ser senha, tela de login ou permissão do usuário.
-
-Evidências verificadas:
-- A tentativa de login está falhando em `POST /auth/v1/token?grant_type=password` com **504 upstream request timeout**.
-- Os logs recentes de Auth mostram repetidamente falhas como **context deadline exceeded** e falha de conexão do serviço de autenticação com o banco.
-- O backend aparece “respondendo”, mas a checagem de métricas do banco também deu timeout, indicando instabilidade/intermitência no backend, não só no frontend.
-- As queries mais pesadas neste momento vêm do fluxo B3/MT5: ingestão de ticks, leitura do último tick e inserts de auditoria/simulação. Há consulta lenta buscando `b3_mt5sim_quotes` ordenando por `tick_ts desc`, mas o índice existente é em `received_at desc`, ou seja: parte do fluxo está consultando por um campo diferente do índice.
-- A tela `/auth` ainda tenta login direto por email/senha; quando o backend de Auth demora, ela apenas repete e mostra toast, mas não oferece um caminho robusto de recuperação da sessão.
-
-Resumo da causa provável:
-
-```text
-Backend Auth está dando timeout ao acessar o banco
-+ fluxo B3/MT5 gera leituras/escritas frequentes
-+ algumas consultas críticas não estão indexadas do jeito que são usadas
-+ frontend refaz serverFns constantemente
-= Auth fica instável, login falha com 504 e sessão cai/parece cair
-```
+## Diagnóstico confirmado até agora
+- O login apresentou timeout `504` no endpoint de autenticação, exibindo: “Autenticação demorou para responder”.
+- A verificação de saúde do backend retornou timeout antes do restart, e agora o backend ainda está subindo/aplicando mudanças.
+- Há polling contínuo em várias telas protegidas, incluindo B3/MT5, dashboard, diagnóstico e painéis operacionais.
+- No B3/MT5, há atualizações automáticas em intervalos curtos, como 2s, 3s, 4s e 8s, que continuam disputando recursos com Auth quando a tela fica aberta.
 
 ## Plano de correção
 
-### 1. Recuperação imediata do backend
-- Solicitar/aplicar restart controlado do backend Lovable Cloud.
-- Depois do restart, confirmar:
-  - login por email/senha;
-  - `/auth/v1/token` sem 504;
-  - dashboard protegido carregando sem tela branca;
-  - Simulação MT5 aberta sem redirecionar para `/auth`.
+### 1. Esperar backend estabilizar antes de mexer no banco
+- Reconsultar a saúde do Lovable Cloud até o backend voltar ao estado normal.
+- Só aplicar migrações depois disso, para evitar falha parcial ou diagnóstico falso.
 
-### 2. Corrigir gargalos de banco sem mexer na ponte MT5
-Criar uma migração pequena apenas com índices, sem alterar endpoint de ingestão nem estratégia:
-- Índice para último tick MT5 por usuário/símbolo/servidor usando `tick_ts desc`.
-- Índice para último tick por `received_at desc`, preservando o fluxo existente.
-- Índices compostos para ordens abertas/rodadas ativas usadas pelos painéis.
-- Índices para auditorias/bloqueios por `user_id`, `simulation_run_id`, `mode` e data.
+### 2. Otimizar consultas críticas do B3 MT5
+Criar uma migração de índices para aliviar leituras frequentes, principalmente em:
+- `b3_mt5sim_quotes`, priorizando busca por `user_id`, `symbol` e `tick_ts DESC`.
+- Tabelas de auditoria/simulação usadas pelo diagnóstico e pelos painéis de 5 modos.
 
-Objetivo: reduzir a pressão do banco para que Auth não concorra com consultas lentas do motor B3/MT5.
+Critério: acelerar leitura do último tick, histórico recente e auditorias sem alterar a lógica de ticks nem o endpoint.
 
-### 3. Reduzir polling protegido enquanto a sessão/Cloud estiver instável
-Ajustar somente o comportamento de tela:
-- Em páginas protegidas com polling, não disparar novos `serverFns` se a aba estiver oculta.
-- Se uma chamada protegida retornar 401/timeout, pausar temporariamente o polling e tentar recuperar sessão antes de continuar.
-- Evitar que múltiplas queries simultâneas derrubem a experiência quando o backend está lento.
+### 3. Reduzir carga automática no frontend
+Ajustar apenas os painéis que fazem polling pesado:
+- `src/routes/_authenticated/b3-mt5sim.tsx`
+- `src/components/b3/SimComparePanel.tsx`
+- `src/components/b3/PipelineAuditPanel.tsx`
+- se necessário, painéis B3 relacionados em `src/routes/_authenticated/b3.tsx`
 
-### 4. Endurecer o login sem mascarar erro real
-Atualizar `/auth` para:
-- Separar claramente erro de credencial vs timeout do backend.
-- Não fazer loops agressivos de login.
-- Em caso de 504, mostrar estado de “backend demorando” e botão de nova tentativa manual.
-- Após login bem-sucedido, validar sessão uma vez e navegar para `/dashboard`.
-- Se existir sessão local válida, não forçar logout antes de tentar recuperar.
+Mudanças previstas:
+- Pausar polling quando a aba estiver oculta (`document.visibilityState !== "visible"`).
+- Aumentar intervalos agressivos onde não há necessidade de atualização a cada 2–4 segundos.
+- Manter atualização em tempo útil quando a tela estiver visível.
+- Evitar invalidações globais desnecessárias.
 
-### 5. Centralizar tratamento de Auth em um único fluxo
-Revisar `__root.tsx`, `_authenticated/route.tsx` e `start.ts` para manter:
-- um único listener `onAuthStateChange`;
-- bearer token em todos os serverFns;
-- refresh de sessão controlado;
-- limpeza de cache somente quando a sessão realmente estiver inválida, não em timeout transitório.
+### 4. Tornar Auth mais resiliente sem esconder erro real
+Refinar o fluxo de autenticação em:
+- `src/routes/auth.tsx`
+- `src/routes/_authenticated/route.tsx`
+- `src/routes/__root.tsx`, se necessário
 
-### 6. Verificação final obrigatória
-Testar e registrar:
-- login real funcionando;
-- ausência de 504 no login durante teste;
-- backend saudável após restart;
-- queries lentas reduzidas para o fluxo B3/MT5;
-- tela da Simulação MT5 permanecendo aberta;
-- serverFns protegidas recebendo `Authorization` corretamente;
-- sem ordens reais enviadas.
+Mudanças previstas:
+- Não forçar logout em timeout transitório se ainda existir sessão local válida.
+- Evitar múltiplas limpezas/invalidações simultâneas de cache.
+- Distinguir erro definitivo de sessão expirada versus backend lento.
+- Manter a tela atual quando houver recuperação possível.
 
-## O que não será alterado
-- Não vou alterar a ponte MT5.
-- Não vou alterar o endpoint de ingestão.
-- Não vou alterar estratégia, stops, gain, contratos ou execução dos robôs.
-- Não vou reconstruir o módulo B3/MT5.
+### 5. Validar no runtime
+Depois das mudanças:
+- Testar login real no preview.
+- Abrir B3/MT5 e deixar a tela parada para confirmar que não derruba sessão.
+- Confirmar que os painéis continuam atualizando quando visíveis.
+- Confirmar que o backend não retorna novo timeout em Auth durante uso normal.
 
-## Resultado esperado
-
-O login deixa de depender de tentativas repetidas contra um backend congestionado, o backend reduz a carga do fluxo MT5, e a sessão passa a se recuperar de falhas transitórias sem jogar você para fora do sistema.
+## Critério de conclusão
+- O usuário consegue logar.
+- A sessão não cai ao deixar a Simulação/B3 MT5 aberta.
+- Os painéis B3 continuam funcionando, mas sem polling excessivo em segundo plano.
+- O Auth deixa de competir com consultas pesadas do motor e diagnóstico.

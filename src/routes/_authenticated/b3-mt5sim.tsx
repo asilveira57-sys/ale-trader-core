@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { ShieldAlert, PlayCircle, PauseCircle, RefreshCw, Activity } from "lucide-react";
 import { useState } from "react";
+import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 
 export const Route = createFileRoute("/_authenticated/b3-mt5sim")({
   head: () => ({ meta: [{ title: "Simulação Local MT5 XP (WINQ26) — AleTrader AI" }] }),
@@ -40,10 +41,13 @@ function Mt5SimPage() {
   const legacyFetch = useServerFn(getLegacyMt5Dashboard);
   const cmpFetch = useServerFn(getLegacyVsMt5Comparative);
   const tickLegacyFn = useServerFn(tickLegacyMt5Now);
+  const dashboardInterval = useVisibleRefetchInterval(10000);
+  const legacyInterval = useVisibleRefetchInterval(15000);
+  const comparativeInterval = useVisibleRefetchInterval(30000);
 
-  const { data, isLoading } = useQuery({ queryKey: ["b3-mt5sim"], queryFn: () => fetchFn({}), refetchInterval: 3000 });
-  const { data: legacy } = useQuery({ queryKey: ["b3-mt5sim-legacy"], queryFn: () => legacyFetch({}), refetchInterval: 4000 });
-  const { data: cmp } = useQuery({ queryKey: ["b3-mt5sim-cmp"], queryFn: () => cmpFetch({}), refetchInterval: 8000 });
+  const { data, isLoading } = useQuery({ queryKey: ["b3-mt5sim"], queryFn: () => fetchFn({}), refetchInterval: dashboardInterval, refetchIntervalInBackground: false });
+  const { data: legacy } = useQuery({ queryKey: ["b3-mt5sim-legacy"], queryFn: () => legacyFetch({}), refetchInterval: legacyInterval, refetchIntervalInBackground: false });
+  const { data: cmp } = useQuery({ queryKey: ["b3-mt5sim-cmp"], queryFn: () => cmpFetch({}), refetchInterval: comparativeInterval, refetchIntervalInBackground: false });
   const invalidate = () => { qc.invalidateQueries({ queryKey: ["b3-mt5sim"] }); qc.invalidateQueries({ queryKey: ["b3-mt5sim-legacy"] }); qc.invalidateQueries({ queryKey: ["b3-mt5sim-cmp"] }); };
 
   const mStart = useMutation({ mutationFn: () => startFn({}), onSuccess: () => { toast.success("Simulação iniciada"); invalidate(); } });
@@ -608,7 +612,8 @@ while True:
 
 function ManualDeskPanel({ symbol, feedingServer, getState, openFn, closeFn, invertFn }: { symbol: string; feedingServer: string; getState: any; openFn: any; closeFn: any; invertFn: any }) {
   const qc = useQueryClient();
-  const { data: st, isLoading } = useQuery({ queryKey: ["b3-mt5sim-manual"], queryFn: () => getState({}), refetchInterval: 2000 });
+  const manualInterval = useVisibleRefetchInterval(5000);
+  const { data: st, isLoading } = useQuery({ queryKey: ["b3-mt5sim-manual"], queryFn: () => getState({}), refetchInterval: manualInterval, refetchIntervalInBackground: false });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["b3-mt5sim-manual"] });
   const [contracts, setContracts] = useState<number>(1);
 
