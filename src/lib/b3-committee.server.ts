@@ -325,12 +325,18 @@ export function buildB3Decision(
   const avg = conf / total;
   const consensusPct = (approve / total) * 100;
   const rejectPct = (reject / total) * 100;
-  let score = 0.45 * consensusPct + 0.35 * avg + 0.20 * (100 - rejectPct);
-  if (vetoes.length) score = Math.min(score, 25);
+  const consensusComponent = 0.45 * consensusPct;
+  const confidenceComponent = 0.35 * avg;
+  const rejectPenaltyComponent = 0.20 * (100 - rejectPct);
+  const rawScore = consensusComponent + confidenceComponent + rejectPenaltyComponent;
+  const vetoCapApplied = vetoes.length > 0;
+  const vetoCapValue = vetoCapApplied ? 25 : 100;
+  let score = rawScore;
+  if (vetoCapApplied) score = Math.min(score, vetoCapValue);
   score = clamp(score);
 
   let final: B3Decision["final"];
-  if (vetoes.length) final = "blocked";
+  if (vetoCapApplied) final = "blocked";
   else if (approve >= settings.min_approve_votes && avg >= settings.min_confidence && score >= settings.min_score)
     final = "approved";
   else if (reject > approve) final = "rejected";
@@ -350,8 +356,35 @@ export function buildB3Decision(
       ? `Rejeitado: ${reject}/${total} contrários.`
       : `Sem consenso (${approve}A/${reject}R/${neutral}N).`;
 
+  const composition: B3ScoreComposition = {
+    agents_consulted: votes.length,
+    consensus_pct: Number(consensusPct.toFixed(2)),
+    reject_pct: Number(rejectPct.toFixed(2)),
+    avg_confidence: Number(avg.toFixed(2)),
+    consensus_component: Number(consensusComponent.toFixed(2)),
+    confidence_component: Number(confidenceComponent.toFixed(2)),
+    reject_penalty_component: Number(rejectPenaltyComponent.toFixed(2)),
+    raw_score: Number(rawScore.toFixed(2)),
+    veto_cap_applied: vetoCapApplied,
+    veto_cap_value: vetoCapValue,
+    final_score: Number(score.toFixed(2)),
+  };
+  const agent_votes: B3AgentBreakdown[] = votes.map((v) => ({
+    agent_name: v.agent_name,
+    vote: v.vote,
+    confidence: v.confidence,
+    reason: v.reason,
+    has_veto: v.has_veto,
+    veto_reason: v.veto_reason,
+  }));
+
   return {
-    final, side, score, approve_votes: approve, reject_votes: reject, neutral_votes: neutral,
+    final, side, score,
+    approve_votes: approve, reject_votes: reject, neutral_votes: neutral,
+    total_votes: votes.length,
     avg_confidence: avg, vetoes, classification, justification,
+    composition, agent_votes,
+  };
+}
   };
 }
