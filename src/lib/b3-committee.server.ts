@@ -201,20 +201,28 @@ function aHorario(c: B3Context, risk: B3RiskState): B3AgentVote {
 }
 
 function aAntiTendencia(c: B3Context, side: B3Side): B3AgentVote {
+  // Somente RSI extremo caracteriza euforia/pânico. As checagens antigas
+  // `price > high*0.999` / `price < low*1.001` usavam c.high/c.low do próprio
+  // buffer, que sempre inclui o preço atual como max/min quando ele faz um
+  // novo extremo local — isso disparava veto em quase todo tick com
+  // tendência real, cravando o score final em 25. Mantida como proteção,
+  // porém sem o falso-positivo do "extremo de janela".
   const overbought = c.rsi > 78 && side === "buy";
   const oversold = c.rsi < 22 && side === "sell";
-  const blow = c.price > c.high * 0.999 && side === "buy";
-  const blowDn = c.price < c.low * 1.001 && side === "sell";
-  const block = overbought || oversold || blow || blowDn;
+  const block = overbought || oversold;
+  const reason = overbought
+    ? `RSI ${c.rsi.toFixed(0)} sobrecomprado — evitar FOMO em compra.`
+    : oversold
+    ? `RSI ${c.rsi.toFixed(0)} sobrevendido — evitar pânico em venda.`
+    : `RSI ${c.rsi.toFixed(0)} em zona neutra — sem sinais de euforia.`;
   return {
     agent_name: "Anti-Euforia",
     vote: block ? "reject" : "neutral",
     confidence: block ? 85 : 50,
-    reason: block ? `Entrada em extremo (RSI ${c.rsi.toFixed(0)}). Evitar FOMO.` :
-            "Sem sinais de euforia.",
+    reason,
     has_veto: block,
-    veto_reason: block ? "Entrada em extremo do dia." : undefined,
-    data: { rsi: c.rsi, high: c.high, low: c.low },
+    veto_reason: block ? "RSI em extremo (>78 compra / <22 venda)." : undefined,
+    data: { rsi: c.rsi, high: c.high, low: c.low, rule: "rsi_only" },
   };
 }
 
