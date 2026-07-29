@@ -386,5 +386,3 @@ export function buildB3Decision(
     composition, agent_votes,
   };
 }
-  };
-}
