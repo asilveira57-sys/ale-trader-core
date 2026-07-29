@@ -34,6 +34,11 @@ function isRetryableAuthError(error: unknown) {
   return /timeout|network|fetch|temporar/i.test(message);
 }
 
+function isDefinitiveSessionError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  return /refresh token.*not found|invalid refresh token|token.*revoked|session.*not found|user from sub claim in jwt does not exist/i.test(message);
+}
+
 async function signInWithRetry(email: string, password: string) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -54,13 +59,17 @@ function AuthPage() {
 
   useEffect(() => {
     let cancelled = false;
-    supabase.auth.getUser().then(({ data, error }) => {
+    supabase.auth.getSession().then(async ({ data: sessionData }) => {
       if (cancelled) return;
-      if (data.user?.email?.toLowerCase() === ALLOWED_EMAIL) {
+      if (!sessionData.session) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (cancelled) return;
+      const email = data.user?.email?.toLowerCase() ?? sessionData.session.user?.email?.toLowerCase();
+      if (email === ALLOWED_EMAIL) {
         navigate({ to: "/dashboard", replace: true });
         return;
       }
-      if (error) supabase.auth.signOut({ scope: "local" });
+      if (error && isDefinitiveSessionError(error)) supabase.auth.signOut({ scope: "local" });
     });
     return () => { cancelled = true; };
   }, [navigate]);

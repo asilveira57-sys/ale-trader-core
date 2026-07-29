@@ -4,6 +4,7 @@ import { getB3PipelineAudit } from "@/lib/b3-simulation.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Activity, CheckCircle2, XCircle, ArrowDown } from "lucide-react";
+import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 
 const MODE_LABEL: Record<string, string> = {
   conservador: "Conservador",
@@ -32,10 +33,12 @@ function formatDuration(seconds: number): string {
 
 export function PipelineAuditPanel() {
   const fetchFn = useServerFn(getB3PipelineAudit);
+  const auditInterval = useVisibleRefetchInterval(10000);
   const q = useQuery({
     queryKey: ["b3-pipeline-audit"],
     queryFn: () => fetchFn(),
-    refetchInterval: 3000,
+    refetchInterval: auditInterval,
+    refetchIntervalInBackground: false,
   });
   const data = q.data as any;
 

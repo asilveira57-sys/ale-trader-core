@@ -69,7 +69,6 @@ function AuthErrorBoundary({ error, reset }: { error: Error; reset: () => void }
           await qc.cancelQueries();
           await router.invalidate();
           reset();
-          qc.invalidateQueries();
           return;
         }
         if (!cancelled && !recovery.definitive) {
@@ -77,7 +76,6 @@ function AuthErrorBoundary({ error, reset }: { error: Error; reset: () => void }
           await wait(AUTH_RECOVERY_RETRY_MS);
           await router.invalidate();
           reset();
-          qc.invalidateQueries();
           return;
         }
       } catch {
@@ -86,7 +84,6 @@ function AuthErrorBoundary({ error, reset }: { error: Error; reset: () => void }
         if (!cancelled) {
           await router.invalidate();
           reset();
-          qc.invalidateQueries();
         }
         return;
       }
