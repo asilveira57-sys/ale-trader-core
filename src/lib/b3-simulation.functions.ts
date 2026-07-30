@@ -1613,7 +1613,7 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
       .select("id, market_time, extra, simulation_run_id")
       .in("simulation_run_id", scope.runIds).eq("user_id", userId)
       .order("market_time", { ascending: false })
-      .limit(2000);
+      .limit(400);
 
     const list = (snaps ?? []).filter((s: any) => s?.extra?.engine_audit);
 
@@ -1785,7 +1785,7 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
       .in("simulation_run_id", scope.runIds).eq("user_id", userId)
       .gte("market_time", since)
       .order("market_time", { ascending: true })
-      .limit(10000);
+      .limit(1200);
 
     const { data: orders } = await (supabase as any).from("b3_simulation_orders")
       .select("mode, status, net_result_brl, entry_time")
