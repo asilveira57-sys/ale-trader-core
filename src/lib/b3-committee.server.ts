@@ -124,15 +124,22 @@ function aVolume(c: B3Context, side: B3Side): B3AgentVote {
   const strong = c.volume_ratio > 1.3;
   const weak = c.volume_ratio < 0.7;
   const dirOk = (side === "buy" && c.price > c.vwap) || (side === "sell" && c.price < c.vwap);
+  // Volume fraco só rejeita quando o preço TAMBÉM está do lado errado do VWAP.
+  // Antes, volume fraco rejeitava mesmo com VWAP a favor — o mesmo sinal
+  // (fluxo) derrubava consenso e, em seguida, a penalização por rejeição.
+  const vote: B3Vote = strong && dirOk ? "approve" : (weak && !dirOk) ? "reject" : "neutral";
   return {
     agent_name: "Volume / VWAP",
-    vote: strong && dirOk ? "approve" : weak ? "reject" : "neutral",
+    vote,
     confidence: clamp(40 + Math.abs(c.volume_ratio - 1) * 40, 30, 90),
-    reason: `Volume ${c.volume_ratio.toFixed(2)}x média. Preço ${c.price > c.vwap ? "acima" : "abaixo"} do VWAP.`,
+    reason: `Volume ${c.volume_ratio.toFixed(2)}x média. Preço ${c.price > c.vwap ? "acima" : "abaixo"} do VWAP${
+      weak && dirOk ? " — fluxo fraco, mas direção a favor (neutro)." : "."
+    }`,
     has_veto: false,
-    data: { volume_ratio: c.volume_ratio, vwap: c.vwap, price: c.price },
+    data: { volume_ratio: c.volume_ratio, vwap: c.vwap, price: c.price, dir_ok: dirOk, weak, strong },
   };
 }
+
 
 function aTecnico(c: B3Context, side: B3Side): B3AgentVote {
   const macdBull = c.macd > c.macd_signal;
