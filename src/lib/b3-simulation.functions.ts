@@ -203,15 +203,13 @@ export const getB3SimulationDetail = createServerFn({ method: "POST" })
     if (!runR.data) throw new Error("Run não encontrada");
     const isMt5Source = settingsR.data?.price_source === "mt5_xp_demo";
     const allOrders = (ordersR.data ?? []) as any[];
-    const allCountOrders = (legacyOrdersR.data ?? []) as any[];
     const visibleOrders = isMt5Source
-      ? allCountOrders.filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider")
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 500)
-      : allOrders;
+      ? allOrders.filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider").slice(0, 500)
+      : allOrders.slice(0, 500);
     const hiddenLegacyCount = isMt5Source
-      ? allCountOrders.filter((o) => o.quote_source !== "MT5 XP DEMO" || o.provider_name !== "B3QuoteProvider").length
+      ? allOrders.filter((o) => o.quote_source !== "MT5 XP DEMO" || o.provider_name !== "B3QuoteProvider").length
       : 0;
+
     const visibleModes = isMt5Source
       ? ((modesR.data ?? []) as any[]).map((m) => {
         const orders = visibleOrders.filter((o) => o.mode === m.mode);
