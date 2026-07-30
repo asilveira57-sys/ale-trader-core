@@ -1067,7 +1067,7 @@ async function runB3SimulationTickInner(
           price_source: priceSrc.quote_source,
           rejected_price: ctx.price,
           mt5_last: priceSrc.raw?.last ?? null,
-          forceLog: true,
+          forceLog: false,
           diagnostic_payload: {
             function: "runB3SimulationTick",
             provider: priceSrc.provider_name,
@@ -1249,7 +1249,7 @@ async function runB3SimulationTickInner(
             price_source: priceSrc.quote_source,
             rejected_price: ctx.price,
             mt5_last: priceSrc.raw?.last ?? null,
-            forceLog: true,
+            forceLog: false,
             diagnostic_payload: { function: "runB3SimulationTick.markToMarket", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
           log.push({ mode, action: "skip", reason: "price_guard", message: (e as Error).message });
@@ -1457,7 +1457,7 @@ async function runB3SimulationTickInner(
             price_source: priceSrc.quote_source,
             rejected_price: ctx.price,
             mt5_last: priceSrc.raw?.last ?? null,
-            forceLog: true,
+            forceLog: false,
             diagnostic_payload: { function: "runB3SimulationTick.openOrder", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
           log.push({ mode, action: "blocked", reason: "price_guard", message: (e as Error).message });
