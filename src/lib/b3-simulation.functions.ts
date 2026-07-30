@@ -310,6 +310,23 @@ export async function runB3SimulationTick(
     return openOrdersCache;
   }
 
+  // ── Travas de I/O (não alteram estratégia) ────────────────────────────────
+  // 1) dedup: o mesmo quote_tick_ts não é reprocessado;
+  // 2) throttle: snapshot histórico persistido no máximo 1x/10s (reaproveita a linha);
+  // 3) assinaturas: votos e contadores gravados só quando o estado muda.
+  const { data: lastSnapRow } = await supabase.from("b3_simulation_market_snapshots")
+    .select("id, market_time, quote_tick_ts, extra")
+    .eq("simulation_run_id", runId).eq("user_id", userId)
+    .order("market_time", { ascending: false }).limit(1).maybeSingle();
+  let lastSnap: any = lastSnapRow ?? null;
+  const writeSigs: Record<string, string> = { ...(((lastSnapRow as any)?.extra?.write_sigs as any) ?? {}) };
+  function sigChanged(key: string, value: string) {
+    if (writeSigs[key] === value) return false;
+    writeSigs[key] = value;
+    return true;
+  }
+
+
   // PnL realizado SOMENTE no dia de hoje (BRT) — usado para gate de
   // daily_loss_limit / daily_gain_target. Antes usávamos m.realized_pnl
   // (cumulativo), o que travava modos que já bateram a meta em dias anteriores.
