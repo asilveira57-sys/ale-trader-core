@@ -1269,7 +1269,15 @@ export async function runB3SimulationTick(
       }
 
 
-      const votes = runB3Agents(localCtx, intendedSide, risk);
+      // Agentes recebem os limites REAIS do modo — sem isso os 5 modos
+      // avaliavam o mesmo tick com constantes idênticas (3,5% / 150-300 pts).
+      const votes = runB3Agents(localCtx, intendedSide, risk, {
+        max_volatility_pct: Number(cfg.max_volatility_pct),
+        min_volatility_pct: Number((cfg as any).min_volatility_pct ?? 0.6),
+        stop_pts: Number(cfg.stop_pts),
+        gain_pts: Number(cfg.gain_pts),
+      });
+
       const committee: B3CommitteeSettings = {
         min_approve_votes: Number(cfg.min_approve_votes),
         min_confidence: Number(cfg.min_confidence),
