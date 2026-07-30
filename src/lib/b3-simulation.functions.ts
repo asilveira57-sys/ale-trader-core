@@ -576,7 +576,7 @@ export async function runB3SimulationTick(
       .gte("market_time", startOfDayBr)
       .lte("market_time", nowIso)
       .order("market_time", { ascending: false })
-      .limit(800);
+      .limit(300);
     return data ?? [];
   }
 
