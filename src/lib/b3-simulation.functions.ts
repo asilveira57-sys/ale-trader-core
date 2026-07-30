@@ -1547,9 +1547,11 @@ export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
     if (!scope.latest) return { run: null, audit: null, snapshot: null, settings: [], price_source: null, executions: [], restart_count: 0, session_date: null };
     const activeRun = scope.runs.find((r) => r.status === "running" || r.status === "paused") ?? scope.latest;
     const [{ data: snapshot }, { data: settings }, { data: tradeSettings }] = await Promise.all([
-      (supabase as any).from("b3_simulation_market_snapshots").select("*")
+      (supabase as any).from("b3_simulation_market_snapshots")
+        .select("id, market_time, price, volume, vwap, source, quote_source, quote_server, quote_symbol, quote_tick_ts, quote_bid, quote_ask, quote_last, provider_name, extra")
         .in("simulation_run_id", scope.runIds).eq("user_id", userId)
         .order("market_time", { ascending: false }).limit(1).maybeSingle(),
+
       (supabase as any).from("b3_simulation_mode_settings").select("*")
         .eq("simulation_run_id", activeRun.id).eq("user_id", userId),
       (supabase as any).from("b3_trading_settings").select("price_source")
