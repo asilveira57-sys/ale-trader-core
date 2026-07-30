@@ -1520,13 +1520,19 @@ async function runB3SimulationTickInner(
     }
     snapshotExtra.engine_audit = tickAudit;
     snapshotExtra.write_sigs = writeSigs;
-    // Uma única gravação por tick: quando a linha é reaproveitada, também
-    // atualizamos preço/cotação para o painel refletir o tick atual.
-    await supabase.from("b3_simulation_market_snapshots")
-      .update(reuseSnap ? { ...snapPayload, extra: snapshotExtra } : { extra: snapshotExtra })
-      .eq("id", snapId)
-      .eq("user_id", userId);
-    log.push({ action: "engine_audit", snapshot_id: snapId, reused_snapshot: reuseSnap, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+    // Persistência única: 1 INSERT a cada 10s. Fora da janela, nada é gravado
+    // (sem INSERT, UPDATE ou UPSERT) — o estado corrente vive só em memória.
+    if (persistSnapshot) {
+      const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
+        .insert({ simulation_run_id: runId, user_id: userId, ...snapPayload, extra: snapshotExtra })
+        .select("id").single();
+      if (sErr) throw sErr;
+      memo.id = snapIns.id;
+      memo.persisted_at = now.getTime();
+      tickAudit.snapshot_id = snapIns.id;
+    }
+    log.push({ action: "engine_audit", snapshot_id: memo.id, persisted: persistSnapshot, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+
 
   }
 
