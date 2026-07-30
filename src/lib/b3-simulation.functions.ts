@@ -869,7 +869,7 @@ export async function runB3SimulationTick(
         .insert({ simulation_run_id: runId, user_id: userId, ...snapPayload, extra: snapshotExtra })
         .select("id").single();
       if (sErr) throw sErr;
-      snapId = snapIns.id;
+      snapId = snapId;
     }
     lastSnap = { id: snapId, market_time: snapPayload.market_time, quote_tick_ts: tickTs };
 
@@ -877,7 +877,7 @@ export async function runB3SimulationTick(
 
     const intendedSide: B3Side = ctx.ema9 >= ctx.ema21 ? "buy" : "sell";
     const tickAudit: any = {
-      snapshot_id: snapIns.id,
+      snapshot_id: snapId,
       tick_index: i + 1,
       timestamp: now.toISOString(),
       source: priceSrc.source,
@@ -1350,7 +1350,7 @@ export async function runB3SimulationTick(
         simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
         mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
         market_data_snapshot: {
-          snapshot_id: snapIns.id, decision: decision.final, score: decision.score,
+          snapshot_id: snapId, decision: decision.final, score: decision.score,
           price: ctx.price, side: intendedSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
         } as any,
       }));
@@ -1459,9 +1459,9 @@ export async function runB3SimulationTick(
     snapshotExtra.engine_audit = tickAudit;
     await supabase.from("b3_simulation_market_snapshots")
       .update({ extra: snapshotExtra })
-      .eq("id", snapIns.id)
+      .eq("id", snapId)
       .eq("user_id", userId);
-    log.push({ action: "engine_audit", snapshot_id: snapIns.id, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+    log.push({ action: "engine_audit", snapshot_id: snapId, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
   }
 
   return { ok: true, processed: ticks, log: [{ action: "provider_diagnostic", ...providerStats }, ...log] };
