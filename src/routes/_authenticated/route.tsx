@@ -20,22 +20,31 @@ function isDefinitiveSessionError(message: string) {
   return /refresh token.*not found|invalid refresh token|token.*revoked|session.*not found|user from sub claim in jwt does not exist/i.test(message);
 }
 
+// Timeout de infraestrutura (504/upstream) nunca deve derrubar a sessão local.
+function isTransientAuthError(message: string) {
+  return /timeout|upstream|network|fetch|temporar|502|503|504/i.test(message);
+}
+
 async function recoverSession() {
+  let transient = false;
   for (let attempt = 0; attempt < AUTH_RECOVERY_ATTEMPTS; attempt += 1) {
     const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) return { recovered: false, definitive: true };
+    if (!sessionData.session) return { recovered: false, definitive: true, transient };
 
     const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
-    if (!refreshErr && refreshed.session) return { recovered: true, definitive: false };
+    if (!refreshErr && refreshed.session) return { recovered: true, definitive: false, transient: false };
 
     const message = refreshErr?.message ?? "";
-    if (isDefinitiveSessionError(message)) return { recovered: false, definitive: true };
+    if (isDefinitiveSessionError(message)) return { recovered: false, definitive: true, transient: false };
+    if (isTransientAuthError(message)) transient = true;
 
-    await wait(AUTH_RECOVERY_RETRY_MS);
+    // backoff progressivo: 1.5s → 3s → 6s
+    await wait(AUTH_RECOVERY_RETRY_MS * Math.pow(2, attempt));
   }
 
-  return { recovered: false, definitive: false };
+  return { recovered: false, definitive: false, transient };
 }
+
 
 async function getUserWithTransientTolerance() {
   const { data: sessionData } = await supabase.auth.getSession();
