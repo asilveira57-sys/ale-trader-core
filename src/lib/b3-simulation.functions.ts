@@ -869,7 +869,7 @@ export async function runB3SimulationTick(
         .insert({ simulation_run_id: runId, user_id: userId, ...snapPayload, extra: snapshotExtra })
         .select("id").single();
       if (sErr) throw sErr;
-      snapId = snapId;
+      snapId = snapIns.id;
     }
     lastSnap = { id: snapId, market_time: snapPayload.market_time, quote_tick_ts: tickTs };
 
