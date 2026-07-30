@@ -103,7 +103,7 @@ export function SimComparePanel() {
   const setWinner = useServerFn(setB3SimulationWinner);
   const tick = useServerFn(tickB3Simulation);
   const getReport = useServerFn(getB3SimulationReport);
-  const detailInterval = useVisibleRefetchInterval(10000);
+  const detailInterval = useVisibleRefetchInterval(15000);
   const reportInterval = useVisibleRefetchInterval(30000);
 
   const runsQ = useQuery({ queryKey: ["b3-sim-runs"], queryFn: () => listRuns() });

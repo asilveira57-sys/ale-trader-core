@@ -16,6 +16,7 @@ import {
   Clock, PauseCircle, PlayCircle, XCircle, FileBarChart, Settings as SettingsIcon, Users, Swords,
 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
+import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import {
   closeB3ManualOrder,
   getB3PanelOverview,
@@ -149,7 +150,8 @@ function B3Page() {
   const ordersQ = useQuery({
     queryKey: ["b3-orders", userId],
     enabled: !!userId,
-    refetchInterval: 15000,
+    refetchInterval: useVisibleRefetchInterval(20000),
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("b3_orders")
@@ -249,7 +251,8 @@ function B3EngineDiagnosticTab() {
   const q = useQuery({
     queryKey: ["b3-engine-diagnostic"],
     queryFn: () => getDiag(),
-    refetchInterval: 3000,
+    refetchInterval: useVisibleRefetchInterval(20000),
+    refetchIntervalInBackground: false,
   });
   const data = q.data as any;
   if (!data?.run) {
@@ -276,7 +279,8 @@ function Panel({ settings, orders }: { settings: B3Settings; orders: B3Order[] }
   const ovQ = useQuery({
     queryKey: ["b3-panel-overview"],
     queryFn: () => getOverview(),
-    refetchInterval: 10000,
+    refetchInterval: useVisibleRefetchInterval(20000),
+    refetchIntervalInBackground: false,
   });
   const ov = ovQ.data as any;
 
@@ -540,7 +544,8 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
   // Inclui também operações da Simulação 3 Modos do dia
   const simQ = useQuery({
     queryKey: ["b3-report-sim-today", today],
-    refetchInterval: 15000,
+    refetchInterval: useVisibleRefetchInterval(30000),
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const start = `${today}T00:00:00.000Z`;
       const end = `${today}T23:59:59.999Z`;
@@ -848,7 +853,8 @@ function CommitteePanel({ settings }: { settings: B3Settings }) {
   const historyQ = useQuery({
     queryKey: ["b3-agent-votes"],
     queryFn: () => listFn({}),
-    refetchInterval: 20000,
+    refetchInterval: useVisibleRefetchInterval(30000),
+    refetchIntervalInBackground: false,
   });
 
   const run = useMutation({
@@ -1017,7 +1023,8 @@ function PriceSourceCard() {
   const statusQ = useQuery({
     queryKey: ["b3-price-source"],
     queryFn: () => getStatus(),
-    refetchInterval: 5000,
+    refetchInterval: useVisibleRefetchInterval(20000),
+    refetchIntervalInBackground: false,
   });
   const mut = useMutation({
     mutationFn: (source: "csv" | "mt5_xp_demo") => setSource({ data: { source } }),

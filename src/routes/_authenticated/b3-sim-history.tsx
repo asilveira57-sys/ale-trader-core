@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -61,7 +62,8 @@ function HistoryPage() {
     queryKey: ["b3-sim-history", effRun],
     queryFn: () => detail({ data: { run_id: effRun! } }),
     enabled: !!effRun,
-    refetchInterval: 10000,
+    refetchInterval: useVisibleRefetchInterval(30000),
+    refetchIntervalInBackground: false,
   });
 
   // filtros

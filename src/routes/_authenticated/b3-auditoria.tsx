@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { useState } from "react";
 import { getB3EntryAuditReport } from "@/lib/b3-simulation.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +43,8 @@ function Page() {
   const q = useQuery({
     queryKey: ["b3-entry-audit", hours],
     queryFn: () => fetchFn({ data: { hours } }),
-    refetchInterval: 15000,
+    refetchInterval: useVisibleRefetchInterval(30000),
+    refetchIntervalInBackground: false,
   });
   const data = q.data as any;
 

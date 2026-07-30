@@ -186,27 +186,30 @@ export const getB3SimulationDetail = createServerFn({ method: "POST" })
   .inputValidator((d: { run_id: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const [runR, modesR, settingsR, ordersR, legacyOrdersR, snapsR] = await Promise.all([
+    // I/O: sem select("*") em tabelas grandes e limites enxutos — a tela usa
+    // no máximo 60 ordens e o último snapshot (engine_audit).
+    const ORDER_COLS = "id, mode, side, status, symbol, contract_code, entry_price, exit_price, exit_time, created_at, quantity, fees, gross_result_brl, gross_result_points, net_result_brl, close_reason, quote_source, provider_name";
+    const [runR, modesR, settingsR, ordersR, snapsR] = await Promise.all([
       (supabase as any).from("b3_simulation_runs").select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle(),
       (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId),
       (supabase as any).from("b3_trading_settings").select("price_source").eq("user_id", userId).maybeSingle(),
-      (supabase as any).from("b3_simulation_orders").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: false }).limit(500),
-      (supabase as any).from("b3_simulation_orders").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).limit(5000),
-      (supabase as any).from("b3_simulation_market_snapshots").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("market_time", { ascending: false }).limit(120),
+      (supabase as any).from("b3_simulation_orders").select(ORDER_COLS).eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: false }).limit(800),
+      (supabase as any).from("b3_simulation_market_snapshots")
+        .select("id, market_time, price, quote_source, quote_server, quote_symbol, quote_tick_ts, quote_bid, quote_ask, quote_last, provider_name, extra")
+        .eq("simulation_run_id", data.run_id).eq("user_id", userId).order("market_time", { ascending: false }).limit(3),
     ]);
+
     if (runR.error) throw runR.error;
     if (!runR.data) throw new Error("Run não encontrada");
     const isMt5Source = settingsR.data?.price_source === "mt5_xp_demo";
     const allOrders = (ordersR.data ?? []) as any[];
-    const allCountOrders = (legacyOrdersR.data ?? []) as any[];
     const visibleOrders = isMt5Source
-      ? allCountOrders.filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider")
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 500)
-      : allOrders;
+      ? allOrders.filter((o) => o.quote_source === "MT5 XP DEMO" && o.provider_name === "B3QuoteProvider").slice(0, 500)
+      : allOrders.slice(0, 500);
     const hiddenLegacyCount = isMt5Source
-      ? allCountOrders.filter((o) => o.quote_source !== "MT5 XP DEMO" || o.provider_name !== "B3QuoteProvider").length
+      ? allOrders.filter((o) => o.quote_source !== "MT5 XP DEMO" || o.provider_name !== "B3QuoteProvider").length
       : 0;
+
     const visibleModes = isMt5Source
       ? ((modesR.data ?? []) as any[]).map((m) => {
         const orders = visibleOrders.filter((o) => o.mode === m.mode);
@@ -306,6 +309,23 @@ export async function runB3SimulationTick(
     openOrdersCache = o ?? [];
     return openOrdersCache;
   }
+
+  // ── Travas de I/O (não alteram estratégia) ────────────────────────────────
+  // 1) dedup: o mesmo quote_tick_ts não é reprocessado;
+  // 2) throttle: snapshot histórico persistido no máximo 1x/10s (reaproveita a linha);
+  // 3) assinaturas: votos e contadores gravados só quando o estado muda.
+  const { data: lastSnapRow } = await supabase.from("b3_simulation_market_snapshots")
+    .select("id, market_time, quote_tick_ts, extra")
+    .eq("simulation_run_id", runId).eq("user_id", userId)
+    .order("market_time", { ascending: false }).limit(1).maybeSingle();
+  let lastSnap: any = lastSnapRow ?? null;
+  const writeSigs: Record<string, string> = { ...(((lastSnapRow as any)?.extra?.write_sigs as any) ?? {}) };
+  function sigChanged(key: string, value: string) {
+    if (writeSigs[key] === value) return false;
+    writeSigs[key] = value;
+    return true;
+  }
+
 
   // PnL realizado SOMENTE no dia de hoje (BRT) — usado para gate de
   // daily_loss_limit / daily_gain_target. Antes usávamos m.realized_pnl
@@ -556,7 +576,7 @@ export async function runB3SimulationTick(
       .gte("market_time", startOfDayBr)
       .lte("market_time", nowIso)
       .order("market_time", { ascending: false })
-      .limit(800);
+      .limit(300);
     return data ?? [];
   }
 
@@ -781,12 +801,24 @@ export async function runB3SimulationTick(
     const derived = deriveMarketMetrics(marketHistory, ctx, priceSrc);
 
     const invalidMt5 = mt5InvalidReason(priceSrc);
+
+    // Dedup: se o tick é exatamente o mesmo já processado e não há posição
+    // aberta para gerenciar, nada muda — evita gravações e leituras repetidas.
+    const tickTs = priceSrc.raw?.tick_ts ?? null;
+    const sameTick = Boolean(tickTs && lastSnap?.quote_tick_ts
+      && new Date(tickTs).getTime() === new Date(lastSnap.quote_tick_ts).getTime());
+    if (sameTick && ((await getOpen()) ?? []).length === 0) {
+      log.push({ action: "tick_dedup", reason: "quote_tick_ts repetido", tick_ts: tickTs });
+      continue;
+    }
+
     await invalidateLegacyOrdersForMt5(priceSrc);
     const macroBlock = (macros ?? []).find((m: any) => {
       const a = new Date(m.block_start).getTime();
       const b = new Date(m.block_end).getTime();
       return now.getTime() >= a && now.getTime() <= b;
     });
+
     const globalProtectionActive = Boolean(invalidMt5 || macroBlock);
     const globalProtectionReason = invalidMt5
       ? invalidMt5
@@ -811,29 +843,41 @@ export async function runB3SimulationTick(
         checks: priceSrc.guard_evaluation.checks,
       } : null,
     };
-    const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
-      .insert({
-        simulation_run_id: runId, user_id: userId, symbol: "WIN",
-        price: ctx.price, candle_open: ctx.open, candle_high: ctx.high, candle_low: ctx.low,
-        candle_close: ctx.price, volume: ctx.volume_ratio, vwap: ctx.vwap,
-        market_time: now.toISOString(),
-        source: priceSrc.live ? `mt5:${priceSrc.server ?? "xp"}` : (priceSrc.source === "mt5_xp_demo" ? "mt5:sem_tick" : "mock"),
-        quote_source: priceSrc.quote_source,
-        quote_server: priceSrc.server,
-        quote_symbol: priceSrc.quote_symbol,
-        quote_tick_ts: priceSrc.raw?.tick_ts ?? null,
-        quote_bid: priceSrc.raw?.bid ?? null,
-        quote_ask: priceSrc.raw?.ask ?? null,
-        quote_last: priceSrc.raw?.last ?? null,
-        provider_name: priceSrc.provider_name,
-        extra: snapshotExtra,
-      }).select("id").single();
-    if (sErr) throw sErr;
+    const snapPayload: any = {
+      symbol: "WIN",
+      price: ctx.price, candle_open: ctx.open, candle_high: ctx.high, candle_low: ctx.low,
+      candle_close: ctx.price, volume: ctx.volume_ratio, vwap: ctx.vwap,
+      market_time: now.toISOString(),
+      source: priceSrc.live ? `mt5:${priceSrc.server ?? "xp"}` : (priceSrc.source === "mt5_xp_demo" ? "mt5:sem_tick" : "mock"),
+      quote_source: priceSrc.quote_source,
+      quote_server: priceSrc.server,
+      quote_symbol: priceSrc.quote_symbol,
+      quote_tick_ts: tickTs,
+      quote_bid: priceSrc.raw?.bid ?? null,
+      quote_ask: priceSrc.raw?.ask ?? null,
+      quote_last: priceSrc.raw?.last ?? null,
+      provider_name: priceSrc.provider_name,
+    };
+    // Throttle de histórico: dentro de 10s reaproveitamos a última linha
+    // (atualizada no fim do tick) em vez de inserir um novo snapshot.
+    const reuseSnap = Boolean(lastSnap?.id && (now.getTime() - new Date(lastSnap.market_time).getTime()) < 10_000);
+    let snapId: string;
+    if (reuseSnap) {
+      snapId = lastSnap.id;
+    } else {
+      const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
+        .insert({ simulation_run_id: runId, user_id: userId, ...snapPayload, extra: snapshotExtra })
+        .select("id").single();
+      if (sErr) throw sErr;
+      snapId = snapIns.id;
+    }
+    lastSnap = { id: snapId, market_time: snapPayload.market_time, quote_tick_ts: tickTs };
+
 
 
     const intendedSide: B3Side = ctx.ema9 >= ctx.ema21 ? "buy" : "sell";
     const tickAudit: any = {
-      snapshot_id: snapIns.id,
+      snapshot_id: snapId,
       tick_index: i + 1,
       timestamp: now.toISOString(),
       source: priceSrc.source,
@@ -1229,12 +1273,15 @@ export async function runB3SimulationTick(
       }
       if (macroBlock) {
         log.push({ mode, action: "skip", reason: `macro:${macroBlock.name}` });
-        await supabase.from("b3_simulation_modes")
-          .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
-        m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        if (sigChanged(`block:${mode}`, `macro:${macroBlock.name}`)) {
+          await supabase.from("b3_simulation_modes")
+            .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
+          m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        }
         finalizeAudit(`Proteção global: evento macro ${macroBlock.name}.`);
         continue;
       }
+
       if (open) {
         finalizeAudit("Posição já aberta — motor apenas gerencia stop/gain/zeragem.", {
           last_setup: `Posição ${open.side.toUpperCase()} aberta`,
@@ -1260,9 +1307,12 @@ export async function runB3SimulationTick(
       };
       const localCtx = { ...ctx };
       if (localCtx.volatility_pct > Number(cfg.max_volatility_pct)) {
-        await supabase.from("b3_simulation_modes")
-          .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
-        m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        if (sigChanged(`block:${mode}`, "volatility")) {
+          await supabase.from("b3_simulation_modes")
+            .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
+          m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        }
+
         log.push({ mode, action: "skip", reason: "volatilidade" });
         finalizeAudit("Bloqueado por volatilidade.");
         continue;
@@ -1302,22 +1352,30 @@ export async function runB3SimulationTick(
           : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
       );
 
-      const voteRows = votes.map(v => ({
-        simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
-        mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
-        market_data_snapshot: {
-          snapshot_id: snapIns.id, decision: decision.final, score: decision.score,
-          price: ctx.price, side: intendedSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
-        } as any,
-      }));
-      await supabase.from("b3_simulation_agent_votes").insert(voteRows);
+      // Votos: gravados só quando o comitê muda (mesmo veredito em ticks
+      // seguidos não gera novas linhas). Nenhuma regra de decisão é alterada.
+      const voteSig = `${decision.final}|${intendedSide}|${votes.map(v => `${v.agent_name}:${v.vote}:${Math.round(Number(v.confidence) || 0)}`).join(",")}`;
+      if (sigChanged(`votes:${mode}`, voteSig)) {
+        const voteRows = votes.map(v => ({
+          simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
+          mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
+          market_data_snapshot: {
+            snapshot_id: snapId, decision: decision.final, score: decision.score,
+            price: ctx.price, side: intendedSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
+          } as any,
+        }));
+        await supabase.from("b3_simulation_agent_votes").insert(voteRows);
+      }
 
       if (decision.final === "approved" && !setupAllowed) {
         // Comitê aprovou, mas o setup técnico não é operável (Fase 1: só trend_pullback).
         const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "critérios de trend_pullback não atendidos"}`;
-        await supabase.from("b3_simulation_modes")
-          .update({ committee_rejections: (Number(m.committee_rejections) || 0) + 1 }).eq("id", m.id);
-        m.committee_rejections = (Number(m.committee_rejections) || 0) + 1;
+        if (sigChanged(`block:${mode}`, `no_valid_setup:${setupInfo.name}`)) {
+          await supabase.from("b3_simulation_modes")
+            .update({ committee_rejections: (Number(m.committee_rejections) || 0) + 1 }).eq("id", m.id);
+          m.committee_rejections = (Number(m.committee_rejections) || 0) + 1;
+        }
+
         log.push({ mode, action: "reject", reason: "no_valid_setup", setup: setupInfo.name, side: intendedSide });
         finalizeAudit(reason, {
           last_analysis: decision.justification,
@@ -1397,9 +1455,11 @@ export async function runB3SimulationTick(
         });
       } else {
         const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
-        await supabase.from("b3_simulation_modes")
-          .update({ [field]: (Number(m[field]) || 0) + 1 }).eq("id", m.id);
-        m[field] = (Number(m[field]) || 0) + 1;
+        if (sigChanged(`block:${mode}`, `${decision.final}:${field}`)) {
+          await supabase.from("b3_simulation_modes")
+            .update({ [field]: (Number(m[field]) || 0) + 1 }).eq("id", m.id);
+          m[field] = (Number(m[field]) || 0) + 1;
+        }
         log.push({ mode, action: "reject", final: decision.final, score: decision.score });
         finalizeAudit(finalReasonFromDecision(decision, committee), {
           last_analysis: decision.justification,
@@ -1413,11 +1473,15 @@ export async function runB3SimulationTick(
       }
     }
     snapshotExtra.engine_audit = tickAudit;
+    snapshotExtra.write_sigs = writeSigs;
+    // Uma única gravação por tick: quando a linha é reaproveitada, também
+    // atualizamos preço/cotação para o painel refletir o tick atual.
     await supabase.from("b3_simulation_market_snapshots")
-      .update({ extra: snapshotExtra })
-      .eq("id", snapIns.id)
+      .update(reuseSnap ? { ...snapPayload, extra: snapshotExtra } : { extra: snapshotExtra })
+      .eq("id", snapId)
       .eq("user_id", userId);
-    log.push({ action: "engine_audit", snapshot_id: snapIns.id, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+    log.push({ action: "engine_audit", snapshot_id: snapId, reused_snapshot: reuseSnap, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+
   }
 
   return { ok: true, processed: ticks, log: [{ action: "provider_diagnostic", ...providerStats }, ...log] };
@@ -1483,9 +1547,11 @@ export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
     if (!scope.latest) return { run: null, audit: null, snapshot: null, settings: [], price_source: null, executions: [], restart_count: 0, session_date: null };
     const activeRun = scope.runs.find((r) => r.status === "running" || r.status === "paused") ?? scope.latest;
     const [{ data: snapshot }, { data: settings }, { data: tradeSettings }] = await Promise.all([
-      (supabase as any).from("b3_simulation_market_snapshots").select("*")
+      (supabase as any).from("b3_simulation_market_snapshots")
+        .select("id, market_time, price, volume, vwap, source, quote_source, quote_server, quote_symbol, quote_tick_ts, quote_bid, quote_ask, quote_last, provider_name, extra")
         .in("simulation_run_id", scope.runIds).eq("user_id", userId)
         .order("market_time", { ascending: false }).limit(1).maybeSingle(),
+
       (supabase as any).from("b3_simulation_mode_settings").select("*")
         .eq("simulation_run_id", activeRun.id).eq("user_id", userId),
       (supabase as any).from("b3_trading_settings").select("price_source")
@@ -1547,7 +1613,7 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
       .select("id, market_time, extra, simulation_run_id")
       .in("simulation_run_id", scope.runIds).eq("user_id", userId)
       .order("market_time", { ascending: false })
-      .limit(2000);
+      .limit(400);
 
     const list = (snaps ?? []).filter((s: any) => s?.extra?.engine_audit);
 
@@ -1719,7 +1785,7 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
       .in("simulation_run_id", scope.runIds).eq("user_id", userId)
       .gte("market_time", since)
       .order("market_time", { ascending: true })
-      .limit(10000);
+      .limit(1200);
 
     const { data: orders } = await (supabase as any).from("b3_simulation_orders")
       .select("mode, status, net_result_brl, entry_time")

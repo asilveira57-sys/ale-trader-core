@@ -41,7 +41,7 @@ function Mt5SimPage() {
   const legacyFetch = useServerFn(getLegacyMt5Dashboard);
   const cmpFetch = useServerFn(getLegacyVsMt5Comparative);
   const tickLegacyFn = useServerFn(tickLegacyMt5Now);
-  const dashboardInterval = useVisibleRefetchInterval(10000);
+  const dashboardInterval = useVisibleRefetchInterval(15000);
   const legacyInterval = useVisibleRefetchInterval(15000);
   const comparativeInterval = useVisibleRefetchInterval(30000);
 
@@ -612,7 +612,7 @@ while True:
 
 function ManualDeskPanel({ symbol, feedingServer, getState, openFn, closeFn, invertFn }: { symbol: string; feedingServer: string; getState: any; openFn: any; closeFn: any; invertFn: any }) {
   const qc = useQueryClient();
-  const manualInterval = useVisibleRefetchInterval(5000);
+  const manualInterval = useVisibleRefetchInterval(10000);
   const { data: st, isLoading } = useQuery({ queryKey: ["b3-mt5sim-manual"], queryFn: () => getState({}), refetchInterval: manualInterval, refetchIntervalInBackground: false });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["b3-mt5sim-manual"] });
   const [contracts, setContracts] = useState<number>(1);
