@@ -909,20 +909,15 @@ async function runB3SimulationTickInner(
       quote_last: priceSrc.raw?.last ?? null,
       provider_name: priceSrc.provider_name,
     };
-    // Throttle de histórico: dentro de 10s reaproveitamos a última linha
-    // (atualizada no fim do tick) em vez de inserir um novo snapshot.
-    const reuseSnap = Boolean(lastSnap?.id && (now.getTime() - new Date(lastSnap.market_time).getTime()) < 10_000);
-    let snapId: string;
-    if (reuseSnap) {
-      snapId = lastSnap.id;
-    } else {
-      const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
-        .insert({ simulation_run_id: runId, user_id: userId, ...snapPayload, extra: snapshotExtra })
-        .select("id").single();
-      if (sErr) throw sErr;
-      snapId = snapIns.id;
-    }
-    lastSnap = { id: snapId, market_time: snapPayload.market_time, quote_tick_ts: tickTs };
+    // Hard throttle: nenhuma gravação intermediária aqui. O snapshot só é
+    // persistido (1 INSERT) no fim do tick, e no máximo 1x a cada 10s.
+    // Entre as persistências, preço e cotação ficam apenas em memória.
+    const persistSnapshot = (now.getTime() - memo.persisted_at) >= SNAP_PERSIST_MS;
+    memo.quote_tick_ts = tickTs;
+    memo.last_price = ctx.price;
+    memo.last_quote = { bid: priceSrc.raw?.bid ?? null, ask: priceSrc.raw?.ask ?? null, last: priceSrc.raw?.last ?? null, tick_ts: tickTs };
+    const snapId: string | null = persistSnapshot ? null : memo.id;
+
 
 
 
