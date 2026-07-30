@@ -855,8 +855,9 @@ async function runB3SimulationTickInner(
     // Dedup: se o tick é exatamente o mesmo já processado e não há posição
     // aberta para gerenciar, nada muda — evita gravações e leituras repetidas.
     const tickTs = priceSrc.raw?.tick_ts ?? null;
-    const sameTick = Boolean(tickTs && lastSnap?.quote_tick_ts
-      && new Date(tickTs).getTime() === new Date(lastSnap.quote_tick_ts).getTime());
+    const sameTick = Boolean(tickTs && memo.quote_tick_ts
+      && new Date(tickTs).getTime() === new Date(memo.quote_tick_ts).getTime());
+
     if (sameTick && ((await getOpen()) ?? []).length === 0) {
       log.push({ action: "tick_dedup", reason: "quote_tick_ts repetido", tick_ts: tickTs });
       continue;
