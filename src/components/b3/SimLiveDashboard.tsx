@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ export function SimLiveDashboard() {
   const listRuns = useServerFn(listB3Simulations);
   const getLive = useServerFn(getB3SimLiveDashboard);
 
+  const liveInterval = useVisibleRefetchInterval(20000);
   const runsQ = useQuery({ queryKey: ["b3-sim-runs"], queryFn: () => listRuns() });
   const effRun = runId ?? runsQ.data?.[0]?.id ?? null;
 
@@ -45,7 +47,8 @@ export function SimLiveDashboard() {
     queryKey: ["b3-sim-live", effRun, hours],
     queryFn: () => getLive({ data: { run_id: effRun!, hours } }),
     enabled: !!effRun,
-    refetchInterval: paused ? false : 15000,
+    refetchInterval: paused ? false : liveInterval,
+    refetchIntervalInBackground: false,
   });
 
   const d = liveQ.data;
