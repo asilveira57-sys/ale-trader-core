@@ -124,15 +124,22 @@ function aVolume(c: B3Context, side: B3Side): B3AgentVote {
   const strong = c.volume_ratio > 1.3;
   const weak = c.volume_ratio < 0.7;
   const dirOk = (side === "buy" && c.price > c.vwap) || (side === "sell" && c.price < c.vwap);
+  // Volume fraco só rejeita quando o preço TAMBÉM está do lado errado do VWAP.
+  // Antes, volume fraco rejeitava mesmo com VWAP a favor — o mesmo sinal
+  // (fluxo) derrubava consenso e, em seguida, a penalização por rejeição.
+  const vote: B3Vote = strong && dirOk ? "approve" : (weak && !dirOk) ? "reject" : "neutral";
   return {
     agent_name: "Volume / VWAP",
-    vote: strong && dirOk ? "approve" : weak ? "reject" : "neutral",
+    vote,
     confidence: clamp(40 + Math.abs(c.volume_ratio - 1) * 40, 30, 90),
-    reason: `Volume ${c.volume_ratio.toFixed(2)}x média. Preço ${c.price > c.vwap ? "acima" : "abaixo"} do VWAP.`,
+    reason: `Volume ${c.volume_ratio.toFixed(2)}x média. Preço ${c.price > c.vwap ? "acima" : "abaixo"} do VWAP${
+      weak && dirOk ? " — fluxo fraco, mas direção a favor (neutro)." : "."
+    }`,
     has_veto: false,
-    data: { volume_ratio: c.volume_ratio, vwap: c.vwap, price: c.price },
+    data: { volume_ratio: c.volume_ratio, vwap: c.vwap, price: c.price, dir_ok: dirOk, weak, strong },
   };
 }
+
 
 function aTecnico(c: B3Context, side: B3Side): B3AgentVote {
   const macdBull = c.macd > c.macd_signal;
@@ -163,20 +170,26 @@ function aMomentum(c: B3Context, side: B3Side): B3AgentVote {
   };
 }
 
-function aVolatilidade(c: B3Context): B3AgentVote {
-  const tooHigh = c.volatility_pct > 3.5;
-  const tooLow = c.volatility_pct < 0.6;
+function aVolatilidade(c: B3Context, t?: B3AgentTuning): B3AgentVote {
+  // Usa o MESMO limite do modo (cfg.max_volatility_pct). Antes eram 3,5% fixos,
+  // contraditórios com o gate do motor: um modo com limite 6% passava no gate
+  // e mesmo assim recebia "reject" do agente pelo mesmo valor de volatilidade.
+  const maxPct = Number(t?.max_volatility_pct ?? 3.5);
+  const minPct = Number(t?.min_volatility_pct ?? 0.6);
+  const tooHigh = c.volatility_pct > maxPct;
+  const tooLow = c.volatility_pct < minPct;
   return {
     agent_name: "Volatilidade",
-    vote: tooHigh || tooLow ? "reject" : "approve",
+    vote: tooHigh ? "reject" : tooLow ? "neutral" : "approve",
     confidence: 70,
-    reason: tooHigh ? `Volatilidade ${c.volatility_pct.toFixed(1)}% acima do tolerável.` :
-            tooLow ? `Volatilidade ${c.volatility_pct.toFixed(1)}% muito baixa — sem fluxo.` :
-            `Volatilidade ${c.volatility_pct.toFixed(1)}% adequada.`,
+    reason: tooHigh ? `Volatilidade ${c.volatility_pct.toFixed(2)}% acima do limite do modo (${maxPct.toFixed(2)}%).` :
+            tooLow ? `Volatilidade ${c.volatility_pct.toFixed(2)}% abaixo de ${minPct.toFixed(2)}% — fluxo fraco (neutro).` :
+            `Volatilidade ${c.volatility_pct.toFixed(2)}% dentro do limite do modo (${maxPct.toFixed(2)}%).`,
     has_veto: false,
-    data: { volatility_pct: c.volatility_pct, spread_pts: c.spread_pts },
+    data: { volatility_pct: c.volatility_pct, spread_pts: c.spread_pts, max_volatility_pct: maxPct, min_volatility_pct: minPct },
   };
 }
+
 
 function aHorario(c: B3Context, risk: B3RiskState): B3AgentVote {
   if (!risk.inside_hours || c.session_phase === "fora") {
@@ -226,12 +239,14 @@ function aAntiTendencia(c: B3Context, side: B3Side): B3AgentVote {
   };
 }
 
-function aRisco(c: B3Context, side: B3Side, r: B3RiskState): B3AgentVote {
+function aRisco(c: B3Context, side: B3Side, r: B3RiskState, t?: B3AgentTuning): B3AgentVote {
   const lossHit = r.realized_today_brl <= -r.daily_loss_limit;
   const gainHit = r.realized_today_brl >= r.daily_gain_target;
   const overContracts = r.open_contracts + r.requested_qty > r.max_contracts;
-  const stopPts = 150, gainPts = 300;
-  const rr = gainPts / stopPts;
+  // Stop/gain reais do modo (antes eram 150/300 fixos para os 5 modos).
+  const stopPts = Number(t?.stop_pts ?? 150);
+  const gainPts = Number(t?.gain_pts ?? 300);
+  const rr = stopPts > 0 ? gainPts / stopPts : 0;
   const block = lossHit || gainHit || overContracts;
   const reasons: string[] = [];
   if (lossHit) reasons.push(`Perda diária atingida (${r.realized_today_brl.toFixed(2)}).`);
@@ -241,36 +256,51 @@ function aRisco(c: B3Context, side: B3Side, r: B3RiskState): B3AgentVote {
     agent_name: "Risco",
     vote: block ? "reject" : "approve",
     confidence: 90,
-    reason: block ? reasons.join(" ") : `R/R ${rr.toFixed(1)} aceitável.`,
+    reason: block ? reasons.join(" ") : `R/R ${rr.toFixed(2)} (stop ${stopPts} / gain ${gainPts}) aceitável.`,
     has_veto: block,
     veto_reason: block ? reasons.join(" ") : undefined,
     data: { realized: r.realized_today_brl, loss_limit: r.daily_loss_limit, gain_target: r.daily_gain_target,
-            open_contracts: r.open_contracts, requested: r.requested_qty, max: r.max_contracts, rr },
+            open_contracts: r.open_contracts, requested: r.requested_qty, max: r.max_contracts,
+            stop_pts: stopPts, gain_pts: gainPts, rr },
   };
 }
 
-export function runB3Agents(c: B3Context, side: B3Side, risk: B3RiskState): B3AgentVote[] {
+/** Parâmetros por modo repassados aos agentes, para que os 5 modos não avaliem
+ *  o mesmo tick com constantes idênticas. */
+export interface B3AgentTuning {
+  max_volatility_pct?: number;
+  min_volatility_pct?: number;
+  stop_pts?: number;
+  gain_pts?: number;
+}
+
+export function runB3Agents(c: B3Context, side: B3Side, risk: B3RiskState, tuning?: B3AgentTuning): B3AgentVote[] {
   return [
     aTendencia(c, side),
     aVolume(c, side),
     aTecnico(c, side),
     aMomentum(c, side),
-    aVolatilidade(c),
+    aVolatilidade(c, tuning),
     aHorario(c, risk),
     aAntiTendencia(c, side),
-    aRisco(c, side, risk),
+    aRisco(c, side, risk, tuning),
   ];
 }
 
+
 export interface B3ScoreComposition {
   agents_consulted: number;
-  consensus_pct: number;         // (approve/total)*100
-  reject_pct: number;            // (reject/total)*100
+  consensus_pct: number;         // approve / (approve+reject) * 100 — consenso direcional
+  reject_pct: number;            // (reject/total)*100 — apenas informativo
+  decisive_pct: number;          // (approve+reject)/total*100 — participação
   avg_confidence: number;        // média das confianças
   consensus_component: number;   // 0.45 * consensus_pct
   confidence_component: number;  // 0.35 * avg
-  reject_penalty_component: number; // 0.20 * (100 - reject_pct)
+  participation_component: number;  // 0.20 * decisive_pct
+  /** @deprecated mantido para compatibilidade do painel — igual a participation_component */
+  reject_penalty_component: number;
   raw_score: number;             // soma antes do cap por veto
+
   veto_cap_applied: boolean;
   veto_cap_value: number;        // 25 quando aplicado, senão 100
   final_score: number;           // após veto e clamp
@@ -323,12 +353,18 @@ export function buildB3Decision(
   }
   const total = votes.length || 1;
   const avg = conf / total;
-  const consensusPct = (approve / total) * 100;
+  // Consenso DIRECIONAL: neutros não contam como "contra". Antes, um agente
+  // neutro reduzia o consenso e o mesmo reject ainda era penalizado de novo
+  // no terceiro componente (dupla penalização do mesmo sinal).
+  const decisive = approve + reject;
+  const consensusPct = decisive > 0 ? (approve / decisive) * 100 : 0;
   const rejectPct = (reject / total) * 100;
+  const decisivePct = (decisive / total) * 100;
   const consensusComponent = 0.45 * consensusPct;
   const confidenceComponent = 0.35 * avg;
-  const rejectPenaltyComponent = 0.20 * (100 - rejectPct);
-  const rawScore = consensusComponent + confidenceComponent + rejectPenaltyComponent;
+  const participationComponent = 0.20 * decisivePct;
+  const rawScore = consensusComponent + confidenceComponent + participationComponent;
+
   const vetoCapApplied = vetoes.length > 0;
   const vetoCapValue = vetoCapApplied ? 25 : 100;
   let score = rawScore;
@@ -360,10 +396,13 @@ export function buildB3Decision(
     agents_consulted: votes.length,
     consensus_pct: Number(consensusPct.toFixed(2)),
     reject_pct: Number(rejectPct.toFixed(2)),
+    decisive_pct: Number(decisivePct.toFixed(2)),
     avg_confidence: Number(avg.toFixed(2)),
     consensus_component: Number(consensusComponent.toFixed(2)),
     confidence_component: Number(confidenceComponent.toFixed(2)),
-    reject_penalty_component: Number(rejectPenaltyComponent.toFixed(2)),
+    participation_component: Number(participationComponent.toFixed(2)),
+    reject_penalty_component: Number(participationComponent.toFixed(2)),
+
     raw_score: Number(rawScore.toFixed(2)),
     veto_cap_applied: vetoCapApplied,
     veto_cap_value: vetoCapValue,

@@ -502,9 +502,11 @@ export function EngineDiagnosticPanel({ detail }: { detail: any }) {
                         </div>
                         <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4 text-[11px]">
                           <div><span className="text-muted-foreground">Agentes consultados: </span><span className="font-mono">{dc.score_composition.agents_consulted}</span></div>
-                          <div><span className="text-muted-foreground">Consenso (aprovações): </span><span className="font-mono">{dc.score_composition.consensus_pct}% · +{dc.score_composition.consensus_component}</span></div>
+                          <div><span className="text-muted-foreground">Consenso direcional: </span><span className="font-mono">{dc.score_composition.consensus_pct}% · +{dc.score_composition.consensus_component}</span></div>
                           <div><span className="text-muted-foreground">Confiança média: </span><span className="font-mono">{dc.score_composition.avg_confidence} · +{dc.score_composition.confidence_component}</span></div>
-                          <div><span className="text-muted-foreground">Penalização rejeições: </span><span className="font-mono">{dc.score_composition.reject_pct}% · +{dc.score_composition.reject_penalty_component}</span></div>
+                          <div><span className="text-muted-foreground">Participação (decisivos): </span><span className="font-mono">{dc.score_composition.decisive_pct ?? "—"}% · +{dc.score_composition.participation_component ?? dc.score_composition.reject_penalty_component}</span></div>
+                          <div><span className="text-muted-foreground">Rejeições (informativo): </span><span className="font-mono">{dc.score_composition.reject_pct}%</span></div>
+
                           <div><span className="text-muted-foreground">Score bruto: </span><span className="font-mono">{dc.score_composition.raw_score}</span></div>
                           <div><span className="text-muted-foreground">Cap por veto: </span><span className="font-mono">{dc.score_composition.veto_cap_applied ? `sim (≤ ${dc.score_composition.veto_cap_value})` : "não"}</span></div>
                           <div><span className="text-muted-foreground">Score final: </span><span className="font-mono font-medium">{dc.score_composition.final_score}</span></div>
@@ -864,7 +866,11 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder 
   const pnl = Number(mm.pnl_periodo ?? 0);
 
   // ─────── Status ao vivo derivado do último tick auditado ───────
-  const firstBlock = audit?.checks?.find?.((c: any) => c.blocking && !c.ok) ?? audit?.first_stop ?? null;
+  // Auditoria antiga (máquina desligada / sem tick) não pode ser lida como
+  // falha atual: acima de 3 min a leitura vira "aguardando tick".
+  const auditAgeS = audit?.timestamp ? (Date.now() - new Date(audit.timestamp).getTime()) / 1000 : null;
+  const auditStale = auditAgeS != null && auditAgeS > 180;
+  const firstBlock = auditStale ? null : (audit?.checks?.find?.((c: any) => c.blocking && !c.ok) ?? audit?.first_stop ?? null);
   const committee = audit?.committee ?? null;
   const cfgLoaded = audit?.config_loaded ?? null;
   const minScore = cfgLoaded?.score != null ? Number(cfgLoaded.score) : null;
@@ -876,12 +882,18 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder 
   const vetoes: string[] = Array.isArray(committee?.vetoes) ? committee.vetoes : [];
   const signalSide = audit?.signals?.evaluated_side ?? committee?.side ?? null;
   const canResumeToday = baseStatus.canResumeToday;
+  // Tick voltou válido → o modo volta sozinho ao estado operacional, mesmo que
+  // o último status persistido ainda seja um erro técnico antigo.
+  const quoteOkNow = !auditStale && audit?.checks?.some?.((c: any) => c.key === "valid_quote" && c.ok);
 
   let liveLabel = baseStatus.label;
   let liveCls = baseStatus.cls;
   if (openOrder) {
     liveLabel = `Posição ${String(openOrder.side).toUpperCase()} aberta`;
     liveCls = "bg-sky-500/15 text-sky-300 border-sky-500/30";
+  } else if (auditStale) {
+    liveLabel = "Aguardando tick MT5";
+    liveCls = "bg-slate-500/15 text-slate-300 border-slate-500/30";
   } else if (audit && canResumeToday && mm.current_status !== "bloqueado_perda_diaria" && mm.current_status !== "bloqueado_meta_diaria") {
     if (firstBlock) {
       liveLabel = `Bloqueado para entrada · ${firstBlock.label ?? firstBlock.key}`;
@@ -889,8 +901,12 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder 
     } else if (committee && committee.final !== "approved") {
       liveLabel = "Aguardando aprovação";
       liveCls = "bg-slate-500/15 text-slate-300 border-slate-500/30";
+    } else if (quoteOkNow && mm.current_status === "erro_tecnico") {
+      liveLabel = "Operando (tick restabelecido)";
+      liveCls = "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
     }
   }
+
 
   const gaps: string[] = [];
   if (curScore != null && minScore != null && curScore < minScore) gaps.push(`+${(minScore - curScore).toFixed(0)} score`);
