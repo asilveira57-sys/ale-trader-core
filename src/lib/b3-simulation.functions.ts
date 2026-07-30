@@ -517,7 +517,8 @@ async function runB3SimulationTickInner(
         diagnostic_payload: { function: "invalidateLegacyOrdersForMt5", order_quote_source: o.quote_source, order_provider_name: o.provider_name, ...quoteAuditBase(info) },
       });
     }
-    await recomputeModeTotalsFromValidMt5Orders();
+    await recomputeModeTotalsFromValidMt5Orders(true);
+
   }
 
   function orderAuditPatch(audit: B3QuoteExecutionAudit) {
