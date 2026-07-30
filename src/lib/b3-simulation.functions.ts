@@ -1449,9 +1449,11 @@ export async function runB3SimulationTick(
         });
       } else {
         const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
-        await supabase.from("b3_simulation_modes")
-          .update({ [field]: (Number(m[field]) || 0) + 1 }).eq("id", m.id);
-        m[field] = (Number(m[field]) || 0) + 1;
+        if (sigChanged(`block:${mode}`, `${decision.final}:${field}`)) {
+          await supabase.from("b3_simulation_modes")
+            .update({ [field]: (Number(m[field]) || 0) + 1 }).eq("id", m.id);
+          m[field] = (Number(m[field]) || 0) + 1;
+        }
         log.push({ mode, action: "reject", final: decision.final, score: decision.score });
         finalizeAudit(finalReasonFromDecision(decision, committee), {
           last_analysis: decision.justification,
@@ -1465,11 +1467,15 @@ export async function runB3SimulationTick(
       }
     }
     snapshotExtra.engine_audit = tickAudit;
+    snapshotExtra.write_sigs = writeSigs;
+    // Uma única gravação por tick: quando a linha é reaproveitada, também
+    // atualizamos preço/cotação para o painel refletir o tick atual.
     await supabase.from("b3_simulation_market_snapshots")
-      .update({ extra: snapshotExtra })
+      .update(reuseSnap ? { ...snapPayload, extra: snapshotExtra } : { extra: snapshotExtra })
       .eq("id", snapId)
       .eq("user_id", userId);
-    log.push({ action: "engine_audit", snapshot_id: snapId, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+    log.push({ action: "engine_audit", snapshot_id: snapId, reused_snapshot: reuseSnap, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+
   }
 
   return { ok: true, processed: ticks, log: [{ action: "provider_diagnostic", ...providerStats }, ...log] };
