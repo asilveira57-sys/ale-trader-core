@@ -807,7 +807,7 @@ export async function runB3SimulationTick(
     const tickTs = priceSrc.raw?.tick_ts ?? null;
     const sameTick = Boolean(tickTs && lastSnap?.quote_tick_ts
       && new Date(tickTs).getTime() === new Date(lastSnap.quote_tick_ts).getTime());
-    if (sameTick && (await getOpen()).length === 0) {
+    if (sameTick && ((await getOpen()) ?? []).length === 0) {
       log.push({ action: "tick_dedup", reason: "quote_tick_ts repetido", tick_ts: tickTs });
       continue;
     }
