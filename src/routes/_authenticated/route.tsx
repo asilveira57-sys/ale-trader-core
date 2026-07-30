@@ -80,13 +80,14 @@ function AuthErrorBoundary({ error, reset }: { error: Error; reset: () => void }
           reset();
           return;
         }
-        if (!cancelled && !recovery.definitive) {
+        if (!cancelled && (!recovery.definitive || recovery.transient)) {
           setStatus("retrying");
           await wait(AUTH_RECOVERY_RETRY_MS);
           await router.invalidate();
           reset();
           return;
         }
+
       } catch {
         if (!cancelled) setStatus("retrying");
         await wait(AUTH_RECOVERY_RETRY_MS);
