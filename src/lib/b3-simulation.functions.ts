@@ -425,9 +425,14 @@ async function runB3SimulationTickInner(
     return guardEval.ok ? null : (guardEval.first_block_reason ?? "Guard MT5 rejeitou o tick.");
   }
 
-  async function recomputeModeTotalsFromValidMt5Orders() {
+  let totalsComputedOnce = false;
+  async function recomputeModeTotalsFromValidMt5Orders(force = false) {
+    // I/O: só recalcula uma vez por execução, salvo mudança real de ordens.
+    if (totalsComputedOnce && !force) return;
+    totalsComputedOnce = true;
     const { data: validOrders } = await supabase.from("b3_simulation_orders")
-      .select("*").eq("simulation_run_id", runId).eq("user_id", userId)
+      .select("id, mode, status, quantity, fees, net_result_brl, gross_result_points, exit_time, created_at")
+      .eq("simulation_run_id", runId).eq("user_id", userId)
       .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider");
     const byMode: Record<string, any[]> = {};
     for (const mode of MODES) byMode[mode] = [];
@@ -439,7 +444,6 @@ async function runB3SimulationTickInner(
       if (!m) continue;
       const orders = byMode[mode] ?? [];
       const closed = orders.filter((o) => o.status === "closed");
-      const open = orders.filter((o) => o.status === "open");
       const realized = closed.reduce((s, o) => s + Number(o.net_result_brl ?? 0), 0);
       const fees = orders.reduce((s, o) => s + Number(o.fees ?? 0), 0);
       const wins = closed.filter((o) => Number(o.net_result_brl ?? 0) > 0).length;
@@ -468,9 +472,11 @@ async function runB3SimulationTickInner(
         points_result: points,
         contracts_traded: contracts,
       };
+      // Grava só quando há mudança real de estado.
+      const changed = Object.entries(patch).some(([k, v]) => Number(m[k] ?? 0) !== Number(v ?? 0));
+      if (!changed) continue;
       await supabase.from("b3_simulation_modes").update(patch).eq("id", m.id).eq("user_id", userId);
       Object.assign(m, patch);
-      if (open.length === 0) continue;
     }
   }
 
@@ -478,7 +484,10 @@ async function runB3SimulationTickInner(
     if (info.source !== "mt5_xp_demo") return;
     const { data: legacyOrders } = await supabase.from("b3_simulation_orders")
       .select("id, mode, status, entry_price, exit_price, quote_source, provider_name")
-      .eq("simulation_run_id", runId).eq("user_id", userId);
+      .eq("simulation_run_id", runId).eq("user_id", userId)
+      .in("status", ["open", "closed"]);
+    // Só ordens ainda ativas/fechadas — as já canceladas não são reprocessadas
+    // (era isto que gerava UPDATE e evento a cada tick).
     const rows = (legacyOrders ?? []).filter((o: any) => o.quote_source !== "MT5 XP DEMO" || o.provider_name !== "B3QuoteProvider");
     if (!rows.length) {
       await recomputeModeTotalsFromValidMt5Orders();
@@ -493,7 +502,8 @@ async function runB3SimulationTickInner(
     }).in("id", ids).eq("user_id", userId);
     providerStats.legacy_orders_invalidated += rows.length;
     openOrdersCache = null;
-    for (const o of rows.slice(0, 20)) {
+    for (const o of rows.slice(0, 5)) {
+
       const m = modeByName[o.mode];
       if (!m) continue;
       await recordStatusIfChanged(o.mode, m, m.current_status ?? "operando", "legacy_price_invalidated", {
