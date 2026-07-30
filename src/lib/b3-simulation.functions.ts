@@ -1273,12 +1273,15 @@ export async function runB3SimulationTick(
       }
       if (macroBlock) {
         log.push({ mode, action: "skip", reason: `macro:${macroBlock.name}` });
-        await supabase.from("b3_simulation_modes")
-          .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
-        m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        if (sigChanged(`block:${mode}`, `macro:${macroBlock.name}`)) {
+          await supabase.from("b3_simulation_modes")
+            .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
+          m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        }
         finalizeAudit(`Proteção global: evento macro ${macroBlock.name}.`);
         continue;
       }
+
       if (open) {
         finalizeAudit("Posição já aberta — motor apenas gerencia stop/gain/zeragem.", {
           last_setup: `Posição ${open.side.toUpperCase()} aberta`,
