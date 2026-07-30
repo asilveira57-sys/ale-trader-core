@@ -186,14 +186,19 @@ export const getB3SimulationDetail = createServerFn({ method: "POST" })
   .inputValidator((d: { run_id: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const [runR, modesR, settingsR, ordersR, legacyOrdersR, snapsR] = await Promise.all([
+    // I/O: sem select("*") em tabelas grandes e limites enxutos — a tela usa
+    // no máximo 60 ordens e o último snapshot (engine_audit).
+    const ORDER_COLS = "id, mode, side, status, symbol, contract_code, entry_price, exit_price, exit_time, created_at, quantity, fees, gross_result_brl, gross_result_points, net_result_brl, close_reason, quote_source, provider_name";
+    const [runR, modesR, settingsR, ordersR, snapsR] = await Promise.all([
       (supabase as any).from("b3_simulation_runs").select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle(),
       (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId),
       (supabase as any).from("b3_trading_settings").select("price_source").eq("user_id", userId).maybeSingle(),
-      (supabase as any).from("b3_simulation_orders").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: false }).limit(500),
-      (supabase as any).from("b3_simulation_orders").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).limit(5000),
-      (supabase as any).from("b3_simulation_market_snapshots").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("market_time", { ascending: false }).limit(120),
+      (supabase as any).from("b3_simulation_orders").select(ORDER_COLS).eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: false }).limit(800),
+      (supabase as any).from("b3_simulation_market_snapshots")
+        .select("id, market_time, price, quote_source, quote_server, quote_symbol, quote_tick_ts, quote_bid, quote_ask, quote_last, provider_name, extra")
+        .eq("simulation_run_id", data.run_id).eq("user_id", userId).order("market_time", { ascending: false }).limit(3),
     ]);
+
     if (runR.error) throw runR.error;
     if (!runR.data) throw new Error("Run não encontrada");
     const isMt5Source = settingsR.data?.price_source === "mt5_xp_demo";
