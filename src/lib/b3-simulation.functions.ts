@@ -256,6 +256,20 @@ export const getB3SimulationDetail = createServerFn({ method: "POST" })
   });
 
 // ───────────────────── tick (core, reutilizado por hook público) ─────────────────────
+// Estado de I/O em memória (por isolate). Não altera estratégia — apenas evita
+// gravações e leituras repetidas no banco.
+type SnapMemo = {
+  id: string | null;
+  persisted_at: number;        // epoch ms da última persistência real
+  quote_tick_ts: string | null;
+  write_sigs: Record<string, string>;
+  last_price: number | null;   // preço/cotação atuais mantidos só em memória
+  last_quote: any;
+};
+const SNAP_MEMO = new Map<string, SnapMemo>();
+const TICK_LOCKS = new Map<string, number>();
+const SNAP_PERSIST_MS = 10_000;
+
 export async function runB3SimulationTick(
   supabase: any,
   userId: string,
@@ -263,6 +277,28 @@ export async function runB3SimulationTick(
   ticks = 1,
 ): Promise<{ ok?: boolean; skipped?: boolean; reason?: string; processed?: number; log: any[] }> {
   ticks = Math.min(Math.max(1, Number(ticks)), 60);
+
+  // Lock: impede execuções sobrepostas (cron + UI) para a mesma run.
+  const lockKey = `${userId}:${runId}`;
+  const lockedAt = TICK_LOCKS.get(lockKey);
+  if (lockedAt && Date.now() - lockedAt < 55_000) {
+    return { skipped: true, reason: "tick_em_execucao", log: [] };
+  }
+  TICK_LOCKS.set(lockKey, Date.now());
+  try {
+    return await runB3SimulationTickInner(supabase, userId, runId, ticks);
+  } finally {
+    TICK_LOCKS.delete(lockKey);
+  }
+}
+
+async function runB3SimulationTickInner(
+  supabase: any,
+  userId: string,
+  runId: string,
+  ticks: number,
+): Promise<{ ok?: boolean; skipped?: boolean; reason?: string; processed?: number; log: any[] }> {
+
 
   const { data: run, error: runErr } = await supabase.from("b3_simulation_runs")
     .select("*").eq("id", runId).eq("user_id", userId).maybeSingle();
@@ -312,19 +348,33 @@ export async function runB3SimulationTick(
 
   // ── Travas de I/O (não alteram estratégia) ────────────────────────────────
   // 1) dedup: o mesmo quote_tick_ts não é reprocessado;
-  // 2) throttle: snapshot histórico persistido no máximo 1x/10s (reaproveita a linha);
-  // 3) assinaturas: votos e contadores gravados só quando o estado muda.
-  const { data: lastSnapRow } = await supabase.from("b3_simulation_market_snapshots")
-    .select("id, market_time, quote_tick_ts, extra")
-    .eq("simulation_run_id", runId).eq("user_id", userId)
-    .order("market_time", { ascending: false }).limit(1).maybeSingle();
-  let lastSnap: any = lastSnapRow ?? null;
-  const writeSigs: Record<string, string> = { ...(((lastSnapRow as any)?.extra?.write_sigs as any) ?? {}) };
+  // 2) hard throttle: no máximo 1 gravação de snapshot a cada 10s por
+  //    user_id + símbolo + run. Entre elas, preço/cotação ficam só em memória;
+  // 3) assinaturas: votos, eventos e contadores gravados só quando o estado muda.
+  const memoKey = `${userId}:${runId}:WIN`;
+  let memo = SNAP_MEMO.get(memoKey);
+  if (!memo) {
+    const { data: lastSnapRow } = await supabase.from("b3_simulation_market_snapshots")
+      .select("id, market_time, quote_tick_ts, extra")
+      .eq("simulation_run_id", runId).eq("user_id", userId)
+      .order("market_time", { ascending: false }).limit(1).maybeSingle();
+    memo = {
+      id: lastSnapRow?.id ?? null,
+      persisted_at: lastSnapRow?.market_time ? new Date(lastSnapRow.market_time).getTime() : 0,
+      quote_tick_ts: lastSnapRow?.quote_tick_ts ?? null,
+      write_sigs: { ...(((lastSnapRow as any)?.extra?.write_sigs as any) ?? {}) },
+      last_price: null,
+      last_quote: null,
+    };
+    SNAP_MEMO.set(memoKey, memo);
+  }
+  const writeSigs: Record<string, string> = memo.write_sigs;
   function sigChanged(key: string, value: string) {
     if (writeSigs[key] === value) return false;
     writeSigs[key] = value;
     return true;
   }
+
 
 
   // PnL realizado SOMENTE no dia de hoje (BRT) — usado para gate de
@@ -375,9 +425,14 @@ export async function runB3SimulationTick(
     return guardEval.ok ? null : (guardEval.first_block_reason ?? "Guard MT5 rejeitou o tick.");
   }
 
-  async function recomputeModeTotalsFromValidMt5Orders() {
+  let totalsComputedOnce = false;
+  async function recomputeModeTotalsFromValidMt5Orders(force = false) {
+    // I/O: só recalcula uma vez por execução, salvo mudança real de ordens.
+    if (totalsComputedOnce && !force) return;
+    totalsComputedOnce = true;
     const { data: validOrders } = await supabase.from("b3_simulation_orders")
-      .select("*").eq("simulation_run_id", runId).eq("user_id", userId)
+      .select("id, mode, status, quantity, fees, net_result_brl, gross_result_points, exit_time, created_at")
+      .eq("simulation_run_id", runId).eq("user_id", userId)
       .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider");
     const byMode: Record<string, any[]> = {};
     for (const mode of MODES) byMode[mode] = [];
@@ -389,7 +444,6 @@ export async function runB3SimulationTick(
       if (!m) continue;
       const orders = byMode[mode] ?? [];
       const closed = orders.filter((o) => o.status === "closed");
-      const open = orders.filter((o) => o.status === "open");
       const realized = closed.reduce((s, o) => s + Number(o.net_result_brl ?? 0), 0);
       const fees = orders.reduce((s, o) => s + Number(o.fees ?? 0), 0);
       const wins = closed.filter((o) => Number(o.net_result_brl ?? 0) > 0).length;
@@ -418,9 +472,11 @@ export async function runB3SimulationTick(
         points_result: points,
         contracts_traded: contracts,
       };
+      // Grava só quando há mudança real de estado.
+      const changed = Object.entries(patch).some(([k, v]) => Number(m[k] ?? 0) !== Number(v ?? 0));
+      if (!changed) continue;
       await supabase.from("b3_simulation_modes").update(patch).eq("id", m.id).eq("user_id", userId);
       Object.assign(m, patch);
-      if (open.length === 0) continue;
     }
   }
 
@@ -428,7 +484,10 @@ export async function runB3SimulationTick(
     if (info.source !== "mt5_xp_demo") return;
     const { data: legacyOrders } = await supabase.from("b3_simulation_orders")
       .select("id, mode, status, entry_price, exit_price, quote_source, provider_name")
-      .eq("simulation_run_id", runId).eq("user_id", userId);
+      .eq("simulation_run_id", runId).eq("user_id", userId)
+      .in("status", ["open", "closed"]);
+    // Só ordens ainda ativas/fechadas — as já canceladas não são reprocessadas
+    // (era isto que gerava UPDATE e evento a cada tick).
     const rows = (legacyOrders ?? []).filter((o: any) => o.quote_source !== "MT5 XP DEMO" || o.provider_name !== "B3QuoteProvider");
     if (!rows.length) {
       await recomputeModeTotalsFromValidMt5Orders();
@@ -443,7 +502,8 @@ export async function runB3SimulationTick(
     }).in("id", ids).eq("user_id", userId);
     providerStats.legacy_orders_invalidated += rows.length;
     openOrdersCache = null;
-    for (const o of rows.slice(0, 20)) {
+    for (const o of rows.slice(0, 5)) {
+
       const m = modeByName[o.mode];
       if (!m) continue;
       await recordStatusIfChanged(o.mode, m, m.current_status ?? "operando", "legacy_price_invalidated", {
@@ -457,7 +517,8 @@ export async function runB3SimulationTick(
         diagnostic_payload: { function: "invalidateLegacyOrdersForMt5", order_quote_source: o.quote_source, order_provider_name: o.provider_name, ...quoteAuditBase(info) },
       });
     }
-    await recomputeModeTotalsFromValidMt5Orders();
+    await recomputeModeTotalsFromValidMt5Orders(true);
+
   }
 
   function orderAuditPatch(audit: B3QuoteExecutionAudit) {
@@ -805,8 +866,9 @@ export async function runB3SimulationTick(
     // Dedup: se o tick é exatamente o mesmo já processado e não há posição
     // aberta para gerenciar, nada muda — evita gravações e leituras repetidas.
     const tickTs = priceSrc.raw?.tick_ts ?? null;
-    const sameTick = Boolean(tickTs && lastSnap?.quote_tick_ts
-      && new Date(tickTs).getTime() === new Date(lastSnap.quote_tick_ts).getTime());
+    const sameTick = Boolean(tickTs && memo.quote_tick_ts
+      && new Date(tickTs).getTime() === new Date(memo.quote_tick_ts).getTime());
+
     if (sameTick && ((await getOpen()) ?? []).length === 0) {
       log.push({ action: "tick_dedup", reason: "quote_tick_ts repetido", tick_ts: tickTs });
       continue;
@@ -858,20 +920,15 @@ export async function runB3SimulationTick(
       quote_last: priceSrc.raw?.last ?? null,
       provider_name: priceSrc.provider_name,
     };
-    // Throttle de histórico: dentro de 10s reaproveitamos a última linha
-    // (atualizada no fim do tick) em vez de inserir um novo snapshot.
-    const reuseSnap = Boolean(lastSnap?.id && (now.getTime() - new Date(lastSnap.market_time).getTime()) < 10_000);
-    let snapId: string;
-    if (reuseSnap) {
-      snapId = lastSnap.id;
-    } else {
-      const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
-        .insert({ simulation_run_id: runId, user_id: userId, ...snapPayload, extra: snapshotExtra })
-        .select("id").single();
-      if (sErr) throw sErr;
-      snapId = snapIns.id;
-    }
-    lastSnap = { id: snapId, market_time: snapPayload.market_time, quote_tick_ts: tickTs };
+    // Hard throttle: nenhuma gravação intermediária aqui. O snapshot só é
+    // persistido (1 INSERT) no fim do tick, e no máximo 1x a cada 10s.
+    // Entre as persistências, preço e cotação ficam apenas em memória.
+    const persistSnapshot = (now.getTime() - memo.persisted_at) >= SNAP_PERSIST_MS;
+    memo.quote_tick_ts = tickTs;
+    memo.last_price = ctx.price;
+    memo.last_quote = { bid: priceSrc.raw?.bid ?? null, ask: priceSrc.raw?.ask ?? null, last: priceSrc.raw?.last ?? null, tick_ts: tickTs };
+    const snapId: string | null = persistSnapshot ? null : memo.id;
+
 
 
 
@@ -1010,7 +1067,7 @@ export async function runB3SimulationTick(
           price_source: priceSrc.quote_source,
           rejected_price: ctx.price,
           mt5_last: priceSrc.raw?.last ?? null,
-          forceLog: true,
+          forceLog: false,
           diagnostic_payload: {
             function: "runB3SimulationTick",
             provider: priceSrc.provider_name,
@@ -1107,8 +1164,8 @@ export async function runB3SimulationTick(
         now_iso: now.toISOString(),
       });
 
-      // Persistir runtime de proteção.
-      await supabase.from("b3_simulation_modes").update({
+      // Persistir runtime de proteção — apenas quando algo muda de fato.
+      const protPatch = {
         protection_state: protDec.next.protection_state,
         target_reached_at: protDec.next.target_reached_at,
         profit_at_target_brl: protDec.next.profit_at_target_brl,
@@ -1119,19 +1176,18 @@ export async function runB3SimulationTick(
         consecutive_losses_after_target: protDec.next.consecutive_losses_after_target,
         protection_block_reason: protDec.next.protection_block_reason,
         protection_day_key: todayKey,
-      }).eq("id", m.id);
-      Object.assign(m, {
-        protection_state: protDec.next.protection_state,
-        target_reached_at: protDec.next.target_reached_at,
-        profit_at_target_brl: protDec.next.profit_at_target_brl,
-        trades_at_target: protDec.next.trades_at_target,
-        peak_profit_after_target_brl: protDec.next.peak_profit_after_target_brl,
-        profit_after_target_brl: protDec.next.profit_after_target_brl,
-        trades_after_target: protDec.next.trades_after_target,
-        consecutive_losses_after_target: protDec.next.consecutive_losses_after_target,
-        protection_block_reason: protDec.next.protection_block_reason,
-        protection_day_key: todayKey,
+      } as Record<string, any>;
+      const protChanged = Object.entries(protPatch).some(([k, v]) => {
+        const cur = m[k] ?? null;
+        const next = v ?? null;
+        if (typeof next === "number" || typeof cur === "number") return Number(cur ?? 0) !== Number(next ?? 0);
+        return String(cur ?? "") !== String(next ?? "");
       });
+      if (protChanged) {
+        await supabase.from("b3_simulation_modes").update(protPatch).eq("id", m.id);
+        Object.assign(m, protPatch);
+      }
+
 
       if (protDec.transition) {
         try {
@@ -1192,7 +1248,7 @@ export async function runB3SimulationTick(
             price_source: priceSrc.quote_source,
             rejected_price: ctx.price,
             mt5_last: priceSrc.raw?.last ?? null,
-            forceLog: true,
+            forceLog: false,
             diagnostic_payload: { function: "runB3SimulationTick.markToMarket", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
           log.push({ mode, action: "skip", reason: "price_guard", message: (e as Error).message });
@@ -1400,7 +1456,7 @@ export async function runB3SimulationTick(
             price_source: priceSrc.quote_source,
             rejected_price: ctx.price,
             mt5_last: priceSrc.raw?.last ?? null,
-            forceLog: true,
+            forceLog: false,
             diagnostic_payload: { function: "runB3SimulationTick.openOrder", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
           log.push({ mode, action: "blocked", reason: "price_guard", message: (e as Error).message });
@@ -1474,13 +1530,19 @@ export async function runB3SimulationTick(
     }
     snapshotExtra.engine_audit = tickAudit;
     snapshotExtra.write_sigs = writeSigs;
-    // Uma única gravação por tick: quando a linha é reaproveitada, também
-    // atualizamos preço/cotação para o painel refletir o tick atual.
-    await supabase.from("b3_simulation_market_snapshots")
-      .update(reuseSnap ? { ...snapPayload, extra: snapshotExtra } : { extra: snapshotExtra })
-      .eq("id", snapId)
-      .eq("user_id", userId);
-    log.push({ action: "engine_audit", snapshot_id: snapId, reused_snapshot: reuseSnap, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+    // Persistência única: 1 INSERT a cada 10s. Fora da janela, nada é gravado
+    // (sem INSERT, UPDATE ou UPSERT) — o estado corrente vive só em memória.
+    if (persistSnapshot) {
+      const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
+        .insert({ simulation_run_id: runId, user_id: userId, ...snapPayload, extra: snapshotExtra })
+        .select("id").single();
+      if (sErr) throw sErr;
+      memo.id = snapIns.id;
+      memo.persisted_at = now.getTime();
+      tickAudit.snapshot_id = snapIns.id;
+    }
+    log.push({ action: "engine_audit", snapshot_id: memo.id, persisted: persistSnapshot, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+
 
   }
 
