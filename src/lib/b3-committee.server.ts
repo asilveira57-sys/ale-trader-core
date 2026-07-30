@@ -290,13 +290,17 @@ export function runB3Agents(c: B3Context, side: B3Side, risk: B3RiskState, tunin
 
 export interface B3ScoreComposition {
   agents_consulted: number;
-  consensus_pct: number;         // (approve/total)*100
-  reject_pct: number;            // (reject/total)*100
+  consensus_pct: number;         // approve / (approve+reject) * 100 — consenso direcional
+  reject_pct: number;            // (reject/total)*100 — apenas informativo
+  decisive_pct: number;          // (approve+reject)/total*100 — participação
   avg_confidence: number;        // média das confianças
   consensus_component: number;   // 0.45 * consensus_pct
   confidence_component: number;  // 0.35 * avg
-  reject_penalty_component: number; // 0.20 * (100 - reject_pct)
+  participation_component: number;  // 0.20 * decisive_pct
+  /** @deprecated mantido para compatibilidade do painel — igual a participation_component */
+  reject_penalty_component: number;
   raw_score: number;             // soma antes do cap por veto
+
   veto_cap_applied: boolean;
   veto_cap_value: number;        // 25 quando aplicado, senão 100
   final_score: number;           // após veto e clamp
