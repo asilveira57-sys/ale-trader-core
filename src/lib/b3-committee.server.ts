@@ -170,20 +170,26 @@ function aMomentum(c: B3Context, side: B3Side): B3AgentVote {
   };
 }
 
-function aVolatilidade(c: B3Context): B3AgentVote {
-  const tooHigh = c.volatility_pct > 3.5;
-  const tooLow = c.volatility_pct < 0.6;
+function aVolatilidade(c: B3Context, t?: B3AgentTuning): B3AgentVote {
+  // Usa o MESMO limite do modo (cfg.max_volatility_pct). Antes eram 3,5% fixos,
+  // contraditórios com o gate do motor: um modo com limite 6% passava no gate
+  // e mesmo assim recebia "reject" do agente pelo mesmo valor de volatilidade.
+  const maxPct = Number(t?.max_volatility_pct ?? 3.5);
+  const minPct = Number(t?.min_volatility_pct ?? 0.6);
+  const tooHigh = c.volatility_pct > maxPct;
+  const tooLow = c.volatility_pct < minPct;
   return {
     agent_name: "Volatilidade",
-    vote: tooHigh || tooLow ? "reject" : "approve",
+    vote: tooHigh ? "reject" : tooLow ? "neutral" : "approve",
     confidence: 70,
-    reason: tooHigh ? `Volatilidade ${c.volatility_pct.toFixed(1)}% acima do tolerável.` :
-            tooLow ? `Volatilidade ${c.volatility_pct.toFixed(1)}% muito baixa — sem fluxo.` :
-            `Volatilidade ${c.volatility_pct.toFixed(1)}% adequada.`,
+    reason: tooHigh ? `Volatilidade ${c.volatility_pct.toFixed(2)}% acima do limite do modo (${maxPct.toFixed(2)}%).` :
+            tooLow ? `Volatilidade ${c.volatility_pct.toFixed(2)}% abaixo de ${minPct.toFixed(2)}% — fluxo fraco (neutro).` :
+            `Volatilidade ${c.volatility_pct.toFixed(2)}% dentro do limite do modo (${maxPct.toFixed(2)}%).`,
     has_veto: false,
-    data: { volatility_pct: c.volatility_pct, spread_pts: c.spread_pts },
+    data: { volatility_pct: c.volatility_pct, spread_pts: c.spread_pts, max_volatility_pct: maxPct, min_volatility_pct: minPct },
   };
 }
+
 
 function aHorario(c: B3Context, risk: B3RiskState): B3AgentVote {
   if (!risk.inside_hours || c.session_phase === "fora") {
