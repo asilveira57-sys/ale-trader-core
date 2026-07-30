@@ -801,12 +801,24 @@ export async function runB3SimulationTick(
     const derived = deriveMarketMetrics(marketHistory, ctx, priceSrc);
 
     const invalidMt5 = mt5InvalidReason(priceSrc);
+
+    // Dedup: se o tick é exatamente o mesmo já processado e não há posição
+    // aberta para gerenciar, nada muda — evita gravações e leituras repetidas.
+    const tickTs = priceSrc.raw?.tick_ts ?? null;
+    const sameTick = Boolean(tickTs && lastSnap?.quote_tick_ts
+      && new Date(tickTs).getTime() === new Date(lastSnap.quote_tick_ts).getTime());
+    if (sameTick && (await getOpen()).length === 0) {
+      log.push({ action: "tick_dedup", reason: "quote_tick_ts repetido", tick_ts: tickTs });
+      continue;
+    }
+
     await invalidateLegacyOrdersForMt5(priceSrc);
     const macroBlock = (macros ?? []).find((m: any) => {
       const a = new Date(m.block_start).getTime();
       const b = new Date(m.block_end).getTime();
       return now.getTime() >= a && now.getTime() <= b;
     });
+
     const globalProtectionActive = Boolean(invalidMt5 || macroBlock);
     const globalProtectionReason = invalidMt5
       ? invalidMt5
