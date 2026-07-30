@@ -502,9 +502,11 @@ export function EngineDiagnosticPanel({ detail }: { detail: any }) {
                         </div>
                         <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4 text-[11px]">
                           <div><span className="text-muted-foreground">Agentes consultados: </span><span className="font-mono">{dc.score_composition.agents_consulted}</span></div>
-                          <div><span className="text-muted-foreground">Consenso (aprovações): </span><span className="font-mono">{dc.score_composition.consensus_pct}% · +{dc.score_composition.consensus_component}</span></div>
+                          <div><span className="text-muted-foreground">Consenso direcional: </span><span className="font-mono">{dc.score_composition.consensus_pct}% · +{dc.score_composition.consensus_component}</span></div>
                           <div><span className="text-muted-foreground">Confiança média: </span><span className="font-mono">{dc.score_composition.avg_confidence} · +{dc.score_composition.confidence_component}</span></div>
-                          <div><span className="text-muted-foreground">Penalização rejeições: </span><span className="font-mono">{dc.score_composition.reject_pct}% · +{dc.score_composition.reject_penalty_component}</span></div>
+                          <div><span className="text-muted-foreground">Participação (decisivos): </span><span className="font-mono">{dc.score_composition.decisive_pct ?? "—"}% · +{dc.score_composition.participation_component ?? dc.score_composition.reject_penalty_component}</span></div>
+                          <div><span className="text-muted-foreground">Rejeições (informativo): </span><span className="font-mono">{dc.score_composition.reject_pct}%</span></div>
+
                           <div><span className="text-muted-foreground">Score bruto: </span><span className="font-mono">{dc.score_composition.raw_score}</span></div>
                           <div><span className="text-muted-foreground">Cap por veto: </span><span className="font-mono">{dc.score_composition.veto_cap_applied ? `sim (≤ ${dc.score_composition.veto_cap_value})` : "não"}</span></div>
                           <div><span className="text-muted-foreground">Score final: </span><span className="font-mono font-medium">{dc.score_composition.final_score}</span></div>
