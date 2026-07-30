@@ -239,12 +239,14 @@ function aAntiTendencia(c: B3Context, side: B3Side): B3AgentVote {
   };
 }
 
-function aRisco(c: B3Context, side: B3Side, r: B3RiskState): B3AgentVote {
+function aRisco(c: B3Context, side: B3Side, r: B3RiskState, t?: B3AgentTuning): B3AgentVote {
   const lossHit = r.realized_today_brl <= -r.daily_loss_limit;
   const gainHit = r.realized_today_brl >= r.daily_gain_target;
   const overContracts = r.open_contracts + r.requested_qty > r.max_contracts;
-  const stopPts = 150, gainPts = 300;
-  const rr = gainPts / stopPts;
+  // Stop/gain reais do modo (antes eram 150/300 fixos para os 5 modos).
+  const stopPts = Number(t?.stop_pts ?? 150);
+  const gainPts = Number(t?.gain_pts ?? 300);
+  const rr = stopPts > 0 ? gainPts / stopPts : 0;
   const block = lossHit || gainHit || overContracts;
   const reasons: string[] = [];
   if (lossHit) reasons.push(`Perda diária atingida (${r.realized_today_brl.toFixed(2)}).`);
@@ -254,26 +256,37 @@ function aRisco(c: B3Context, side: B3Side, r: B3RiskState): B3AgentVote {
     agent_name: "Risco",
     vote: block ? "reject" : "approve",
     confidence: 90,
-    reason: block ? reasons.join(" ") : `R/R ${rr.toFixed(1)} aceitável.`,
+    reason: block ? reasons.join(" ") : `R/R ${rr.toFixed(2)} (stop ${stopPts} / gain ${gainPts}) aceitável.`,
     has_veto: block,
     veto_reason: block ? reasons.join(" ") : undefined,
     data: { realized: r.realized_today_brl, loss_limit: r.daily_loss_limit, gain_target: r.daily_gain_target,
-            open_contracts: r.open_contracts, requested: r.requested_qty, max: r.max_contracts, rr },
+            open_contracts: r.open_contracts, requested: r.requested_qty, max: r.max_contracts,
+            stop_pts: stopPts, gain_pts: gainPts, rr },
   };
 }
 
-export function runB3Agents(c: B3Context, side: B3Side, risk: B3RiskState): B3AgentVote[] {
+/** Parâmetros por modo repassados aos agentes, para que os 5 modos não avaliem
+ *  o mesmo tick com constantes idênticas. */
+export interface B3AgentTuning {
+  max_volatility_pct?: number;
+  min_volatility_pct?: number;
+  stop_pts?: number;
+  gain_pts?: number;
+}
+
+export function runB3Agents(c: B3Context, side: B3Side, risk: B3RiskState, tuning?: B3AgentTuning): B3AgentVote[] {
   return [
     aTendencia(c, side),
     aVolume(c, side),
     aTecnico(c, side),
     aMomentum(c, side),
-    aVolatilidade(c),
+    aVolatilidade(c, tuning),
     aHorario(c, risk),
     aAntiTendencia(c, side),
-    aRisco(c, side, risk),
+    aRisco(c, side, risk, tuning),
   ];
 }
+
 
 export interface B3ScoreComposition {
   agents_consulted: number;
