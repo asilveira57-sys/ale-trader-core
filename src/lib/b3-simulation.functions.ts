@@ -1346,22 +1346,30 @@ export async function runB3SimulationTick(
           : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
       );
 
-      const voteRows = votes.map(v => ({
-        simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
-        mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
-        market_data_snapshot: {
-          snapshot_id: snapId, decision: decision.final, score: decision.score,
-          price: ctx.price, side: intendedSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
-        } as any,
-      }));
-      await supabase.from("b3_simulation_agent_votes").insert(voteRows);
+      // Votos: gravados só quando o comitê muda (mesmo veredito em ticks
+      // seguidos não gera novas linhas). Nenhuma regra de decisão é alterada.
+      const voteSig = `${decision.final}|${intendedSide}|${votes.map(v => `${v.agent_name}:${v.vote}:${Math.round(Number(v.confidence) || 0)}`).join(",")}`;
+      if (sigChanged(`votes:${mode}`, voteSig)) {
+        const voteRows = votes.map(v => ({
+          simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
+          mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
+          market_data_snapshot: {
+            snapshot_id: snapId, decision: decision.final, score: decision.score,
+            price: ctx.price, side: intendedSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
+          } as any,
+        }));
+        await supabase.from("b3_simulation_agent_votes").insert(voteRows);
+      }
 
       if (decision.final === "approved" && !setupAllowed) {
         // Comitê aprovou, mas o setup técnico não é operável (Fase 1: só trend_pullback).
         const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "critérios de trend_pullback não atendidos"}`;
-        await supabase.from("b3_simulation_modes")
-          .update({ committee_rejections: (Number(m.committee_rejections) || 0) + 1 }).eq("id", m.id);
-        m.committee_rejections = (Number(m.committee_rejections) || 0) + 1;
+        if (sigChanged(`block:${mode}`, `no_valid_setup:${setupInfo.name}`)) {
+          await supabase.from("b3_simulation_modes")
+            .update({ committee_rejections: (Number(m.committee_rejections) || 0) + 1 }).eq("id", m.id);
+          m.committee_rejections = (Number(m.committee_rejections) || 0) + 1;
+        }
+
         log.push({ mode, action: "reject", reason: "no_valid_setup", setup: setupInfo.name, side: intendedSide });
         finalizeAudit(reason, {
           last_analysis: decision.justification,
