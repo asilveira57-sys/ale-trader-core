@@ -1994,47 +1994,6 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
 }
 
 
-// ───────────────────── macro events ─────────────────────
-export const listB3MacroEvents = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const { data, error } = await (supabase as any).from("b3_macro_events")
-      .select("*").eq("user_id", userId).order("block_start", { ascending: true });
-    if (error) throw error;
-    return data ?? [];
-  });
-
-export const upsertB3MacroEvent = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: { id?: string; name: string; category?: string; block_start: string; block_end: string; severity?: "low"|"medium"|"high"; active?: boolean; notes?: string }) => d)
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const row: any = {
-      user_id: userId, name: data.name, category: data.category ?? "macro",
-      block_start: data.block_start, block_end: data.block_end,
-      severity: data.severity ?? "high", active: data.active ?? true, notes: data.notes ?? null,
-    };
-    if (data.id) {
-      const { error } = await (supabase as any).from("b3_macro_events").update(row).eq("id", data.id).eq("user_id", userId);
-      if (error) throw error;
-      return { ok: true, id: data.id };
-    }
-    const { data: ins, error } = await (supabase as any).from("b3_macro_events").insert(row).select("id").single();
-    if (error) throw error;
-    return { ok: true, id: ins.id };
-  });
-
-export const deleteB3MacroEvent = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: { id: string }) => d)
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const { error } = await (supabase as any).from("b3_macro_events").delete().eq("id", data.id).eq("user_id", userId);
-    if (error) throw error;
-    return { ok: true };
-  });
-
 // ───────────────────── ranking / sugestão ─────────────────────
 export function scoreMode(m: any) {
   const net = Number(m.realized_pnl) || 0;
