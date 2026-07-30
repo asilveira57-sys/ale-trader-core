@@ -256,6 +256,20 @@ export const getB3SimulationDetail = createServerFn({ method: "POST" })
   });
 
 // ───────────────────── tick (core, reutilizado por hook público) ─────────────────────
+// Estado de I/O em memória (por isolate). Não altera estratégia — apenas evita
+// gravações e leituras repetidas no banco.
+type SnapMemo = {
+  id: string | null;
+  persisted_at: number;        // epoch ms da última persistência real
+  quote_tick_ts: string | null;
+  write_sigs: Record<string, string>;
+  last_price: number | null;   // preço/cotação atuais mantidos só em memória
+  last_quote: any;
+};
+const SNAP_MEMO = new Map<string, SnapMemo>();
+const TICK_LOCKS = new Map<string, number>();
+const SNAP_PERSIST_MS = 10_000;
+
 export async function runB3SimulationTick(
   supabase: any,
   userId: string,
@@ -263,6 +277,28 @@ export async function runB3SimulationTick(
   ticks = 1,
 ): Promise<{ ok?: boolean; skipped?: boolean; reason?: string; processed?: number; log: any[] }> {
   ticks = Math.min(Math.max(1, Number(ticks)), 60);
+
+  // Lock: impede execuções sobrepostas (cron + UI) para a mesma run.
+  const lockKey = `${userId}:${runId}`;
+  const lockedAt = TICK_LOCKS.get(lockKey);
+  if (lockedAt && Date.now() - lockedAt < 55_000) {
+    return { skipped: true, reason: "tick_em_execucao", log: [] };
+  }
+  TICK_LOCKS.set(lockKey, Date.now());
+  try {
+    return await runB3SimulationTickInner(supabase, userId, runId, ticks);
+  } finally {
+    TICK_LOCKS.delete(lockKey);
+  }
+}
+
+async function runB3SimulationTickInner(
+  supabase: any,
+  userId: string,
+  runId: string,
+  ticks: number,
+): Promise<{ ok?: boolean; skipped?: boolean; reason?: string; processed?: number; log: any[] }> {
+
 
   const { data: run, error: runErr } = await supabase.from("b3_simulation_runs")
     .select("*").eq("id", runId).eq("user_id", userId).maybeSingle();
