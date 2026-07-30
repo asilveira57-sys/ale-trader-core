@@ -1307,9 +1307,12 @@ export async function runB3SimulationTick(
       };
       const localCtx = { ...ctx };
       if (localCtx.volatility_pct > Number(cfg.max_volatility_pct)) {
-        await supabase.from("b3_simulation_modes")
-          .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
-        m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        if (sigChanged(`block:${mode}`, "volatility")) {
+          await supabase.from("b3_simulation_modes")
+            .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
+          m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+        }
+
         log.push({ mode, action: "skip", reason: "volatilidade" });
         finalizeAudit("Bloqueado por volatilidade.");
         continue;
