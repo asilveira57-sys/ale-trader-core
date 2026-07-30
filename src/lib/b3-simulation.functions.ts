@@ -1164,8 +1164,8 @@ async function runB3SimulationTickInner(
         now_iso: now.toISOString(),
       });
 
-      // Persistir runtime de proteção.
-      await supabase.from("b3_simulation_modes").update({
+      // Persistir runtime de proteção — apenas quando algo muda de fato.
+      const protPatch = {
         protection_state: protDec.next.protection_state,
         target_reached_at: protDec.next.target_reached_at,
         profit_at_target_brl: protDec.next.profit_at_target_brl,
@@ -1176,19 +1176,18 @@ async function runB3SimulationTickInner(
         consecutive_losses_after_target: protDec.next.consecutive_losses_after_target,
         protection_block_reason: protDec.next.protection_block_reason,
         protection_day_key: todayKey,
-      }).eq("id", m.id);
-      Object.assign(m, {
-        protection_state: protDec.next.protection_state,
-        target_reached_at: protDec.next.target_reached_at,
-        profit_at_target_brl: protDec.next.profit_at_target_brl,
-        trades_at_target: protDec.next.trades_at_target,
-        peak_profit_after_target_brl: protDec.next.peak_profit_after_target_brl,
-        profit_after_target_brl: protDec.next.profit_after_target_brl,
-        trades_after_target: protDec.next.trades_after_target,
-        consecutive_losses_after_target: protDec.next.consecutive_losses_after_target,
-        protection_block_reason: protDec.next.protection_block_reason,
-        protection_day_key: todayKey,
+      } as Record<string, any>;
+      const protChanged = Object.entries(protPatch).some(([k, v]) => {
+        const cur = m[k] ?? null;
+        const next = v ?? null;
+        if (typeof next === "number" || typeof cur === "number") return Number(cur ?? 0) !== Number(next ?? 0);
+        return String(cur ?? "") !== String(next ?? "");
       });
+      if (protChanged) {
+        await supabase.from("b3_simulation_modes").update(protPatch).eq("id", m.id);
+        Object.assign(m, protPatch);
+      }
+
 
       if (protDec.transition) {
         try {
