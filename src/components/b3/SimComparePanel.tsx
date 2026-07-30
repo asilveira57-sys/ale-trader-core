@@ -18,9 +18,9 @@ import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval"
 import {
   startB3Simulation, setB3SimulationStatus, setB3SimulationWinner,
   listB3Simulations, getB3SimulationDetail, tickB3Simulation,
-  listB3MacroEvents, upsertB3MacroEvent, deleteB3MacroEvent, scoreMode,
-  listB3ModeSettings, updateB3ModeSettings, resetB3ModeSettings,
+  scoreMode, listB3ModeSettings, updateB3ModeSettings, resetB3ModeSettings,
 } from "@/lib/b3-simulation.functions";
+import { listB3MacroEvents, upsertB3MacroEvent, deleteB3MacroEvent } from "@/lib/b3-macro-events.functions";
 import { getB3SimulationReport } from "@/lib/b3-reports.functions";
 
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -783,7 +783,22 @@ function MacroEventsCard() {
   const list = useServerFn(listB3MacroEvents);
   const upsert = useServerFn(upsertB3MacroEvent);
   const del = useServerFn(deleteB3MacroEvent);
-  const q = useQuery({ queryKey: ["b3-macro-events"], queryFn: () => list() });
+  const q = useQuery({
+    queryKey: ["b3-macro-events"],
+    queryFn: async () => {
+      try {
+        return await list();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/timeout|upstream|temporar|network|fetch/i.test(message)) {
+          return qc.getQueryData<any[]>(["b3-macro-events"]) ?? [];
+        }
+        throw error;
+      }
+    },
+    staleTime: 60_000,
+    retry: 2,
+  });
   const [form, setForm] = useState({ name: "", category: "macro", block_start: "", block_end: "", severity: "high" as const });
 
   const addM = useMutation({
