@@ -353,12 +353,18 @@ export function buildB3Decision(
   }
   const total = votes.length || 1;
   const avg = conf / total;
-  const consensusPct = (approve / total) * 100;
+  // Consenso DIRECIONAL: neutros não contam como "contra". Antes, um agente
+  // neutro reduzia o consenso e o mesmo reject ainda era penalizado de novo
+  // no terceiro componente (dupla penalização do mesmo sinal).
+  const decisive = approve + reject;
+  const consensusPct = decisive > 0 ? (approve / decisive) * 100 : 0;
   const rejectPct = (reject / total) * 100;
+  const decisivePct = (decisive / total) * 100;
   const consensusComponent = 0.45 * consensusPct;
   const confidenceComponent = 0.35 * avg;
-  const rejectPenaltyComponent = 0.20 * (100 - rejectPct);
-  const rawScore = consensusComponent + confidenceComponent + rejectPenaltyComponent;
+  const participationComponent = 0.20 * decisivePct;
+  const rawScore = consensusComponent + confidenceComponent + participationComponent;
+
   const vetoCapApplied = vetoes.length > 0;
   const vetoCapValue = vetoCapApplied ? 25 : 100;
   let score = rawScore;
