@@ -843,24 +843,36 @@ export async function runB3SimulationTick(
         checks: priceSrc.guard_evaluation.checks,
       } : null,
     };
-    const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
-      .insert({
-        simulation_run_id: runId, user_id: userId, symbol: "WIN",
-        price: ctx.price, candle_open: ctx.open, candle_high: ctx.high, candle_low: ctx.low,
-        candle_close: ctx.price, volume: ctx.volume_ratio, vwap: ctx.vwap,
-        market_time: now.toISOString(),
-        source: priceSrc.live ? `mt5:${priceSrc.server ?? "xp"}` : (priceSrc.source === "mt5_xp_demo" ? "mt5:sem_tick" : "mock"),
-        quote_source: priceSrc.quote_source,
-        quote_server: priceSrc.server,
-        quote_symbol: priceSrc.quote_symbol,
-        quote_tick_ts: priceSrc.raw?.tick_ts ?? null,
-        quote_bid: priceSrc.raw?.bid ?? null,
-        quote_ask: priceSrc.raw?.ask ?? null,
-        quote_last: priceSrc.raw?.last ?? null,
-        provider_name: priceSrc.provider_name,
-        extra: snapshotExtra,
-      }).select("id").single();
-    if (sErr) throw sErr;
+    const snapPayload: any = {
+      symbol: "WIN",
+      price: ctx.price, candle_open: ctx.open, candle_high: ctx.high, candle_low: ctx.low,
+      candle_close: ctx.price, volume: ctx.volume_ratio, vwap: ctx.vwap,
+      market_time: now.toISOString(),
+      source: priceSrc.live ? `mt5:${priceSrc.server ?? "xp"}` : (priceSrc.source === "mt5_xp_demo" ? "mt5:sem_tick" : "mock"),
+      quote_source: priceSrc.quote_source,
+      quote_server: priceSrc.server,
+      quote_symbol: priceSrc.quote_symbol,
+      quote_tick_ts: tickTs,
+      quote_bid: priceSrc.raw?.bid ?? null,
+      quote_ask: priceSrc.raw?.ask ?? null,
+      quote_last: priceSrc.raw?.last ?? null,
+      provider_name: priceSrc.provider_name,
+    };
+    // Throttle de histórico: dentro de 10s reaproveitamos a última linha
+    // (atualizada no fim do tick) em vez de inserir um novo snapshot.
+    const reuseSnap = Boolean(lastSnap?.id && (now.getTime() - new Date(lastSnap.market_time).getTime()) < 10_000);
+    let snapId: string;
+    if (reuseSnap) {
+      snapId = lastSnap.id;
+    } else {
+      const { data: snapIns, error: sErr } = await supabase.from("b3_simulation_market_snapshots")
+        .insert({ simulation_run_id: runId, user_id: userId, ...snapPayload, extra: snapshotExtra })
+        .select("id").single();
+      if (sErr) throw sErr;
+      snapId = snapIns.id;
+    }
+    lastSnap = { id: snapId, market_time: snapPayload.market_time, quote_tick_ts: tickTs };
+
 
 
     const intendedSide: B3Side = ctx.ema9 >= ctx.ema21 ? "buy" : "sell";
