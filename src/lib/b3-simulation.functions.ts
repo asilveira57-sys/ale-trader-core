@@ -513,7 +513,9 @@ async function runB3SimulationTickInner(
         price_source: info.quote_source,
         rejected_price: Number(o.exit_price ?? o.entry_price ?? 0),
         mt5_last: info.raw?.last ?? null,
-        forceLog: true,
+        // Evento idêntico não deve ser forçado novamente; o status/assinatura
+        // já impede tempestade de auditoria sem alterar a invalidação da ordem.
+        forceLog: false,
         diagnostic_payload: { function: "invalidateLegacyOrdersForMt5", order_quote_source: o.quote_source, order_provider_name: o.provider_name, ...quoteAuditBase(info) },
       });
     }
