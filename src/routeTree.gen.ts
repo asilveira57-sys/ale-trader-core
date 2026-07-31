@@ -68,6 +68,7 @@ import { Route as AuthenticatedAuditReportIdRouteImport } from './routes/_authen
 import { Route as AuthenticatedAnalysisAssetIdRouteImport } from './routes/_authenticated/analysis.$assetId'
 import { Route as ApiPublicHooksWeeklyReportRouteImport } from './routes/api/public/hooks/weekly-report'
 import { Route as ApiPublicHooksPipelineTickRouteImport } from './routes/api/public/hooks/pipeline-tick'
+import { Route as ApiPublicHooksHealthRouteImport } from './routes/api/public/hooks/health'
 import { Route as ApiPublicHooksDailyReportRouteImport } from './routes/api/public/hooks/daily-report'
 import { Route as ApiPublicHooksConfidenceRecomputeRouteImport } from './routes/api/public/hooks/confidence-recompute'
 import { Route as ApiPublicHooksB3SimulationTickRouteImport } from './routes/api/public/hooks/b3-simulation-tick'
@@ -395,6 +396,11 @@ const ApiPublicHooksPipelineTickRoute =
     path: '/api/public/hooks/pipeline-tick',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksHealthRoute = ApiPublicHooksHealthRouteImport.update({
+  id: '/api/public/hooks/health',
+  path: '/api/public/hooks/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksDailyReportRoute =
   ApiPublicHooksDailyReportRouteImport.update({
     id: '/api/public/hooks/daily-report',
@@ -494,6 +500,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
   '/api/public/hooks/confidence-recompute': typeof ApiPublicHooksConfidenceRecomputeRoute
   '/api/public/hooks/daily-report': typeof ApiPublicHooksDailyReportRoute
+  '/api/public/hooks/health': typeof ApiPublicHooksHealthRoute
   '/api/public/hooks/pipeline-tick': typeof ApiPublicHooksPipelineTickRoute
   '/api/public/hooks/weekly-report': typeof ApiPublicHooksWeeklyReportRoute
 }
@@ -560,6 +567,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
   '/api/public/hooks/confidence-recompute': typeof ApiPublicHooksConfidenceRecomputeRoute
   '/api/public/hooks/daily-report': typeof ApiPublicHooksDailyReportRoute
+  '/api/public/hooks/health': typeof ApiPublicHooksHealthRoute
   '/api/public/hooks/pipeline-tick': typeof ApiPublicHooksPipelineTickRoute
   '/api/public/hooks/weekly-report': typeof ApiPublicHooksWeeklyReportRoute
 }
@@ -628,6 +636,7 @@ export interface FileRoutesById {
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
   '/api/public/hooks/confidence-recompute': typeof ApiPublicHooksConfidenceRecomputeRoute
   '/api/public/hooks/daily-report': typeof ApiPublicHooksDailyReportRoute
+  '/api/public/hooks/health': typeof ApiPublicHooksHealthRoute
   '/api/public/hooks/pipeline-tick': typeof ApiPublicHooksPipelineTickRoute
   '/api/public/hooks/weekly-report': typeof ApiPublicHooksWeeklyReportRoute
 }
@@ -696,6 +705,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/b3-simulation-tick'
     | '/api/public/hooks/confidence-recompute'
     | '/api/public/hooks/daily-report'
+    | '/api/public/hooks/health'
     | '/api/public/hooks/pipeline-tick'
     | '/api/public/hooks/weekly-report'
   fileRoutesByTo: FileRoutesByTo
@@ -762,6 +772,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/b3-simulation-tick'
     | '/api/public/hooks/confidence-recompute'
     | '/api/public/hooks/daily-report'
+    | '/api/public/hooks/health'
     | '/api/public/hooks/pipeline-tick'
     | '/api/public/hooks/weekly-report'
   id:
@@ -829,6 +840,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/b3-simulation-tick'
     | '/api/public/hooks/confidence-recompute'
     | '/api/public/hooks/daily-report'
+    | '/api/public/hooks/health'
     | '/api/public/hooks/pipeline-tick'
     | '/api/public/hooks/weekly-report'
   fileRoutesById: FileRoutesById
@@ -843,6 +855,7 @@ export interface RootRouteChildren {
   ApiPublicHooksB3SimulationTickRoute: typeof ApiPublicHooksB3SimulationTickRoute
   ApiPublicHooksConfidenceRecomputeRoute: typeof ApiPublicHooksConfidenceRecomputeRoute
   ApiPublicHooksDailyReportRoute: typeof ApiPublicHooksDailyReportRoute
+  ApiPublicHooksHealthRoute: typeof ApiPublicHooksHealthRoute
   ApiPublicHooksPipelineTickRoute: typeof ApiPublicHooksPipelineTickRoute
   ApiPublicHooksWeeklyReportRoute: typeof ApiPublicHooksWeeklyReportRoute
 }
@@ -1262,6 +1275,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksPipelineTickRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/health': {
+      id: '/api/public/hooks/health'
+      path: '/api/public/hooks/health'
+      fullPath: '/api/public/hooks/health'
+      preLoaderRoute: typeof ApiPublicHooksHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/daily-report': {
       id: '/api/public/hooks/daily-report'
       path: '/api/public/hooks/daily-report'
@@ -1462,6 +1482,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksConfidenceRecomputeRoute:
     ApiPublicHooksConfidenceRecomputeRoute,
   ApiPublicHooksDailyReportRoute: ApiPublicHooksDailyReportRoute,
+  ApiPublicHooksHealthRoute: ApiPublicHooksHealthRoute,
   ApiPublicHooksPipelineTickRoute: ApiPublicHooksPipelineTickRoute,
   ApiPublicHooksWeeklyReportRoute: ApiPublicHooksWeeklyReportRoute,
 }
