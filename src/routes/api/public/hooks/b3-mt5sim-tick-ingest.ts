@@ -196,7 +196,9 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5sim-tick-ingest")(
         }
 
         // Gravação em background: não bloqueia a resposta do conector.
-        scheduleFlush(QUEUE.length >= 25 ? 0 : FLUSH_MIN_INTERVAL_MS);
+        // Inicia o flush sem aguardá-lo; quando ainda estiver dentro da janela,
+        // flushQueue agenda somente o tempo restante. A resposta não depende do banco.
+        void flushQueue();
 
         return json({ ok: true, received: true, server, queued: QUEUE.length, backend_ready: Date.now() >= circuitUntil, ms: Date.now() - t0 });
       },
