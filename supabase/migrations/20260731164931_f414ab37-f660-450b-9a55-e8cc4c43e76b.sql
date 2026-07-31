@@ -1,0 +1,3 @@
+CREATE UNIQUE INDEX IF NOT EXISTS uq_b3_mt5sim_quotes_stable_tick ON public.b3_mt5sim_quotes (user_id, symbol, tick_ts, bid, ask, last);
+CREATE INDEX IF NOT EXISTS idx_b3_sim_votes_run_user_created_desc ON public.b3_simulation_agent_votes (simulation_run_id, user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_b3_block_events_user_occurred_desc ON public.b3_simulation_block_events (user_id, occurred_at DESC);

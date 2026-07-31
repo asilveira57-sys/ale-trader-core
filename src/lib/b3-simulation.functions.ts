@@ -513,7 +513,9 @@ async function runB3SimulationTickInner(
         price_source: info.quote_source,
         rejected_price: Number(o.exit_price ?? o.entry_price ?? 0),
         mt5_last: info.raw?.last ?? null,
-        forceLog: true,
+        // Evento idêntico não deve ser forçado novamente; o status/assinatura
+        // já impede tempestade de auditoria sem alterar a invalidação da ordem.
+        forceLog: false,
         diagnostic_payload: { function: "invalidateLegacyOrdersForMt5", order_quote_source: o.quote_source, order_provider_name: o.provider_name, ...quoteAuditBase(info) },
       });
     }
@@ -632,7 +634,9 @@ async function runB3SimulationTickInner(
       return new Date(`${y}-${mo}-${da}T00:00:00-03:00`).toISOString();
     })();
     const { data } = await supabase.from("b3_simulation_market_snapshots")
-      .select("market_time, price, quote_bid, quote_ask, quote_last, volume, extra")
+      // O JSON `extra` tem em média 6,4 KB e não é usado no cálculo abaixo.
+      // Excluí-lo evita reler ~1,9 MB por execução do motor.
+      .select("market_time, price, quote_bid, quote_ask, quote_last, volume")
       .eq("user_id", userId)
       .gte("market_time", startOfDayBr)
       .lte("market_time", nowIso)

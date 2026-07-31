@@ -51,20 +51,64 @@ type QuoteRow = Record<string, unknown>;
 const QUEUE: QuoteRow[] = [];
 let flushing = false;
 let lastFlush = 0;
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let failStreak = 0;
+let circuitUntil = 0;
 const FLUSH_MIN_INTERVAL_MS = 2_000;
 const QUEUE_MAX = 200;
+const CIRCUIT_FAILURES = 3;
+const CIRCUIT_COOLDOWN_MS = 15_000;
+const ERROR_BUCKETS = new Map<string, { count: number; first: number; last: number }>();
+
+function aggregateError(kind: string, message: string) {
+  const now = Date.now();
+  const current = ERROR_BUCKETS.get(kind);
+  const bucket = current ?? { count: 0, first: now, last: now };
+  bucket.count += 1;
+  bucket.last = now;
+  ERROR_BUCKETS.set(kind, bucket);
+  // Um único log agregado por tipo/intervalo, nunca um log por tick.
+  if (!current || now - current.first >= 60_000) {
+    console.error("[tick-ingest] erro agregado", { kind, message, count: bucket.count, first: new Date(bucket.first).toISOString(), last: new Date(bucket.last).toISOString() });
+    ERROR_BUCKETS.set(kind, { count: 0, first: now, last: now });
+  }
+}
+
+function scheduleFlush(delay = FLUSH_MIN_INTERVAL_MS) {
+  if (flushTimer) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    void flushQueue();
+  }, delay);
+}
 
 async function flushQueue() {
   if (flushing || QUEUE.length === 0) return;
-  if (Date.now() - lastFlush < FLUSH_MIN_INTERVAL_MS && QUEUE.length < 25) return;
+  const now = Date.now();
+  if (now < circuitUntil) {
+    scheduleFlush(circuitUntil - now);
+    return;
+  }
+  if (now - lastFlush < FLUSH_MIN_INTERVAL_MS && QUEUE.length < 25) {
+    scheduleFlush(FLUSH_MIN_INTERVAL_MS - (now - lastFlush));
+    return;
+  }
   flushing = true;
   const batch = QUEUE.splice(0, QUEUE.length);
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await (supabaseAdmin as any).from("b3_mt5sim_quotes").insert(batch);
-    if (error) console.error("[tick-ingest] insert falhou", error.message, "rows:", batch.length);
+    const { error } = await (supabaseAdmin as any)
+      .from("b3_mt5sim_quotes")
+      .upsert(batch, { onConflict: "user_id,symbol,tick_ts,bid,ask,last", ignoreDuplicates: true });
+    if (error) throw error;
+    failStreak = 0;
   } catch (e) {
-    console.error("[tick-ingest] flush falhou", (e as Error).message);
+    failStreak += 1;
+    // O lote mais recente volta à frente da fila, limitado para nunca criar backlog infinito.
+    QUEUE.unshift(...batch.slice(-Math.max(0, QUEUE_MAX - QUEUE.length)));
+    aggregateError("flush", (e as Error).message);
+    if (failStreak >= CIRCUIT_FAILURES) circuitUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+    scheduleFlush(Math.min(30_000, 1_000 * (2 ** Math.min(failStreak, 5))));
   } finally {
     lastFlush = Date.now();
     flushing = false;
@@ -152,9 +196,11 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5sim-tick-ingest")(
         }
 
         // Gravação em background: não bloqueia a resposta do conector.
+        // Inicia o flush sem aguardá-lo; quando ainda estiver dentro da janela,
+        // flushQueue agenda somente o tempo restante. A resposta não depende do banco.
         void flushQueue();
 
-        return json({ ok: true, received: true, server, queued: QUEUE.length, ms: Date.now() - t0 });
+        return json({ ok: true, received: true, server, queued: QUEUE.length, backend_ready: Date.now() >= circuitUntil, ms: Date.now() - t0 });
       },
     },
   },
