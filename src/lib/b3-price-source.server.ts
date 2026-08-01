@@ -405,7 +405,12 @@ export async function getB3PriceContext(
     .order("tick_ts", { ascending: false })
     .limit(180);
 
-  const rows = (quotes as any[] | null) ?? [];
+  // Saneamento da fonte: a janela de indicadores nunca mistura ticks separados
+  // por interrupção > 120s nem pregões diferentes. Mantém o limite de 180 ticks
+  // e não altera fórmulas, períodos ou thresholds.
+  const sample_window = buildFreshWindow((quotes as any[] | null) ?? []);
+  const rows = sample_window.rows;
+
   if (!rows.length) {
     const info = {
       source, live: false, raw: null as B3QuoteProviderRaw | null,
