@@ -1707,6 +1707,8 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
         last_confidence: null,
         last_setup: null,
         last_decision_context: null as any,
+        last_decision_id: null as string | null,
+        last_decision_at: null as string | null,
         decisions: [] as any[],
         trade_events: [] as any[],
       };
