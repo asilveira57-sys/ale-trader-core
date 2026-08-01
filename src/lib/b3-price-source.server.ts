@@ -167,6 +167,17 @@ export interface B3PriceContextResult {
     normalized_pct: number;
     cap_pct: number;
   };
+  /** Diagnóstico (read-only) da janela de amostras usada nos indicadores.
+   *  Não altera nenhum cálculo — apenas expõe se a série atravessa uma
+   *  interrupção de ticks, o que distorce EMA/VWAP/volatilidade. */
+  series_health?: {
+    samples: number;
+    span_minutes: number | null;
+    oldest_sample_age_s: number | null;
+    largest_gap_s: number | null;
+    crosses_tick_gap: boolean;
+    gap_threshold_s: number;
+  };
 }
 
 function emptyContext(symbol: string, contract: string): B3Context {
@@ -476,6 +487,25 @@ export async function getB3PriceContext(
     normalized_pct: Number(volatility_pct.toFixed(4)),
     cap_pct: 10,
   };
+  // Saúde da janela de amostras (somente diagnóstico).
+  const GAP_THRESHOLD_S = 120;
+  const tsList = series
+    .map((r: any) => new Date(r.tick_ts ?? r.received_at ?? 0).getTime())
+    .filter((t: number) => Number.isFinite(t) && t > 0);
+  let largestGapS: number | null = null;
+  for (let i = 1; i < tsList.length; i++) {
+    const g = (tsList[i] - tsList[i - 1]) / 1000;
+    if (largestGapS == null || g > largestGapS) largestGapS = g;
+  }
+  const series_health = {
+    samples: prices.length,
+    span_minutes: tsList.length > 1 ? Number(((tsList[tsList.length - 1] - tsList[0]) / 60000).toFixed(2)) : null,
+    oldest_sample_age_s: tsList.length ? Math.max(0, Math.round((now.getTime() - tsList[0]) / 1000)) : null,
+    largest_gap_s: largestGapS != null ? Math.round(largestGapS) : null,
+    crosses_tick_gap: largestGapS != null && largestGapS > GAP_THRESHOLD_S,
+    gap_threshold_s: GAP_THRESHOLD_S,
+  };
+
   const momentum = prices.length >= 10 ? ((price - prices[prices.length - 10]) / price) * 1000 : 0;
   const avgVol = volumes.length ? volumes.reduce((s, v) => s + v, 0) / volumes.length : 0;
   const volume_ratio = avgVol > 0 ? Number(latest.volume ?? avgVol) / avgVol : 1;
@@ -520,6 +550,7 @@ export async function getB3PriceContext(
     guard,
     guard_evaluation: evaluateMt5Guard(info),
     volatility_debug,
+    series_health,
   };
 }
 
