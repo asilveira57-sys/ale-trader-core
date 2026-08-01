@@ -184,6 +184,29 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5sim-tick-ingest")(
         const server = (payload.server ?? "XPMT5-DEMO").toUpperCase();
         if (!ALLOWED_SERVERS.has(server)) return reject(`server not allowed: ${server}`, 400);
 
+        // Fora da janela operacional da B3 não há coleta nem persistência de
+        // cotação (alívio de I/O). O conector continua recebendo 200 imediato.
+        const { b3WindowState } = await import("@/lib/b3-window.server");
+        const win = b3WindowState();
+        if (!win.open) {
+          return json({
+            ok: true,
+            trace_id,
+            received: true,
+            processed: false,
+            persisted: false,
+            rejected: false,
+            skipped: true,
+            reason: "b3_sleeping",
+            window_reason: win.reason,
+            brt_time: win.brt_time,
+            window: win.window,
+            server,
+            ms: Date.now() - t0,
+          });
+        }
+
+
         const tickTs = payload.tick_ts ?? new Date().toISOString();
         const dedupKey = `${payload.user_id}|${payload.symbol}|${tickTs}|${payload.bid ?? ""}|${payload.ask ?? ""}|${payload.last ?? ""}`;
         if (isDuplicate(dedupKey)) {
