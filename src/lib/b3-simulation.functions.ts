@@ -20,6 +20,7 @@ import {
   type B3PriceContextResult,
   type B3QuoteExecutionAudit,
 } from "./b3-price-source.server";
+import { b3WindowState } from "./b3-window.server";
 
 
 const POINT_VALUE_BRL = 0.2;
@@ -278,6 +279,13 @@ export async function runB3SimulationTick(
 ): Promise<{ ok?: boolean; skipped?: boolean; reason?: string; processed?: number; log: any[] }> {
   ticks = Math.min(Math.max(1, Number(ticks)), 60);
 
+  // Janela rígida da B3 (seg-sex, 09:05-17:00 BRT) validada ANTES do banco:
+  // fora dela nada é processado, gravado, logado ou contabilizado.
+  const win = b3WindowState();
+  if (!win.open) {
+    return { skipped: true, reason: "b3_sleeping", log: [] };
+  }
+
   // Lock: impede execuções sobrepostas (cron + UI) para a mesma run.
   const lockKey = `${userId}:${runId}`;
   const lockedAt = TICK_LOCKS.get(lockKey);
@@ -421,6 +429,12 @@ async function runB3SimulationTickInner(
   function mt5InvalidReason(info: B3PriceContextResult): string | null {
     if (info.source !== "mt5_xp_demo") return null;
     const guardEval = info.guard_evaluation;
+    if (info.warming_up_after_gap) {
+      const sw = info.sample_window;
+      return `warming_up_after_gap: ${sw?.fresh_samples ?? 0}/${sw?.required_samples ?? 0} ticks contínuos`
+        + (sw?.cut_by_gap_s ? ` (gap de ${sw.cut_by_gap_s}s descartado)` : "")
+        + (sw?.eta_ready_at ? ` — previsão ${sw.eta_ready_at}` : "");
+    }
     if (!guardEval) return "Guard MT5 sem avaliação.";
     return guardEval.ok ? null : (guardEval.first_block_reason ?? "Guard MT5 rejeitou o tick.");
   }
