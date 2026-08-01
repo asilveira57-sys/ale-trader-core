@@ -180,7 +180,12 @@ export interface B3PriceContextResult {
     crosses_tick_gap: boolean;
     gap_threshold_s: number;
   };
+  /** Janela de amostras efetivamente usada (após corte por gap/pregão). */
+  sample_window?: B3SampleWindow;
+  /** true quando ainda não há amostra contínua suficiente após uma interrupção. */
+  warming_up_after_gap?: boolean;
 }
+
 
 function emptyContext(symbol: string, contract: string): B3Context {
   const now = new Date();
