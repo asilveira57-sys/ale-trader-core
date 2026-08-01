@@ -1,59 +1,37 @@
-## Objetivo
-Corrigir o problema recorrente de login/Auth sem reconstruir módulos e sem alterar a ponte MT5, ingestão de ticks, estratégias, stops, gains, contratos ou execução.
+# Liberar entradas: Anti-Euforia sem veto + setup por threshold
 
-## Diagnóstico confirmado até agora
-- O login apresentou timeout `504` no endpoint de autenticação, exibindo: “Autenticação demorou para responder”.
-- A verificação de saúde do backend retornou timeout antes do restart, e agora o backend ainda está subindo/aplicando mudanças.
-- Há polling contínuo em várias telas protegidas, incluindo B3/MT5, dashboard, diagnóstico e painéis operacionais.
-- No B3/MT5, há atualizações automáticas em intervalos curtos, como 2s, 3s, 4s e 8s, que continuam disputando recursos com Auth quando a tela fica aberta.
+Três edições literais, exatamente como especificado. Nada além disso muda.
 
-## Plano de correção
+## 1. Anti-Euforia deixa de vetar (`src/lib/b3-committee.server.ts`)
 
-### 1. Esperar backend estabilizar antes de mexer no banco
-- Reconsultar a saúde do Lovable Cloud até o backend voltar ao estado normal.
-- Só aplicar migrações depois disso, para evitar falha parcial ou diagnóstico falso.
+No `return` final de `aAntiTendencia` (linhas 231-240), trocar `has_veto: block` por `has_veto: false` e `veto_reason: undefined`, mantendo `vote: block ? "reject" : "neutral"`, `confidence: block ? 85 : 50` e `data: { rsi, high, low, rule: "rsi_only" }`.
 
-### 2. Otimizar consultas críticas do B3 MT5
-Criar uma migração de índices para aliviar leituras frequentes, principalmente em:
-- `b3_mt5sim_quotes`, priorizando busca por `user_id`, `symbol` e `tick_ts DESC`.
-- Tabelas de auditoria/simulação usadas pelo diagnóstico e pelos painéis de 5 modos.
+Efeito: RSI extremo passa a contar como voto contrário normal, sem cravar o score em 25 pelo cap de veto.
 
-Critério: acelerar leitura do último tick, histórico recente e auditorias sem alterar a lógica de ticks nem o endpoint.
+## 2. `classifySetup` passa de "9/9 obrigatórias" para bloqueio duro + placar macio
 
-### 3. Reduzir carga automática no frontend
-Ajustar apenas os painéis que fazem polling pesado:
-- `src/routes/_authenticated/b3-mt5sim.tsx`
-- `src/components/b3/SimComparePanel.tsx`
-- `src/components/b3/PipelineAuditPanel.tsx`
-- se necessário, painéis B3 relacionados em `src/routes/_authenticated/b3.tsx`
+Em `src/lib/b3-simulation.functions.ts`, substituir todo o corpo a partir do comentário `// Lateral bloqueia setup direcional.` (linha 768) até o `return { name, ok: false, reasons: failures, details };` final da função (linha 810) pelo código enviado:
 
-Mudanças previstas:
-- Pausar polling quando a aba estiver oculta (`document.visibilityState !== "visible"`).
-- Aumentar intervalos agressivos onde não há necessidade de atualização a cada 2–4 segundos.
-- Manter atualização em tempo útil quando a tela estiver visível.
-- Evitar invalidações globais desnecessárias.
+- Bloqueio duro: mercado lateral (direção lateral, força < 30 ou volatilidade < 0,3) e tendência contrária ao lado avaliado.
+- 8 condições macias (força >= 40, VWAP, EMA9/EMA21, pullback, estrutura, candle de confirmação, distância de topo/fundo, R:R >= 1,5) somam para um placar.
+- Threshold `cfg.setup_min_soft_hits` (padrão 6 de 8) decide `trend_pullback` válido.
+- Setups alternativos (`breakout_retest`, `consolidation_breakout`, `support_resistance_rejection`) recebem `ok` próprio conforme as regras enviadas.
+- `details` passa a incluir `soft_hits` e `soft_total`.
 
-### 4. Tornar Auth mais resiliente sem esconder erro real
-Refinar o fluxo de autenticação em:
-- `src/routes/auth.tsx`
-- `src/routes/_authenticated/route.tsx`
-- `src/routes/__root.tsx`, se necessário
+## 3. Setups alternativos passam a ser operáveis
 
-Mudanças previstas:
-- Não forçar logout em timeout transitório se ainda existir sessão local válida.
-- Evitar múltiplas limpezas/invalidações simultâneas de cache.
-- Distinguir erro definitivo de sessão expirada versus backend lento.
-- Manter a tela atual quando houver recuperação possível.
+Linha 1420, trocar:
 
-### 5. Validar no runtime
-Depois das mudanças:
-- Testar login real no preview.
-- Abrir B3/MT5 e deixar a tela parada para confirmar que não derruba sessão.
-- Confirmar que os painéis continuam atualizando quando visíveis.
-- Confirmar que o backend não retorna novo timeout em Auth durante uso normal.
+```text
+const setupAllowed = setupInfo.name === "trend_pullback" && setupInfo.ok;
+```
 
-## Critério de conclusão
-- O usuário consegue logar.
-- A sessão não cai ao deixar a Simulação/B3 MT5 aberta.
-- Os painéis B3 continuam funcionando, mas sem polling excessivo em segundo plano.
-- O Auth deixa de competir com consultas pesadas do motor e diagnóstico.
+por:
+
+```text
+const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
+```
+
+## Fora de escopo
+
+Nenhuma alteração em ponte MT5, ingestão de ticks, thresholds de score/confiança/votos, stops, gains, contratos, horários ou UI. Os arquivos enviados servem apenas de referência; as edições são aplicadas nos arquivos do projeto.
