@@ -4,6 +4,8 @@
 // para CSV/mock/candle antigo é permitido para execução.
 
 import { buildMockB3Context, type B3Context } from "./b3-committee.server";
+import { b3BrtDate } from "./b3-window.server";
+
 
 export type B3PriceSource = "csv" | "mt5_xp_demo";
 export type B3GuardMode = "validation" | "protected";
