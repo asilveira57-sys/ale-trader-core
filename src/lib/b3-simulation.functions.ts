@@ -1738,15 +1738,27 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
         bucket.last_step_blocked = m.first_stop ?? bucket.last_step_blocked;
         bucket.last_snapshot_at = s.market_time;
         bucket.last_tick = tick;
-        bucket.last_score = m.last_score ?? bucket.last_score;
-        bucket.last_confidence = m.last_confidence ?? bucket.last_confidence;
-        bucket.last_setup = m.last_setup ?? bucket.last_setup;
+        // Card e detalhe devem descrever SEMPRE a mesma avaliação. Antes cada
+        // campo era arrastado individualmente com `??`, então um tick sem score
+        // mantinha o score antigo enquanto o decision_context vinha de outro
+        // tick — daí card e detalhe divergirem (ex.: 72 no card, 25 no detalhe).
+        // Agora score/confiança/setup/contexto só avançam em bloco, junto com o
+        // id da decisão (snapshot que a originou).
+        const hasEvaluation = m.last_score != null || m.decision_context != null;
+        if (hasEvaluation) {
+          bucket.last_score = m.last_score ?? null;
+          bucket.last_confidence = m.last_confidence ?? null;
+          bucket.last_setup = m.last_setup ?? null;
+          bucket.last_decision_context = m.decision_context ?? null;
+          bucket.last_decision_id = s.id;
+          bucket.last_decision_at = s.market_time;
+        }
         if (m.decision_context) {
-          bucket.last_decision_context = m.decision_context;
-          const dec = { ...m.decision_context, at: s.market_time };
+          const dec = { ...m.decision_context, at: s.market_time, decision_id: s.id };
           bucket.decisions.push(dec);
           allDecisions.push(dec);
         }
+
         if (m.trade_event) {
           bucket.trade_events.push({ ...m.trade_event, at: s.market_time });
           allTradeEvents.push({ ...m.trade_event, at: s.market_time, mode: m.mode });
