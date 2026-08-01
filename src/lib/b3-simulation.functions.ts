@@ -1047,6 +1047,7 @@ async function runB3SimulationTickInner(
           decision_context: decisionContext,
           trade_event: extra.trade_event ?? null,
           volatility_debug: (priceSrc as any).volatility_debug ?? null,
+          series_health: (priceSrc as any).series_health ?? null,
           volatility_limit_pct: Number(cfg.max_volatility_pct),
         });
       };
