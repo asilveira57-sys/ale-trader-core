@@ -498,6 +498,7 @@ export async function getB3PriceContext(
       provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
       mt5_provider_calls: 1, legacy_provider_calls: 0,
       guard, guard_evaluation: evaluateMt5Guard(info),
+      sample_window, warming_up_after_gap: sample_window.warming_up_after_gap,
     };
   }
 
@@ -533,6 +534,7 @@ export async function getB3PriceContext(
       provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
       mt5_provider_calls: 1, legacy_provider_calls: 0,
       guard, guard_evaluation: evaluateMt5Guard(info),
+      sample_window, warming_up_after_gap: sample_window.warming_up_after_gap,
     };
   }
   const priceRounded = Math.round(price / TICK) * TICK;
@@ -630,6 +632,8 @@ export async function getB3PriceContext(
     legacy_provider_calls: 0,
     guard,
     guard_evaluation: evaluateMt5Guard(info),
+    sample_window,
+    warming_up_after_gap: sample_window.warming_up_after_gap,
     volatility_debug,
     series_health,
   };
