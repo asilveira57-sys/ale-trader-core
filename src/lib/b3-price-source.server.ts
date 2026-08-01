@@ -506,6 +506,7 @@ export async function getB3PriceContext(
     gap_threshold_s: GAP_THRESHOLD_S,
   };
 
+  const momentum = prices.length >= 10 ? ((price - prices[prices.length - 10]) / price) * 1000 : 0;
   const avgVol = volumes.length ? volumes.reduce((s, v) => s + v, 0) / volumes.length : 0;
   const volume_ratio = avgVol > 0 ? Number(latest.volume ?? avgVol) / avgVol : 1;
   const spread_pts = Math.max(1, Math.round(Number(latest.spread ?? (Number(latest.ask ?? 0) - Number(latest.bid ?? 0))) || 5));
