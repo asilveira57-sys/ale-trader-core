@@ -550,6 +550,7 @@ export async function getB3PriceContext(
     guard,
     guard_evaluation: evaluateMt5Guard(info),
     volatility_debug,
+    series_health,
   };
 }
 
