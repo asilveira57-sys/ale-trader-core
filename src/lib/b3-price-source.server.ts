@@ -395,6 +395,7 @@ export async function getB3PriceContext(
     };
   }
 
+
   // Lê últimos ticks WINQ26 alimentados pela ponte MT5 XP DEMO/PRD.
   const { data: quotes } = await supabase
     .from("b3_mt5sim_quotes")
