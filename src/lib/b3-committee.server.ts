@@ -230,11 +230,14 @@ function aAntiTendencia(c: B3Context, side: B3Side): B3AgentVote {
     : `RSI ${c.rsi.toFixed(0)} em zona neutra — sem sinais de euforia.`;
   return {
     agent_name: "Anti-Euforia",
+    // RSI extremo é EVIDÊNCIA de mercado, não falha operacional — não deve
+    // cravar o score em 25 sozinho (era has_veto: block). Continua contando
+    // como reject normal no placar de aprovação/confiança.
     vote: block ? "reject" : "neutral",
     confidence: block ? 85 : 50,
     reason,
-    has_veto: block,
-    veto_reason: block ? "RSI em extremo (>78 compra / <22 venda)." : undefined,
+    has_veto: false,
+    veto_reason: undefined,
     data: { rsi: c.rsi, high: c.high, low: c.low, rule: "rsi_only" },
   };
 }

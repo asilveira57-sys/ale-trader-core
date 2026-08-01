@@ -765,46 +765,62 @@ async function runB3SimulationTickInner(
       near_resistance_pts: nearResistancePts,
     };
 
-    // Lateral bloqueia setup direcional.
+    // Bloqueio DURO (estrutura mínima real — não é opinião, é pré-requisito
+    // pro trade fazer sentido nesse lado): mercado tem que ter direção.
     const lateral = trend.direction === "lateral" || trend.strength < 30 || vol < 0.3;
+    const wrongDirection =
+      (intendedSide === "buy" && trend.direction === "baixa") ||
+      (intendedSide === "sell" && trend.direction === "alta");
+    const hardBlock: string[] = [];
+    if (lateral) hardBlock.push("mercado lateral — entrada bloqueada");
+    if (wrongDirection) hardBlock.push("tendência contrária ao lado avaliado");
 
-    const failures: string[] = [];
+    // Condições "macias" (evidências, não certezas): cada uma soma para o
+    // placar. Antes era tudo em "E" (9/9 obrigatórias); agora é threshold —
+    // reflete que nenhuma delas sozinha invalida a oportunidade.
+    const soft: { label: string; pass: boolean }[] = [];
     if (intendedSide === "buy") {
-      if (trend.direction !== "alta") failures.push("tendência não confirmada de alta");
-      if (trend.strength < 40) failures.push(`força de tendência ${trend.strength} < 40`);
-      if (!(price > vwap)) failures.push("preço abaixo da VWAP");
-      if (!(ema9 > ema21)) failures.push("EMA9 não acima da EMA21");
-      // Correção sem perda da estrutura: pullback à EMA9 mantendo EMA21 como piso.
-      if (!(price <= ema9 * 1.0015)) failures.push("sem correção para a EMA9 (sem pullback)");
-      if (!(price > ema21)) failures.push("estrutura perdida (preço abaixo da EMA21)");
-      // Candle de confirmação comprador.
-      if (!(price > open)) failures.push("candle atual não é comprador");
-      // Resistência (topo do dia) não pode estar próxima.
-      if (distHigh > 0 && distHigh < nearResistancePts) failures.push(`resistência próxima (${distHigh} pts do topo)`);
+      soft.push({ label: `força de tendência ${trend.strength} < 40`, pass: trend.strength >= 40 });
+      soft.push({ label: "preço abaixo da VWAP", pass: price > vwap });
+      soft.push({ label: "EMA9 não acima da EMA21", pass: ema9 > ema21 });
+      soft.push({ label: "sem correção para a EMA9 (sem pullback)", pass: price <= ema9 * 1.0015 });
+      soft.push({ label: "estrutura perdida (preço abaixo da EMA21)", pass: price > ema21 });
+      soft.push({ label: "candle atual não é comprador", pass: price > open });
+      soft.push({ label: `resistência próxima (${distHigh} pts do topo)`, pass: !(distHigh > 0 && distHigh < nearResistancePts) });
     } else {
-      if (trend.direction !== "baixa") failures.push("tendência não confirmada de baixa");
-      if (trend.strength < 40) failures.push(`força de tendência ${trend.strength} < 40`);
-      if (!(price < vwap)) failures.push("preço acima da VWAP");
-      if (!(ema9 < ema21)) failures.push("EMA9 não abaixo da EMA21");
-      if (!(price >= ema9 * 0.9985)) failures.push("sem correção para a EMA9 (sem pullback)");
-      if (!(price < ema21)) failures.push("estrutura perdida (preço acima da EMA21)");
-      if (!(price < open)) failures.push("candle atual não é vendedor");
-      if (distLow > 0 && distLow < nearResistancePts) failures.push(`suporte próximo (${distLow} pts do fundo)`);
+      soft.push({ label: `força de tendência ${trend.strength} < 40`, pass: trend.strength >= 40 });
+      soft.push({ label: "preço acima da VWAP", pass: price < vwap });
+      soft.push({ label: "EMA9 não abaixo da EMA21", pass: ema9 < ema21 });
+      soft.push({ label: "sem correção para a EMA9 (sem pullback)", pass: price >= ema9 * 0.9985 });
+      soft.push({ label: "estrutura perdida (preço acima da EMA21)", pass: price < ema21 });
+      soft.push({ label: "candle atual não é vendedor", pass: price < open });
+      soft.push({ label: `suporte próximo (${distLow} pts do fundo)`, pass: !(distLow > 0 && distLow < nearResistancePts) });
     }
-    if (lateral) failures.push("mercado lateral — entrada bloqueada");
-    if (rr < 1.5) failures.push(`R:R ${rr.toFixed(2)} < 1.5`);
+    soft.push({ label: `R:R ${rr.toFixed(2)} < 1.5`, pass: rr >= 1.5 });
 
-    if (failures.length === 0) {
-      return { name: "trend_pullback", ok: true, reasons: [], details };
+    const failedSoft = soft.filter((s) => !s.pass).map((s) => s.label);
+    // Threshold configurável por modo (padrão: precisa acertar 6 de 8
+    // evidências macias). cfg.setup_min_soft_hits permite ajustar por modo
+    // sem tocar em código de novo.
+    const minHits = Number((cfg as any).setup_min_soft_hits ?? 6);
+    const hits = soft.length - failedSoft.length;
+    const softOk = hits >= minHits;
+    const failures = [...hardBlock, ...(softOk ? [] : failedSoft)];
+
+    if (hardBlock.length === 0 && softOk) {
+      return { name: "trend_pullback", ok: true, reasons: [], details: { ...details, soft_hits: hits, soft_total: soft.length } };
     }
-    // Tenta classificar em outros setups apenas para telemetria.
+
+    // Classifica em outros setups — agora também operáveis (ok reflete se
+    // aquele padrão específico tem evidência suficiente), não só telemetria.
     let name: B3SetupName = "no_valid_setup";
-    if (intendedSide === "buy" && distHigh <= 20 && trend.direction === "alta") name = "breakout_retest";
-    else if (intendedSide === "sell" && distLow <= 20 && trend.direction === "baixa") name = "breakout_retest";
-    else if (Math.abs(Number(derived?.var_5m_pts ?? 0)) < 40 && vol < 1.5) name = "consolidation_breakout";
-    else if (intendedSide === "buy" && distLow <= nearResistancePts) name = "support_resistance_rejection";
-    else if (intendedSide === "sell" && distHigh <= nearResistancePts) name = "support_resistance_rejection";
-    return { name, ok: false, reasons: failures, details };
+    let altOk = false;
+    if (intendedSide === "buy" && distHigh <= 20 && trend.direction === "alta") { name = "breakout_retest"; altOk = hardBlock.length === 0 && hits >= minHits - 1; }
+    else if (intendedSide === "sell" && distLow <= 20 && trend.direction === "baixa") { name = "breakout_retest"; altOk = hardBlock.length === 0 && hits >= minHits - 1; }
+    else if (Math.abs(Number(derived?.var_5m_pts ?? 0)) < 40 && vol < 1.5) { name = "consolidation_breakout"; altOk = !wrongDirection && rr >= 1.5; }
+    else if (intendedSide === "buy" && distLow <= nearResistancePts) { name = "support_resistance_rejection"; altOk = !lateral && rr >= 1.5; }
+    else if (intendedSide === "sell" && distHigh <= nearResistancePts) { name = "support_resistance_rejection"; altOk = !lateral && rr >= 1.5; }
+    return { name, ok: altOk, reasons: failures, details: { ...details, soft_hits: hits, soft_total: soft.length } };
   }
 
   function buildDecisionContext(params: {
@@ -1417,7 +1433,7 @@ async function runB3SimulationTickInner(
 
       // Classificação de setup técnico — Fase 1: somente trend_pullback opera.
       const setupInfo = classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
-      const setupAllowed = setupInfo.name === "trend_pullback" && setupInfo.ok;
+      const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
       addCheck(
         "setup",
         "Setup técnico",
