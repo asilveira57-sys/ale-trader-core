@@ -484,12 +484,25 @@ export function EngineDiagnosticPanel({ detail }: { detail: any }) {
                           <div><span className="text-muted-foreground">R:R estimado: </span><span className="font-mono">{Number.isFinite(rr) ? `${rr.toFixed(2)} / mín ${rrMin.toFixed(2)}` : "—"}</span></div>
                           <div><span className="text-muted-foreground">Dist. topo/fundo: </span><span className="font-mono">{sd.dist_day_high_pts ?? "—"} / {sd.dist_day_low_pts ?? "—"} pts</span></div>
                           <div><span className="text-muted-foreground">Volatilidade: </span><span className="font-mono">{Number(sd.volatility_pct ?? 0).toFixed(2)}%</span></div>
+                          {m.series_health && (
+                            <>
+                              <div><span className="text-muted-foreground">Janela de indicadores: </span><span className="font-mono">{m.series_health.samples} ticks · {m.series_health.span_minutes ?? "—"} min</span></div>
+                              <div><span className="text-muted-foreground">Maior intervalo sem tick: </span><span className="font-mono">{m.series_health.largest_gap_s ?? "—"}s</span></div>
+                            </>
+                          )}
                         </div>
+                        {m.series_health?.crosses_tick_gap && (
+                          <div className="text-[11px] text-amber-300">
+                            A janela de indicadores atravessa uma interrupção de ticks de {m.series_health.largest_gap_s}s —
+                            EMA/VWAP/volatilidade misturam preços de antes e depois da parada até a série renovar.
+                          </div>
+                        )}
                         {!setupOk && setup.reasons?.length > 0 && (
                           <div className="text-[11px] text-destructive">
                             <span className="text-muted-foreground">Motivo do bloqueio: </span>{setup.reasons.join("; ")}
                           </div>
                         )}
+
                       </div>
                     )}
                     {dc.score_composition && (
