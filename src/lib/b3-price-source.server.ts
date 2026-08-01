@@ -167,6 +167,17 @@ export interface B3PriceContextResult {
     normalized_pct: number;
     cap_pct: number;
   };
+  /** Diagnóstico (read-only) da janela de amostras usada nos indicadores.
+   *  Não altera nenhum cálculo — apenas expõe se a série atravessa uma
+   *  interrupção de ticks, o que distorce EMA/VWAP/volatilidade. */
+  series_health?: {
+    samples: number;
+    span_minutes: number | null;
+    oldest_sample_age_s: number | null;
+    largest_gap_s: number | null;
+    crosses_tick_gap: boolean;
+    gap_threshold_s: number;
+  };
 }
 
 function emptyContext(symbol: string, contract: string): B3Context {
