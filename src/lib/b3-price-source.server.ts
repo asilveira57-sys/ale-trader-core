@@ -487,7 +487,25 @@ export async function getB3PriceContext(
     normalized_pct: Number(volatility_pct.toFixed(4)),
     cap_pct: 10,
   };
-  const momentum = prices.length >= 10 ? ((price - prices[prices.length - 10]) / price) * 1000 : 0;
+  // Saúde da janela de amostras (somente diagnóstico).
+  const GAP_THRESHOLD_S = 120;
+  const tsList = series
+    .map((r: any) => new Date(r.tick_ts ?? r.received_at ?? 0).getTime())
+    .filter((t: number) => Number.isFinite(t) && t > 0);
+  let largestGapS: number | null = null;
+  for (let i = 1; i < tsList.length; i++) {
+    const g = (tsList[i] - tsList[i - 1]) / 1000;
+    if (largestGapS == null || g > largestGapS) largestGapS = g;
+  }
+  const series_health = {
+    samples: prices.length,
+    span_minutes: tsList.length > 1 ? Number(((tsList[tsList.length - 1] - tsList[0]) / 60000).toFixed(2)) : null,
+    oldest_sample_age_s: tsList.length ? Math.max(0, Math.round((now.getTime() - tsList[0]) / 1000)) : null,
+    largest_gap_s: largestGapS != null ? Math.round(largestGapS) : null,
+    crosses_tick_gap: largestGapS != null && largestGapS > GAP_THRESHOLD_S,
+    gap_threshold_s: GAP_THRESHOLD_S,
+  };
+
   const avgVol = volumes.length ? volumes.reduce((s, v) => s + v, 0) / volumes.length : 0;
   const volume_ratio = avgVol > 0 ? Number(latest.volume ?? avgVol) / avgVol : 1;
   const spread_pts = Math.max(1, Math.round(Number(latest.spread ?? (Number(latest.ask ?? 0) - Number(latest.bid ?? 0))) || 5));
