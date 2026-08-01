@@ -4,6 +4,8 @@
 // para CSV/mock/candle antigo é permitido para execução.
 
 import { buildMockB3Context, type B3Context } from "./b3-committee.server";
+import { b3BrtDate } from "./b3-window.server";
+
 
 export type B3PriceSource = "csv" | "mt5_xp_demo";
 export type B3GuardMode = "validation" | "protected";
@@ -178,7 +180,12 @@ export interface B3PriceContextResult {
     crosses_tick_gap: boolean;
     gap_threshold_s: number;
   };
+  /** Janela de amostras efetivamente usada (após corte por gap/pregão). */
+  sample_window?: B3SampleWindow;
+  /** true quando ainda não há amostra contínua suficiente após uma interrupção. */
+  warming_up_after_gap?: boolean;
 }
+
 
 function emptyContext(symbol: string, contract: string): B3Context {
   const now = new Date();
@@ -353,6 +360,74 @@ export function getB3ExecutionAudit(
   };
 }
 
+/** Interrupção máxima tolerada dentro da janela de indicadores. */
+export const B3_SAMPLE_GAP_THRESHOLD_S = 120;
+/** Amostras contínuas mínimas para calcular indicadores (EMA21/RSI14). */
+export const B3_MIN_FRESH_SAMPLES = 30;
+
+export interface B3SampleWindow {
+  rows: any[];                       // ticks (mais recente primeiro) já saneados
+  total_rows: number;                // ticks lidos do banco
+  fresh_samples: number;             // ticks contínuos após o último gap
+  required_samples: number;
+  warming_up_after_gap: boolean;
+  cut_by_gap_s: number | null;       // tamanho do gap que cortou a janela
+  cut_by_session: boolean;           // houve corte por pregão anterior
+  cadence_s: number | null;          // cadência observada
+  eta_ready_at: string | null;       // previsão (diagnóstico apenas)
+}
+
+/**
+ * Saneamento da fonte de dados (não é flexibilização de estratégia):
+ * mantém apenas a sequência contínua da sessão atual, cortando no gap mais
+ * recente acima de 120s e descartando ticks de pregões anteriores.
+ */
+function buildFreshWindow(rowsDesc: any[]): B3SampleWindow {
+  const total = rowsDesc.length;
+  const tsOf = (r: any) => new Date(r?.tick_ts ?? r?.received_at ?? 0).getTime();
+  const today = b3BrtDate(new Date());
+  const sameSession = rowsDesc.filter((r) => {
+    const t = tsOf(r);
+    return Number.isFinite(t) && t > 0 && b3BrtDate(new Date(t)) === today;
+  });
+  const cutBySession = sameSession.length !== total;
+
+  const asc = sameSession.slice().reverse();
+  let start = 0;
+  let cutGap: number | null = null;
+  for (let i = 1; i < asc.length; i++) {
+    const g = (tsOf(asc[i]) - tsOf(asc[i - 1])) / 1000;
+    if (g > B3_SAMPLE_GAP_THRESHOLD_S) {
+      start = i;
+      cutGap = Math.round(g);
+    }
+  }
+  const fresh = asc.slice(start);
+
+  let cadence: number | null = null;
+  if (fresh.length > 1) {
+    const span = (tsOf(fresh[fresh.length - 1]) - tsOf(fresh[0])) / 1000;
+    cadence = span > 0 ? Number((span / (fresh.length - 1)).toFixed(2)) : null;
+  }
+  const missing = Math.max(0, B3_MIN_FRESH_SAMPLES - fresh.length);
+  const eta = missing > 0 && cadence && cadence > 0
+    ? new Date(Date.now() + missing * cadence * 1000).toISOString()
+    : null;
+
+  return {
+    rows: fresh.slice().reverse(),
+    total_rows: total,
+    fresh_samples: fresh.length,
+    required_samples: B3_MIN_FRESH_SAMPLES,
+    warming_up_after_gap: fresh.length < B3_MIN_FRESH_SAMPLES,
+    cut_by_gap_s: cutGap,
+    cut_by_session: cutBySession,
+    cadence_s: cadence,
+    eta_ready_at: eta,
+  };
+}
+
+
 /**
  * Constrói o B3Context de acordo com a fonte configurada em b3_trading_settings.price_source.
  * Se MT5 estiver selecionado mas não houver tick válido, NÃO cai para CSV.
@@ -395,6 +470,7 @@ export async function getB3PriceContext(
     };
   }
 
+
   // Lê últimos ticks WINQ26 alimentados pela ponte MT5 XP DEMO/PRD.
   const { data: quotes } = await supabase
     .from("b3_mt5sim_quotes")
@@ -405,7 +481,12 @@ export async function getB3PriceContext(
     .order("tick_ts", { ascending: false })
     .limit(180);
 
-  const rows = (quotes as any[] | null) ?? [];
+  // Saneamento da fonte: a janela de indicadores nunca mistura ticks separados
+  // por interrupção > 120s nem pregões diferentes. Mantém o limite de 180 ticks
+  // e não altera fórmulas, períodos ou thresholds.
+  const sample_window = buildFreshWindow((quotes as any[] | null) ?? []);
+  const rows = sample_window.rows;
+
   if (!rows.length) {
     const info = {
       source, live: false, raw: null as B3QuoteProviderRaw | null,
@@ -417,6 +498,7 @@ export async function getB3PriceContext(
       provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
       mt5_provider_calls: 1, legacy_provider_calls: 0,
       guard, guard_evaluation: evaluateMt5Guard(info),
+      sample_window, warming_up_after_gap: sample_window.warming_up_after_gap,
     };
   }
 
@@ -452,6 +534,7 @@ export async function getB3PriceContext(
       provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
       mt5_provider_calls: 1, legacy_provider_calls: 0,
       guard, guard_evaluation: evaluateMt5Guard(info),
+      sample_window, warming_up_after_gap: sample_window.warming_up_after_gap,
     };
   }
   const priceRounded = Math.round(price / TICK) * TICK;
@@ -549,6 +632,8 @@ export async function getB3PriceContext(
     legacy_provider_calls: 0,
     guard,
     guard_evaluation: evaluateMt5Guard(info),
+    sample_window,
+    warming_up_after_gap: sample_window.warming_up_after_gap,
     volatility_debug,
     series_health,
   };
