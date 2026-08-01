@@ -1433,7 +1433,7 @@ async function runB3SimulationTickInner(
 
       // Classificação de setup técnico — Fase 1: somente trend_pullback opera.
       const setupInfo = classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
-      const setupAllowed = setupInfo.name === "trend_pullback" && setupInfo.ok;
+      const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
       addCheck(
         "setup",
         "Setup técnico",
