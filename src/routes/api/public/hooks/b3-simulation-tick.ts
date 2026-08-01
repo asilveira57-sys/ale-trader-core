@@ -1,65 +1,81 @@
 // Cron público: tick automático da Simulação B3 durante o pregão.
-// Chamado por pg_cron a cada minuto. Itera todas as runs com status='running'
-// e executa 1 tick. Janela de pregão validada pelo próprio tick por modo.
+// Chamado por pg_cron a cada minuto. A janela operacional é validada ANTES de
+// qualquer acesso ao banco — fora dela retorna b3_sleeping sem I/O algum.
 import { createFileRoute } from "@tanstack/react-router";
 import { runB3SimulationTick } from "@/lib/b3-simulation.functions";
+import { b3WindowState } from "@/lib/b3-window.server";
 
 let running = false;
-
-// Pregão B3: 09:00–18:00 BRT (UTC-3) → 12:00–21:00 UTC. Mantemos uma folga.
-function insidePregaoUtc(d = new Date()): boolean {
-  const hUtc = d.getUTCHours();
-  const mUtc = d.getUTCMinutes();
-  const cur = hUtc * 60 + mUtc;
-  const start = 12 * 60; // 09:00 BRT
-  const end = 21 * 60 + 5; // 18:05 BRT (folga p/ zeragem)
-  return cur >= start && cur <= end;
-}
 
 export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const url = new URL(request.url);
+        const force = url.searchParams.get("force") === "1";
+        const ticks = Math.min(Math.max(1, Number(url.searchParams.get("ticks") ?? 1)), 5);
+
+        // Validação de horário ANTES de tocar no banco.
+        const win = b3WindowState();
+        if (!force && !win.open) {
+          return Response.json({
+            skipped: true,
+            reason: "b3_sleeping",
+            window_reason: win.reason,
+            brt_time: win.brt_time,
+            window: win.window,
+          });
+        }
+
         if (running) {
           return Response.json({ skipped: true, reason: "tick_em_execucao" }, { status: 202 });
         }
         running = true;
         try {
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const url = new URL(request.url);
-        const force = url.searchParams.get("force") === "1";
-        const ticks = Math.min(Math.max(1, Number(url.searchParams.get("ticks") ?? 1)), 5);
+          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-        if (!force && !insidePregaoUtc()) {
-          return Response.json({ skipped: true, reason: "fora_do_pregao", at: new Date().toISOString() });
-        }
-
-        // todas as runs ativas (todos os usuários)
-        const { data: runs, error } = await (supabaseAdmin as any)
-          .from("b3_simulation_runs")
-          .select("id, user_id, status, started_at")
-          .eq("status", "running")
-          .order("started_at", { ascending: false });
-        if (error) {
-          return Response.json({ ok: false, error: error.message }, { status: 500 });
-        }
-
-        // Runs antigas podem permanecer com status running após reinícios da tela.
-        // Executar somente a mais recente de cada usuário evita multiplicar o mesmo
-        // ativo sem apagar histórico nem mudar qualquer regra dos cinco robôs.
-        const latestByUser = new Map<string, any>();
-        for (const r of runs ?? []) if (!latestByUser.has(r.user_id)) latestByUser.set(r.user_id, r);
-
-        const results: any[] = [];
-        for (const r of latestByUser.values()) {
-          try {
-            const res = await runB3SimulationTick(supabaseAdmin, r.user_id, r.id, ticks);
-            results.push({ run_id: r.id, ...res });
-          } catch (e) {
-            results.push({ run_id: r.id, error: (e as Error).message });
+          // todas as runs ativas (todos os usuários)
+          const { data: runs, error } = await (supabaseAdmin as any)
+            .from("b3_simulation_runs")
+            .select("id, user_id, status, started_at")
+            .eq("status", "running")
+            .order("started_at", { ascending: false });
+          if (error) {
+            return Response.json({ ok: false, error: error.message }, { status: 500 });
           }
-        }
-        return Response.json({ ok: true, runs: results.length, stale_runs_skipped: (runs?.length ?? 0) - results.length, at: new Date().toISOString(), results });
+
+          // Somente a run mais recente de cada usuário permanece ativa; as antigas
+          // ainda abertas passam a 'stopped' (histórico preservado) para não serem
+          // carregadas nem processadas em cada ciclo.
+          const latestByUser = new Map<string, any>();
+          const staleIds: string[] = [];
+          for (const r of runs ?? []) {
+            if (!latestByUser.has(r.user_id)) latestByUser.set(r.user_id, r);
+            else staleIds.push(r.id);
+          }
+          if (staleIds.length) {
+            await (supabaseAdmin as any)
+              .from("b3_simulation_runs")
+              .update({ status: "stopped" })
+              .in("id", staleIds);
+          }
+
+          const results: any[] = [];
+          for (const r of latestByUser.values()) {
+            try {
+              const res = await runB3SimulationTick(supabaseAdmin, r.user_id, r.id, ticks);
+              results.push({ run_id: r.id, ...res });
+            } catch (e) {
+              results.push({ run_id: r.id, error: (e as Error).message });
+            }
+          }
+          return Response.json({
+            ok: true,
+            runs: results.length,
+            stale_runs_stopped: staleIds.length,
+            at: new Date().toISOString(),
+            results,
+          });
         } finally {
           running = false;
         }
