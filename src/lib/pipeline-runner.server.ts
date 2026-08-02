@@ -38,7 +38,7 @@ export async function collectMarketTick(sb: any) {
     connected: true, last_check: new Date().toISOString(),
     account_type: useMock ? "MOCK" : "SPOT", permissions: ["READ"], last_error: null,
   }).eq("id", 1);
-  await log(sb, "API Binance", "binance", `[cron] Coleta concluída: ${snapshots.length} ativos`, "info");
+  // Removido: log() de rotina "coleta concluída" a cada 1 min (sem valor de diagnóstico).
   return { collected: snapshots.length };
 }
 
@@ -81,6 +81,21 @@ export async function runCommitteeForAsset(sb: any, asset: any, sessionId: strin
     context: ctx as any,
   };
   if (sessionId) row.session_id = sessionId;
+
+  // Dedup de gravação: só grava quando a assinatura da decisão muda.
+  // NÃO inclui score (preço mockado com ruído nunca repete).
+  const sig = (d: any) => [
+    d?.final_decision, d?.classification,
+    d?.votes_buy, d?.votes_sell, d?.votes_hold, d?.votes_wait,
+  ].join("|");
+  const { data: lastDec } = await sb.from("committee_decisions")
+    .select("id, final_decision, classification, votes_buy, votes_sell, votes_hold, votes_wait")
+    .eq("pair", asset.pair).eq("timeframe", timeframe)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (lastDec && sig(lastDec) === sig(row)) {
+    return { decision_id: lastDec.id, final: decision.final_decision, score: decision.score, skipped_write: true };
+  }
+
   const { data: decRow, error: decErr } = await sb.from("committee_decisions").insert(row).select().single();
   if (decErr) throw new Error(decErr.message);
 
