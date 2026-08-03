@@ -1515,7 +1515,7 @@ async function runB3SimulationTickInner(
           };
         }
         const entry = entryAudit.execution_price;
-        const baseQty = 1;
+        const baseQty = Number(cfg.max_contracts) || 1;
         const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
         const { error: oErr } = await supabase.from("b3_simulation_orders").insert({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
