@@ -1530,10 +1530,10 @@ async function runB3SimulationTickInner(
         await supabase.from("b3_simulation_modes")
           .update({
             committee_approvals: (Number(m.committee_approvals) || 0) + 1,
-            contracts_traded: (Number(m.contracts_traded) || 0) + 1,
+            contracts_traded: (Number(m.contracts_traded) || 0) + qty,
           }).eq("id", m.id);
         m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
-        m.contracts_traded = (Number(m.contracts_traded) || 0) + 1;
+        m.contracts_traded = (Number(m.contracts_traded) || 0) + qty;
         log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin, setup: setupInfo.name });
         finalizeAudit(`Setup trend_pullback ${intendedSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
           last_analysis: decision.justification,
