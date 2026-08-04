@@ -929,6 +929,16 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder,
   if (curConf != null && minConfidence != null && curConf < minConfidence) gaps.push(`+${(minConfidence - curConf).toFixed(0)} confiança`);
   if (curVotes != null && minVotes != null && curVotes < minVotes) gaps.push(`+${(minVotes - curVotes)} voto(s)`);
 
+  // ─────── P&L não realizado da posição aberta ───────
+  const openEntry = openOrder ? Number(openOrder.entry_price ?? 0) : 0;
+  const openQty = openOrder ? (Number(openOrder.quantity ?? 0) || 1) : 0;
+  const openSide = openOrder ? String(openOrder.side ?? "").toLowerCase() : null;
+  const curPrice = livePrice != null && Number.isFinite(livePrice) && livePrice > 0 ? Number(livePrice) : null;
+  const openPts = openOrder && curPrice && openEntry > 0
+    ? (openSide === "sell" ? openEntry - curPrice : curPrice - openEntry)
+    : null;
+  const openBRL = openPts != null ? openPts * openQty * POINT_VALUE_BRL_CLIENT : null;
+
   return (
     <Card className={isWinner ? "ring-2 ring-amber-400/60" : ""}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
