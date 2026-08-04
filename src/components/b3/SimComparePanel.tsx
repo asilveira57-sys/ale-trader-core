@@ -264,6 +264,7 @@ export function SimComparePanel() {
                 isWinner={detail?.run.winner_mode === mm.mode}
                 audit={auditByMode[mm.mode] ?? null}
                 openOrder={openByMode[mm.mode] ?? null}
+                livePrice={Number(detail?.snapshots?.[0]?.price ?? 0) || null}
                 onPick={() => winnerM.mutate(mm.mode)} />
             ))}
           </div>
@@ -874,7 +875,9 @@ function MacroEventsCard() {
   );
 }
 
-function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void; audit?: any; openOrder?: any }) {
+const POINT_VALUE_BRL_CLIENT = 0.2;
+
+function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder, livePrice }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void; audit?: any; openOrder?: any; livePrice?: number | null }) {
   const baseStatus = STATUS_META[mm.current_status] ?? STATUS_META.operando;
   const pnl = Number(mm.pnl_periodo ?? 0);
 
@@ -926,6 +929,16 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder 
   if (curConf != null && minConfidence != null && curConf < minConfidence) gaps.push(`+${(minConfidence - curConf).toFixed(0)} confiança`);
   if (curVotes != null && minVotes != null && curVotes < minVotes) gaps.push(`+${(minVotes - curVotes)} voto(s)`);
 
+  // ─────── P&L não realizado da posição aberta ───────
+  const openEntry = openOrder ? Number(openOrder.entry_price ?? 0) : 0;
+  const openQty = openOrder ? (Number(openOrder.quantity ?? 0) || 1) : 0;
+  const openSide = openOrder ? String(openOrder.side ?? "").toLowerCase() : null;
+  const curPrice = livePrice != null && Number.isFinite(livePrice) && livePrice > 0 ? Number(livePrice) : null;
+  const openPts = openOrder && curPrice && openEntry > 0
+    ? (openSide === "sell" ? openEntry - curPrice : curPrice - openEntry)
+    : null;
+  const openBRL = openPts != null ? openPts * openQty * POINT_VALUE_BRL_CLIENT : null;
+
   return (
     <Card className={isWinner ? "ring-2 ring-amber-400/60" : ""}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -944,6 +957,26 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder 
           {liveLabel}
         </Badge>
         {mm.status_reason && <p className="text-[10px] text-muted-foreground italic">{mm.status_reason}</p>}
+
+        {openOrder && (
+          <div className="rounded-md border border-sky-500/30 bg-sky-500/10 p-2 space-y-1 my-2">
+            <p className="text-[10px] uppercase tracking-wider text-sky-300">Resultado flutuante</p>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">Entrada ({openSide?.toUpperCase()} · {openQty}c)</span>
+              <span className="font-mono">{openEntry > 0 ? NUM(openEntry, 0) : "—"}</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">Cotação atual</span>
+              <span className="font-mono">{curPrice != null ? NUM(curPrice, 0) : "—"}</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">Resultado</span>
+              <span className={`font-mono ${openBRL == null ? "" : openBRL >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                {openPts != null ? `${openPts > 0 ? "+" : ""}${NUM(openPts, 0)} pts · ${BRL(openBRL ?? 0)}` : "—"}
+              </span>
+            </div>
+          </div>
+        )}
 
         {audit && (
           <div className="rounded-md border border-border/40 bg-muted/20 p-2 space-y-1 my-2">
