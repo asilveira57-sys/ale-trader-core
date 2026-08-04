@@ -958,6 +958,26 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder,
         </Badge>
         {mm.status_reason && <p className="text-[10px] text-muted-foreground italic">{mm.status_reason}</p>}
 
+        {openOrder && (
+          <div className="rounded-md border border-sky-500/30 bg-sky-500/10 p-2 space-y-1 my-2">
+            <p className="text-[10px] uppercase tracking-wider text-sky-300">Resultado flutuante</p>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">Entrada ({openSide?.toUpperCase()} · {openQty}c)</span>
+              <span className="font-mono">{openEntry > 0 ? NUM(openEntry, 0) : "—"}</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">Cotação atual</span>
+              <span className="font-mono">{curPrice != null ? NUM(curPrice, 0) : "—"}</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">Resultado</span>
+              <span className={`font-mono ${openBRL == null ? "" : openBRL >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                {openPts != null ? `${openPts > 0 ? "+" : ""}${NUM(openPts, 0)} pts · ${BRL(openBRL ?? 0)}` : "—"}
+              </span>
+            </div>
+          </div>
+        )}
+
         {audit && (
           <div className="rounded-md border border-border/40 bg-muted/20 p-2 space-y-1 my-2">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Decisão ao vivo</p>
