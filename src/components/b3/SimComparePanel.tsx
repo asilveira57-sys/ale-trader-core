@@ -264,6 +264,7 @@ export function SimComparePanel() {
                 isWinner={detail?.run.winner_mode === mm.mode}
                 audit={auditByMode[mm.mode] ?? null}
                 openOrder={openByMode[mm.mode] ?? null}
+                livePrice={Number(detail?.snapshots?.[0]?.price ?? 0) || null}
                 onPick={() => winnerM.mutate(mm.mode)} />
             ))}
           </div>
