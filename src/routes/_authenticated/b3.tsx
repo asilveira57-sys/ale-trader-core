@@ -26,7 +26,7 @@ import {
   runB3Committee,
   setB3PriceSource,
 } from "@/lib/b3.functions";
-import { getB3EngineDiagnostic } from "@/lib/b3-simulation.functions";
+import { getB3EngineDiagnostic, getB3PipelineAudit } from "@/lib/b3-simulation.functions";
 import { EngineDiagnosticPanel, SimComparePanel } from "@/components/b3/SimComparePanel";
 import { PipelineAuditPanel } from "@/components/b3/PipelineAuditPanel";
 
