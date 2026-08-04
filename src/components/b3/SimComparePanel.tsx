@@ -875,7 +875,9 @@ function MacroEventsCard() {
   );
 }
 
-function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void; audit?: any; openOrder?: any }) {
+const POINT_VALUE_BRL_CLIENT = 0.2;
+
+function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder, livePrice }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void; audit?: any; openOrder?: any; livePrice?: number | null }) {
   const baseStatus = STATUS_META[mm.current_status] ?? STATUS_META.operando;
   const pnl = Number(mm.pnl_periodo ?? 0);
 
