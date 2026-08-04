@@ -25,6 +25,7 @@ import { b3WindowState } from "./b3-window.server";
 
 const POINT_VALUE_BRL = 0.2;
 const TICK = 5;
+const GLOBAL_DAILY_LOSS_LIMIT_BRL = 1000;
 
 type Mode = "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agressivo";
 const MODES: Mode[] = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"];
