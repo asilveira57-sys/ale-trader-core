@@ -25,6 +25,7 @@ import { b3WindowState } from "./b3-window.server";
 
 const POINT_VALUE_BRL = 0.2;
 const TICK = 5;
+const GLOBAL_DAILY_LOSS_LIMIT_BRL = 1000;
 
 type Mode = "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agressivo";
 const MODES: Mode[] = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"];
@@ -1245,6 +1246,9 @@ async function runB3SimulationTickInner(
       addCheck("volatility", "Volatilidade", ctx.volatility_pct <= Number(cfg.max_volatility_pct), `${ctx.volatility_pct.toFixed(2)}% / limite ${Number(cfg.max_volatility_pct).toFixed(2)}%`);
       addCheck("max_trades", "Máximo trades", !open && 1 <= Number(cfg.max_contracts), open ? "Já existe posição aberta neste robô." : `1 / ${Number(cfg.max_contracts)} contrato(s)`);
       addCheck("daily_loss", "Loss diário", realizedToday > -Number(cfg.daily_loss_limit_brl), `${realizedToday.toFixed(2)} / -${Number(cfg.daily_loss_limit_brl).toFixed(2)} BRL`);
+      const realizedTodayTotal = Object.values(realizedTodayByMode).reduce((a, b) => a + Number(b ?? 0), 0);
+      addCheck("daily_loss_aggregate", "Perda diária agregada (conta)", realizedTodayTotal > -GLOBAL_DAILY_LOSS_LIMIT_BRL,
+        `${realizedTodayTotal.toFixed(2)} / -${GLOBAL_DAILY_LOSS_LIMIT_BRL.toFixed(2)} BRL (5 modos somados)`);
       addCheck("daily_target", "Meta diária", realizedToday < Number(cfg.daily_gain_target_brl) || protDec.allow_new_entry, `${realizedToday.toFixed(2)} / ${Number(cfg.daily_gain_target_brl).toFixed(2)} BRL`);
       addCheck("position_open", "Posição aberta", !open, open ? `ordem ${open.id}` : "NÃO", false);
       addCheck("protection_engine", "Proteção diária", protDec.allow_new_entry, protDec.next.protection_block_reason ?? protDec.next.protection_state);
