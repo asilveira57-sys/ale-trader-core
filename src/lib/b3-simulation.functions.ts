@@ -25,6 +25,26 @@ import { b3WindowState } from "./b3-window.server";
 
 const POINT_VALUE_BRL = 0.2;
 const TICK = 5;
+
+// ─────────────────────── Fase 0: perfil de ativo ───────────────────────
+// Extrai os valores que hoje são fixos (POINT_VALUE_BRL, símbolo, contrato,
+// preço-base) para uma tabela por símbolo. O fallback abaixo replica
+// EXATAMENTE os valores fixos de hoje — se a tabela/linha não existir por
+// qualquer motivo, o comportamento não muda em nada.
+const WIN_FALLBACK_ASSET_PROFILE = {
+  symbol: "WINQ26", quote_symbol: "WIN", contract_code: "WINFUT",
+  tick_size: TICK, tick_value_brl: POINT_VALUE_BRL, base_price_fallback: 130000,
+};
+async function loadAssetProfile(supabase: any, symbol: string | null | undefined) {
+  if (!symbol) return WIN_FALLBACK_ASSET_PROFILE;
+  try {
+    const { data } = await supabase.from("b3_asset_profiles").select("*").eq("symbol", symbol).maybeSingle();
+    if (data) return data;
+  } catch {
+    // tabela pode não existir ainda (antes da migration) — cai no fallback
+  }
+  return WIN_FALLBACK_ASSET_PROFILE;
+}
 // Trava de risco AGREGADA: numa conta real, os 5 modos compartilham o mesmo
 // saldo/margem (diferente da simulação, onde cada modo tem saldo virtual
 // isolado). Esse limite olha a soma do resultado realizado hoje dos 5 modos
@@ -57,12 +77,13 @@ async function mirrorToReal(
   supabase: any, userId: string, runId: string, mode: Mode,
   action: "open" | "close", side: "buy" | "sell", idempotencyKey: string,
   requestedBy: "engine_auto" | "user_manual_close" | "user_close_all",
+  symbol: string = "WIN",
 ) {
   if (!REAL_MIRROR_ENABLED) return;
   try {
     await supabase.from("b3_mt5_commands").insert({
       user_id: userId, env: "real", simulation_run_id: runId, mode,
-      action, side, symbol: "WIN", quantity: REAL_QTY_BY_MODE[mode] ?? 1,
+      action, side, symbol, quantity: REAL_QTY_BY_MODE[mode] ?? 1,
       magic_number: REAL_MAGIC_BY_MODE[mode], idempotency_key: idempotencyKey,
       requested_by: requestedBy,
     });
@@ -79,7 +100,6 @@ interface ModeDefaults {
   min_approve_votes: number; min_confidence: number; min_score: number;
   max_contracts: number; stop_pts: number; gain_pts: number; max_volatility_pct: number;
   daily_loss_limit_brl: number; daily_gain_target_brl: number;
-  trailing_activation_pts?: number; trailing_giveback_pts?: number; trailing_mode?: string;
 }
 const MODE_DEFAULTS: Record<Mode, ModeDefaults> = {
   conservador:    { min_approve_votes: 4, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
@@ -113,6 +133,7 @@ interface StartInput {
   entry_cutoff_time?: string;
   force_close_time?: string;
   notes?: string;
+  symbol?: string; // Fase 0: default 'WINQ26'. Precisa existir uma linha correspondente em b3_asset_profiles.
 }
 // Fuso do pregão B3 — usado para agrupar reinícios do mesmo dia num session_day_id único.
 function currentB3SessionDate(): string {
@@ -152,7 +173,7 @@ export const startB3Simulation = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const initial = Number(data.initial_balance ?? 10000);
-    const symbol = "WINQ26";
+    const symbol = data.symbol ?? "WINQ26";
     const sessionDate = currentB3SessionDate();
     const sessionDayId = await resolveSessionDayId(supabase as any, userId, symbol, sessionDate);
     const { data: run, error } = await (supabase as any)
@@ -360,6 +381,7 @@ async function runB3SimulationTickInner(
   if (runErr) throw runErr;
   if (!run) throw new Error("Run não encontrada");
   if (run.status !== "running") return { skipped: true, reason: `Status ${run.status}`, log: [] };
+  const asset = await loadAssetProfile(supabase, run.symbol);
 
   const { data: modeRows, error: mErr } = await supabase.from("b3_simulation_modes")
     .select("*").eq("simulation_run_id", runId).eq("user_id", userId);
@@ -936,7 +958,7 @@ async function runB3SimulationTickInner(
     const now = new Date();
     const cur = saoPauloMinutes(now);
 
-    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
+    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback) });
     rememberProvider(priceSrc);
     const ctx = priceSrc.ctx;
     const marketHistory = await fetchMarketHistory();
@@ -987,7 +1009,7 @@ async function runB3SimulationTickInner(
       } : null,
     };
     const snapPayload: any = {
-      symbol: "WIN",
+      symbol: asset.quote_symbol,
       price: ctx.price, candle_open: ctx.open, candle_high: ctx.high, candle_low: ctx.low,
       candle_close: ctx.price, volume: ctx.volume_ratio, vwap: ctx.vwap,
       market_time: now.toISOString(),
@@ -1408,7 +1430,7 @@ async function runB3SimulationTickInner(
 
         if (forceClose || hitStop || hitGain || hitTrailing) {
           const reason = forceClose ? "force_close" : hitStop ? "stop" : hitGain ? "gain" : "trailing_stop";
-          const tradeCtx = await closeOrder(supabase, userId, run, m, open, markAudit, reason, marketHistory);
+          const tradeCtx = await closeOrder(supabase, userId, run, m, open, markAudit, reason, marketHistory, asset);
           providerStats.last_exit_price = markPrice;
           openOrdersCache = null;
           realizedTodayByMode = await getRealizedTodayByMode();
@@ -1639,13 +1661,13 @@ async function runB3SimulationTickInner(
         const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
         const { data: insertedOrder, error: oErr } = await supabase.from("b3_simulation_orders").insert({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
-          mode, symbol: "WIN", contract_code: "WINFUT", side: intendedSide,
+          mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: intendedSide,
           entry_price: Math.round(entry / TICK) * TICK, quantity: qty,
           fees: Number(run.simulated_fee_brl) || 0, status: "open",
           ...orderAuditPatch(entryAudit),
         }).select("id").single();
         if (oErr) throw oErr;
-        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", intendedSide, `open-${insertedOrder.id}`, "engine_auto");
+        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", intendedSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol);
         providerStats.last_entry_price = entry;
         openOrdersCache = null;
         await supabase.from("b3_simulation_modes")
@@ -2204,13 +2226,13 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
 
 
 
-async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string, marketHistory: any[] = []) {
+async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string, marketHistory: any[] = [], assetProfile: any = WIN_FALLBACK_ASSET_PROFILE) {
   if (exitAudit.quote_source === "MT5 XP DEMO") assertB3StrictMt5ExecutionAudit(exitAudit, "closeOrder");
   const exitPrice = exitAudit.execution_price;
   const dir = order.side === "buy" ? 1 : -1;
   const grossPts = (exitPrice - Number(order.entry_price)) * dir;
   const qty = Number(order.quantity) || 1;
-  const grossBrl = grossPts * POINT_VALUE_BRL * qty;
+  const grossBrl = grossPts * Number(assetProfile.tick_value_brl) * qty;
   const fees = (Number(run.simulated_fee_brl) || 0) * 2 * qty; // round-trip
   const netBrl = grossBrl - fees;
 
@@ -2252,7 +2274,8 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
   }).eq("id", order.id).eq("user_id", userId);
 
   await mirrorToReal(supabase, userId, run.id, mode.mode as Mode, "close", order.side, `close-${order.id}`,
-    reason === "manual_close_user" ? "user_manual_close" : reason === "manual_close_all_user" ? "user_close_all" : "engine_auto");
+    reason === "manual_close_user" ? "user_manual_close" : reason === "manual_close_all_user" ? "user_close_all" : "engine_auto",
+    assetProfile.quote_symbol);
 
   const newRealized = Number(mode.realized_pnl) + netBrl;
   const newBalance = Number(mode.current_balance) + netBrl;
@@ -2398,11 +2421,12 @@ export const closeModeOrderManually = createServerFn({ method: "POST" })
       .eq("status", "open").maybeSingle();
     if (!open) throw new Error("Não há posição aberta nesse modo agora.");
 
-    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
+    const asset = await loadAssetProfile(supabase, run.symbol);
+    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback) });
     const exitAudit = getB3ExecutionAudit(priceSrc, open.side, "exit", "closeModeOrderManually");
     if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(exitAudit, "closeModeOrderManually");
 
-    const closed = await closeOrder(supabase, userId, run, mode, open, exitAudit, "manual_close_user");
+    const closed = await closeOrder(supabase, userId, run, mode, open, exitAudit, "manual_close_user", [], asset);
     return { ok: true, closed };
   });
 
@@ -2419,7 +2443,8 @@ export const closeAllModesManually = createServerFn({ method: "POST" })
       .select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle();
     if (!run) throw new Error("Simulação não encontrada.");
 
-    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
+    const asset = await loadAssetProfile(supabase, run.symbol);
+    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback) });
 
     const results: Record<string, any> = {};
     for (const modeName of MODES) {
@@ -2432,7 +2457,7 @@ export const closeAllModesManually = createServerFn({ method: "POST" })
         if (!mode || !open) { results[modeName] = { closed: false, reason: "sem posição aberta" }; continue; }
         const exitAudit = getB3ExecutionAudit(priceSrc, open.side, "exit", "closeAllModesManually");
         if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(exitAudit, "closeAllModesManually");
-        const closed = await closeOrder(supabase, userId, run, mode, open, exitAudit, "manual_close_all_user");
+        const closed = await closeOrder(supabase, userId, run, mode, open, exitAudit, "manual_close_all_user", [], asset);
         results[modeName] = { closed: true, result: closed };
       } catch (e) {
         results[modeName] = { closed: false, reason: (e as Error).message };
