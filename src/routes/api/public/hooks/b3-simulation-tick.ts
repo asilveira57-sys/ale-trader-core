@@ -37,20 +37,24 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
           // todas as runs ativas (todos os usuários)
           const { data: runs, error } = await (supabaseAdmin as any)
             .from("b3_simulation_runs")
-            .select("id, user_id, status, started_at")
+            .select("id, user_id, status, started_at, symbol")
             .eq("status", "running")
             .order("started_at", { ascending: false });
           if (error) {
             return Response.json({ ok: false, error: error.message }, { status: 500 });
           }
 
-          // Somente a run mais recente de cada usuário permanece ativa; as antigas
-          // ainda abertas passam a 'stopped' (histórico preservado) para não serem
-          // carregadas nem processadas em cada ciclo.
-          const latestByUser = new Map<string, any>();
+          // Só 1 run ativa por usuário POR ATIVO (chave = user_id + symbol).
+          // Antes era só por user_id, o que parava automaticamente qualquer
+          // segunda run — impedindo rodar WIN e WDO ao mesmo tempo de
+          // propósito. Continua protegendo contra o problema original (runs
+          // órfãs esquecidas do MESMO ativo), mas agora deixa ativos
+          // diferentes coexistirem.
+          const latestByUserAsset = new Map<string, any>();
           const staleIds: string[] = [];
           for (const r of runs ?? []) {
-            if (!latestByUser.has(r.user_id)) latestByUser.set(r.user_id, r);
+            const key = `${r.user_id}:${r.symbol ?? "WINQ26"}`;
+            if (!latestByUserAsset.has(key)) latestByUserAsset.set(key, r);
             else staleIds.push(r.id);
           }
           if (staleIds.length) {
@@ -61,7 +65,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
           }
 
           const results: any[] = [];
-          for (const r of latestByUser.values()) {
+          for (const r of latestByUserAsset.values()) {
             try {
               const res = await runB3SimulationTick(supabaseAdmin, r.user_id, r.id, ticks);
               results.push({ run_id: r.id, ...res });
