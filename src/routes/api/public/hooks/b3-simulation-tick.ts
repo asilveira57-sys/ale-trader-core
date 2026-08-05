@@ -60,7 +60,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
           if (staleIds.length) {
             await (supabaseAdmin as any)
               .from("b3_simulation_runs")
-              .update({ status: "stopped" })
+              .update({ status: "cancelled" })
               .in("id", staleIds);
           }
 
