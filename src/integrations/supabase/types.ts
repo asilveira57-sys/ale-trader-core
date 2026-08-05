@@ -2354,6 +2354,8 @@ export type Database = {
           simulation_run_id: string
           stop_pts: number
           trading_start_time: string
+          trailing_activation_pts: number
+          trailing_giveback_pts: number
           updated_at: string
           user_id: string
         }
@@ -2382,6 +2384,8 @@ export type Database = {
           simulation_run_id: string
           stop_pts?: number
           trading_start_time?: string
+          trailing_activation_pts?: number
+          trailing_giveback_pts?: number
           updated_at?: string
           user_id: string
         }
@@ -2410,6 +2414,8 @@ export type Database = {
           simulation_run_id?: string
           stop_pts?: number
           trading_start_time?: string
+          trailing_activation_pts?: number
+          trailing_giveback_pts?: number
           updated_at?: string
           user_id?: string
         }
