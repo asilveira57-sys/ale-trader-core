@@ -847,9 +847,20 @@ function StartForm({ onSubmit, loading }: { onSubmit: (v: any) => void; loading:
   const [v, setV] = useState({
     initial_balance: 10000, max_contracts: 1, fee_brl: 1.5, slippage_pts: 0,
     trading_start_time: "09:15", entry_cutoff_time: "16:30", force_close_time: "16:55", notes: "",
+    symbol: "WINQ26",
   });
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
+      <Field label="Ativo">
+        <select
+          className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+          value={v.symbol}
+          onChange={(e) => setV({ ...v, symbol: e.target.value })}
+        >
+          <option value="WINQ26">WIN — Mini Índice</option>
+          <option value="WDOQ26">WDO — Mini Dólar</option>
+        </select>
+      </Field>
       <Field label="Saldo inicial (R$)"><Input type="number" value={v.initial_balance} onChange={(e) => setV({ ...v, initial_balance: Number(e.target.value) })} /></Field>
       <Field label="Máx. contratos"><Input type="number" value={v.max_contracts} onChange={(e) => setV({ ...v, max_contracts: Number(e.target.value) })} /></Field>
       <Field label="Taxa (R$ por contrato/lado)"><Input type="number" step="0.1" value={v.fee_brl} onChange={(e) => setV({ ...v, fee_brl: Number(e.target.value) })} /></Field>
