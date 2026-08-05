@@ -79,14 +79,14 @@ interface ModeDefaults {
   min_approve_votes: number; min_confidence: number; min_score: number;
   max_contracts: number; stop_pts: number; gain_pts: number; max_volatility_pct: number;
   daily_loss_limit_brl: number; daily_gain_target_brl: number;
-  trailing_activation_pts: number; trailing_giveback_pts: number;
+  trailing_activation_pts?: number; trailing_giveback_pts?: number; trailing_mode?: string;
 }
 const MODE_DEFAULTS: Record<Mode, ModeDefaults> = {
-  conservador:    { min_approve_votes: 4, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200, trailing_activation_pts: 0, trailing_giveback_pts: 0 },
-  moderado:       { min_approve_votes: 4, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0 },
-  equilibrado:    { min_approve_votes: 4, min_confidence: 62, min_score: 62, max_contracts: 3, stop_pts: 220, gain_pts: 440, max_volatility_pct: 3.8, daily_loss_limit_brl: 500, daily_gain_target_brl: 700, trailing_activation_pts: 0, trailing_giveback_pts: 0 },
-  semi_agressivo: { min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000, trailing_activation_pts: 0, trailing_giveback_pts: 0 },
-  agressivo:      { min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200, trailing_activation_pts: 0, trailing_giveback_pts: 0 },
+  conservador:    { min_approve_votes: 4, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  moderado:       { min_approve_votes: 4, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  equilibrado:    { min_approve_votes: 4, min_confidence: 62, min_score: 62, max_contracts: 3, stop_pts: 220, gain_pts: 440, max_volatility_pct: 3.8, daily_loss_limit_brl: 500, daily_gain_target_brl: 700, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  semi_agressivo: { min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  agressivo:      { min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
 };
 
 function hhmmToMin(s: string) { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; }
@@ -697,7 +697,7 @@ async function runB3SimulationTickInner(
     const { data } = await supabase.from("b3_simulation_market_snapshots")
       // O JSON `extra` tem em média 6,4 KB e não é usado no cálculo abaixo.
       // Excluí-lo evita reler ~1,9 MB por execução do motor.
-      .select("market_time, price, quote_bid, quote_ask, quote_last, volume")
+      .select("market_time, price, quote_bid, quote_ask, quote_last, volume, candle_high, candle_low")
       .eq("user_id", userId)
       .gte("market_time", startOfDayBr)
       .lte("market_time", nowIso)
@@ -1349,21 +1349,61 @@ async function runB3SimulationTickInner(
         // Desligada por padrão (trailing_activation_pts=0). Quando ligada,
         // olha o histórico de mercado desde a entrada pra achar o MELHOR
         // ponto já alcançado (peakPts) — não confundir com o preço atual.
+        // Dois modos, escolhidos por cfg.trailing_mode:
+        //  'fixed'      → fecha se recuar trailing_giveback_pts do pico (pts fixos)
+        //  'structural' → fecha se romper o último fundo/topo CONFIRMADO
+        //                 (fractal N=1: candle_low[i] menor que o candle antes
+        //                 e depois dele = fundo confirmado; simétrico pra topo
+        //                 em posição vendida). Mais fiel a price action, mas
+        //                 só reconhece o fundo/topo DEPOIS que o candle seguinte
+        //                 já fechou — atraso é inerente ao conceito, não é bug.
         let hitTrailing = false;
         let peakPts = movePts;
+        let trailingDebug: any = null;
         const trailingOn = Number(cfg.trailing_activation_pts) > 0;
         const entryMsForTrailing = open.entry_time ? new Date(open.entry_time).getTime() : null;
         if (trailingOn && entryMsForTrailing) {
-          for (const h of marketHistory) {
-            const t = new Date(h.market_time).getTime();
-            if (t < entryMsForTrailing || t > Date.now()) continue;
+          const sinceEntry = marketHistory
+            .filter((h: any) => {
+              const t = new Date(h.market_time).getTime();
+              return t >= entryMsForTrailing && t <= Date.now();
+            })
+            .sort((a: any, b: any) => new Date(a.market_time).getTime() - new Date(b.market_time).getTime());
+
+          for (const h of sinceEntry) {
             const p = Number(h.quote_last ?? h.price ?? 0);
             if (!Number.isFinite(p) || p <= 0) continue;
             const move = (p - Number(open.entry_price)) * dirSign;
             if (move > peakPts) peakPts = move;
           }
           const armed = peakPts >= Number(cfg.trailing_activation_pts);
-          hitTrailing = armed && (peakPts - movePts) >= Number(cfg.trailing_giveback_pts);
+
+          if (armed && cfg.trailing_mode === "structural") {
+            // Fractal N=1: candle i é fundo (compra) se candle_low[i] < low[i-1]
+            // e < low[i+1]; é topo (venda) se candle_high[i] > high[i-1] e > high[i+1].
+            let structuralStopPrice: number | null = null;
+            for (let i = 1; i < sinceEntry.length - 1; i++) {
+              const prev = sinceEntry[i - 1], cur = sinceEntry[i], next = sinceEntry[i + 1];
+              if (open.side === "buy") {
+                const lowPrev = Number(prev.candle_low), lowCur = Number(cur.candle_low), lowNext = Number(next.candle_low);
+                if ([lowPrev, lowCur, lowNext].every(Number.isFinite) && lowCur < lowPrev && lowCur < lowNext) {
+                  if (structuralStopPrice === null || lowCur > structuralStopPrice) structuralStopPrice = lowCur;
+                }
+              } else {
+                const highPrev = Number(prev.candle_high), highCur = Number(cur.candle_high), highNext = Number(next.candle_high);
+                if ([highPrev, highCur, highNext].every(Number.isFinite) && highCur > highPrev && highCur > highNext) {
+                  if (structuralStopPrice === null || highCur < structuralStopPrice) structuralStopPrice = highCur;
+                }
+              }
+            }
+            trailingDebug = { mode: "structural", structural_stop_price: structuralStopPrice, peak_pts: peakPts };
+            if (structuralStopPrice !== null) {
+              hitTrailing = dirSign === 1 ? markPrice <= structuralStopPrice : markPrice >= structuralStopPrice;
+            }
+          } else if (armed) {
+            hitTrailing = (peakPts - movePts) >= Number(cfg.trailing_giveback_pts);
+            trailingDebug = { mode: "fixed", peak_pts: peakPts, giveback_pts: Number(cfg.trailing_giveback_pts) };
+          }
         }
 
         if (forceClose || hitStop || hitGain || hitTrailing) {

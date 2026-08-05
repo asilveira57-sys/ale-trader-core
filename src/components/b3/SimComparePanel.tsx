@@ -783,11 +783,21 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
             <Field label="Stop (pts)"><Input type="number" value={f.stop_pts ?? ""} onChange={(e) => set("stop_pts", Number(e.target.value))} /></Field>
             <Field label="Alvo / Gain (pts)"><Input type="number" value={f.gain_pts ?? ""} onChange={(e) => set("gain_pts", Number(e.target.value))} /></Field>
             <Field label="Ativar proteção após (pts a favor)"><Input type="number" value={f.trailing_activation_pts ?? 0} onChange={(e) => set("trailing_activation_pts", Number(e.target.value))} /></Field>
-            <Field label="Fecha se recuar (pts do pico)"><Input type="number" value={f.trailing_giveback_pts ?? 0} onChange={(e) => set("trailing_giveback_pts", Number(e.target.value))} /></Field>
+            <Field label="Tipo de trailing">
+              <select
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                value={f.trailing_mode ?? "fixed"}
+                onChange={(e) => set("trailing_mode", e.target.value)}
+              >
+                <option value="fixed">Distância fixa do pico (pts)</option>
+                <option value="structural">Estrutural (último fundo/topo confirmado)</option>
+              </select>
+            </Field>
+            <Field label="Fecha se recuar (pts do pico) — só modo 'fixa'"><Input type="number" value={f.trailing_giveback_pts ?? 0} onChange={(e) => set("trailing_giveback_pts", Number(e.target.value))} /></Field>
             <div className="col-span-2 text-xs text-muted-foreground -mt-2">
-              Deixe os dois em 0 pra manter só stop/gain fixo (comportamento de hoje). Ex.: 100 e 150 = arma a
-              proteção quando a operação atinge +100 pts a favor, e fecha se recuar 150 pts a partir do melhor
-              ponto alcançado.
+              Ativação em 0 = trailing desligado (só stop/gain fixo). No modo "Estrutural", o campo de recuo em
+              pontos não é usado — o fechamento acontece quando o preço rompe o último fundo (compra) ou topo
+              (venda) confirmado desde a entrada.
             </div>
             <Field label="Volatilidade máx. (%)"><Input type="number" step="0.1" value={f.max_volatility_pct ?? ""} onChange={(e) => set("max_volatility_pct", Number(e.target.value))} /></Field>
             <Field label="Limite diário de perda (R$)"><Input type="number" step="10" value={f.daily_loss_limit_brl ?? ""} onChange={(e) => set("daily_loss_limit_brl", Number(e.target.value))} /></Field>
