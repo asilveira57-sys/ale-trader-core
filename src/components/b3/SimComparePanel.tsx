@@ -19,6 +19,7 @@ import {
   startB3Simulation, setB3SimulationStatus, setB3SimulationWinner,
   listB3Simulations, getB3SimulationDetail, tickB3Simulation,
   scoreMode, listB3ModeSettings, updateB3ModeSettings, resetB3ModeSettings,
+  closeModeOrderManually, closeAllModesManually,
 } from "@/lib/b3-simulation.functions";
 import { listB3MacroEvents, upsertB3MacroEvent, deleteB3MacroEvent } from "@/lib/b3-macro-events.functions";
 import { getB3SimulationReport } from "@/lib/b3-reports.functions";
@@ -103,6 +104,9 @@ export function SimComparePanel() {
   const setWinner = useServerFn(setB3SimulationWinner);
   const tick = useServerFn(tickB3Simulation);
   const getReport = useServerFn(getB3SimulationReport);
+  const closeMode = useServerFn(closeModeOrderManually);
+  const closeAll = useServerFn(closeAllModesManually);
+  const updEnabled = useServerFn(updateB3ModeSettings);
   const detailInterval = useVisibleRefetchInterval(15000);
   const reportInterval = useVisibleRefetchInterval(30000);
 
@@ -158,6 +162,34 @@ export function SimComparePanel() {
     onError: (e: any) => toast.error(e?.message ?? "Falha no tick"),
   });
 
+  const closeModeM = useMutation({
+    mutationFn: (mode: Mode) => closeMode({ data: { run_id: runId!, mode } }),
+    onSuccess: (r: any) => {
+      qc.invalidateQueries({ queryKey: ["b3-sim-detail", runId] });
+      toast.success(`Posição encerrada manualmente: ${r?.closed?.net_brl != null ? BRL(r.closed.net_brl) : ""}`);
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao fechar posição"),
+  });
+
+  const closeAllM = useMutation({
+    mutationFn: () => closeAll({ data: { run_id: runId! } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["b3-sim-detail", runId] });
+      toast.success("Todas as posições foram encerradas e os 5 modos foram pausados.");
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao fechar todos"),
+  });
+
+  const toggleEnabledM = useMutation({
+    mutationFn: (v: { mode: Mode; enabled: boolean }) =>
+      updEnabled({ data: { run_id: runId!, mode: v.mode, patch: { enabled: v.enabled } } }),
+    onSuccess: (_r, v) => {
+      qc.invalidateQueries({ queryKey: ["b3-sim-detail", runId] });
+      toast.success(v.enabled ? "Modo ativado" : "Modo desativado — sem novas entradas até reativar");
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao mudar status do modo"),
+  });
+
   const detail = detailQ.data;
   const modes = (detail?.modes ?? []).slice().sort((a: any, b: any) => MODES.indexOf(a.mode) - MODES.indexOf(b.mode));
   const ranking = modes.slice().sort((a: any, b: any) => scoreMode(b) - scoreMode(a));
@@ -209,6 +241,31 @@ export function SimComparePanel() {
                   <Button size="sm" variant="outline" onClick={() => statusM.mutate("running")}><Play className="w-4 h-4 mr-1" />Retomar</Button>
                 ) : null}
                 <Button size="sm" variant="destructive" onClick={() => statusM.mutate("finished")}><StopCircle className="w-4 h-4 mr-1" />Encerrar</Button>
+
+                {/* Botão de pânico: fecha as 5 posições e pausa os 5 modos. Confirmação em
+                    duas etapas (abre diálogo, precisa clicar de novo) — não pode ser 1 clique só. */}
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="destructive" className="bg-red-900 hover:bg-red-800">
+                      <ShieldAlert className="w-4 h-4 mr-1" />Fechar todos
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Fechar todas as posições e pausar os 5 modos?</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-muted-foreground">
+                      Isso encerra AGORA qualquer posição aberta (Conservador, Moderado, Equilibrado,
+                      Semi-agressivo, Agressivo) ao preço de mercado atual, e desativa os 5 modos —
+                      nenhum abre entrada nova até você reativar cada um manualmente. Não dá pra desfazer.
+                    </p>
+                    <DialogFooter>
+                      <Button variant="destructive" disabled={closeAllM.isPending} onClick={() => closeAllM.mutate()}>
+                        {closeAllM.isPending ? "Fechando..." : "Sim, fechar tudo e pausar"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </>
             )}
           </div>
@@ -265,7 +322,10 @@ export function SimComparePanel() {
                 audit={auditByMode[mm.mode] ?? null}
                 openOrder={openByMode[mm.mode] ?? null}
                 livePrice={Number(detail?.snapshots?.[0]?.price ?? 0) || null}
-                onPick={() => winnerM.mutate(mm.mode)} />
+                onPick={() => winnerM.mutate(mm.mode)}
+                onCloseOrder={() => closeModeM.mutate(mm.mode)}
+                closingOrder={closeModeM.isPending && closeModeM.variables === mm.mode}
+                onToggleEnabled={(v: boolean) => toggleEnabledM.mutate({ mode: mm.mode, enabled: v })} />
             ))}
           </div>
         );
@@ -875,9 +935,12 @@ function MacroEventsCard() {
   );
 }
 
+// Mesmo valor de ponto usado no motor (src/lib/b3-simulation.functions.ts,
+// POINT_VALUE_BRL) — mantém os dois sincronizados manualmente, pois este
+// arquivo roda no cliente e não pode importar código do servidor.
 const POINT_VALUE_BRL_CLIENT = 0.2;
 
-function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder, livePrice }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void; audit?: any; openOrder?: any; livePrice?: number | null }) {
+function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder, livePrice, onCloseOrder, closingOrder, onToggleEnabled }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void; audit?: any; openOrder?: any; livePrice?: number | null; onCloseOrder?: () => void; closingOrder?: boolean; onToggleEnabled?: (v: boolean) => void }) {
   const baseStatus = STATUS_META[mm.current_status] ?? STATUS_META.operando;
   const pnl = Number(mm.pnl_periodo ?? 0);
 
@@ -929,15 +992,15 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder,
   if (curConf != null && minConfidence != null && curConf < minConfidence) gaps.push(`+${(minConfidence - curConf).toFixed(0)} confiança`);
   if (curVotes != null && minVotes != null && curVotes < minVotes) gaps.push(`+${(minVotes - curVotes)} voto(s)`);
 
-  // ─────── P&L não realizado da posição aberta ───────
-  const openEntry = openOrder ? Number(openOrder.entry_price ?? 0) : 0;
-  const openQty = openOrder ? (Number(openOrder.quantity ?? 0) || 1) : 0;
-  const openSide = openOrder ? String(openOrder.side ?? "").toLowerCase() : null;
-  const curPrice = livePrice != null && Number.isFinite(livePrice) && livePrice > 0 ? Number(livePrice) : null;
-  const openPts = openOrder && curPrice && openEntry > 0
-    ? (openSide === "sell" ? openEntry - curPrice : curPrice - openEntry)
-    : null;
-  const openBRL = openPts != null ? openPts * openQty * POINT_VALUE_BRL_CLIENT : null;
+  // ─────── P&L não realizado da posição aberta (cotação ao vivo vs entrada) ───────
+  let openPts: number | null = null;
+  let openBRL: number | null = null;
+  if (openOrder && livePrice != null && livePrice > 0) {
+    const entry = Number(openOrder.entry_price);
+    const qty = Number(openOrder.quantity) || 1;
+    openPts = openOrder.side === "buy" ? livePrice - entry : entry - livePrice;
+    openBRL = openPts * POINT_VALUE_BRL_CLIENT * qty;
+  }
 
   return (
     <Card className={isWinner ? "ring-2 ring-amber-400/60" : ""}>
@@ -958,23 +1021,49 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder,
         </Badge>
         {mm.status_reason && <p className="text-[10px] text-muted-foreground italic">{mm.status_reason}</p>}
 
+        <div className="flex items-center justify-between rounded-md border border-border/50 px-2 py-1.5 my-1">
+          <span className="text-[11px] text-muted-foreground">Modo ativo</span>
+          <Switch
+            checked={audit?.config_loaded?.enabled !== false}
+            onCheckedChange={(v: boolean) => onToggleEnabled?.(v)}
+          />
+        </div>
+
         {openOrder && (
           <div className="rounded-md border border-sky-500/30 bg-sky-500/10 p-2 space-y-1 my-2">
-            <p className="text-[10px] uppercase tracking-wider text-sky-300">Resultado flutuante</p>
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-muted-foreground">Entrada ({openSide?.toUpperCase()} · {openQty}c)</span>
-              <span className="font-mono">{openEntry > 0 ? NUM(openEntry, 0) : "—"}</span>
+              <span className="text-muted-foreground">Entrada</span>
+              <span className="font-mono">{NUM(Number(openOrder.entry_price))} · {Number(openOrder.quantity) || 1} contrato(s)</span>
             </div>
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-muted-foreground">Cotação atual</span>
-              <span className="font-mono">{curPrice != null ? NUM(curPrice, 0) : "—"}</span>
+              <span className="text-muted-foreground">Cotação agora</span>
+              <span className="font-mono">{livePrice != null ? NUM(livePrice) : "—"}</span>
             </div>
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-muted-foreground">Resultado</span>
-              <span className={`font-mono ${openBRL == null ? "" : openBRL >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                {openPts != null ? `${openPts > 0 ? "+" : ""}${NUM(openPts, 0)} pts · ${BRL(openBRL ?? 0)}` : "—"}
+              <span className="text-muted-foreground">Resultado (não realizado)</span>
+              <span className={`font-mono font-medium ${openBRL != null ? (openBRL >= 0 ? "text-emerald-300" : "text-rose-300") : ""}`}>
+                {openBRL != null ? `${openPts! >= 0 ? "+" : ""}${openPts!.toFixed(0)} pts · ${BRL(openBRL)}` : "aguardando cotação"}
               </span>
             </div>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="destructive" className="w-full h-7 text-[11px] mt-1" disabled={closingOrder}>
+                  {closingOrder ? "Fechando..." : "Fechar posição agora"}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Fechar essa posição agora?</DialogTitle></DialogHeader>
+                <p className="text-sm text-muted-foreground">
+                  Encerra a posição {openOrder.side === "buy" ? "de compra" : "de venda"} do modo {mm.mode} ao
+                  preço de mercado atual ({livePrice != null ? NUM(livePrice) : "—"}). Não dá pra desfazer.
+                </p>
+                <DialogFooter>
+                  <Button variant="destructive" disabled={closingOrder} onClick={onCloseOrder}>
+                    {closingOrder ? "Fechando..." : "Sim, fechar agora"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         )}
 
