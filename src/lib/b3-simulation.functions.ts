@@ -33,6 +33,45 @@ const TICK = 5;
 // Valor definido pelo usuário em 04/08/2026.
 const GLOBAL_DAILY_LOSS_LIMIT_BRL = 1000;
 
+// ─────────────────────── espelhamento demo → real ───────────────────────
+// Toda vez que o motor (demo) abre/fecha uma posição em qualquer um dos 5
+// modos, um comando espelhado é inserido em b3_mt5_commands para env='real',
+// com quantidade PRÓPRIA da conta real (não a mesma da demo — ver
+// REAL_QTY_BY_MODE). O comando só produz ordem de verdade se o conector
+// Python estiver com DRY_RUN=False E REAL_TRADING_CONFIRMED=True — até lá,
+// fica só registrado e confirmado como dry-run pelo conector.
+// Decisão do usuário em 05/08/2026: espelhar os 5 modos desde já, mantendo
+// o conector em modo dry-run até validação manual.
+const REAL_MIRROR_ENABLED = true;
+const REAL_QTY_BY_MODE: Record<Mode, number> = {
+  conservador: 1, moderado: 1, equilibrado: 1, semi_agressivo: 1, agressivo: 1,
+};
+// Magic numbers da conta REAL — faixa 2000+ pra nunca colidir com nada que
+// a conta demo venha a usar no futuro (que ficaria numa faixa 1000+, se um
+// dia o espelho demo também passar a usar essa mesma fila de comandos).
+const REAL_MAGIC_BY_MODE: Record<Mode, number> = {
+  conservador: 2001, moderado: 2002, equilibrado: 2003, semi_agressivo: 2004, agressivo: 2005,
+};
+
+async function mirrorToReal(
+  supabase: any, userId: string, runId: string, mode: Mode,
+  action: "open" | "close", side: "buy" | "sell", idempotencyKey: string,
+  requestedBy: "engine_auto" | "user_manual_close" | "user_close_all",
+) {
+  if (!REAL_MIRROR_ENABLED) return;
+  try {
+    await supabase.from("b3_mt5_commands").insert({
+      user_id: userId, env: "real", simulation_run_id: runId, mode,
+      action, side, symbol: "WIN", quantity: REAL_QTY_BY_MODE[mode] ?? 1,
+      magic_number: REAL_MAGIC_BY_MODE[mode], idempotency_key: idempotencyKey,
+      requested_by: requestedBy,
+    });
+  } catch (e) {
+    // Espelhamento nunca pode derrubar o motor de simulação — só loga.
+    console.error(`[mirror] falha ao espelhar ${action} de ${mode} pra real:`, (e as Error).message);
+  }
+}
+
 type Mode = "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agressivo";
 const MODES: Mode[] = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"];
 
@@ -42,11 +81,11 @@ interface ModeDefaults {
   daily_loss_limit_brl: number; daily_gain_target_brl: number;
 }
 const MODE_DEFAULTS: Record<Mode, ModeDefaults> = {
-  conservador:    { min_approve_votes: 4, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200 },
-  moderado:       { min_approve_votes: 4, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500 },
-  equilibrado:    { min_approve_votes: 4, min_confidence: 62, min_score: 62, max_contracts: 3, stop_pts: 220, gain_pts: 440, max_volatility_pct: 3.8, daily_loss_limit_brl: 500, daily_gain_target_brl: 700 },
-  semi_agressivo: { min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000 },
-  agressivo:      { min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200 },
+  conservador:    { min_approve_votes: 4, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200, trailing_activation_pts: 0, trailing_giveback_pts: 0 },
+  moderado:       { min_approve_votes: 4, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0 },
+  equilibrado:    { min_approve_votes: 4, min_confidence: 62, min_score: 62, max_contracts: 3, stop_pts: 220, gain_pts: 440, max_volatility_pct: 3.8, daily_loss_limit_brl: 500, daily_gain_target_brl: 700, trailing_activation_pts: 0, trailing_giveback_pts: 0 },
+  semi_agressivo: { min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000, trailing_activation_pts: 0, trailing_giveback_pts: 0 },
+  agressivo:      { min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200, trailing_activation_pts: 0, trailing_giveback_pts: 0 },
 };
 
 function hhmmToMin(s: string) { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; }
@@ -1304,8 +1343,30 @@ async function runB3SimulationTickInner(
         const movePts = (markPrice - Number(open.entry_price)) * dirSign;
         const hitStop = movePts <= -Number(cfg.stop_pts);
         const hitGain = movePts >= Number(cfg.gain_pts);
-        if (forceClose || hitStop || hitGain) {
-          const reason = forceClose ? "force_close" : hitStop ? "stop" : "gain";
+
+        // ────────── proteção de lucro: ativação + recuo (trailing) ──────────
+        // Desligada por padrão (trailing_activation_pts=0). Quando ligada,
+        // olha o histórico de mercado desde a entrada pra achar o MELHOR
+        // ponto já alcançado (peakPts) — não confundir com o preço atual.
+        let hitTrailing = false;
+        let peakPts = movePts;
+        const trailingOn = Number(cfg.trailing_activation_pts) > 0;
+        const entryMsForTrailing = open.entry_time ? new Date(open.entry_time).getTime() : null;
+        if (trailingOn && entryMsForTrailing) {
+          for (const h of marketHistory) {
+            const t = new Date(h.market_time).getTime();
+            if (t < entryMsForTrailing || t > Date.now()) continue;
+            const p = Number(h.quote_last ?? h.price ?? 0);
+            if (!Number.isFinite(p) || p <= 0) continue;
+            const move = (p - Number(open.entry_price)) * dirSign;
+            if (move > peakPts) peakPts = move;
+          }
+          const armed = peakPts >= Number(cfg.trailing_activation_pts);
+          hitTrailing = armed && (peakPts - movePts) >= Number(cfg.trailing_giveback_pts);
+        }
+
+        if (forceClose || hitStop || hitGain || hitTrailing) {
+          const reason = forceClose ? "force_close" : hitStop ? "stop" : hitGain ? "gain" : "trailing_stop";
           const tradeCtx = await closeOrder(supabase, userId, run, m, open, markAudit, reason, marketHistory);
           providerStats.last_exit_price = markPrice;
           openOrdersCache = null;
@@ -1535,14 +1596,15 @@ async function runB3SimulationTickInner(
         // agora reduz a partir da base certa, em vez de reduzir 1 contrato.
         const baseQty = Number(cfg.max_contracts) || 1;
         const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
-        const { error: oErr } = await supabase.from("b3_simulation_orders").insert({
+        const { data: insertedOrder, error: oErr } = await supabase.from("b3_simulation_orders").insert({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, symbol: "WIN", contract_code: "WINFUT", side: intendedSide,
           entry_price: Math.round(entry / TICK) * TICK, quantity: qty,
           fees: Number(run.simulated_fee_brl) || 0, status: "open",
           ...orderAuditPatch(entryAudit),
-        });
+        }).select("id").single();
         if (oErr) throw oErr;
+        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", intendedSide, `open-${insertedOrder.id}`, "engine_auto");
         providerStats.last_entry_price = entry;
         openOrdersCache = null;
         await supabase.from("b3_simulation_modes")
@@ -2147,6 +2209,9 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
     legacy_price_detected: exitAudit.legacy_price_detected,
     provider_name: exitAudit.provider_name,
   }).eq("id", order.id).eq("user_id", userId);
+
+  await mirrorToReal(supabase, userId, run.id, mode.mode as Mode, "close", order.side, `close-${order.id}`,
+    reason === "manual_close_user" ? "user_manual_close" : reason === "manual_close_all_user" ? "user_close_all" : "engine_auto");
 
   const newRealized = Number(mode.realized_pnl) + netBrl;
   const newBalance = Number(mode.current_balance) + netBrl;
