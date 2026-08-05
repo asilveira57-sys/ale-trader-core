@@ -858,7 +858,7 @@ function StartForm({ onSubmit, loading }: { onSubmit: (v: any) => void; loading:
           onChange={(e) => setV({ ...v, symbol: e.target.value })}
         >
           <option value="WINQ26">WIN — Mini Índice</option>
-          <option value="WDOQ26">WDO — Mini Dólar</option>
+          <option value="WDOU26">WDO — Mini Dólar</option>
         </select>
       </Field>
       <Field label="Saldo inicial (R$)"><Input type="number" value={v.initial_balance} onChange={(e) => setV({ ...v, initial_balance: Number(e.target.value) })} /></Field>
