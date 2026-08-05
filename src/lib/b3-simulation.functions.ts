@@ -2343,6 +2343,7 @@ const SETTING_FIELDS = [
   "enabled","min_approve_votes","min_confidence","min_score","max_contracts",
   "stop_pts","gain_pts","max_volatility_pct","daily_loss_limit_brl","daily_gain_target_brl",
   "trading_start_time","entry_cutoff_time","force_close_time","notes",
+  "trailing_activation_pts","trailing_giveback_pts","trailing_mode",
   // B3 Protection
   "minimum_trades_before_profit_lock","minimum_operating_minutes","profit_multiplier_before_lock",
   "post_target_allowed_retracement","consecutive_loss_after_target","post_target_size_reduction",
