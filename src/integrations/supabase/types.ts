@@ -660,6 +660,48 @@ export type Database = {
           },
         ]
       }
+      b3_asset_profiles: {
+        Row: {
+          active: boolean
+          asset_class: string
+          base_price_fallback: number
+          contract_code: string
+          created_at: string
+          display_name: string
+          quote_symbol: string
+          symbol: string
+          tick_size: number
+          tick_value_brl: number
+          trading_calendar: string
+        }
+        Insert: {
+          active?: boolean
+          asset_class: string
+          base_price_fallback: number
+          contract_code: string
+          created_at?: string
+          display_name: string
+          quote_symbol: string
+          symbol: string
+          tick_size: number
+          tick_value_brl: number
+          trading_calendar?: string
+        }
+        Update: {
+          active?: boolean
+          asset_class?: string
+          base_price_fallback?: number
+          contract_code?: string
+          created_at?: string
+          display_name?: string
+          quote_symbol?: string
+          symbol?: string
+          tick_size?: number
+          tick_value_brl?: number
+          trading_calendar?: string
+        }
+        Relationships: []
+      }
       b3_daily_protection_history: {
         Row: {
           block_at: string | null
