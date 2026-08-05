@@ -978,6 +978,96 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_live_orders: {
+        Row: {
+          broker_ticket_entry: string | null
+          broker_ticket_exit: string | null
+          command_id: string | null
+          created_at: string
+          entry_price: number | null
+          entry_time: string | null
+          exit_price: number | null
+          exit_time: string | null
+          fees_brl: number | null
+          gross_result_brl: number | null
+          id: string
+          instance_id: string | null
+          magic_number: number
+          mode: string | null
+          net_result_brl: number | null
+          quantity: number
+          side: string
+          simulation_run_id: string | null
+          status: string
+          symbol: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          broker_ticket_entry?: string | null
+          broker_ticket_exit?: string | null
+          command_id?: string | null
+          created_at?: string
+          entry_price?: number | null
+          entry_time?: string | null
+          exit_price?: number | null
+          exit_time?: string | null
+          fees_brl?: number | null
+          gross_result_brl?: number | null
+          id?: string
+          instance_id?: string | null
+          magic_number: number
+          mode?: string | null
+          net_result_brl?: number | null
+          quantity: number
+          side: string
+          simulation_run_id?: string | null
+          status?: string
+          symbol: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          broker_ticket_entry?: string | null
+          broker_ticket_exit?: string | null
+          command_id?: string | null
+          created_at?: string
+          entry_price?: number | null
+          entry_time?: string | null
+          exit_price?: number | null
+          exit_time?: string | null
+          fees_brl?: number | null
+          gross_result_brl?: number | null
+          id?: string
+          instance_id?: string | null
+          magic_number?: number
+          mode?: string | null
+          net_result_brl?: number | null
+          quantity?: number
+          side?: string
+          simulation_run_id?: string | null
+          status?: string
+          symbol?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_live_orders_command_id_fkey"
+            columns: ["command_id"]
+            isOneToOne: false
+            referencedRelation: "b3_mt5_commands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_live_orders_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       b3_macro_events: {
         Row: {
           active: boolean
@@ -1019,6 +1109,89 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      b3_mt5_commands: {
+        Row: {
+          action: string
+          broker_ticket: string | null
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          env: string
+          error_message: string | null
+          expires_at: string
+          filled_at: string | null
+          filled_price: number | null
+          id: string
+          idempotency_key: string
+          instance_id: string | null
+          magic_number: number
+          mode: string | null
+          quantity: number
+          requested_by: string
+          side: string | null
+          simulation_run_id: string | null
+          status: string
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          broker_ticket?: string | null
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          env: string
+          error_message?: string | null
+          expires_at?: string
+          filled_at?: string | null
+          filled_price?: number | null
+          id?: string
+          idempotency_key: string
+          instance_id?: string | null
+          magic_number: number
+          mode?: string | null
+          quantity: number
+          requested_by: string
+          side?: string | null
+          simulation_run_id?: string | null
+          status?: string
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          broker_ticket?: string | null
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          env?: string
+          error_message?: string | null
+          expires_at?: string
+          filled_at?: string | null
+          filled_price?: number | null
+          id?: string
+          idempotency_key?: string
+          instance_id?: string | null
+          magic_number?: number
+          mode?: string | null
+          quantity?: number
+          requested_by?: string
+          side?: string | null
+          simulation_run_id?: string | null
+          status?: string
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_mt5_commands_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_runs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       b3_mt5sim_blocks: {
         Row: {
