@@ -25,6 +25,12 @@ import { b3WindowState } from "./b3-window.server";
 
 const POINT_VALUE_BRL = 0.2;
 const TICK = 5;
+// Trava de risco AGREGADA: numa conta real, os 5 modos compartilham o mesmo
+// saldo/margem (diferente da simulação, onde cada modo tem saldo virtual
+// isolado). Esse limite olha a soma do resultado realizado hoje dos 5 modos
+// juntos e bloqueia NOVAS entradas em TODOS os modos quando estourado —
+// posições já abertas continuam sendo geridas normalmente (stop/gain/zeragem).
+// Valor definido pelo usuário em 04/08/2026.
 const GLOBAL_DAILY_LOSS_LIMIT_BRL = 1000;
 
 type Mode = "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agressivo";
@@ -776,7 +782,7 @@ async function runB3SimulationTickInner(
     if (lateral) hardBlock.push("mercado lateral — entrada bloqueada");
     if (wrongDirection) hardBlock.push("tendência contrária ao lado avaliado");
 
-    // Condições "macias" (evidências, não certezas): cada uma soma para o
+    // Condições "macias" (evidências, não certezas): cada uma some para o
     // placar. Antes era tudo em "E" (9/9 obrigatórias); agora é threshold —
     // reflete que nenhuma delas sozinha invalida a oportunidade.
     const soft: { label: string; pass: boolean }[] = [];
@@ -806,12 +812,12 @@ async function runB3SimulationTickInner(
     const minHits = Number((cfg as any).setup_min_soft_hits ?? 6);
     const hits = soft.length - failedSoft.length;
     const softOk = hits >= minHits;
+
     const failures = [...hardBlock, ...(softOk ? [] : failedSoft)];
 
     if (hardBlock.length === 0 && softOk) {
       return { name: "trend_pullback", ok: true, reasons: [], details: { ...details, soft_hits: hits, soft_total: soft.length } };
     }
-
     // Classifica em outros setups — agora também operáveis (ok reflete se
     // aquele padrão específico tem evidência suficiente), não só telemetria.
     let name: B3SetupName = "no_valid_setup";
@@ -1246,7 +1252,7 @@ async function runB3SimulationTickInner(
       addCheck("volatility", "Volatilidade", ctx.volatility_pct <= Number(cfg.max_volatility_pct), `${ctx.volatility_pct.toFixed(2)}% / limite ${Number(cfg.max_volatility_pct).toFixed(2)}%`);
       addCheck("max_trades", "Máximo trades", !open && 1 <= Number(cfg.max_contracts), open ? "Já existe posição aberta neste robô." : `1 / ${Number(cfg.max_contracts)} contrato(s)`);
       addCheck("daily_loss", "Loss diário", realizedToday > -Number(cfg.daily_loss_limit_brl), `${realizedToday.toFixed(2)} / -${Number(cfg.daily_loss_limit_brl).toFixed(2)} BRL`);
-      const realizedTodayTotal = Object.values(realizedTodayByMode).reduce((a, b) => a + Number(b ?? 0), 0);
+      const realizedTodayTotal = Object.values(realizedTodayByMode).reduce((a: number, b: any) => a + Number(b ?? 0), 0);
       addCheck("daily_loss_aggregate", "Perda diária agregada (conta)", realizedTodayTotal > -GLOBAL_DAILY_LOSS_LIMIT_BRL,
         `${realizedTodayTotal.toFixed(2)} / -${GLOBAL_DAILY_LOSS_LIMIT_BRL.toFixed(2)} BRL (5 modos somados)`);
       addCheck("daily_target", "Meta diária", realizedToday < Number(cfg.daily_gain_target_brl) || protDec.allow_new_entry, `${realizedToday.toFixed(2)} / ${Number(cfg.daily_gain_target_brl).toFixed(2)} BRL`);
@@ -1435,7 +1441,10 @@ async function runB3SimulationTickInner(
       addCheck("signal_buy", "Sinal BUY", decision.final === "approved" && intendedSide === "buy", intendedSide === "buy" ? decision.final : "lado avaliado SELL", false);
       addCheck("signal_sell", "Sinal SELL", decision.final === "approved" && intendedSide === "sell", intendedSide === "sell" ? decision.final : "lado avaliado BUY", false);
 
-      // Classificação de setup técnico — Fase 1: somente trend_pullback opera.
+      // Classificação de setup técnico — Fase 2: os 4 padrões classificados
+      // podem operar (trend_pullback, breakout_retest, consolidation_breakout,
+      // support_resistance_rejection), cada um com sua própria checagem de
+      // evidência mínima dentro de classifySetup. no_valid_setup nunca opera.
       const setupInfo = classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
       const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
       addCheck(
@@ -1443,7 +1452,7 @@ async function runB3SimulationTickInner(
         "Setup técnico",
         setupAllowed,
         setupAllowed
-          ? "trend_pullback validado"
+          ? `${setupInfo.name} validado`
           : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
       );
 
@@ -1519,6 +1528,11 @@ async function runB3SimulationTickInner(
           };
         }
         const entry = entryAudit.execution_price;
+        // Base de contratos = configuração do modo (Conservador=1, Moderado=2,
+        // Equilibrado=3, Semi_agressivo=4, Agressivo=3), não mais fixa em 1.
+        // O multiplicador de proteção de risco (size_multiplier) continua
+        // reduzindo o tamanho quando o motor de risco pede cautela — ele
+        // agora reduz a partir da base certa, em vez de reduzir 1 contrato.
         const baseQty = Number(cfg.max_contracts) || 1;
         const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
         const { error: oErr } = await supabase.from("b3_simulation_orders").insert({
@@ -2253,6 +2267,78 @@ export const resetB3ModeSettings = createServerFn({ method: "POST" })
       .eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId);
     if (error) throw error;
     return { ok: true };
+  });
+
+// ───────────────────── controle manual: fechar 1 / fechar todos ─────────────────────
+// Botão de fechamento manual por modo. Usa a MESMA cadeia de validação de
+// cotação que o motor automático (B3QuoteProvider + getB3ExecutionAudit +
+// assertB3StrictMt5ExecutionAudit) — ou seja, se a cotação estiver vencida,
+// o fechamento manual é recusado exatamente como o fechamento automático
+// seria, em vez de fechar "no escuro" com preço desatualizado.
+export const closeModeOrderManually = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string; mode: Mode }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: run } = await supabase.from("b3_simulation_runs")
+      .select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle();
+    if (!run) throw new Error("Simulação não encontrada.");
+    const { data: mode } = await (supabase as any).from("b3_simulation_modes")
+      .select("*").eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId).maybeSingle();
+    if (!mode) throw new Error("Modo não encontrado nessa simulação.");
+    const { data: open } = await (supabase as any).from("b3_simulation_orders")
+      .select("*").eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId)
+      .eq("status", "open").maybeSingle();
+    if (!open) throw new Error("Não há posição aberta nesse modo agora.");
+
+    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
+    const exitAudit = getB3ExecutionAudit(priceSrc, open.side, "exit", "closeModeOrderManually");
+    if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(exitAudit, "closeModeOrderManually");
+
+    const closed = await closeOrder(supabase, userId, run, mode, open, exitAudit, "manual_close_user");
+    return { ok: true, closed };
+  });
+
+// Botão de pânico: fecha toda posição aberta nos 5 modos dessa simulação e
+// desativa (enabled=false) os 5, pra nada reabrir sozinho depois. Continua
+// mesmo se algum modo individual falhar ao fechar (ex: sem posição aberta
+// naquele modo) — reporta o resultado de cada um em vez de abortar tudo.
+export const closeAllModesManually = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: run } = await supabase.from("b3_simulation_runs")
+      .select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle();
+    if (!run) throw new Error("Simulação não encontrada.");
+
+    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: "WINFUT", base: 130000 });
+
+    const results: Record<string, any> = {};
+    for (const modeName of MODES) {
+      try {
+        const { data: mode } = await (supabase as any).from("b3_simulation_modes")
+          .select("*").eq("simulation_run_id", data.run_id).eq("mode", modeName).eq("user_id", userId).maybeSingle();
+        const { data: open } = await (supabase as any).from("b3_simulation_orders")
+          .select("*").eq("simulation_run_id", data.run_id).eq("mode", modeName).eq("user_id", userId)
+          .eq("status", "open").maybeSingle();
+        if (!mode || !open) { results[modeName] = { closed: false, reason: "sem posição aberta" }; continue; }
+        const exitAudit = getB3ExecutionAudit(priceSrc, open.side, "exit", "closeAllModesManually");
+        if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(exitAudit, "closeAllModesManually");
+        const closed = await closeOrder(supabase, userId, run, mode, open, exitAudit, "manual_close_all_user");
+        results[modeName] = { closed: true, result: closed };
+      } catch (e) {
+        results[modeName] = { closed: false, reason: (e as Error).message };
+      }
+    }
+
+    // Pausa os 5 modos — evita qualquer entrada nova até o usuário reativar
+    // manualmente cada um (mesmo padrão do toggle "enabled" já existente).
+    await (supabase as any).from("b3_simulation_mode_settings")
+      .update({ enabled: false })
+      .eq("simulation_run_id", data.run_id).eq("user_id", userId);
+
+    return { ok: true, results };
   });
 
 // ───────────────────── B3 Protection: state & history ─────────────────────
