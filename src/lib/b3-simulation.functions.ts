@@ -79,6 +79,7 @@ interface ModeDefaults {
   min_approve_votes: number; min_confidence: number; min_score: number;
   max_contracts: number; stop_pts: number; gain_pts: number; max_volatility_pct: number;
   daily_loss_limit_brl: number; daily_gain_target_brl: number;
+  trailing_activation_pts?: number; trailing_giveback_pts?: number; trailing_mode?: string;
 }
 const MODE_DEFAULTS: Record<Mode, ModeDefaults> = {
   conservador:    { min_approve_votes: 4, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
