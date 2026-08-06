@@ -1152,6 +1152,87 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_mode_user_defaults: {
+        Row: {
+          consecutive_loss_after_target: number | null
+          daily_gain_target_brl: number | null
+          daily_loss_limit_brl: number | null
+          entry_cutoff_time: string | null
+          force_close_time: string | null
+          gain_pts: number | null
+          max_contracts: number | null
+          max_volatility_pct: number | null
+          min_approve_votes: number | null
+          min_confidence: number | null
+          min_score: number | null
+          minimum_operating_minutes: number | null
+          minimum_trades_before_profit_lock: number | null
+          mode: string
+          post_target_allowed_retracement: number | null
+          post_target_size_reduction: number | null
+          profit_multiplier_before_lock: number | null
+          stop_pts: number | null
+          trading_start_time: string | null
+          trailing_activation_pts: number | null
+          trailing_giveback_pts: number | null
+          trailing_mode: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          consecutive_loss_after_target?: number | null
+          daily_gain_target_brl?: number | null
+          daily_loss_limit_brl?: number | null
+          entry_cutoff_time?: string | null
+          force_close_time?: string | null
+          gain_pts?: number | null
+          max_contracts?: number | null
+          max_volatility_pct?: number | null
+          min_approve_votes?: number | null
+          min_confidence?: number | null
+          min_score?: number | null
+          minimum_operating_minutes?: number | null
+          minimum_trades_before_profit_lock?: number | null
+          mode: string
+          post_target_allowed_retracement?: number | null
+          post_target_size_reduction?: number | null
+          profit_multiplier_before_lock?: number | null
+          stop_pts?: number | null
+          trading_start_time?: string | null
+          trailing_activation_pts?: number | null
+          trailing_giveback_pts?: number | null
+          trailing_mode?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          consecutive_loss_after_target?: number | null
+          daily_gain_target_brl?: number | null
+          daily_loss_limit_brl?: number | null
+          entry_cutoff_time?: string | null
+          force_close_time?: string | null
+          gain_pts?: number | null
+          max_contracts?: number | null
+          max_volatility_pct?: number | null
+          min_approve_votes?: number | null
+          min_confidence?: number | null
+          min_score?: number | null
+          minimum_operating_minutes?: number | null
+          minimum_trades_before_profit_lock?: number | null
+          mode?: string
+          post_target_allowed_retracement?: number | null
+          post_target_size_reduction?: number | null
+          profit_multiplier_before_lock?: number | null
+          stop_pts?: number | null
+          trading_start_time?: string | null
+          trailing_activation_pts?: number | null
+          trailing_giveback_pts?: number | null
+          trailing_mode?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_mt5_commands: {
         Row: {
           action: string

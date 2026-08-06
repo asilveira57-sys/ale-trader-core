@@ -204,12 +204,28 @@ export const startB3Simulation = createServerFn({ method: "POST" })
     const { error: mErr } = await (supabase as any).from("b3_simulation_modes").insert(modeRows);
     if (mErr) throw mErr;
 
-    const settingRows = MODES.map(m => ({
-      simulation_run_id: run.id, user_id: userId, mode: m, ...MODE_DEFAULTS[m],
-      trading_start_time: run.trading_start_time,
-      entry_cutoff_time: run.entry_cutoff_time,
-      force_close_time: run.force_close_time,
-    }));
+    // Usa o padrão salvo pelo usuário (b3_mode_user_defaults) quando
+    // existir; cai no MODE_DEFAULTS de fábrica só pros modos sem padrão
+    // próprio salvo ainda. Sem isso, TODA simulação nova sempre nascia com
+    // os valores de fábrica, obrigando reconfigurar tudo de novo — motivo
+    // direto do pedido do usuário (item 7, 06/08/2026).
+    const { data: userDefaults } = await (supabase as any)
+      .from("b3_mode_user_defaults").select("*").eq("user_id", userId);
+    const userDefaultsByMode: Record<string, any> = {};
+    for (const d of userDefaults ?? []) userDefaultsByMode[d.mode] = d;
+
+    const settingRows = MODES.map(m => {
+      const ud = userDefaultsByMode[m];
+      const base = ud
+        ? Object.fromEntries(SETTING_FIELDS.map(k => [k, k in ud && ud[k] != null ? ud[k] : MODE_DEFAULTS[m][k as keyof typeof MODE_DEFAULTS[typeof m]]]))
+        : MODE_DEFAULTS[m];
+      return {
+        simulation_run_id: run.id, user_id: userId, mode: m, ...base,
+        trading_start_time: run.trading_start_time,
+        entry_cutoff_time: run.entry_cutoff_time,
+        force_close_time: run.force_close_time,
+      };
+    });
     await (supabase as any).from("b3_simulation_mode_settings").insert(settingRows);
     return run;
   });
@@ -2392,10 +2408,50 @@ export const resetB3ModeSettings = createServerFn({ method: "POST" })
   .inputValidator((d: { run_id: string; mode: Mode }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const def = MODE_DEFAULTS[data.mode];
+    const { data: ud } = await (supabase as any)
+      .from("b3_mode_user_defaults").select("*").eq("user_id", userId).eq("mode", data.mode).maybeSingle();
+    const fab = MODE_DEFAULTS[data.mode];
+    const def = ud
+      ? Object.fromEntries(SETTING_FIELDS.map(k => [k, k in ud && ud[k] != null ? ud[k] : fab[k as keyof typeof fab]]))
+      : fab;
     const { error } = await (supabase as any).from("b3_simulation_mode_settings")
       .update({ ...def, enabled: true })
       .eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId);
+    if (error) throw error;
+    return { ok: true, source: ud ? "user_default" : "factory_default" };
+  });
+
+// ─────────────────── "meu padrão" por modo (item 7) ───────────────────
+export const saveModeAsDefault = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { mode: Mode; values: Record<string, any> }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const patch: Record<string, any> = {};
+    for (const k of SETTING_FIELDS) if (k in data.values && k !== "enabled" && k !== "notes") patch[k] = data.values[k];
+    const { error } = await (supabase as any).from("b3_mode_user_defaults")
+      .upsert({ user_id: userId, mode: data.mode, ...patch }, { onConflict: "user_id,mode" });
+    if (error) throw error;
+    return { ok: true };
+  });
+
+export const listModeUserDefaults = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data, error } = await (supabase as any)
+      .from("b3_mode_user_defaults").select("*").eq("user_id", userId);
+    if (error) throw error;
+    return data ?? [];
+  });
+
+export const deleteModeUserDefault = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { mode: Mode }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { error } = await (supabase as any).from("b3_mode_user_defaults")
+      .delete().eq("user_id", userId).eq("mode", data.mode);
     if (error) throw error;
     return { ok: true };
   });

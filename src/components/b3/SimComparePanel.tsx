@@ -13,19 +13,47 @@ import { toast } from "sonner";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Trophy, Play, Pause, StopCircle, RotateCcw, ListPlus, Trash2, Activity, History, Info, Settings as SettingsIcon, ShieldAlert, Clock } from "lucide-react";
+import { Trophy, Play, Pause, StopCircle, RotateCcw, ListPlus, Trash2, Activity, History, Info, Settings as SettingsIcon, ShieldAlert, Clock, FileDown } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import {
   startB3Simulation, setB3SimulationStatus, setB3SimulationWinner,
   listB3Simulations, getB3SimulationDetail, tickB3Simulation,
   scoreMode, listB3ModeSettings, updateB3ModeSettings, resetB3ModeSettings,
   closeModeOrderManually, closeAllModesManually,
+  saveModeAsDefault, listModeUserDefaults, deleteModeUserDefault,
 } from "@/lib/b3-simulation.functions";
 import { listB3MacroEvents, upsertB3MacroEvent, deleteB3MacroEvent } from "@/lib/b3-macro-events.functions";
 import { getB3SimulationReport } from "@/lib/b3-reports.functions";
 
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const NUM = (v: number, d = 0) => Number(v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// Item 4: extrato do dia (ou do período selecionado) em CSV, um modo por
+// linha — funciona pra qualquer ativo (WIN, WDO, e os que vierem depois),
+// já que só depende do que o relatório retorna, não tem nada fixo de WIN.
+function exportExtratoCSV(symbol: string, period: string, modes: any[]) {
+  const headers = [
+    "Modo", "Saldo inicial", "Saldo final", "PnL do período", "Taxas",
+    "Trades", "Vitórias", "Perdas", "Taxa de acerto (%)", "Maior ganho",
+    "Maior perda", "Drawdown máx.", "Pontos líquidos", "Comitê aprovou",
+    "Comitê rejeitou", "Bloqueios de risco", "Status", "Motivo do status",
+  ];
+  const rows = modes.map((m: any) => [
+    m.mode, m.saldo_inicial_periodo, m.saldo_final_periodo, m.pnl_periodo, m.taxas,
+    m.trades, m.vitorias, m.perdas, m.taxa_acerto, m.maior_ganho,
+    m.maior_perda, m.drawdown_maximo, m.pontos_liquidos, m.comite_aprovou,
+    m.comite_rejeitou, m.bloqueios_risco, m.current_status, (m.status_reason ?? "").replace(/[\r\n;]+/g, " "),
+  ]);
+  const csv = [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const dateLabel = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `extrato_${symbol}_${period}_${dateLabel}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const MODES = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
 type Mode = typeof MODES[number];
@@ -318,10 +346,19 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
               </div>
             </>
           )}
-          <div className="ml-auto text-xs text-muted-foreground">
-            {period === "today" && "Mostrando apenas operações encerradas no pregão de hoje (00:00 BRT)."}
-            {period === "all" && "Mostrando o resultado acumulado desde o início da simulação."}
-            {period === "custom" && "Janela personalizada baseada no horário de fechamento das operações."}
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm" variant="outline"
+              disabled={!reportQ.data?.modes?.length}
+              onClick={() => exportExtratoCSV(detail?.run?.symbol ?? "ativo", period, reportQ.data?.modes ?? [])}
+            >
+              <FileDown className="w-4 h-4 mr-1" />Baixar extrato ({period === "today" ? "hoje" : period === "all" ? "acumulado" : "período"})
+            </Button>
+            <div className="text-xs text-muted-foreground">
+              {period === "today" && "Mostrando apenas operações encerradas no pregão de hoje (00:00 BRT)."}
+              {period === "all" && "Mostrando o resultado acumulado desde o início da simulação."}
+              {period === "custom" && "Janela personalizada baseada no horário de fechamento das operações."}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -745,6 +782,8 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
   const list = useServerFn(listB3ModeSettings);
   const upd = useServerFn(updateB3ModeSettings);
   const reset = useServerFn(resetB3ModeSettings);
+  const saveDefault = useServerFn(saveModeAsDefault);
+  const listDefaults = useServerFn(listModeUserDefaults);
   const [open, setOpen] = useState(false);
   const q = useQuery({
     queryKey: ["b3-mode-settings", runId],
@@ -756,10 +795,25 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
     staleTime: 0,
     refetchOnMount: "always",
   });
+  const saveDefaultQ = useQuery({
+    queryKey: ["b3-mode-user-defaults"],
+    queryFn: () => listDefaults(),
+    enabled: open,
+    staleTime: 0,
+  });
   const current = (q.data ?? []).find((s: any) => s.mode === mode);
   const [form, setForm] = useState<any>(null);
   if (open && current && !form) setForm({ ...current });
   const f = form ?? current ?? {};
+
+  const saveDefaultM = useMutation({
+    mutationFn: () => saveDefault({ data: { mode, values: current ?? {} } }),
+    onSuccess: () => {
+      toast.success(`Padrão salvo pra ${mode} — próximas simulações e "Restaurar padrão" vão usar isso.`);
+      qc.invalidateQueries({ queryKey: ["b3-mode-user-defaults"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Erro ao salvar padrão"),
+  });
 
   const saveM = useMutation({
     mutationFn: () => upd({ data: { run_id: runId, mode, patch: f } }),
@@ -849,9 +903,34 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
           <p className="text-sm text-muted-foreground">Carregando…</p>
         )}
         </div>
-        <DialogFooter className="px-6 pb-6 pt-2 border-t border-border/40">
-
-          <Button variant="outline" onClick={() => resetM.mutate()} disabled={resetM.isPending}>Restaurar padrão</Button>
+        <DialogFooter className="px-6 pb-6 pt-2 border-t border-border/40 flex-wrap gap-2">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" disabled={resetM.isPending}>Restaurar padrão</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Restaurar {mode} pro seu padrão?</DialogTitle></DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                {saveDefaultQ.data?.some((d: any) => d.mode === mode)
+                  ? "Isso vai trocar a configuração atual pelo SEU padrão salvo pra esse modo (não o de fábrica)."
+                  : "Você ainda não salvou um padrão próprio pra esse modo — isso vai voltar pro padrão de fábrica do sistema."}
+                {" "}Não dá pra desfazer.
+              </p>
+              <DialogFooter>
+                <Button variant="destructive" disabled={resetM.isPending} onClick={() => resetM.mutate()}>
+                  {resetM.isPending ? "Restaurando..." : "Sim, restaurar"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button
+            variant="outline"
+            disabled={saveDefaultM.isPending || !current}
+            onClick={() => saveDefaultM.mutate()}
+            title="Salva a configuração atual (a que já está gravada, não edições ainda não salvas) como seu padrão pra esse modo"
+          >
+            {saveDefaultM.isPending ? "Salvando..." : "Salvar como meu padrão"}
+          </Button>
           <Button onClick={() => saveM.mutate()} disabled={saveM.isPending || !current}>Salvar</Button>
         </DialogFooter>
       </DialogContent>
