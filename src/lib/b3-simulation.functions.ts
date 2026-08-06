@@ -2456,7 +2456,70 @@ export const deleteModeUserDefault = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// ───────────────────── controle manual: fechar 1 / fechar todos ─────────────────────
+// ─────────────────── Painel unificado (cockpit) — todos os ativos ───────────────────
+// Junta os 5 modos de CADA simulação 'running' do usuário (hoje: WIN + WDO,
+// escala sozinho quando mais ativos forem adicionados) num formato enxuto
+// pra um card compacto — não reaproveita getB3SimulationDetail (que traz
+// até 500 ordens) porque o cockpit só precisa da posição aberta atual e do
+// resultado de hoje, não do histórico completo.
+export const getB3CockpitOverview = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: runs, error: runsErr } = await (supabase as any)
+      .from("b3_simulation_runs").select("id, symbol").eq("user_id", userId).eq("status", "running");
+    if (runsErr) throw runsErr;
+
+    const cards: any[] = [];
+    for (const run of runs ?? []) {
+      const asset = await loadAssetProfile(supabase, run.symbol);
+      const [{ data: modes }, { data: settings }, { data: openOrders }, { data: snaps }] = await Promise.all([
+        (supabase as any).from("b3_simulation_modes").select("mode, initial_balance, current_balance")
+          .eq("simulation_run_id", run.id).eq("user_id", userId),
+        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled")
+          .eq("simulation_run_id", run.id).eq("user_id", userId),
+        (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, created_at")
+          .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
+        (supabase as any).from("b3_simulation_market_snapshots").select("price, extra")
+          .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1),
+      ]);
+
+      const livePrice = Number(snaps?.[0]?.price ?? 0) || null;
+      const auditModes: any[] = snaps?.[0]?.extra?.engine_audit?.modes ?? [];
+      const enabledByMode: Record<string, boolean> = {};
+      for (const s of settings ?? []) enabledByMode[s.mode] = s.enabled !== false;
+      const openByMode: Record<string, any> = {};
+      for (const o of openOrders ?? []) openByMode[o.mode] = o;
+      const auditByMode: Record<string, any> = {};
+      for (const a of auditModes) auditByMode[a.mode] = a;
+
+      for (const m of MODES) {
+        const mode = (modes ?? []).find((x: any) => x.mode === m);
+        const open = openByMode[m];
+        const audit = auditByMode[m];
+        let unrealizedPts: number | null = null, unrealizedBrl: number | null = null;
+        if (open && livePrice != null) {
+          const dir = open.side === "buy" ? 1 : -1;
+          unrealizedPts = (livePrice - Number(open.entry_price)) * dir;
+          unrealizedBrl = unrealizedPts * Number(asset.tick_value_brl) * Number(open.quantity);
+        }
+        cards.push({
+          run_id: run.id, symbol: run.symbol, mode: m,
+          enabled: enabledByMode[m] ?? true,
+          open: open ? { side: open.side, entry_price: Number(open.entry_price), quantity: Number(open.quantity) } : null,
+          live_price: livePrice,
+          unrealized_pts: unrealizedPts, unrealized_brl: unrealizedBrl,
+          balance: Number(mode?.current_balance ?? mode?.initial_balance ?? 0),
+          pnl_today: Number(mode?.current_balance ?? 0) - Number(mode?.initial_balance ?? 0),
+          score: audit?.last_score ?? null, confidence: audit?.last_confidence ?? null,
+          blocked_reason: open ? null : (audit?.first_stop?.label ?? audit?.last_refusal_reason ?? null),
+        });
+      }
+    }
+    return cards;
+  });
+
+
 // Botão de fechamento manual por modo. Usa a MESMA cadeia de validação de
 // cotação que o motor automático (B3QuoteProvider + getB3ExecutionAudit +
 // assertB3StrictMt5ExecutionAudit) — ou seja, se a cotação estiver vencida,
