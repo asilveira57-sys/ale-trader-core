@@ -138,6 +138,7 @@ const NAV = [
   { to: "/orders", label: "Binance — Ordens", icon: Receipt },
   { to: "/binance-audit", label: "Binance — Auditoria Saídas", icon: FileSearch },
   { to: "/b3", label: "B3 Day Trade (WIN)", icon: BarChart3 },
+  { to: "/b3-wdo", label: "B3 Day Trade (WDO)", icon: BarChart3 },
   { to: "/b3-mt5sim", label: "Simulação MT5 XP", icon: Activity },
   { to: "/backtest", label: "Laboratório", icon: FlaskConical },
   { to: "/assets", label: "Ativos", icon: Coins },

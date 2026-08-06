@@ -86,7 +86,7 @@ function sampleStatus(trades: number): { label: string; cls: string } | null {
 }
 
 
-export function SimComparePanel() {
+export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?: string; defaultSymbol?: string } = {}) {
   const qc = useQueryClient();
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [ticks, setTicks] = useState(10);
@@ -110,7 +110,11 @@ export function SimComparePanel() {
   const detailInterval = useVisibleRefetchInterval(15000);
   const reportInterval = useVisibleRefetchInterval(30000);
 
-  const runsQ = useQuery({ queryKey: ["b3-sim-runs"], queryFn: () => listRuns() });
+  const runsQAll = useQuery({ queryKey: ["b3-sim-runs"], queryFn: () => listRuns() });
+  // Quando a tela é dedicada a um ativo (symbolPrefix definido, ex: "WIN" ou
+  // "WDO"), só mostra/seleciona runs daquele ativo — sem isso, o dropdown
+  // "Run:" listava WIN e WDO misturados na mesma tela.
+  const runsQ = { ...runsQAll, data: symbolPrefix ? (runsQAll.data ?? []).filter((r: any) => String(r.symbol ?? "").startsWith(symbolPrefix)) : runsQAll.data };
   const runId = selectedRun ?? runsQ.data?.[0]?.id ?? null;
   const detailQ = useQuery({
     queryKey: ["b3-sim-detail", runId],
@@ -218,7 +222,7 @@ export function SimComparePanel() {
           <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30">somente simulação</Badge>
         </CardHeader>
         <CardContent className="space-y-4">
-          <StartForm onSubmit={(v) => startM.mutate(v)} loading={startM.isPending} />
+          <StartForm onSubmit={(v) => startM.mutate(v)} loading={startM.isPending} defaultSymbol={defaultSymbol} />
 
           <div className="flex flex-wrap items-center gap-2">
             <Label className="text-xs text-muted-foreground">Run:</Label>
@@ -854,11 +858,11 @@ function Row({ k, v, accent }: { k: string; v: string; accent?: "pos" | "neg" })
   );
 }
 
-function StartForm({ onSubmit, loading }: { onSubmit: (v: any) => void; loading: boolean }) {
+function StartForm({ onSubmit, loading, defaultSymbol }: { onSubmit: (v: any) => void; loading: boolean; defaultSymbol?: string }) {
   const [v, setV] = useState({
     initial_balance: 10000, max_contracts: 1, fee_brl: 1.5, slippage_pts: 0,
     trading_start_time: "09:15", entry_cutoff_time: "16:30", force_close_time: "16:55", notes: "",
-    symbol: "WINQ26",
+    symbol: defaultSymbol ?? "WINQ26",
   });
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
