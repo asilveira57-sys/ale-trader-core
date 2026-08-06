@@ -948,30 +948,46 @@ function Row({ k, v, accent }: { k: string; v: string; accent?: "pos" | "neg" })
 }
 
 function StartForm({ onSubmit, loading, defaultSymbol }: { onSubmit: (v: any) => void; loading: boolean; defaultSymbol?: string }) {
+  const isEquity = (sym: string) => sym === "PETR4" || sym === "VALE3";
   const [v, setV] = useState({
     initial_balance: 10000, max_contracts: 1, fee_brl: 1.5, slippage_pts: 0,
-    trading_start_time: "09:15", entry_cutoff_time: "16:30", force_close_time: "16:55", notes: "",
+    trading_start_time: isEquity(defaultSymbol ?? "") ? "10:00" : "09:15",
+    entry_cutoff_time: "16:30", force_close_time: "16:55", notes: "",
     symbol: defaultSymbol ?? "WINQ26",
   });
+  const onSymbolChange = (symbol: string) => {
+    // Ação abre 10:00 (não 09:15 como futuro) — troca o horário padrão
+    // junto, pra não esquecer e criar uma simulação de ação com horário
+    // de futuro por engano.
+    setV({ ...v, symbol, trading_start_time: isEquity(symbol) ? "10:00" : "09:15" });
+  };
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
       <Field label="Ativo">
         <select
           className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
           value={v.symbol}
-          onChange={(e) => setV({ ...v, symbol: e.target.value })}
+          onChange={(e) => onSymbolChange(e.target.value)}
         >
           <option value="WINQ26">WIN — Mini Índice</option>
           <option value="WDOU26">WDO — Mini Dólar</option>
+          <option value="PETR4">PETR4 — Petrobras PN (ação, fracionário)</option>
+          <option value="VALE3">VALE3 — Vale ON (ação, fracionário)</option>
         </select>
       </Field>
       <Field label="Saldo inicial (R$)"><Input type="number" value={v.initial_balance} onChange={(e) => setV({ ...v, initial_balance: Number(e.target.value) })} /></Field>
-      <Field label="Máx. contratos"><Input type="number" value={v.max_contracts} onChange={(e) => setV({ ...v, max_contracts: Number(e.target.value) })} /></Field>
-      <Field label="Taxa (R$ por contrato/lado)"><Input type="number" step="0.1" value={v.fee_brl} onChange={(e) => setV({ ...v, fee_brl: Number(e.target.value) })} /></Field>
-      <Field label="Slippage (pts)"><Input type="number" step="5" value={v.slippage_pts} onChange={(e) => setV({ ...v, slippage_pts: Number(e.target.value) })} /></Field>
+      <Field label={isEquity(v.symbol) ? "Máx. ações" : "Máx. contratos"}><Input type="number" value={v.max_contracts} onChange={(e) => setV({ ...v, max_contracts: Number(e.target.value) })} /></Field>
+      <Field label={isEquity(v.symbol) ? "Taxa (R$ por ação/lado)" : "Taxa (R$ por contrato/lado)"}><Input type="number" step="0.1" value={v.fee_brl} onChange={(e) => setV({ ...v, fee_brl: Number(e.target.value) })} /></Field>
+      <Field label={isEquity(v.symbol) ? "Slippage (R$)" : "Slippage (pts)"}><Input type="number" step={isEquity(v.symbol) ? "0.01" : "5"} value={v.slippage_pts} onChange={(e) => setV({ ...v, slippage_pts: Number(e.target.value) })} /></Field>
       <Field label="Início pregão"><Input value={v.trading_start_time} onChange={(e) => setV({ ...v, trading_start_time: e.target.value })} /></Field>
       <Field label="Corte de entradas"><Input value={v.entry_cutoff_time} onChange={(e) => setV({ ...v, entry_cutoff_time: e.target.value })} /></Field>
       <Field label="Zeragem obrigatória"><Input value={v.force_close_time} onChange={(e) => setV({ ...v, force_close_time: e.target.value })} /></Field>
+      {isEquity(v.symbol) && (
+        <div className="col-span-2 md:col-span-4 text-xs text-amber-300/80">
+          Mercado à vista (ações) abre 10:00 e fecha 16:55 — diferente do horário de futuro. Confirme os horários
+          acima antes de iniciar.
+        </div>
+      )}
       <Button onClick={() => onSubmit(v)} disabled={loading}><RotateCcw className="w-4 h-4 mr-1" />{loading ? "Iniciando..." : "Iniciar nova simulação"}</Button>
     </div>
   );
