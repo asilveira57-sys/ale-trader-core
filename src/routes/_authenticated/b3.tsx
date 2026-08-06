@@ -26,7 +26,7 @@ import {
   runB3Committee,
   setB3PriceSource,
 } from "@/lib/b3.functions";
-import { getB3EngineDiagnostic, getB3PipelineAudit } from "@/lib/b3-simulation.functions";
+import { getB3EngineDiagnostic } from "@/lib/b3-simulation.functions";
 import { EngineDiagnosticPanel, SimComparePanel } from "@/components/b3/SimComparePanel";
 import { PipelineAuditPanel } from "@/components/b3/PipelineAuditPanel";
 
@@ -223,7 +223,7 @@ function B3Page() {
           <CommitteePanel settings={settings} />
         </TabsContent>
         <TabsContent value="sim3">
-          <SimComparePanel />
+          <SimComparePanel symbolPrefix="WIN" defaultSymbol="WINQ26" />
         </TabsContent>
         <TabsContent value="live">
           <SimLiveDashboard />
@@ -248,8 +248,6 @@ function B3Page() {
 
 function B3EngineDiagnosticTab() {
   const getDiag = useServerFn(getB3EngineDiagnostic);
-  const getAudit = useServerFn(getB3PipelineAudit);
-  const [exporting, setExporting] = useState(false);
   const q = useQuery({
     queryKey: ["b3-engine-diagnostic"],
     queryFn: () => getDiag(),
@@ -257,24 +255,6 @@ function B3EngineDiagnosticTab() {
     refetchIntervalInBackground: false,
   });
   const data = q.data as any;
-
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const [diag, audit, { generateB3DiagnosticPdf }] = await Promise.all([
-        getDiag(),
-        getAudit(),
-        import("@/lib/b3-diagnostic-pdf"),
-      ]);
-      const file = generateB3DiagnosticPdf({ diag, audit });
-      toast.success(`PDF gerado: ${file}`);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Falha ao gerar o PDF do diagnóstico.");
-    } finally {
-      setExporting(false);
-    }
-  };
-
   if (!data?.run) {
     return (
       <Card className="mt-3">
@@ -286,22 +266,11 @@ function B3EngineDiagnosticTab() {
   }
   return (
     <div className="mt-3 space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <p className="text-xs text-muted-foreground">
-          Exporta todo o diagnóstico do dia (tick, engine_audit, config por modo, pipeline por robô,
-          últimos 100 bloqueios e decisões) em um PDF de texto pronto para análise externa.
-        </p>
-        <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting}>
-          <FileBarChart className="w-4 h-4 mr-1" />
-          {exporting ? "Gerando PDF…" : "Baixar PDF do diagnóstico"}
-        </Button>
-      </div>
       <PipelineAuditPanel />
       <EngineDiagnosticPanel detail={{ snapshots: data.snapshot ? [data.snapshot] : [] }} />
     </div>
   );
 }
-
 
 
 // ────────────────────────────────────────────────────────────────────
