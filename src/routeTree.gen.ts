@@ -46,6 +46,7 @@ import { Route as AuthenticatedBinanceWalletHealthRouteImport } from './routes/_
 import { Route as AuthenticatedBinanceFeeAuditRouteImport } from './routes/_authenticated/binance-fee-audit'
 import { Route as AuthenticatedBinanceBrainRouteImport } from './routes/_authenticated/binance-brain'
 import { Route as AuthenticatedBinanceAuditRouteImport } from './routes/_authenticated/binance-audit'
+import { Route as AuthenticatedB3WdoRouteImport } from './routes/_authenticated/b3-wdo'
 import { Route as AuthenticatedB3SimHistoryRouteImport } from './routes/_authenticated/b3-sim-history'
 import { Route as AuthenticatedB3Mt5simRouteImport } from './routes/_authenticated/b3-mt5sim'
 import { Route as AuthenticatedB3AuditoriaRouteImport } from './routes/_authenticated/b3-auditoria'
@@ -272,6 +273,11 @@ const AuthenticatedBinanceAuditRoute =
     path: '/binance-audit',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedB3WdoRoute = AuthenticatedB3WdoRouteImport.update({
+  id: '/b3-wdo',
+  path: '/b3-wdo',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedB3SimHistoryRoute =
   AuthenticatedB3SimHistoryRouteImport.update({
     id: '/b3-sim-history',
@@ -465,6 +471,7 @@ export interface FileRoutesByFullPath {
   '/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
   '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
+  '/b3-wdo': typeof AuthenticatedB3WdoRoute
   '/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/binance-brain': typeof AuthenticatedBinanceBrainRoute
   '/binance-fee-audit': typeof AuthenticatedBinanceFeeAuditRoute
@@ -534,6 +541,7 @@ export interface FileRoutesByTo {
   '/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
   '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
+  '/b3-wdo': typeof AuthenticatedB3WdoRoute
   '/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/binance-brain': typeof AuthenticatedBinanceBrainRoute
   '/binance-fee-audit': typeof AuthenticatedBinanceFeeAuditRoute
@@ -605,6 +613,7 @@ export interface FileRoutesById {
   '/_authenticated/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
   '/_authenticated/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/_authenticated/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
+  '/_authenticated/b3-wdo': typeof AuthenticatedB3WdoRoute
   '/_authenticated/binance-audit': typeof AuthenticatedBinanceAuditRoute
   '/_authenticated/binance-brain': typeof AuthenticatedBinanceBrainRoute
   '/_authenticated/binance-fee-audit': typeof AuthenticatedBinanceFeeAuditRoute
@@ -676,6 +685,7 @@ export interface FileRouteTypes {
     | '/b3-auditoria'
     | '/b3-mt5sim'
     | '/b3-sim-history'
+    | '/b3-wdo'
     | '/binance-audit'
     | '/binance-brain'
     | '/binance-fee-audit'
@@ -745,6 +755,7 @@ export interface FileRouteTypes {
     | '/b3-auditoria'
     | '/b3-mt5sim'
     | '/b3-sim-history'
+    | '/b3-wdo'
     | '/binance-audit'
     | '/binance-brain'
     | '/binance-fee-audit'
@@ -815,6 +826,7 @@ export interface FileRouteTypes {
     | '/_authenticated/b3-auditoria'
     | '/_authenticated/b3-mt5sim'
     | '/_authenticated/b3-sim-history'
+    | '/_authenticated/b3-wdo'
     | '/_authenticated/binance-audit'
     | '/_authenticated/binance-brain'
     | '/_authenticated/binance-fee-audit'
@@ -1149,6 +1161,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBinanceAuditRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/b3-wdo': {
+      id: '/_authenticated/b3-wdo'
+      path: '/b3-wdo'
+      fullPath: '/b3-wdo'
+      preLoaderRoute: typeof AuthenticatedB3WdoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/b3-sim-history': {
       id: '/_authenticated/b3-sim-history'
       path: '/b3-sim-history'
@@ -1414,6 +1433,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedB3AuditoriaRoute: typeof AuthenticatedB3AuditoriaRoute
   AuthenticatedB3Mt5simRoute: typeof AuthenticatedB3Mt5simRoute
   AuthenticatedB3SimHistoryRoute: typeof AuthenticatedB3SimHistoryRoute
+  AuthenticatedB3WdoRoute: typeof AuthenticatedB3WdoRoute
   AuthenticatedBinanceAuditRoute: typeof AuthenticatedBinanceAuditRoute
   AuthenticatedBinanceBrainRoute: typeof AuthenticatedBinanceBrainRoute
   AuthenticatedBinanceFeeAuditRoute: typeof AuthenticatedBinanceFeeAuditRoute
@@ -1468,6 +1488,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedB3AuditoriaRoute: AuthenticatedB3AuditoriaRoute,
   AuthenticatedB3Mt5simRoute: AuthenticatedB3Mt5simRoute,
   AuthenticatedB3SimHistoryRoute: AuthenticatedB3SimHistoryRoute,
+  AuthenticatedB3WdoRoute: AuthenticatedB3WdoRoute,
   AuthenticatedBinanceAuditRoute: AuthenticatedBinanceAuditRoute,
   AuthenticatedBinanceBrainRoute: AuthenticatedBinanceBrainRoute,
   AuthenticatedBinanceFeeAuditRoute: AuthenticatedBinanceFeeAuditRoute,
