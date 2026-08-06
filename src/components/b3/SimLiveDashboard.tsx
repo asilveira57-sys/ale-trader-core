@@ -164,7 +164,7 @@ export function SimLiveDashboard() {
   }, [d, modeById]);
 
   if (runsQ.isLoading) return <p className="text-sm text-muted-foreground p-6">Carregando simulações…</p>;
-  if (!runsQ.data?.length) return <p className="text-sm text-muted-foreground p-6">Nenhuma simulação encontrada. Inicie uma em "Simulação 3 Modos".</p>;
+  if (!runsQ.data?.length) return <p className="text-sm text-muted-foreground p-6">Nenhuma simulação encontrada. Inicie uma em "Simulação 5 Modos".</p>;
 
   return (
     <div className="space-y-4 mt-3">

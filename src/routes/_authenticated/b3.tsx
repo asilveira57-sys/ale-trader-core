@@ -199,7 +199,7 @@ function B3Page() {
           <TabsTrigger value="panel"><Activity className="w-4 h-4 mr-1" />Painel</TabsTrigger>
           <TabsTrigger value="trade"><TrendingUp className="w-4 h-4 mr-1" />Operar (sim.)</TabsTrigger>
           <TabsTrigger value="committee"><Users className="w-4 h-4 mr-1" />Comitê</TabsTrigger>
-          <TabsTrigger value="sim3"><Swords className="w-4 h-4 mr-1" />Simulação 3 Modos</TabsTrigger>
+          <TabsTrigger value="sim3"><Swords className="w-4 h-4 mr-1" />Simulação 5 Modos</TabsTrigger>
           <TabsTrigger value="live"><Activity className="w-4 h-4 mr-1" />Painel Ao Vivo</TabsTrigger>
           <TabsTrigger value="diagnostic"><ShieldAlert className="w-4 h-4 mr-1" />Diagnóstico do Motor</TabsTrigger>
           <TabsTrigger value="report"><FileBarChart className="w-4 h-4 mr-1" />Relatório</TabsTrigger>
@@ -300,9 +300,9 @@ function Panel({ settings, orders }: { settings: B3Settings; orders: B3Order[] }
         <Card className="md:col-span-4 border-amber-500/40 bg-amber-500/5">
           <CardContent className="pt-4 text-sm flex items-center justify-between flex-wrap gap-2">
             <span className="text-amber-300 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4" /> Nenhuma Simulação 3 Modos ativa — o painel está mostrando ordens manuais legadas.
+              <AlertTriangle className="w-4 h-4" /> Nenhuma Simulação 5 Modos ativa — o painel está mostrando ordens manuais legadas.
             </span>
-            <span className="text-xs text-muted-foreground">Abra a aba <strong>Simulação 3 Modos</strong> e clique em "Iniciar nova simulação".</span>
+            <span className="text-xs text-muted-foreground">Abra a aba <strong>Simulação 5 Modos</strong> e clique em "Iniciar nova simulação".</span>
           </CardContent>
         </Card>
         <StatCard label="Saldo inicial" value={BRL(settings.capital_allocated)} />
@@ -338,7 +338,7 @@ function Panel({ settings, orders }: { settings: B3Settings; orders: B3Order[] }
       <Card className="md:col-span-4">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center justify-between flex-wrap gap-2">
-            <span>Status do robô · Simulação 3 Modos</span>
+            <span>Status do robô · Simulação 5 Modos</span>
             <span className="flex gap-1">
               {(ov.enabled_modes ?? []).map((m: string) => (
                 <Badge key={m} variant="outline" className="capitalize text-[10px]">{m}</Badge>
@@ -368,7 +368,7 @@ function Panel({ settings, orders }: { settings: B3Settings; orders: B3Order[] }
             <Clock className="w-4 h-4" /> Janela efetiva: {w.start} · zeragem {w.force_close}
           </p>
           <p className="text-xs text-muted-foreground">
-            Para alterar votos mínimos, stop, gain ou afrouxar perda diária por modo, abra a aba <strong>Simulação 3 Modos</strong> e clique no ícone de engrenagem em cada card.
+            Para alterar votos mínimos, stop, gain ou afrouxar perda diária por modo, abra a aba <strong>Simulação 5 Modos</strong> e clique no ícone de engrenagem em cada card.
           </p>
         </CardContent>
       </Card>
@@ -541,7 +541,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
     [orders, today, isMt5],
   );
 
-  // Inclui também operações da Simulação 3 Modos do dia
+  // Inclui também operações da Simulação 5 Modos do dia
   const simQ = useQuery({
     queryKey: ["b3-report-sim-today", today],
     refetchInterval: useVisibleRefetchInterval(30000),
@@ -662,11 +662,11 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Operações da Simulação 3 Modos (hoje)</CardTitle>
+          <CardTitle className="text-base">Operações da Simulação 5 Modos (hoje)</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-xs text-muted-foreground mb-2">
-            O Relatório acima reflete apenas operações reais/manuais. Esta seção mostra as ordens da Simulação 3 Modos
+            O Relatório acima reflete apenas operações reais/manuais. Esta seção mostra as ordens da Simulação 5 Modos
             executadas hoje (já somadas nos cartões: Resultado realizado, Bruto, Taxas e Patrimônio).
           </p>
           {hiddenSimLegacy > 0 && (

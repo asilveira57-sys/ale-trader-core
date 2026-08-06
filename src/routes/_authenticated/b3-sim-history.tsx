@@ -18,7 +18,8 @@ import { listB3Simulations, scoreMode } from "@/lib/b3-simulation.functions";
 import { listAllB3SimOrders, listB3SimVotesForOrder } from "@/lib/b3-sim-history.functions";
 
 export const Route = createFileRoute("/_authenticated/b3-sim-history")({
-  head: () => ({ meta: [{ title: "Histórico Simulação 3 Modos — B3" }] }),
+  head: () => ({ meta: [{ title: "Histórico Simulação 5 Modos — B3" }] }),
+  validateSearch: (search: Record<string, unknown>) => ({ run: typeof search.run === "string" ? search.run : undefined }),
   component: HistoryPage,
   errorComponent: ({ error }) => <div className="p-6 text-destructive">Erro: {String(error?.message ?? error)}</div>,
   notFoundComponent: () => <div className="p-6">Não encontrado.</div>,
@@ -54,8 +55,9 @@ function HistoryPage() {
   const detail = useServerFn(listAllB3SimOrders);
   const votesFn = useServerFn(listB3SimVotesForOrder);
 
+  const search = Route.useSearch();
   const runsQ = useQuery({ queryKey: ["b3-sim-runs"], queryFn: () => list() });
-  const [runId, setRunId] = useState<string | null>(null);
+  const [runId, setRunId] = useState<string | null>(search.run ?? null);
   const effRun = runId ?? runsQ.data?.[0]?.id ?? null;
 
   const dQ = useQuery({
@@ -242,8 +244,8 @@ function HistoryPage() {
       <div className="container mx-auto p-6 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <Link to="/b3" search={{ tab: "report" }}><Button variant="outline" size="sm"><ArrowLeft className="w-4 h-4 mr-1" />Voltar</Button></Link>
-            <h1 className="text-2xl font-semibold">Histórico completo — Simulação 3 Modos</h1>
+            <Link to="/b3"><Button variant="outline" size="sm"><ArrowLeft className="w-4 h-4 mr-1" />Voltar</Button></Link>
+            <h1 className="text-2xl font-semibold">Histórico completo — Simulação 5 Modos</h1>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={exportXLSX} disabled={!dQ.data}><FileDown className="w-4 h-4 mr-1" />XLSX</Button>
@@ -268,7 +270,7 @@ function HistoryPage() {
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
                   {(runsQ.data ?? []).map((r: any) => (
-                    <SelectItem key={r.id} value={r.id}>{new Date(r.started_at).toLocaleString("pt-BR")} · {r.status}</SelectItem>
+                    <SelectItem key={r.id} value={r.id}>{r.symbol ?? "?"} · {new Date(r.started_at).toLocaleString("pt-BR")} · {r.status}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
