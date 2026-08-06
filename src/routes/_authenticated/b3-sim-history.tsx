@@ -244,7 +244,7 @@ function HistoryPage() {
       <div className="container mx-auto p-6 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <Link to="/b3"><Button variant="outline" size="sm"><ArrowLeft className="w-4 h-4 mr-1" />Voltar</Button></Link>
+            <Link to="/b3" search={{ tab: "compare" }}><Button variant="outline" size="sm"><ArrowLeft className="w-4 h-4 mr-1" />Voltar</Button></Link>
             <h1 className="text-2xl font-semibold">Histórico completo — Simulação 5 Modos</h1>
           </div>
           <div className="flex gap-2">
