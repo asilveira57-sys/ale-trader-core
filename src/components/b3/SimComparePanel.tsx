@@ -206,7 +206,7 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
         <p className="text-xs text-muted-foreground">
           {detail?.run?.symbol ?? "O ativo"} é contrato futuro — cada linha = uma operação completa (abre e fecha). BUY = comprado · SELL = vendido.
         </p>
-        <Link to="/b3-sim-history">
+        <Link to="/b3-sim-history" search={{ run: runId ?? undefined }}>
           <Button size="sm" variant="outline"><History className="w-4 h-4 mr-1" />Ver histórico completo</Button>
         </Link>
       </div>

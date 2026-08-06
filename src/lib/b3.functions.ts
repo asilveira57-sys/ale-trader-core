@@ -141,6 +141,9 @@ export const getB3PanelOverview = createServerFn({ method: "GET" })
     const { data: runs } = await (supabase as any).from("b3_simulation_runs")
       .select("*").eq("user_id", userId)
       .in("status", ["running", "paused"])
+      // Esta aba é da página dedicada ao WIN — sem esse filtro, ela pegava
+      // a run mais recente de QUALQUER ativo (ex: WDO), mesmo aqui.
+      .like("symbol", "WIN%")
       .order("started_at", { ascending: false }).limit(1);
     const run = runs?.[0] ?? null;
     if (!run) return { run: null };
