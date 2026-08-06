@@ -49,6 +49,7 @@ import { Route as AuthenticatedBinanceAuditRouteImport } from './routes/_authent
 import { Route as AuthenticatedB3WdoRouteImport } from './routes/_authenticated/b3-wdo'
 import { Route as AuthenticatedB3SimHistoryRouteImport } from './routes/_authenticated/b3-sim-history'
 import { Route as AuthenticatedB3Mt5simRouteImport } from './routes/_authenticated/b3-mt5sim'
+import { Route as AuthenticatedB3CockpitRouteImport } from './routes/_authenticated/b3-cockpit'
 import { Route as AuthenticatedB3AuditoriaRouteImport } from './routes/_authenticated/b3-auditoria'
 import { Route as AuthenticatedB3RouteImport } from './routes/_authenticated/b3'
 import { Route as AuthenticatedAutoDashboardRouteImport } from './routes/_authenticated/auto-dashboard'
@@ -289,6 +290,11 @@ const AuthenticatedB3Mt5simRoute = AuthenticatedB3Mt5simRouteImport.update({
   path: '/b3-mt5sim',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedB3CockpitRoute = AuthenticatedB3CockpitRouteImport.update({
+  id: '/b3-cockpit',
+  path: '/b3-cockpit',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedB3AuditoriaRoute =
   AuthenticatedB3AuditoriaRouteImport.update({
     id: '/b3-auditoria',
@@ -469,6 +475,7 @@ export interface FileRoutesByFullPath {
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
   '/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
+  '/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/b3-wdo': typeof AuthenticatedB3WdoRoute
@@ -539,6 +546,7 @@ export interface FileRoutesByTo {
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
   '/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
+  '/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/b3-wdo': typeof AuthenticatedB3WdoRoute
@@ -611,6 +619,7 @@ export interface FileRoutesById {
   '/_authenticated/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/_authenticated/b3': typeof AuthenticatedB3Route
   '/_authenticated/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
+  '/_authenticated/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/_authenticated/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/_authenticated/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/_authenticated/b3-wdo': typeof AuthenticatedB3WdoRoute
@@ -683,6 +692,7 @@ export interface FileRouteTypes {
     | '/auto-dashboard'
     | '/b3'
     | '/b3-auditoria'
+    | '/b3-cockpit'
     | '/b3-mt5sim'
     | '/b3-sim-history'
     | '/b3-wdo'
@@ -753,6 +763,7 @@ export interface FileRouteTypes {
     | '/auto-dashboard'
     | '/b3'
     | '/b3-auditoria'
+    | '/b3-cockpit'
     | '/b3-mt5sim'
     | '/b3-sim-history'
     | '/b3-wdo'
@@ -824,6 +835,7 @@ export interface FileRouteTypes {
     | '/_authenticated/auto-dashboard'
     | '/_authenticated/b3'
     | '/_authenticated/b3-auditoria'
+    | '/_authenticated/b3-cockpit'
     | '/_authenticated/b3-mt5sim'
     | '/_authenticated/b3-sim-history'
     | '/_authenticated/b3-wdo'
@@ -1182,6 +1194,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedB3Mt5simRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/b3-cockpit': {
+      id: '/_authenticated/b3-cockpit'
+      path: '/b3-cockpit'
+      fullPath: '/b3-cockpit'
+      preLoaderRoute: typeof AuthenticatedB3CockpitRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/b3-auditoria': {
       id: '/_authenticated/b3-auditoria'
       path: '/b3-auditoria'
@@ -1431,6 +1450,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAutoDashboardRoute: typeof AuthenticatedAutoDashboardRoute
   AuthenticatedB3Route: typeof AuthenticatedB3Route
   AuthenticatedB3AuditoriaRoute: typeof AuthenticatedB3AuditoriaRoute
+  AuthenticatedB3CockpitRoute: typeof AuthenticatedB3CockpitRoute
   AuthenticatedB3Mt5simRoute: typeof AuthenticatedB3Mt5simRoute
   AuthenticatedB3SimHistoryRoute: typeof AuthenticatedB3SimHistoryRoute
   AuthenticatedB3WdoRoute: typeof AuthenticatedB3WdoRoute
@@ -1486,6 +1506,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAutoDashboardRoute: AuthenticatedAutoDashboardRoute,
   AuthenticatedB3Route: AuthenticatedB3Route,
   AuthenticatedB3AuditoriaRoute: AuthenticatedB3AuditoriaRoute,
+  AuthenticatedB3CockpitRoute: AuthenticatedB3CockpitRoute,
   AuthenticatedB3Mt5simRoute: AuthenticatedB3Mt5simRoute,
   AuthenticatedB3SimHistoryRoute: AuthenticatedB3SimHistoryRoute,
   AuthenticatedB3WdoRoute: AuthenticatedB3WdoRoute,
@@ -1555,13 +1576,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
