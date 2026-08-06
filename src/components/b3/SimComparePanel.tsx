@@ -745,6 +745,11 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
     queryKey: ["b3-mode-settings", runId],
     queryFn: () => list({ data: { run_id: runId } }),
     enabled: open && !!runId,
+    // Sem isso, reabrir o dialog podia mostrar um valor antigo que ficou em
+    // cache no navegador (foi exatamente o que causou o "voltou pro padrão"
+    // mesmo o banco já tendo o valor certo há muito tempo).
+    staleTime: 0,
+    refetchOnMount: "always",
   });
   const current = (q.data ?? []).find((s: any) => s.mode === mode);
   const [form, setForm] = useState<any>(null);
