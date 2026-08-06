@@ -140,6 +140,8 @@ const NAV = [
   { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
   { to: "/b3", label: "B3 Day Trade (WIN)", icon: BarChart3 },
   { to: "/b3-wdo", label: "B3 Day Trade (WDO)", icon: BarChart3 },
+  { to: "/b3-petr4", label: "B3 Day Trade (PETR4)", icon: BarChart3 },
+  { to: "/b3-vale3", label: "B3 Day Trade (VALE3)", icon: BarChart3 },
   { to: "/b3-mt5sim", label: "Simulação MT5 XP", icon: Activity },
   { to: "/backtest", label: "Laboratório", icon: FlaskConical },
   { to: "/assets", label: "Ativos", icon: Coins },

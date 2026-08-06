@@ -66,12 +66,23 @@ const REAL_MIRROR_ENABLED = true;
 const REAL_QTY_BY_MODE: Record<Mode, number> = {
   conservador: 1, moderado: 1, equilibrado: 1, semi_agressivo: 1, agressivo: 1,
 };
-// Magic numbers da conta REAL — faixa 2000+ pra nunca colidir com nada que
-// a conta demo venha a usar no futuro (que ficaria numa faixa 1000+, se um
-// dia o espelho demo também passar a usar essa mesma fila de comandos).
-const REAL_MAGIC_BY_MODE: Record<Mode, number> = {
-  conservador: 2001, moderado: 2002, equilibrado: 2003, semi_agressivo: 2004, agressivo: 2005,
+const MODE_INDEX: Record<Mode, number> = {
+  conservador: 1, moderado: 2, equilibrado: 3, semi_agressivo: 4, agressivo: 5,
 };
+// Magic number = 2000 + (bloco de 100 por ativo) + índice do modo (1-5).
+// Faixa 2000+ nunca colide com nada que a conta demo venha a usar (essa
+// ficaria em 1000+, se um dia o espelho demo também usar essa fila).
+// CORRIGIDO em 06/08/2026: antes o número era só por modo, então WIN e WDO
+// (e agora PETR4/VALE3) usariam o MESMO magic number — risco real numa
+// conta com vários ativos simultâneos. Agora cada ativo tem seu bloco:
+// WIN=2001-2005, WDO=2101-2105, PETR4=2201-2205, VALE3=2301-2305.
+const REAL_MAGIC_ASSET_BLOCK: Record<string, number> = {
+  WIN: 2000, WDO: 2100, PETR4: 2200, VALE3: 2300,
+};
+function realMagicNumber(quoteSymbol: string, mode: Mode): number {
+  const block = REAL_MAGIC_ASSET_BLOCK[quoteSymbol] ?? 2900; // ativo novo não cadastrado: bloco genérico
+  return block + MODE_INDEX[mode];
+}
 
 async function mirrorToReal(
   supabase: any, userId: string, runId: string, mode: Mode,
@@ -84,7 +95,7 @@ async function mirrorToReal(
     await supabase.from("b3_mt5_commands").insert({
       user_id: userId, env: "real", simulation_run_id: runId, mode,
       action, side, symbol, quantity: REAL_QTY_BY_MODE[mode] ?? 1,
-      magic_number: REAL_MAGIC_BY_MODE[mode], idempotency_key: idempotencyKey,
+      magic_number: realMagicNumber(symbol, mode), idempotency_key: idempotencyKey,
       requested_by: requestedBy,
     });
   } catch (e) {
