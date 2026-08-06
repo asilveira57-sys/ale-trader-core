@@ -200,7 +200,7 @@ export function SimComparePanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          WIN é contrato futuro — cada linha = uma operação completa (abre e fecha). BUY = comprado · SELL = vendido.
+          {detail?.run?.symbol ?? "O ativo"} é contrato futuro — cada linha = uma operação completa (abre e fecha). BUY = comprado · SELL = vendido.
         </p>
         <Link to="/b3-sim-history">
           <Button size="sm" variant="outline"><History className="w-4 h-4 mr-1" />Ver histórico completo</Button>
@@ -209,7 +209,12 @@ export function SimComparePanel() {
       {/* Cabeçalho / controles */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2"><Activity className="w-4 h-4" /> Simulação 5 Modos (sandbox)</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="w-4 h-4" /> Simulação 5 Modos (sandbox)
+            {detail?.run?.symbol && (
+              <Badge variant="outline" className="border-primary/40 bg-primary/10 font-semibold">{detail.run.symbol}</Badge>
+            )}
+          </CardTitle>
           <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30">somente simulação</Badge>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -222,7 +227,7 @@ export function SimComparePanel() {
               <SelectContent>
                 {(runsQ.data ?? []).map((r: any) => (
                   <SelectItem key={r.id} value={r.id}>
-                    {new Date(r.started_at).toLocaleString("pt-BR")} · {r.status} · {BRL(r.initial_balance)}
+                    {r.symbol ?? "?"} · {new Date(r.started_at).toLocaleString("pt-BR")} · {r.status} · {BRL(r.initial_balance)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -275,6 +280,12 @@ export function SimComparePanel() {
       {/* Filtro de período */}
       <Card>
         <CardContent className="pt-4 flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Ativo</Label>
+            <div className="h-9 flex items-center px-3 rounded-md border border-primary/40 bg-primary/10 font-semibold text-sm whitespace-nowrap">
+              {detail?.run?.symbol ?? "—"}
+            </div>
+          </div>
           <div className="space-y-1">
             <Label className="text-xs">Período do relatório</Label>
             <Select value={period} onValueChange={(v: any) => setPeriod(v)}>
