@@ -115,7 +115,12 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
   // "WDO"), só mostra/seleciona runs daquele ativo — sem isso, o dropdown
   // "Run:" listava WIN e WDO misturados na mesma tela.
   const runsQ = { ...runsQAll, data: symbolPrefix ? (runsQAll.data ?? []).filter((r: any) => String(r.symbol ?? "").startsWith(symbolPrefix)) : runsQAll.data };
-  const runId = selectedRun ?? runsQ.data?.[0]?.id ?? null;
+  // Auto-seleção: prefere sempre uma run 'running' (a mais recente entre
+  // as ativas), nunca uma cancelada/finalizada — antes bastava ser a mais
+  // recente por DATA, então uma run cancelada criada por engano podia ser
+  // escolhida no lugar da que está rodando de verdade.
+  const autoRun = (runsQ.data ?? []).find((r: any) => r.status === "running") ?? runsQ.data?.[0];
+  const runId = selectedRun ?? autoRun?.id ?? null;
   const detailQ = useQuery({
     queryKey: ["b3-sim-detail", runId],
     queryFn: () => getDetail({ data: { run_id: runId! } }),

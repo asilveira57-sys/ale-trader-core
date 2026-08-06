@@ -58,7 +58,8 @@ function HistoryPage() {
   const search = Route.useSearch();
   const runsQ = useQuery({ queryKey: ["b3-sim-runs"], queryFn: () => list() });
   const [runId, setRunId] = useState<string | null>(search.run ?? null);
-  const effRun = runId ?? runsQ.data?.[0]?.id ?? null;
+  const autoRun = (runsQ.data ?? []).find((r: any) => r.status === "running") ?? runsQ.data?.[0];
+  const effRun = runId ?? autoRun?.id ?? null;
 
   const dQ = useQuery({
     queryKey: ["b3-sim-history", effRun],
