@@ -34,6 +34,7 @@ const TICK = 5;
 const WIN_FALLBACK_ASSET_PROFILE = {
   symbol: "WINQ26", quote_symbol: "WIN", contract_code: "WINFUT",
   tick_size: TICK, tick_value_brl: POINT_VALUE_BRL, base_price_fallback: 130000,
+  spread_max_price: 15, price_deviation_limit: 2000,
 };
 async function loadAssetProfile(supabase: any, symbol: string | null | undefined) {
   if (!symbol) return WIN_FALLBACK_ASSET_PROFILE;
@@ -986,7 +987,11 @@ async function runB3SimulationTickInner(
     const now = new Date();
     const cur = saoPauloMinutes(now);
 
-    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback) });
+    const priceSrc = await B3QuoteProvider(supabase, userId, {
+      symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback),
+      expectedSymbol: asset.quote_symbol, tickSize: Number(asset.tick_size),
+      spreadMaxPoints: Number(asset.spread_max_price), priceDeviationLimit: Number(asset.price_deviation_limit),
+    });
     rememberProvider(priceSrc);
     const ctx = priceSrc.ctx;
     const marketHistory = await fetchMarketHistory();
@@ -1372,7 +1377,7 @@ async function runB3SimulationTickInner(
         let markAudit: B3QuoteExecutionAudit;
         try {
           markAudit = getB3ExecutionAudit(priceSrc, open.side, "mark", "runB3SimulationTick.markToMarket");
-          if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(markAudit, "runB3SimulationTick.markToMarket");
+          if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(markAudit, "runB3SimulationTick.markToMarket", asset.quote_symbol);
           providerStats.last_price_function = markAudit.execution_price_origin;
         } catch (e) {
           await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
@@ -1646,7 +1651,7 @@ async function runB3SimulationTickInner(
         let entryAudit: B3QuoteExecutionAudit;
         try {
           entryAudit = getB3ExecutionAudit(priceSrc, intendedSide, "entry", "runB3SimulationTick.openOrder");
-          if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(entryAudit, "runB3SimulationTick.openOrder");
+          if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(entryAudit, "runB3SimulationTick.openOrder", asset.quote_symbol);
           providerStats.last_price_function = entryAudit.execution_price_origin;
         } catch (e) {
           await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
@@ -1675,7 +1680,7 @@ async function runB3SimulationTickInner(
           const slip = Number(run.simulated_slippage_pts) || 0;
           entryAudit = {
             ...entryAudit,
-            execution_price: Math.round((intendedSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip) / TICK) * TICK,
+            execution_price: Math.round((intendedSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip) / asset.tick_size) * asset.tick_size,
             execution_price_origin: `${entryAudit.execution_price_origin}+legacy_slippage`,
           };
         }
@@ -1690,7 +1695,7 @@ async function runB3SimulationTickInner(
         const { data: insertedOrder, error: oErr } = await supabase.from("b3_simulation_orders").insert({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: intendedSide,
-          entry_price: Math.round(entry / TICK) * TICK, quantity: qty,
+          entry_price: Math.round(entry / asset.tick_size) * asset.tick_size, quantity: qty,
           fees: Number(run.simulated_fee_brl) || 0, status: "open",
           ...orderAuditPatch(entryAudit),
         }).select("id").single();
@@ -2255,7 +2260,7 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
 
 
 async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string, marketHistory: any[] = [], assetProfile: any = WIN_FALLBACK_ASSET_PROFILE) {
-  if (exitAudit.quote_source === "MT5 XP DEMO") assertB3StrictMt5ExecutionAudit(exitAudit, "closeOrder");
+  if (exitAudit.quote_source === "MT5 XP DEMO") assertB3StrictMt5ExecutionAudit(exitAudit, "closeOrder", assetProfile.quote_symbol);
   const exitPrice = exitAudit.execution_price;
   const dir = order.side === "buy" ? 1 : -1;
   const grossPts = (exitPrice - Number(order.entry_price)) * dir;
@@ -2282,7 +2287,7 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
   const durationS = entryTimeMs ? Math.max(0, Math.round((nowMs - entryTimeMs) / 1000)) : null;
 
   await supabase.from("b3_simulation_orders").update({
-    exit_price: Math.round(exitPrice / TICK) * TICK,
+    exit_price: Math.round(exitPrice / assetProfile.tick_size) * assetProfile.tick_size,
     exit_time: new Date().toISOString(),
     gross_result_points: grossPts,
     gross_result_brl: grossBrl,
@@ -2339,7 +2344,7 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
     entry_reason: order.entry_reason ?? null,
     exit_reason: reason,
     entry_price: Number(order.entry_price),
-    exit_price: Math.round(exitPrice / TICK) * TICK,
+    exit_price: Math.round(exitPrice / assetProfile.tick_size) * assetProfile.tick_size,
     entry_time: order.entry_time,
     exit_time: new Date().toISOString(),
     duration_s: durationS,
@@ -2553,9 +2558,13 @@ export const closeModeOrderManually = createServerFn({ method: "POST" })
     if (!open) throw new Error("Não há posição aberta nesse modo agora.");
 
     const asset = await loadAssetProfile(supabase, run.symbol);
-    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback) });
+    const priceSrc = await B3QuoteProvider(supabase, userId, {
+      symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback),
+      expectedSymbol: asset.quote_symbol, tickSize: Number(asset.tick_size),
+      spreadMaxPoints: Number(asset.spread_max_price), priceDeviationLimit: Number(asset.price_deviation_limit),
+    });
     const exitAudit = getB3ExecutionAudit(priceSrc, open.side, "exit", "closeModeOrderManually");
-    if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(exitAudit, "closeModeOrderManually");
+    if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(exitAudit, "closeModeOrderManually", asset.quote_symbol);
 
     const closed = await closeOrder(supabase, userId, run, mode, open, exitAudit, "manual_close_user", [], asset);
     return { ok: true, closed };
@@ -2575,7 +2584,11 @@ export const closeAllModesManually = createServerFn({ method: "POST" })
     if (!run) throw new Error("Simulação não encontrada.");
 
     const asset = await loadAssetProfile(supabase, run.symbol);
-    const priceSrc = await B3QuoteProvider(supabase, userId, { symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback) });
+    const priceSrc = await B3QuoteProvider(supabase, userId, {
+      symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback),
+      expectedSymbol: asset.quote_symbol, tickSize: Number(asset.tick_size),
+      spreadMaxPoints: Number(asset.spread_max_price), priceDeviationLimit: Number(asset.price_deviation_limit),
+    });
 
     const results: Record<string, any> = {};
     for (const modeName of MODES) {
@@ -2587,7 +2600,7 @@ export const closeAllModesManually = createServerFn({ method: "POST" })
           .eq("status", "open").maybeSingle();
         if (!mode || !open) { results[modeName] = { closed: false, reason: "sem posição aberta" }; continue; }
         const exitAudit = getB3ExecutionAudit(priceSrc, open.side, "exit", "closeAllModesManually");
-        if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(exitAudit, "closeAllModesManually");
+        if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(exitAudit, "closeAllModesManually", asset.quote_symbol);
         const closed = await closeOrder(supabase, userId, run, mode, open, exitAudit, "manual_close_all_user", [], asset);
         results[modeName] = { closed: true, result: closed };
       } catch (e) {
