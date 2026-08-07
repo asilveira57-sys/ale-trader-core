@@ -557,7 +557,7 @@ export async function getB3PriceContext(
       sample_window, warming_up_after_gap: sample_window.warming_up_after_gap,
     };
   }
-  const priceRounded = Math.round(price / TICK) * TICK;
+  const priceRounded = Math.round(price / tickSize) * tickSize;
   const open = prices[0] ?? price;
   const high = Math.max(...prices, price);
   const low = Math.min(...prices, price);
