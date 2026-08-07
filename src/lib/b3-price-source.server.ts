@@ -1,5 +1,8 @@
-// B3QuoteProvider — fonte central de cotação do módulo B3 Day Trade (WIN).
-// Mantém o cérebro dos robôs inalterado e isola a origem do preço aqui.
+// B3QuoteProvider — fonte central de cotação do módulo B3 Day Trade.
+// Multiativo desde 06/08/2026 (Fase 2): expectedSymbol/tickSize controlam
+// qual ativo é buscado — antes, TUDO usava a constante B3_MT5_SYMBOL
+// ("WINQ26") independente do que fosse passado, fazendo qualquer simulação
+// de outro ativo (WDO, PETR4, VALE3) operar sobre o preço do WIN.
 // Regra crítica: quando a fonte selecionada é MT5 XP DEMO, nenhum fallback
 // para CSV/mock/candle antigo é permitido para execução.
 
@@ -84,11 +87,11 @@ export interface B3QuoteExecutionAudit {
   provider_name: string;
 }
 
-export function isB3StrictMt5AuditRow(row: any): boolean {
+export function isB3StrictMt5AuditRow(row: any, expectedSymbol: string = B3_MT5_SYMBOL): boolean {
   return row?.quote_source === "MT5 XP DEMO"
     && row?.provider_name === "B3QuoteProvider"
     && row?.quote_server === B3_MT5_SERVER
-    && row?.quote_symbol === B3_MT5_SYMBOL
+    && row?.quote_symbol === expectedSymbol
     && row?.legacy_price_detected === false
     && Number(row?.quote_bid) > 0
     && Number(row?.quote_ask) > 0
@@ -96,8 +99,8 @@ export function isB3StrictMt5AuditRow(row: any): boolean {
     && Number(row?.execution_price) > 0;
 }
 
-export function assertB3StrictMt5ExecutionAudit(audit: B3QuoteExecutionAudit, functionName: string): void {
-  if (!isB3StrictMt5AuditRow(audit)) {
+export function assertB3StrictMt5ExecutionAudit(audit: B3QuoteExecutionAudit, functionName: string, expectedSymbol: string = B3_MT5_SYMBOL): void {
+  if (!isB3StrictMt5AuditRow(audit, expectedSymbol)) {
     throw new Error(`Tentativa de preço legado bloqueada — modo MT5 XP DEMO ativo (${functionName})`);
   }
 }
@@ -152,6 +155,7 @@ export interface B3PriceContextResult {
   quote_age_s: number | null;   // idade do tick mais recente
   server: string | null;        // XPMT5-DEMO / XPMT5-PRD / null
   quote_symbol: string | null;  // WINQ26 etc
+  tick_size: number;            // variação mínima do ativo — usado no arredondamento de preço
   raw: B3QuoteProviderRaw | null;
   provider_name: "B3QuoteProvider";
   quote_source: B3QuoteSourceLabel;
@@ -242,14 +246,14 @@ export function evaluateMt5Guard(info: {
   quote_symbol: string | null;
   quote_age_s: number | null;
   guard: B3GuardSettings;
-}): B3GuardEvaluation {
+}, expectedSymbol: string = B3_MT5_SYMBOL, tickSize: number = TICK): B3GuardEvaluation {
   const s = info.guard;
   const checks: B3GuardCheck[] = [];
   const bid = info.raw?.bid ?? null;
   const ask = info.raw?.ask ?? null;
   const last = info.raw?.last ?? null;
   const spread = bid != null && ask != null ? Math.max(0, Number(ask) - Number(bid)) : null;
-  const spreadTicks = spread != null ? Math.round(spread / TICK) : null;
+  const spreadTicks = spread != null ? Math.round(spread / tickSize) : null;
   const age = info.quote_age_s;
 
   const push = (c: B3GuardCheck) => checks.push(c);
@@ -258,8 +262,8 @@ export function evaluateMt5Guard(info: {
     info.raw ? "Tick MT5 recebido." : "Nenhum tick MT5 disponível."));
   push(guardCheck("mt5_server", "Servidor MT5", info.server != null && B3_MT5_ALLOWED_SERVERS.has(info.server), true, info.server ?? "—", "XPMT5-DEMO/PRD",
     info.server ? `Servidor ${info.server}.` : "Servidor MT5 ausente."));
-  push(guardCheck("mt5_symbol", "Símbolo WINQ26", info.quote_symbol === B3_MT5_SYMBOL, true, info.quote_symbol ?? "—", B3_MT5_SYMBOL,
-    info.quote_symbol === B3_MT5_SYMBOL ? "Símbolo correto." : `Símbolo ${info.quote_symbol ?? "—"} diferente de ${B3_MT5_SYMBOL}.`));
+  push(guardCheck("mt5_symbol", `Símbolo ${expectedSymbol}`, info.quote_symbol === expectedSymbol, true, info.quote_symbol ?? "—", expectedSymbol,
+    info.quote_symbol === expectedSymbol ? "Símbolo correto." : `Símbolo ${info.quote_symbol ?? "—"} diferente de ${expectedSymbol}.`));
   push(guardCheck("bid_positive", "Bid > 0", (bid ?? 0) > 0, true, bid, "> 0",
     (bid ?? 0) > 0 ? `Bid ${bid}.` : "Bid zerado ou ausente."));
   push(guardCheck("ask_positive", "Ask > 0", (ask ?? 0) > 0, true, ask, "> 0",
@@ -283,7 +287,7 @@ export function evaluateMt5Guard(info: {
   const spreadOk = spread == null ? false : spread <= spreadLimit;
   push(guardCheck("spread_pts", `Spread ≤ ${spreadLimit} pts`, spreadOk, true,
     spread == null ? "—" : `${spread} pts (${spreadTicks ?? "—"} ticks)`,
-    `${spreadLimit} pts (${Math.round(spreadLimit / TICK)} ticks)`,
+    `${spreadLimit} pts (${Math.round(spreadLimit / tickSize)} ticks)`,
     spread == null ? "Spread indisponível." :
     spreadOk ? `Spread ${spread} pts (${spreadTicks} ticks) dentro do limite.` :
     `Spread ${spread} pts (${spreadTicks} ticks) acima do limite de ${spreadLimit} pts.`));
@@ -343,7 +347,7 @@ export function getB3ExecutionAudit(
     }
     return {
       ...quoteAuditBase(info),
-      execution_price: Math.round(price / TICK) * TICK,
+      execution_price: Math.round(price / info.tick_size) * info.tick_size,
       execution_price_origin: action === "entry"
         ? (side === "buy" ? "mt5_ask_entry" : "mt5_bid_entry")
         : (side === "buy" ? "mt5_bid_exit_mark" : "mt5_ask_exit_mark"),
@@ -351,7 +355,7 @@ export function getB3ExecutionAudit(
     };
   }
 
-  const price = Math.round(Number(info.ctx.price || 0) / TICK) * TICK;
+  const price = Math.round(Number(info.ctx.price || 0) / info.tick_size) * info.tick_size;
   return {
     ...quoteAuditBase(info),
     execution_price: price,
@@ -436,11 +440,24 @@ function buildFreshWindow(rowsDesc: any[]): B3SampleWindow {
 export async function getB3PriceContext(
   supabase: any,
   userId: string,
-  opts: { symbol?: string; contract?: string; base?: number } = {},
+  opts: {
+    symbol?: string; contract?: string; base?: number;
+    // Fase 2 (06/08/2026): antes, a busca de cotação SEMPRE usava a
+    // constante B3_MT5_SYMBOL ("WINQ26"), não importa o que fosse passado
+    // aqui — bug real que fazia qualquer ativo (WDO, PETR4, VALE3) operar
+    // em cima do preço do WIN. Agora expectedSymbol controla a busca de
+    // verdade; default preserva o comportamento antigo pra quem não passar.
+    expectedSymbol?: string;
+    tickSize?: number;
+    spreadMaxPoints?: number;
+    priceDeviationLimit?: number;
+  } = {},
 ): Promise<B3PriceContextResult> {
   const symbol = opts.symbol ?? "WIN";
   const contract = opts.contract ?? "WINFUT";
   const base = opts.base ?? 130000;
+  const expectedSymbol = opts.expectedSymbol ?? B3_MT5_SYMBOL;
+  const tickSize = opts.tickSize ?? TICK;
 
   const { data: settings } = await supabase
     .from("b3_trading_settings")
@@ -454,8 +471,11 @@ export async function getB3PriceContext(
     mode: ((settings?.mt5_guard_mode as B3GuardMode) === "protected" ? "protected" : "validation"),
     ttl_seconds: Number(settings?.mt5_tick_ttl_seconds ?? B3_DEFAULT_GUARD.ttl_seconds),
     ttl_tolerance_seconds: Number(settings?.mt5_tick_ttl_tolerance_seconds ?? B3_DEFAULT_GUARD.ttl_tolerance_seconds),
-    spread_max_points: Number(settings?.mt5_spread_max_points ?? B3_DEFAULT_GUARD.spread_max_points),
-    price_deviation_limit: Number(settings?.mt5_price_deviation_limit ?? B3_DEFAULT_GUARD.price_deviation_limit),
+    // Sobrepõe com o limite do PERFIL DO ATIVO quando informado — um spread
+    // de 15 "pontos" faz sentido pro WIN, mas em PETR4 (preço ~R$42) isso
+    // desligaria a proteção de spread por completo. Fase 2 (06/08/2026).
+    spread_max_points: Number(opts.spreadMaxPoints ?? settings?.mt5_spread_max_points ?? B3_DEFAULT_GUARD.spread_max_points),
+    price_deviation_limit: Number(opts.priceDeviationLimit ?? settings?.mt5_price_deviation_limit ?? B3_DEFAULT_GUARD.price_deviation_limit),
     require_nonzero_volume: Boolean(settings?.mt5_require_nonzero_volume ?? B3_DEFAULT_GUARD.require_nonzero_volume),
     require_nonzero_last: Boolean(settings?.mt5_require_nonzero_last ?? B3_DEFAULT_GUARD.require_nonzero_last),
   };
@@ -463,7 +483,7 @@ export async function getB3PriceContext(
   if (source === "csv") {
     return {
       ctx: buildMockB3Context(symbol, contract, base),
-      source, live: false, quote_age_s: null, server: null, quote_symbol: null, raw: null,
+      source, live: false, quote_age_s: null, server: null, quote_symbol: null, tick_size: tickSize, raw: null,
       provider_name: "B3QuoteProvider", quote_source: "CSV legado", fallback_to_csv: false,
       mt5_provider_calls: 0, legacy_provider_calls: 1,
       guard, guard_evaluation: null,
@@ -471,13 +491,13 @@ export async function getB3PriceContext(
   }
 
 
-  // Lê últimos ticks WINQ26 alimentados pela ponte MT5 XP DEMO/PRD.
+  // Lê últimos ticks do ATIVO CORRETO alimentados pela ponte MT5 XP DEMO/PRD.
   const { data: quotes } = await supabase
     .from("b3_mt5sim_quotes")
     .select("bid, ask, last, spread, volume, server, symbol, tick_ts, received_at")
     .eq("user_id", userId)
     .in("server", Array.from(B3_MT5_ALLOWED_SERVERS))
-    .eq("symbol", B3_MT5_SYMBOL)
+    .eq("symbol", expectedSymbol)
     .order("tick_ts", { ascending: false })
     .limit(180);
 
@@ -494,10 +514,10 @@ export async function getB3PriceContext(
     };
     return {
       ctx: emptyContext(symbol, contract),
-      source, live: false, quote_age_s: null, server: null, quote_symbol: null, raw: null,
+      source, live: false, quote_age_s: null, server: null, quote_symbol: null, tick_size: tickSize, raw: null,
       provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
       mt5_provider_calls: 1, legacy_provider_calls: 0,
-      guard, guard_evaluation: evaluateMt5Guard(info),
+      guard, guard_evaluation: evaluateMt5Guard(info, expectedSymbol, tickSize),
       sample_window, warming_up_after_gap: sample_window.warming_up_after_gap,
     };
   }
@@ -530,10 +550,10 @@ export async function getB3PriceContext(
     };
     return {
       ctx: emptyContext(symbol, contract),
-      source, live: false, quote_age_s: quoteAge, server: latestRaw.server, quote_symbol: latestRaw.symbol, raw: latestRaw,
+      source, live: false, quote_age_s: quoteAge, server: latestRaw.server, quote_symbol: latestRaw.symbol, tick_size: tickSize, raw: latestRaw,
       provider_name: "B3QuoteProvider", quote_source: "inválida", fallback_to_csv: false,
       mt5_provider_calls: 1, legacy_provider_calls: 0,
-      guard, guard_evaluation: evaluateMt5Guard(info),
+      guard, guard_evaluation: evaluateMt5Guard(info, expectedSymbol, tickSize),
       sample_window, warming_up_after_gap: sample_window.warming_up_after_gap,
     };
   }
@@ -624,6 +644,7 @@ export async function getB3PriceContext(
     quote_age_s: quoteAge,
     server: latest.server ?? null,
     quote_symbol: latest.symbol ?? null,
+    tick_size: tickSize,
     raw: latestRaw,
     provider_name: "B3QuoteProvider",
     quote_source: "MT5 XP DEMO",
@@ -631,7 +652,7 @@ export async function getB3PriceContext(
     mt5_provider_calls: 1,
     legacy_provider_calls: 0,
     guard,
-    guard_evaluation: evaluateMt5Guard(info),
+    guard_evaluation: evaluateMt5Guard(info, expectedSymbol, tickSize),
     sample_window,
     warming_up_after_gap: sample_window.warming_up_after_gap,
     volatility_debug,
