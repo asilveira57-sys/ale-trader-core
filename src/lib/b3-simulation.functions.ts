@@ -1187,7 +1187,7 @@ async function runB3SimulationTickInner(
 
       addCheck("tick_received", "Tick recebido", priceSrc.source !== "mt5_xp_demo" || Boolean(priceSrc.raw), priceSrc.raw?.tick_ts ? `tick ${priceSrc.raw.tick_ts}` : "sem tick MT5");
       addCheck("mt5_server", "Servidor MT5", priceSrc.source !== "mt5_xp_demo" || priceSrc.server === "XPMT5-DEMO" || priceSrc.server === "XPMT5-PRD", priceSrc.server ? `recebido ${priceSrc.server}` : "sem servidor");
-      addCheck("mt5_symbol", "Símbolo WINQ26", priceSrc.source !== "mt5_xp_demo" || priceSrc.quote_symbol === B3_MT5_SYMBOL, priceSrc.quote_symbol ? `recebido ${priceSrc.quote_symbol}` : "sem símbolo");
+      addCheck("mt5_symbol", `Símbolo ${asset.quote_symbol}`, priceSrc.source !== "mt5_xp_demo" || priceSrc.quote_symbol === asset.quote_symbol, priceSrc.quote_symbol ? `recebido ${priceSrc.quote_symbol}` : "sem símbolo");
       addCheck("market_open", "Mercado aberto", ctx.session_phase !== "fora", `fase ${ctx.session_phase}`);
       addCheck("time_allowed", "Horário permitido", insideHours, `${cfg.trading_start_time}–${cfg.entry_cutoff_time}`);
       addCheck("operation_window", "Janela operacional", insideHours, `${cfg.trading_start_time}–${cfg.entry_cutoff_time}`);
