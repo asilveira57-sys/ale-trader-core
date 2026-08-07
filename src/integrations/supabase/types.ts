@@ -668,7 +668,9 @@ export type Database = {
           contract_code: string
           created_at: string
           display_name: string
+          price_deviation_limit: number
           quote_symbol: string
+          spread_max_price: number
           symbol: string
           tick_size: number
           tick_value_brl: number
@@ -681,7 +683,9 @@ export type Database = {
           contract_code: string
           created_at?: string
           display_name: string
+          price_deviation_limit?: number
           quote_symbol: string
+          spread_max_price?: number
           symbol: string
           tick_size: number
           tick_value_brl: number
@@ -694,7 +698,9 @@ export type Database = {
           contract_code?: string
           created_at?: string
           display_name?: string
+          price_deviation_limit?: number
           quote_symbol?: string
+          spread_max_price?: number
           symbol?: string
           tick_size?: number
           tick_value_brl?: number
