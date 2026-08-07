@@ -22,7 +22,7 @@ export const Route = createFileRoute("/_authenticated/prd-autorizacoes")({
       { name: "twitter:card", content: "summary" },
     ],
   }),
-  component: PrdAuthorizationsPage;
+  component: PrdAuthorizationsPage,
 });
 
 type Row = {
