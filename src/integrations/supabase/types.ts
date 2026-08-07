@@ -668,6 +668,7 @@ export type Database = {
           contract_code: string
           created_at: string
           display_name: string
+          near_resistance_pts: number | null
           price_deviation_limit: number
           quote_symbol: string
           spread_max_price: number
@@ -675,6 +676,7 @@ export type Database = {
           tick_size: number
           tick_value_brl: number
           trading_calendar: string
+          trend_strength_factor: number | null
         }
         Insert: {
           active?: boolean
@@ -683,6 +685,7 @@ export type Database = {
           contract_code: string
           created_at?: string
           display_name: string
+          near_resistance_pts?: number | null
           price_deviation_limit?: number
           quote_symbol: string
           spread_max_price?: number
@@ -690,6 +693,7 @@ export type Database = {
           tick_size: number
           tick_value_brl: number
           trading_calendar?: string
+          trend_strength_factor?: number | null
         }
         Update: {
           active?: boolean
@@ -698,6 +702,7 @@ export type Database = {
           contract_code?: string
           created_at?: string
           display_name?: string
+          near_resistance_pts?: number | null
           price_deviation_limit?: number
           quote_symbol?: string
           spread_max_price?: number
@@ -705,6 +710,7 @@ export type Database = {
           tick_size?: number
           tick_value_brl?: number
           trading_calendar?: string
+          trend_strength_factor?: number | null
         }
         Relationships: []
       }
