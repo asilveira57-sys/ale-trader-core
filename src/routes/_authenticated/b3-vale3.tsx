@@ -14,7 +14,8 @@ function B3Vale3Page() {
         <div>
           <h1 className="text-2xl font-bold">B3 Day Trade — VALE3 (Vale ON)</h1>
           <p className="text-sm text-muted-foreground">
-            Ação, mercado fracionário (1 ação por vez). Preço já é direto em R$ — sem conceito de ponto/contrato.
+            Ação, mercado fracionário (não precisa ser múltiplo de 100 — mas pode operar com qualquer quantidade).
+            Preço já é direto em R$ — sem conceito de ponto/contrato.
             Pregão de ações: 10:00–16:55, diferente do horário de futuro.
           </p>
         </div>
