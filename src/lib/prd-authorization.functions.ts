@@ -129,22 +129,21 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
 export const revokeAllPrdAuthorizations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ password: z.string().min(1) }).parse(input))
-  .handler(async ({ context }) => {
+  .handler(async ({ data, context }) => {
     const { userId } = context;
-    // senha já validada abaixo — nada é alterado antes disso
-    return await (async () => {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      await setOrigem(supabaseAdmin, "kill_switch");
+    await assertMasterPassword(data.password);
 
-      const now = new Date().toISOString();
-      const { data, error } = await supabaseAdmin
-        .from("b3_prd_authorizations")
-        .update({ enabled: false, revoked_at: now, updated_at: now } as never)
-        .eq("user_id", userId)
-        .eq("enabled", true)
-        .select("id");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await setOrigem(supabaseAdmin, "kill_switch");
 
-      if (error) throw error;
-      return { ok: true as const, revoked: (data ?? []).length };
-    })();
+    const now = new Date().toISOString();
+    const { data: rows, error } = await supabaseAdmin
+      .from("b3_prd_authorizations")
+      .update({ enabled: false, revoked_at: now, updated_at: now } as never)
+      .eq("user_id", userId)
+      .eq("enabled", true)
+      .select("id");
+
+    if (error) throw error;
+    return { ok: true as const, revoked: (rows ?? []).length };
   });
