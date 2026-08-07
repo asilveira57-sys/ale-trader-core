@@ -92,10 +92,33 @@ async function mirrorToReal(
   symbol: string = "WIN",
 ) {
   if (!REAL_MIRROR_ENABLED) return;
+
+  // ── PORTÃO DE AUTORIZAÇÃO REAL (nega por padrão) ──
+  // Sem linha autorizada em b3_prd_authorizations para user+symbol+mode,
+  // nenhum comando real é enfileirado. Falha de consulta = falha FECHADA.
+  // Nenhum registro de bloqueio é gravado (decisão do usuário).
+  let authMaxQty = 1;
+  try {
+    const { data: auth, error: authErr } = await supabase
+      .from("b3_prd_authorizations")
+      .select("enabled, max_qty")
+      .eq("user_id", userId)
+      .eq("symbol", symbol)
+      .eq("mode", mode)
+      .maybeSingle();
+    if (authErr) return;
+    if (!auth || auth.enabled !== true) return;
+    authMaxQty = Number(auth.max_qty ?? 1);
+  } catch {
+    return;
+  }
+
+  const quantity = Math.max(1, Math.min(REAL_QTY_BY_MODE[mode] ?? 1, authMaxQty));
+
   try {
     await supabase.from("b3_mt5_commands").insert({
       user_id: userId, env: "real", simulation_run_id: runId, mode,
-      action, side, symbol, quantity: REAL_QTY_BY_MODE[mode] ?? 1,
+      action, side, symbol, quantity,
       magic_number: realMagicNumber(symbol, mode), idempotency_key: idempotencyKey,
       requested_by: requestedBy,
     });
