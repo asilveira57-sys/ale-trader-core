@@ -833,20 +833,26 @@ async function runB3SimulationTickInner(
     };
   }
 
-  function classifyTrend(ctxLocal: any): { direction: "alta" | "baixa" | "lateral"; strength: number } {
+  // 07/08/2026: o multiplicador era 5 fixo. Como `rel` normaliza pelo PREÇO e
+  // não pela volatilidade, ativos de baixa volatilidade relativa nunca saíam
+  // de "lateral" — o WDO precisava de um gap de médias de 1,23x o próprio ATR
+  // pra chegar a 30, contra 0,63x do WIN, e abaixo de 30 é bloqueio duro.
+  // O fator por ativo equaliza isso. WINQ26 = 5 preserva o comportamento.
+  function classifyTrend(ctxLocal: any, strengthFactor?: number): { direction: "alta" | "baixa" | "lateral"; strength: number } {
     const emaGap = ctxLocal.ema9 - ctxLocal.ema21;
     const abs = Math.abs(emaGap);
     const direction = emaGap > 0 ? "alta" : emaGap < 0 ? "baixa" : "lateral";
+    const fator = Number(strengthFactor ?? 5) || 5;
     // força: 0..100 baseado no gap absoluto normalizado por preço + momentum
     const rel = ctxLocal.price ? (abs / ctxLocal.price) * 10000 : 0; // em basis points x10
-    const strength = Math.max(0, Math.min(100, Math.round(rel * 5 + Math.abs(ctxLocal.momentum ?? 0) / 3)));
+    const strength = Math.max(0, Math.min(100, Math.round(rel * fator + Math.abs(ctxLocal.momentum ?? 0) / 3)));
     return { direction: abs < 1e-6 ? "lateral" : direction, strength };
   }
 
   function classifyRegime(ctxLocal: any, derived: any): string | null {
     if (!Number.isFinite(ctxLocal.volatility_pct)) return null;
     const vol = ctxLocal.volatility_pct;
-    const trend = classifyTrend(ctxLocal);
+    const trend = classifyTrend(ctxLocal, Number(asset?.trend_strength_factor ?? 5));
     if (vol > 3.5) return "alta_volatilidade";
     if (trend.strength >= 50 && trend.direction !== "lateral") return `tendencia_${trend.direction}`;
     if (Math.abs(derived?.var_5m_pts ?? 0) < 30 && vol < 1.5) return "range_estreito";
@@ -866,7 +872,7 @@ async function runB3SimulationTickInner(
     ctxLocal: any; derived: any; intendedSide: "buy" | "sell"; cfg: any;
   }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
     const { ctxLocal, derived, intendedSide, cfg } = params;
-    const trend = classifyTrend(ctxLocal);
+    const trend = classifyTrend(ctxLocal, Number(asset?.trend_strength_factor ?? 5));
     const price = Number(ctxLocal.price);
     const vwap = Number(ctxLocal.vwap);
     const ema9 = Number(ctxLocal.ema9);
@@ -878,7 +884,12 @@ async function runB3SimulationTickInner(
     const rr = stopPts > 0 ? gainPts / stopPts : 0;
     const distHigh = Number(derived?.dist_day_high_pts ?? 0);
     const distLow = Number(derived?.dist_day_low_pts ?? 0);
-    const nearResistancePts = Math.max(stopPts, 50);
+    // 07/08/2026: era Math.max(stopPts, 50). O piso de 50 vinha do mini índice,
+    // que gira 3.770 pontos por dia. WDO gira 28,50; PETR4 1,86; VALE3 1,47 —
+    // nesses ativos é impossível estar a mais de 50 pontos da máxima, então a
+    // evidência "resistência/suporte próximo" reprovava sempre e eles operavam
+    // com 6 de 7 evidências em vez de 6 de 8. WINQ26 = 50 preserva.
+    const nearResistancePts = Number(asset?.near_resistance_pts ?? Math.max(stopPts, 50));
     const details: Record<string, any> = {
       trend_direction: trend.direction, trend_strength: trend.strength,
       price, vwap, ema9, ema21, open, volatility_pct: vol,
@@ -952,7 +963,7 @@ async function runB3SimulationTickInner(
     setup?: { name: string; ok: boolean; reasons: string[]; details: Record<string, any> } | null;
   }) {
     const { ctxLocal, priceLocal, cfg, mode, intendedSide, decision, derived, firstStop, entry_reason, setup } = params;
-    const trend = classifyTrend(ctxLocal);
+    const trend = classifyTrend(ctxLocal, Number(asset?.trend_strength_factor ?? 5));
     return {
       timestamp: new Date().toISOString(),
       asset: priceLocal.quote_symbol ?? "WINQ26",
