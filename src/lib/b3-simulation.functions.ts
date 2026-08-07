@@ -457,7 +457,7 @@ async function runB3SimulationTickInner(
   // 2) hard throttle: no máximo 1 gravação de snapshot a cada 10s por
   //    user_id + símbolo + run. Entre elas, preço/cotação ficam só em memória;
   // 3) assinaturas: votos, eventos e contadores gravados só quando o estado muda.
-  const memoKey = `${userId}:${runId}:WIN`;
+  const memoKey = `${userId}:${runId}:${asset.symbol}`;
   let memo = SNAP_MEMO.get(memoKey);
   if (!memo) {
     const { data: lastSnapRow } = await supabase.from("b3_simulation_market_snapshots")
@@ -750,6 +750,7 @@ async function runB3SimulationTickInner(
       // Excluí-lo evita reler ~1,9 MB por execução do motor.
       .select("market_time, price, quote_bid, quote_ask, quote_last, volume, candle_high, candle_low")
       .eq("user_id", userId)
+      .eq("simulation_run_id", runId)
       .gte("market_time", startOfDayBr)
       .lte("market_time", nowIso)
       .order("market_time", { ascending: false })
@@ -1455,7 +1456,7 @@ async function runB3SimulationTickInner(
             if (structuralStopPrice !== null) {
               hitTrailing = dirSign === 1 ? markPrice <= structuralStopPrice : markPrice >= structuralStopPrice;
             }
-          } else if (armed) {
+          } else if (armed && Number(cfg.trailing_giveback_pts) > 0) {
             hitTrailing = (peakPts - movePts) >= Number(cfg.trailing_giveback_pts);
             trailingDebug = { mode: "fixed", peak_pts: peakPts, giveback_pts: Number(cfg.trailing_giveback_pts) };
           }
