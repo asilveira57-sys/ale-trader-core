@@ -2220,6 +2220,96 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_prd_authorization_log: {
+        Row: {
+          de_enabled: boolean | null
+          de_max_qty: number | null
+          id: string
+          mode: string
+          motivo: string | null
+          origem: string | null
+          para_enabled: boolean | null
+          para_max_qty: number | null
+          symbol: string
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          de_enabled?: boolean | null
+          de_max_qty?: number | null
+          id?: string
+          mode: string
+          motivo?: string | null
+          origem?: string | null
+          para_enabled?: boolean | null
+          para_max_qty?: number | null
+          symbol: string
+          ts?: string
+          user_id: string
+        }
+        Update: {
+          de_enabled?: boolean | null
+          de_max_qty?: number | null
+          id?: string
+          mode?: string
+          motivo?: string | null
+          origem?: string | null
+          para_enabled?: boolean | null
+          para_max_qty?: number | null
+          symbol?: string
+          ts?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      b3_prd_authorizations: {
+        Row: {
+          authorized_at: string | null
+          authorized_by: string | null
+          created_at: string
+          enabled: boolean
+          id: string
+          max_daily_loss_brl: number
+          max_qty: number
+          mode: string
+          notes: string | null
+          revoked_at: string | null
+          symbol: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          authorized_at?: string | null
+          authorized_by?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          max_daily_loss_brl?: number
+          max_qty?: number
+          mode: string
+          notes?: string | null
+          revoked_at?: string | null
+          symbol: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          authorized_at?: string | null
+          authorized_by?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          max_daily_loss_brl?: number
+          max_qty?: number
+          mode?: string
+          notes?: string | null
+          revoked_at?: string | null
+          symbol?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_simulation_agent_votes: {
         Row: {
           agent_name: string
