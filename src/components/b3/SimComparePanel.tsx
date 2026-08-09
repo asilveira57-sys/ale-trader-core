@@ -926,15 +926,14 @@ function ModeSettingsDialog({ runId, mode, runSymbol }: { runId: string; mode: M
         <DialogFooter className="px-6 pb-6 pt-2 border-t border-border/40 flex-wrap gap-2">
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="outline" disabled={resetM.isPending}>Restaurar padrão</Button>
+              <Button variant="outline" disabled={resetM.isPending}>Restaurar meu padrão de {symLabel}</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Restaurar {mode} pro seu padrão?</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>Restaurar {mode} pro seu padrão de {symLabel}?</DialogTitle></DialogHeader>
               <p className="text-sm text-muted-foreground">
-                {saveDefaultQ.data?.some((d: any) => d.mode === mode)
-                  ? "Isso vai trocar a configuração atual pelo SEU padrão salvo pra esse modo (não o de fábrica)."
-                  : "Você ainda não salvou um padrão próprio pra esse modo — isso vai voltar pro padrão de fábrica do sistema."}
-                {" "}Não dá pra desfazer.
+                {hasSavedDefault
+                  ? `Isso vai trocar a configuração atual pelo SEU padrão salvo para ${symLabel} nesse modo (não o de fábrica). Não dá pra desfazer.`
+                  : `Você ainda não salvou um padrão próprio para ${symLabel} nesse modo — nada será alterado. O padrão de fábrica é escala de mini índice e não é aplicado automaticamente.`}
               </p>
               <DialogFooter>
                 <Button variant="destructive" disabled={resetM.isPending} onClick={() => resetM.mutate()}>
@@ -947,10 +946,11 @@ function ModeSettingsDialog({ runId, mode, runSymbol }: { runId: string; mode: M
             variant="outline"
             disabled={saveDefaultM.isPending || !current}
             onClick={() => saveDefaultM.mutate()}
-            title="Salva a configuração atual (a que já está gravada, não edições ainda não salvas) como seu padrão pra esse modo"
+            title={`Salva a configuração atual (a que já está gravada, não edições ainda não salvas) como seu padrão desse modo para ${symLabel}`}
           >
-            {saveDefaultM.isPending ? "Salvando..." : "Salvar como meu padrão"}
+            {saveDefaultM.isPending ? "Salvando..." : `Salvar como meu padrão para ${symLabel}`}
           </Button>
+
           <Button onClick={() => saveM.mutate()} disabled={saveM.isPending || !current}>Salvar</Button>
         </DialogFooter>
       </DialogContent>
