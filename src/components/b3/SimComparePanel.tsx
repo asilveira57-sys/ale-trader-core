@@ -735,7 +735,7 @@ function ModeCard({ m, runId, isWinner, onPick, runSymbol }: { m: any; runId: st
           {isWinner && <Trophy className="w-4 h-4 text-amber-400" />}
         </CardTitle>
         <div className="flex items-center gap-1">
-          <ModeSettingsDialog runId={runId} mode={m.mode as Mode} />
+          <ModeSettingsDialog runId={runId} mode={m.mode as Mode} runSymbol={runSymbol} />
           <Button size="sm" variant="ghost" onClick={onPick}><Trophy className="w-4 h-4" /></Button>
         </div>
       </CardHeader>
