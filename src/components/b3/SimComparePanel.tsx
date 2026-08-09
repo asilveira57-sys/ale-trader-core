@@ -795,21 +795,24 @@ function ModeSettingsDialog({ runId, mode, runSymbol }: { runId: string; mode: M
     staleTime: 0,
     refetchOnMount: "always",
   });
+  const symLabel = runSymbol || "este ativo";
   const saveDefaultQ = useQuery({
-    queryKey: ["b3-mode-user-defaults"],
-    queryFn: () => listDefaults(),
+    // Padrão é por (ativo, modo) — a lista precisa ser do símbolo da run.
+    queryKey: ["b3-mode-user-defaults", runSymbol ?? null],
+    queryFn: () => listDefaults({ data: runSymbol ? { symbol: runSymbol } : {} }),
     enabled: open,
     staleTime: 0,
   });
+  const hasSavedDefault = (saveDefaultQ.data ?? []).some((d: any) => d.mode === mode);
   const current = (q.data ?? []).find((s: any) => s.mode === mode);
   const [form, setForm] = useState<any>(null);
   if (open && current && !form) setForm({ ...current });
   const f = form ?? current ?? {};
 
   const saveDefaultM = useMutation({
-    mutationFn: () => saveDefault({ data: { mode, values: current ?? {} } }),
-    onSuccess: () => {
-      toast.success(`Padrão salvo pra ${mode} — próximas simulações e "Restaurar padrão" vão usar isso.`);
+    mutationFn: () => saveDefault({ data: { run_id: runId, mode, values: current ?? {} } }),
+    onSuccess: (r: any) => {
+      toast.success(`Padrão de ${mode} salvo para ${r?.symbol ?? symLabel} — vale só para este ativo.`);
       qc.invalidateQueries({ queryKey: ["b3-mode-user-defaults"] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Erro ao salvar padrão"),
@@ -827,12 +830,21 @@ function ModeSettingsDialog({ runId, mode, runSymbol }: { runId: string; mode: M
   });
   const resetM = useMutation({
     mutationFn: () => reset({ data: { run_id: runId, mode } }),
-    onSuccess: () => {
-      toast.success("Restaurado para padrão");
+    onSuccess: (r: any) => {
+      if (r?.ok === false || r?.source === "none") {
+        toast.warning(
+          `Não há padrão salvo para ${r?.symbol ?? symLabel} no modo ${mode} — nada foi alterado. ` +
+          `O padrão de fábrica é escala de mini índice e não foi aplicado.`,
+        );
+        return;
+      }
+      toast.success(`Restaurado para o seu padrão de ${r?.symbol ?? symLabel}`);
       qc.invalidateQueries({ queryKey: ["b3-mode-settings", runId] });
       setForm(null);
     },
+    onError: (e: any) => toast.error(e?.message ?? "Erro ao restaurar"),
   });
+
 
   const set = (k: string, v: any) => setForm({ ...f, [k]: v });
 
