@@ -777,7 +777,7 @@ function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWin
   );
 }
 
-function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
+function ModeSettingsDialog({ runId, mode, runSymbol }: { runId: string; mode: Mode; runSymbol?: string }) {
   const qc = useQueryClient();
   const list = useServerFn(listB3ModeSettings);
   const upd = useServerFn(updateB3ModeSettings);
