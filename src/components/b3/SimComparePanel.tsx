@@ -175,10 +175,19 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
     onSuccess: (run: any) => {
       toast.success("Simulação iniciada nos 5 modos");
       setSelectedRun(run.id);
+      // Modos sem padrão salvo pra esse ATIVO nascem com o padrão de fábrica
+      // (escala de mini índice) — precisa ficar visível na tela.
+      if (run?.factory_default_warning) {
+        setFactoryWarn({ runId: run.id, symbol: run.defaults_symbol ?? run.symbol, text: run.factory_default_warning });
+        toast.warning(run.factory_default_warning, { duration: 12000 });
+      } else {
+        setFactoryWarn(null);
+      }
       qc.invalidateQueries({ queryKey: ["b3-sim-runs"] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao iniciar"),
   });
+
 
   const statusM = useMutation({
     mutationFn: (s: "running" | "paused" | "finished" | "cancelled") => setStatus({ data: { run_id: runId!, status: s } }),
