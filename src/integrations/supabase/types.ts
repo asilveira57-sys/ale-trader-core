@@ -668,6 +668,7 @@ export type Database = {
           contract_code: string
           created_at: string
           display_name: string
+          indicator_timeframe: string
           near_resistance_pts: number | null
           price_deviation_limit: number
           quote_symbol: string
@@ -685,6 +686,7 @@ export type Database = {
           contract_code: string
           created_at?: string
           display_name: string
+          indicator_timeframe?: string
           near_resistance_pts?: number | null
           price_deviation_limit?: number
           quote_symbol: string
@@ -702,6 +704,7 @@ export type Database = {
           contract_code?: string
           created_at?: string
           display_name?: string
+          indicator_timeframe?: string
           near_resistance_pts?: number | null
           price_deviation_limit?: number
           quote_symbol?: string
@@ -6242,6 +6245,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      b3_m1_candles: {
+        Args: { p_limit?: number; p_symbol: string; p_user_id: string }
+        Returns: {
+          candle_close: number
+          candle_high: number
+          candle_low: number
+          candle_open: number
+          minute_ts: string
+          ticks: number
+          volume: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
