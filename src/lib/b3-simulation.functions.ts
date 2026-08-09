@@ -2474,53 +2474,69 @@ export const resetB3ModeSettings = createServerFn({ method: "POST" })
   .inputValidator((d: { run_id: string; mode: Mode }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    const { data: run } = await (supabase as any).from("b3_simulation_runs")
+      .select("symbol").eq("id", data.run_id).eq("user_id", userId).maybeSingle();
+    const symbol = run?.symbol ?? "WINQ26";
     const { data: ud } = await (supabase as any)
-      .from("b3_mode_user_defaults").select("*").eq("user_id", userId).eq("mode", data.mode).maybeSingle();
+      .from("b3_mode_user_defaults").select("*")
+      .eq("user_id", userId).eq("symbol", symbol).eq("mode", data.mode).maybeSingle();
+    // Sem padrão salvo pra esse (symbol, mode) NÃO aplicamos MODE_DEFAULTS:
+    // os valores de fábrica são escala de mini índice e destruiriam a
+    // calibração de WDO / PETR4 / VALE3. Deixa a configuração como está.
+    if (!ud) return { ok: false, source: "none", symbol, mode: data.mode };
     const fab = MODE_DEFAULTS[data.mode];
-    const def = ud
-      ? Object.fromEntries(SETTING_FIELDS.map(k => [k, k in ud && ud[k] != null ? ud[k] : fab[k as keyof typeof fab]]))
-      : fab;
+    const def = Object.fromEntries(
+      SETTING_FIELDS.map(k => [k, k in ud && ud[k] != null ? ud[k] : fab[k as keyof typeof fab]]),
+    );
     const { error } = await (supabase as any).from("b3_simulation_mode_settings")
       .update({ ...def, enabled: true })
       .eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId);
     if (error) throw error;
-    return { ok: true, source: ud ? "user_default" : "factory_default" };
+    return { ok: true, source: "user_default", symbol, mode: data.mode };
   });
 
-// ─────────────────── "meu padrão" por modo (item 7) ───────────────────
+// ─────────────────── "meu padrão" por modo + ATIVO ───────────────────
+// A chave é (user_id, symbol, mode): o padrão do WIN não vale pro WDO.
 export const saveModeAsDefault = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { mode: Mode; values: Record<string, any> }) => d)
+  .inputValidator((d: { run_id: string; mode: Mode; values: Record<string, any> }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    const { data: run } = await (supabase as any).from("b3_simulation_runs")
+      .select("symbol").eq("id", data.run_id).eq("user_id", userId).maybeSingle();
+    if (!run) throw new Error("Run não encontrada");
+    const symbol = run.symbol ?? "WINQ26";
     const patch: Record<string, any> = {};
     for (const k of SETTING_FIELDS) if (k in data.values && k !== "enabled" && k !== "notes") patch[k] = data.values[k];
     const { error } = await (supabase as any).from("b3_mode_user_defaults")
-      .upsert({ user_id: userId, mode: data.mode, ...patch }, { onConflict: "user_id,mode" });
+      .upsert({ user_id: userId, symbol, mode: data.mode, ...patch }, { onConflict: "user_id,symbol,mode" });
     if (error) throw error;
-    return { ok: true };
+    return { ok: true, symbol };
   });
 
 export const listModeUserDefaults = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((d: { symbol?: string } | undefined) => d ?? {})
+  .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { data, error } = await (supabase as any)
-      .from("b3_mode_user_defaults").select("*").eq("user_id", userId);
+    let q = (supabase as any).from("b3_mode_user_defaults").select("*").eq("user_id", userId);
+    if (data.symbol) q = q.eq("symbol", data.symbol);
+    const { data: rows, error } = await q;
     if (error) throw error;
-    return data ?? [];
+    return rows ?? [];
   });
 
 export const deleteModeUserDefault = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { mode: Mode }) => d)
+  .inputValidator((d: { mode: Mode; symbol: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { error } = await (supabase as any).from("b3_mode_user_defaults")
-      .delete().eq("user_id", userId).eq("mode", data.mode);
+      .delete().eq("user_id", userId).eq("symbol", data.symbol).eq("mode", data.mode);
     if (error) throw error;
     return { ok: true };
   });
+
 
 // ─────────────────── Painel unificado (cockpit) — todos os ativos ───────────────────
 // Junta os 5 modos de CADA simulação 'running' do usuário (hoje: WIN + WDO,
