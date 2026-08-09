@@ -117,6 +117,7 @@ function sampleStatus(trades: number): { label: string; cls: string } | null {
 export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?: string; defaultSymbol?: string } = {}) {
   const qc = useQueryClient();
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  const [factoryWarn, setFactoryWarn] = useState<{ runId: string; symbol: string; text: string } | null>(null);
   const [ticks, setTicks] = useState(10);
   const [period, setPeriod] = useState<"today" | "all" | "custom">("today");
   const todayLocalStart = () => {
