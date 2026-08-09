@@ -188,6 +188,10 @@ export interface B3PriceContextResult {
   sample_window?: B3SampleWindow;
   /** true quando ainda não há amostra contínua suficiente após uma interrupção. */
   warming_up_after_gap?: boolean;
+  /** Série usada nos indicadores: ticks crus ou candles de 1 minuto. */
+  indicator_timeframe?: "tick" | "m1";
+  /** Quantidade de amostras da série de indicadores. */
+  indicator_samples?: number;
 }
 
 
@@ -451,6 +455,7 @@ export async function getB3PriceContext(
     tickSize?: number;
     spreadMaxPoints?: number;
     priceDeviationLimit?: number;
+    indicatorTimeframe?: "tick" | "m1";
   } = {},
 ): Promise<B3PriceContextResult> {
   const symbol = opts.symbol ?? "WIN";
@@ -458,6 +463,7 @@ export async function getB3PriceContext(
   const base = opts.base ?? 130000;
   const expectedSymbol = opts.expectedSymbol ?? B3_MT5_SYMBOL;
   const tickSize = opts.tickSize ?? TICK;
+  const indicatorTimeframe = opts.indicatorTimeframe === "m1" ? "m1" : "tick";
 
   const { data: settings } = await supabase
     .from("b3_trading_settings")
@@ -529,6 +535,19 @@ export async function getB3PriceContext(
   const quoteAge = Math.max(0, Math.round(ageMs / 1000));
 
   const series = rows.slice().reverse(); // do mais antigo para o mais recente
+  // 09/08/2026: ema9/ema21 sobre a série crua de ticks separam cerca de 1
+  // minuto de mercado, então o gap entre as médias fica minúsculo e o sinal
+  // ema9>=ema21 inverte a cada poucos segundos — origem das entradas em
+  // lados opostos entre modos. Com indicator_timeframe='m1' os indicadores
+  // passam a ser calculados sobre candles de 1 minuto.
+  let m1Rows: any[] = [];
+  if (indicatorTimeframe === "m1") {
+    const { data: candles } = await supabase.rpc("b3_m1_candles", {
+      p_user_id: userId, p_symbol: expectedSymbol, p_limit: 120,
+    });
+    m1Rows = ((candles as any[]) ?? []).slice().reverse();
+  }
+  const useM1 = indicatorTimeframe === "m1" && m1Rows.length >= 30;
   const priceOf = (r: any): number => {
     const l = Number(r.last);
     if (Number.isFinite(l) && l > 0) return l;
@@ -536,8 +555,12 @@ export async function getB3PriceContext(
     if (Number.isFinite(b) && Number.isFinite(a) && b > 0 && a > 0) return (a + b) / 2;
     return Number(r.bid ?? r.ask ?? 0);
   };
-  const prices = series.map(priceOf).filter(v => Number.isFinite(v) && v > 0);
-  const volumes = series.map(r => Number(r.volume ?? 0));
+  const prices = useM1
+    ? m1Rows.map((c) => Number(c.candle_close)).filter((v) => Number.isFinite(v) && v > 0)
+    : series.map(priceOf).filter((v) => Number.isFinite(v) && v > 0);
+  const volumes = useM1
+    ? m1Rows.map((c) => Number(c.volume ?? 0))
+    : series.map((r) => Number(r.volume ?? 0));
   const price = priceOf(latest);
   // Modo Validação aceita tick com last zero desde que bid/ask sejam válidos.
   const bidOk = Number(latestRaw.bid) > 0;
@@ -559,8 +582,12 @@ export async function getB3PriceContext(
   }
   const priceRounded = Math.round(price / tickSize) * tickSize;
   const open = prices[0] ?? price;
-  const high = Math.max(...prices, price);
-  const low = Math.min(...prices, price);
+  const high = useM1
+    ? Math.max(...m1Rows.map((c) => Number(c.candle_high)), price)
+    : Math.max(...prices, price);
+  const low = useM1
+    ? Math.min(...m1Rows.map((c) => Number(c.candle_low)), price)
+    : Math.min(...prices, price);
   const totalVol = volumes.reduce((s, v) => s + (v > 0 ? v : 0), 0);
   const vwap = totalVol > 0
     ? prices.reduce((s, p, i) => s + p * Math.max(0, volumes[i]), 0) / totalVol
@@ -657,6 +684,8 @@ export async function getB3PriceContext(
     warming_up_after_gap: sample_window.warming_up_after_gap,
     volatility_debug,
     series_health,
+    indicator_timeframe: useM1 ? "m1" : "tick",
+    indicator_samples: useM1 ? m1Rows.length : prices.length,
   };
 }
 
@@ -667,6 +696,7 @@ export async function B3QuoteProvider(
     symbol?: string; contract?: string; base?: number;
     expectedSymbol?: string; tickSize?: number;
     spreadMaxPoints?: number; priceDeviationLimit?: number;
+    indicatorTimeframe?: "tick" | "m1";
   } = {},
 ): Promise<B3PriceContextResult> {
   return getB3PriceContext(supabase, userId, opts);
