@@ -382,6 +382,7 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
                 onPick={() => winnerM.mutate(mm.mode)}
                 onCloseOrder={() => closeModeM.mutate(mm.mode)}
                 closingOrder={closeModeM.isPending && closeModeM.variables === mm.mode}
+                runSymbol={detail?.run?.symbol ?? undefined}
                 onToggleEnabled={(v: boolean) => toggleEnabledM.mutate({ mode: mm.mode, enabled: v })} />
             ))}
           </div>
