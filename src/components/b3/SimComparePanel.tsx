@@ -1108,7 +1108,7 @@ function MacroEventsCard() {
 // arquivo roda no cliente e não pode importar código do servidor.
 const POINT_VALUE_BRL_CLIENT = 0.2;
 
-function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder, livePrice, onCloseOrder, closingOrder, onToggleEnabled }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void; audit?: any; openOrder?: any; livePrice?: number | null; onCloseOrder?: () => void; closingOrder?: boolean; onToggleEnabled?: (v: boolean) => void }) {
+function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder, livePrice, onCloseOrder, closingOrder, onToggleEnabled, runSymbol }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void; audit?: any; openOrder?: any; livePrice?: number | null; onCloseOrder?: () => void; closingOrder?: boolean; onToggleEnabled?: (v: boolean) => void; runSymbol?: string }) {
   const baseStatus = STATUS_META[mm.current_status] ?? STATUS_META.operando;
   const pnl = Number(mm.pnl_periodo ?? 0);
 
