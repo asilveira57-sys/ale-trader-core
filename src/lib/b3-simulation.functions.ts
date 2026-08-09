@@ -1026,6 +1026,7 @@ async function runB3SimulationTickInner(
       symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback),
       expectedSymbol: asset.symbol, tickSize: Number(asset.tick_size),
       spreadMaxPoints: Number(asset.spread_max_price), priceDeviationLimit: Number(asset.price_deviation_limit),
+      indicatorTimeframe: asset.indicator_timeframe === "m1" ? "m1" : "tick",
     });
     rememberProvider(priceSrc);
     const ctx = priceSrc.ctx;
@@ -2597,6 +2598,7 @@ export const closeModeOrderManually = createServerFn({ method: "POST" })
       symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback),
       expectedSymbol: asset.symbol, tickSize: Number(asset.tick_size),
       spreadMaxPoints: Number(asset.spread_max_price), priceDeviationLimit: Number(asset.price_deviation_limit),
+      indicatorTimeframe: asset.indicator_timeframe === "m1" ? "m1" : "tick",
     });
     const exitAudit = getB3ExecutionAudit(priceSrc, open.side, "exit", "closeModeOrderManually");
     if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(exitAudit, "closeModeOrderManually", asset.symbol);
@@ -2623,6 +2625,7 @@ export const closeAllModesManually = createServerFn({ method: "POST" })
       symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback),
       expectedSymbol: asset.symbol, tickSize: Number(asset.tick_size),
       spreadMaxPoints: Number(asset.spread_max_price), priceDeviationLimit: Number(asset.price_deviation_limit),
+      indicatorTimeframe: asset.indicator_timeframe === "m1" ? "m1" : "tick",
     });
 
     const results: Record<string, any> = {};
