@@ -723,7 +723,7 @@ function DiagnosticMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWinner: boolean; onPick: () => void }) {
+function ModeCard({ m, runId, isWinner, onPick, runSymbol }: { m: any; runId: string; isWinner: boolean; onPick: () => void; runSymbol?: string }) {
   const trades = Math.max(1, Number(m.total_trades) || 0);
   const acerto = ((Number(m.winning_trades) || 0) / trades) * 100;
   const pnl = Number(m.realized_pnl);
