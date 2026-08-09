@@ -858,11 +858,19 @@ function ModeSettingsDialog({ runId, mode, runSymbol }: { runId: string; mode: M
           <DialogTitle className="capitalize flex items-center gap-2">
             <Badge className={`uppercase ${MODE_COLOR[mode]}`}>{mode}</Badge>
             Configuração do modo
+            {runSymbol && <Badge variant="outline" className="border-primary/40 bg-primary/10 font-semibold">{runSymbol}</Badge>}
           </DialogTitle>
         </DialogHeader>
         <div className="flex-1 overflow-y-auto px-6 py-4">
         {current ? (
           <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="col-span-2 rounded border border-border/40 bg-muted/30 p-2 text-xs text-muted-foreground">
+              Estes valores e o "meu padrão" pertencem exclusivamente a <strong>{symLabel}</strong>.
+              {" "}{hasSavedDefault
+                ? "Há um padrão seu salvo para este ativo."
+                : "Ainda não há padrão seu salvo para este ativo — a configuração atual pode ser de fábrica (escala de mini índice); revise stop, alvo e quantidade."}
+            </div>
+
             <div className="col-span-2 flex items-center justify-between rounded border border-border/40 p-2">
               <span>Operar este modo</span>
               <Switch checked={f.enabled !== false} onCheckedChange={(v) => set("enabled", v)} />
