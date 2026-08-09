@@ -117,6 +117,7 @@ function sampleStatus(trades: number): { label: string; cls: string } | null {
 export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?: string; defaultSymbol?: string } = {}) {
   const qc = useQueryClient();
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  const [factoryWarn, setFactoryWarn] = useState<{ runId: string; symbol: string; text: string } | null>(null);
   const [ticks, setTicks] = useState(10);
   const [period, setPeriod] = useState<"today" | "all" | "custom">("today");
   const todayLocalStart = () => {
@@ -175,10 +176,19 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
     onSuccess: (run: any) => {
       toast.success("Simulação iniciada nos 5 modos");
       setSelectedRun(run.id);
+      // Modos sem padrão salvo pra esse ATIVO nascem com o padrão de fábrica
+      // (escala de mini índice) — precisa ficar visível na tela.
+      if (run?.factory_default_warning) {
+        setFactoryWarn({ runId: run.id, symbol: run.defaults_symbol ?? run.symbol, text: run.factory_default_warning });
+        toast.warning(run.factory_default_warning, { duration: 12000 });
+      } else {
+        setFactoryWarn(null);
+      }
       qc.invalidateQueries({ queryKey: ["b3-sim-runs"] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao iniciar"),
   });
+
 
   const statusM = useMutation({
     mutationFn: (s: "running" | "paused" | "finished" | "cancelled") => setStatus({ data: { run_id: runId!, status: s } }),
@@ -255,7 +265,17 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
           <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30">somente simulação</Badge>
         </CardHeader>
         <CardContent className="space-y-4">
+          {factoryWarn && factoryWarn.runId === runId && (
+            <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200 flex items-start justify-between gap-3">
+              <span>
+                <strong>{factoryWarn.symbol}: padrão de fábrica em uso.</strong>{" "}
+                {factoryWarn.text}
+              </span>
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-amber-200" onClick={() => setFactoryWarn(null)}>ok</Button>
+            </div>
+          )}
           <StartForm onSubmit={(v) => startM.mutate(v)} loading={startM.isPending} defaultSymbol={defaultSymbol} />
+
 
           <div className="flex flex-wrap items-center gap-2">
             <Label className="text-xs text-muted-foreground">Run:</Label>
@@ -382,6 +402,7 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
                 onPick={() => winnerM.mutate(mm.mode)}
                 onCloseOrder={() => closeModeM.mutate(mm.mode)}
                 closingOrder={closeModeM.isPending && closeModeM.variables === mm.mode}
+                runSymbol={detail?.run?.symbol ?? undefined}
                 onToggleEnabled={(v: boolean) => toggleEnabledM.mutate({ mode: mm.mode, enabled: v })} />
             ))}
           </div>
@@ -723,7 +744,7 @@ function DiagnosticMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWinner: boolean; onPick: () => void }) {
+function ModeCard({ m, runId, isWinner, onPick, runSymbol }: { m: any; runId: string; isWinner: boolean; onPick: () => void; runSymbol?: string }) {
   const trades = Math.max(1, Number(m.total_trades) || 0);
   const acerto = ((Number(m.winning_trades) || 0) / trades) * 100;
   const pnl = Number(m.realized_pnl);
@@ -735,7 +756,7 @@ function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWin
           {isWinner && <Trophy className="w-4 h-4 text-amber-400" />}
         </CardTitle>
         <div className="flex items-center gap-1">
-          <ModeSettingsDialog runId={runId} mode={m.mode as Mode} />
+          <ModeSettingsDialog runId={runId} mode={m.mode as Mode} runSymbol={runSymbol} />
           <Button size="sm" variant="ghost" onClick={onPick}><Trophy className="w-4 h-4" /></Button>
         </div>
       </CardHeader>
@@ -777,7 +798,7 @@ function ModeCard({ m, runId, isWinner, onPick }: { m: any; runId: string; isWin
   );
 }
 
-function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
+function ModeSettingsDialog({ runId, mode, runSymbol }: { runId: string; mode: Mode; runSymbol?: string }) {
   const qc = useQueryClient();
   const list = useServerFn(listB3ModeSettings);
   const upd = useServerFn(updateB3ModeSettings);
@@ -795,21 +816,24 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
     staleTime: 0,
     refetchOnMount: "always",
   });
+  const symLabel = runSymbol || "este ativo";
   const saveDefaultQ = useQuery({
-    queryKey: ["b3-mode-user-defaults"],
-    queryFn: () => listDefaults(),
+    // Padrão é por (ativo, modo) — a lista precisa ser do símbolo da run.
+    queryKey: ["b3-mode-user-defaults", runSymbol ?? null],
+    queryFn: () => listDefaults({ data: runSymbol ? { symbol: runSymbol } : {} }),
     enabled: open,
     staleTime: 0,
   });
+  const hasSavedDefault = (saveDefaultQ.data ?? []).some((d: any) => d.mode === mode);
   const current = (q.data ?? []).find((s: any) => s.mode === mode);
   const [form, setForm] = useState<any>(null);
   if (open && current && !form) setForm({ ...current });
   const f = form ?? current ?? {};
 
   const saveDefaultM = useMutation({
-    mutationFn: () => saveDefault({ data: { mode, values: current ?? {} } }),
-    onSuccess: () => {
-      toast.success(`Padrão salvo pra ${mode} — próximas simulações e "Restaurar padrão" vão usar isso.`);
+    mutationFn: () => saveDefault({ data: { run_id: runId, mode, values: current ?? {} } }),
+    onSuccess: (r: any) => {
+      toast.success(`Padrão de ${mode} salvo para ${r?.symbol ?? symLabel} — vale só para este ativo.`);
       qc.invalidateQueries({ queryKey: ["b3-mode-user-defaults"] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Erro ao salvar padrão"),
@@ -827,12 +851,21 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
   });
   const resetM = useMutation({
     mutationFn: () => reset({ data: { run_id: runId, mode } }),
-    onSuccess: () => {
-      toast.success("Restaurado para padrão");
+    onSuccess: (r: any) => {
+      if (r?.ok === false || r?.source === "none") {
+        toast.warning(
+          `Não há padrão salvo para ${r?.symbol ?? symLabel} no modo ${mode} — nada foi alterado. ` +
+          `O padrão de fábrica é escala de mini índice e não foi aplicado.`,
+        );
+        return;
+      }
+      toast.success(`Restaurado para o seu padrão de ${r?.symbol ?? symLabel}`);
       qc.invalidateQueries({ queryKey: ["b3-mode-settings", runId] });
       setForm(null);
     },
+    onError: (e: any) => toast.error(e?.message ?? "Erro ao restaurar"),
   });
+
 
   const set = (k: string, v: any) => setForm({ ...f, [k]: v });
 
@@ -846,11 +879,19 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
           <DialogTitle className="capitalize flex items-center gap-2">
             <Badge className={`uppercase ${MODE_COLOR[mode]}`}>{mode}</Badge>
             Configuração do modo
+            {runSymbol && <Badge variant="outline" className="border-primary/40 bg-primary/10 font-semibold">{runSymbol}</Badge>}
           </DialogTitle>
         </DialogHeader>
         <div className="flex-1 overflow-y-auto px-6 py-4">
         {current ? (
           <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="col-span-2 rounded border border-border/40 bg-muted/30 p-2 text-xs text-muted-foreground">
+              Estes valores e o "meu padrão" pertencem exclusivamente a <strong>{symLabel}</strong>.
+              {" "}{hasSavedDefault
+                ? "Há um padrão seu salvo para este ativo."
+                : "Ainda não há padrão seu salvo para este ativo — a configuração atual pode ser de fábrica (escala de mini índice); revise stop, alvo e quantidade."}
+            </div>
+
             <div className="col-span-2 flex items-center justify-between rounded border border-border/40 p-2">
               <span>Operar este modo</span>
               <Switch checked={f.enabled !== false} onCheckedChange={(v) => set("enabled", v)} />
@@ -906,15 +947,14 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
         <DialogFooter className="px-6 pb-6 pt-2 border-t border-border/40 flex-wrap gap-2">
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="outline" disabled={resetM.isPending}>Restaurar padrão</Button>
+              <Button variant="outline" disabled={resetM.isPending}>Restaurar meu padrão de {symLabel}</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Restaurar {mode} pro seu padrão?</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>Restaurar {mode} pro seu padrão de {symLabel}?</DialogTitle></DialogHeader>
               <p className="text-sm text-muted-foreground">
-                {saveDefaultQ.data?.some((d: any) => d.mode === mode)
-                  ? "Isso vai trocar a configuração atual pelo SEU padrão salvo pra esse modo (não o de fábrica)."
-                  : "Você ainda não salvou um padrão próprio pra esse modo — isso vai voltar pro padrão de fábrica do sistema."}
-                {" "}Não dá pra desfazer.
+                {hasSavedDefault
+                  ? `Isso vai trocar a configuração atual pelo SEU padrão salvo para ${symLabel} nesse modo (não o de fábrica). Não dá pra desfazer.`
+                  : `Você ainda não salvou um padrão próprio para ${symLabel} nesse modo — nada será alterado. O padrão de fábrica é escala de mini índice e não é aplicado automaticamente.`}
               </p>
               <DialogFooter>
                 <Button variant="destructive" disabled={resetM.isPending} onClick={() => resetM.mutate()}>
@@ -927,10 +967,11 @@ function ModeSettingsDialog({ runId, mode }: { runId: string; mode: Mode }) {
             variant="outline"
             disabled={saveDefaultM.isPending || !current}
             onClick={() => saveDefaultM.mutate()}
-            title="Salva a configuração atual (a que já está gravada, não edições ainda não salvas) como seu padrão pra esse modo"
+            title={`Salva a configuração atual (a que já está gravada, não edições ainda não salvas) como seu padrão desse modo para ${symLabel}`}
           >
-            {saveDefaultM.isPending ? "Salvando..." : "Salvar como meu padrão"}
+            {saveDefaultM.isPending ? "Salvando..." : `Salvar como meu padrão para ${symLabel}`}
           </Button>
+
           <Button onClick={() => saveM.mutate()} disabled={saveM.isPending || !current}>Salvar</Button>
         </DialogFooter>
       </DialogContent>
@@ -1088,7 +1129,7 @@ function MacroEventsCard() {
 // arquivo roda no cliente e não pode importar código do servidor.
 const POINT_VALUE_BRL_CLIENT = 0.2;
 
-function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder, livePrice, onCloseOrder, closingOrder, onToggleEnabled }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void; audit?: any; openOrder?: any; livePrice?: number | null; onCloseOrder?: () => void; closingOrder?: boolean; onToggleEnabled?: (v: boolean) => void }) {
+function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder, livePrice, onCloseOrder, closingOrder, onToggleEnabled, runSymbol }: { mm: any; period: string; runId: string; isWinner: boolean; onPick: () => void; audit?: any; openOrder?: any; livePrice?: number | null; onCloseOrder?: () => void; closingOrder?: boolean; onToggleEnabled?: (v: boolean) => void; runSymbol?: string }) {
   const baseStatus = STATUS_META[mm.current_status] ?? STATUS_META.operando;
   const pnl = Number(mm.pnl_periodo ?? 0);
 
@@ -1158,7 +1199,7 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder,
           {isWinner && <Trophy className="w-4 h-4 text-amber-400" />}
         </CardTitle>
         <div className="flex items-center gap-1">
-          <ModeSettingsDialog runId={runId} mode={mm.mode as Mode} />
+          <ModeSettingsDialog runId={runId} mode={mm.mode as Mode} runSymbol={runSymbol} />
           <Button size="sm" variant="ghost" onClick={onPick}><Trophy className="w-4 h-4" /></Button>
         </div>
       </CardHeader>

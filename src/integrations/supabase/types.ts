@@ -1187,6 +1187,7 @@ export type Database = {
           post_target_size_reduction: number | null
           profit_multiplier_before_lock: number | null
           stop_pts: number | null
+          symbol: string
           trading_start_time: string | null
           trailing_activation_pts: number | null
           trailing_giveback_pts: number | null
@@ -1213,6 +1214,7 @@ export type Database = {
           post_target_size_reduction?: number | null
           profit_multiplier_before_lock?: number | null
           stop_pts?: number | null
+          symbol?: string
           trading_start_time?: string | null
           trailing_activation_pts?: number | null
           trailing_giveback_pts?: number | null
@@ -1239,6 +1241,7 @@ export type Database = {
           post_target_size_reduction?: number | null
           profit_multiplier_before_lock?: number | null
           stop_pts?: number | null
+          symbol?: string
           trading_start_time?: string | null
           trailing_activation_pts?: number | null
           trailing_giveback_pts?: number | null
