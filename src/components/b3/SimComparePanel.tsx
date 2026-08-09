@@ -265,7 +265,17 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
           <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30">somente simulação</Badge>
         </CardHeader>
         <CardContent className="space-y-4">
+          {factoryWarn && factoryWarn.runId === runId && (
+            <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200 flex items-start justify-between gap-3">
+              <span>
+                <strong>{factoryWarn.symbol}: padrão de fábrica em uso.</strong>{" "}
+                {factoryWarn.text}
+              </span>
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-amber-200" onClick={() => setFactoryWarn(null)}>ok</Button>
+            </div>
+          )}
           <StartForm onSubmit={(v) => startM.mutate(v)} loading={startM.isPending} defaultSymbol={defaultSymbol} />
+
 
           <div className="flex flex-wrap items-center gap-2">
             <Label className="text-xs text-muted-foreground">Run:</Label>
