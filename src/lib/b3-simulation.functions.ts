@@ -244,13 +244,19 @@ export const startB3Simulation = createServerFn({ method: "POST" })
     // próprio salvo ainda. Sem isso, TODA simulação nova sempre nascia com
     // os valores de fábrica, obrigando reconfigurar tudo de novo — motivo
     // direto do pedido do usuário (item 7, 06/08/2026).
+    // O padrão é POR ATIVO: a chave da tabela é (user_id, symbol, mode).
+    // Sem o filtro por symbol, o padrão do WIN era aplicado numa run de WDO
+    // e escrevia stop de 300 pts (R$ 3.000+ de risco por contrato no mini
+    // dólar, onde o ponto vale R$ 10 contra R$ 0,20 do WIN).
     const { data: userDefaults } = await (supabase as any)
-      .from("b3_mode_user_defaults").select("*").eq("user_id", userId);
+      .from("b3_mode_user_defaults").select("*").eq("user_id", userId).eq("symbol", symbol);
     const userDefaultsByMode: Record<string, any> = {};
     for (const d of userDefaults ?? []) userDefaultsByMode[d.mode] = d;
 
+    const factoryModes: string[] = [];
     const settingRows = MODES.map(m => {
       const ud = userDefaultsByMode[m];
+      if (!ud) factoryModes.push(m);
       const base = ud
         ? Object.fromEntries(SETTING_FIELDS.map(k => [k, k in ud && ud[k] != null ? ud[k] : MODE_DEFAULTS[m][k as keyof typeof MODE_DEFAULTS[typeof m]]]))
         : MODE_DEFAULTS[m];
@@ -262,8 +268,16 @@ export const startB3Simulation = createServerFn({ method: "POST" })
       };
     });
     await (supabase as any).from("b3_simulation_mode_settings").insert(settingRows);
-    return run;
+    return {
+      ...run,
+      defaults_symbol: symbol,
+      factory_default_modes: factoryModes,
+      factory_default_warning: factoryModes.length
+        ? `Modos sem padrão salvo para ${symbol} (${factoryModes.join(", ")}) nasceram com o padrão de fábrica, calibrado para mini índice; revise stop, alvo e quantidade antes de operar este ativo.`
+        : null,
+    };
   });
+
 
 
 // ───────────────────── controls ─────────────────────
