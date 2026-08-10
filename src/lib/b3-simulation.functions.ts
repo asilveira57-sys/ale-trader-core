@@ -132,6 +132,7 @@ type Mode = "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agr
 const MODES: Mode[] = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"];
 
 interface ModeDefaults {
+  entry_style: string;
   min_approve_votes: number; min_confidence: number; min_score: number;
   max_contracts: number; stop_pts: number; gain_pts: number; max_volatility_pct: number;
   daily_loss_limit_brl: number; daily_gain_target_brl: number;
