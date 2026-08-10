@@ -132,17 +132,18 @@ type Mode = "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agr
 const MODES: Mode[] = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"];
 
 interface ModeDefaults {
+  entry_style: string;
   min_approve_votes: number; min_confidence: number; min_score: number;
   max_contracts: number; stop_pts: number; gain_pts: number; max_volatility_pct: number;
   daily_loss_limit_brl: number; daily_gain_target_brl: number;
   trailing_activation_pts?: number; trailing_giveback_pts?: number; trailing_mode?: string;
 }
 const MODE_DEFAULTS: Record<Mode, ModeDefaults> = {
-  conservador:    { min_approve_votes: 4, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  moderado:       { min_approve_votes: 4, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  equilibrado:    { min_approve_votes: 4, min_confidence: 62, min_score: 62, max_contracts: 3, stop_pts: 220, gain_pts: 440, max_volatility_pct: 3.8, daily_loss_limit_brl: 500, daily_gain_target_brl: 700, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  semi_agressivo: { min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  agressivo:      { min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  conservador:    { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  moderado:       { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  equilibrado:    { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 62, min_score: 62, max_contracts: 3, stop_pts: 220, gain_pts: 440, max_volatility_pct: 3.8, daily_loss_limit_brl: 500, daily_gain_target_brl: 700, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  semi_agressivo: { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  agressivo:      { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
 };
 
 function hhmmToMin(s: string) { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; }
@@ -970,6 +971,81 @@ async function runB3SimulationTickInner(
     return { name, ok: altOk, reasons: failures, details: { ...details, soft_hits: hits, soft_total: soft.length } };
   }
 
+  // Price action de verdade na entrada: estrutura de fundos/topos confirmados
+  // (fractal N=1, mesma técnica já usada no trailing estrutural), em vez de
+  // EMA/VWAP. Só é chamada quando cfg.entry_style === 'price_action'.
+  function classifySetupPriceAction(params: {
+    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; marketHistory: any[];
+  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
+    const { ctxLocal, intendedSide, cfg, marketHistory } = params;
+    const price = Number(ctxLocal.price);
+    const open = Number(ctxLocal.open);
+    const stopPts = Math.max(1, Number(cfg.stop_pts) || 0);
+
+    const sorted = marketHistory.slice().sort((a: any, b: any) => new Date(a.market_time).getTime() - new Date(b.market_time).getTime());
+    const swingLows: number[] = [];
+    const swingHighs: number[] = [];
+    for (let i = 1; i < sorted.length - 1; i++) {
+      const prev = sorted[i - 1], cur = sorted[i], next = sorted[i + 1];
+      const lp = Number(prev.candle_low), lc = Number(cur.candle_low), ln = Number(next.candle_low);
+      if ([lp, lc, ln].every(Number.isFinite) && lc < lp && lc < ln) swingLows.push(lc);
+      const hp = Number(prev.candle_high), hc = Number(cur.candle_high), hn = Number(next.candle_high);
+      if ([hp, hc, hn].every(Number.isFinite) && hc > hp && hc > hn) swingHighs.push(hc);
+    }
+
+    const details: Record<string, any> = { swing_lows_found: swingLows.length, swing_highs_found: swingHighs.length };
+
+    if (swingLows.length < 2 || swingHighs.length < 2) {
+      return { name: "no_valid_setup", ok: false, reasons: ["estrutura insuficiente — menos de 2 fundos/topos confirmados hoje"], details };
+    }
+
+    const [prevLow, lastLow] = swingLows.slice(-2);
+    const [prevHigh, lastHigh] = swingHighs.slice(-2);
+    const higherLow = lastLow > prevLow;
+    const lowerHigh = lastHigh < prevHigh;
+    const higherHigh = lastHigh > prevHigh;
+    const lowerLow = lastLow < prevLow;
+    Object.assign(details, { prev_low: prevLow, last_low: lastLow, prev_high: prevHigh, last_high: lastHigh });
+
+    const hardBlock: string[] = [];
+    let stopRef: number, targetRef: number;
+
+    if (intendedSide === "buy") {
+      const structureUp = higherLow && higherHigh;
+      if (!structureUp) hardBlock.push("sem estrutura de alta confirmada (precisa fundo e topo mais altos)");
+      if (price < lastLow) hardBlock.push("rompeu o último fundo estrutural — estrutura de alta invalidada");
+      stopRef = lastLow; targetRef = lastHigh;
+    } else {
+      const structureDown = lowerHigh && lowerLow;
+      if (!structureDown) hardBlock.push("sem estrutura de baixa confirmada (precisa topo e fundo mais baixos)");
+      if (price > lastHigh) hardBlock.push("rompeu o último topo estrutural — estrutura de baixa invalidada");
+      stopRef = lastHigh; targetRef = lastLow;
+    }
+
+    const stopDist = Math.abs(price - stopRef);
+    const targetDist = Math.abs(targetRef - price);
+    const rr = stopDist > 0 ? targetDist / stopDist : 0;
+
+    const soft: { label: string; pass: boolean }[] = [];
+    const nearStructPts = Math.max(stopPts * 0.6, 20);
+    soft.push({ label: "longe do fundo/topo estrutural (pullback não confirmado)", pass: stopDist <= nearStructPts });
+    soft.push({ label: intendedSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
+      pass: intendedSide === "buy" ? price > open : price < open });
+    soft.push({ label: `R:R estrutural ${rr.toFixed(2)} < 1.5`, pass: rr >= 1.5 });
+
+    const failedSoft = soft.filter(s => !s.pass).map(s => s.label);
+    const minHits = Number((cfg as any).setup_min_soft_hits_pa ?? 2);
+    const hits = soft.length - failedSoft.length;
+    const softOk = hits >= minHits;
+    const failures = [...hardBlock, ...(softOk ? [] : failedSoft)];
+    Object.assign(details, { stop_ref: stopRef, target_ref: targetRef, risk_reward: Number(rr.toFixed(2)), soft_hits: hits, soft_total: soft.length });
+
+    if (hardBlock.length === 0 && softOk) {
+      return { name: "trend_pullback", ok: true, reasons: [], details };
+    }
+    return { name: "no_valid_setup", ok: false, reasons: failures, details };
+  }
+
   function buildDecisionContext(params: {
     ctxLocal: any; priceLocal: any; cfg: any; mode: string; intendedSide: string;
     decision: any | null; derived: any; firstStop?: any;
@@ -1652,7 +1728,9 @@ async function runB3SimulationTickInner(
       // podem operar (trend_pullback, breakout_retest, consolidation_breakout,
       // support_resistance_rejection), cada um com sua própria checagem de
       // evidência mínima dentro de classifySetup. no_valid_setup nunca opera.
-      const setupInfo = classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
+      const setupInfo = cfg.entry_style === "price_action"
+        ? classifySetupPriceAction({ ctxLocal: localCtx, intendedSide, cfg, marketHistory })
+        : classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
       const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
       addCheck(
         "setup",
@@ -2446,7 +2524,7 @@ export const listB3ModeSettings = createServerFn({ method: "POST" })
   });
 
 const SETTING_FIELDS = [
-  "enabled","min_approve_votes","min_confidence","min_score","max_contracts",
+  "enabled","entry_style","min_approve_votes","min_confidence","min_score","max_contracts",
   "stop_pts","gain_pts","max_volatility_pct","daily_loss_limit_brl","daily_gain_target_brl",
   "trading_start_time","entry_cutoff_time","force_close_time","notes",
   "trailing_activation_pts","trailing_giveback_pts","trailing_mode",
