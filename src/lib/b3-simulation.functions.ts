@@ -970,6 +970,81 @@ async function runB3SimulationTickInner(
     return { name, ok: altOk, reasons: failures, details: { ...details, soft_hits: hits, soft_total: soft.length } };
   }
 
+  // Price action de verdade na entrada: estrutura de fundos/topos confirmados
+  // (fractal N=1, mesma técnica já usada no trailing estrutural), em vez de
+  // EMA/VWAP. Só é chamada quando cfg.entry_style === 'price_action'.
+  function classifySetupPriceAction(params: {
+    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; marketHistory: any[];
+  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
+    const { ctxLocal, intendedSide, cfg, marketHistory } = params;
+    const price = Number(ctxLocal.price);
+    const open = Number(ctxLocal.open);
+    const stopPts = Math.max(1, Number(cfg.stop_pts) || 0);
+
+    const sorted = marketHistory.slice().sort((a: any, b: any) => new Date(a.market_time).getTime() - new Date(b.market_time).getTime());
+    const swingLows: number[] = [];
+    const swingHighs: number[] = [];
+    for (let i = 1; i < sorted.length - 1; i++) {
+      const prev = sorted[i - 1], cur = sorted[i], next = sorted[i + 1];
+      const lp = Number(prev.candle_low), lc = Number(cur.candle_low), ln = Number(next.candle_low);
+      if ([lp, lc, ln].every(Number.isFinite) && lc < lp && lc < ln) swingLows.push(lc);
+      const hp = Number(prev.candle_high), hc = Number(cur.candle_high), hn = Number(next.candle_high);
+      if ([hp, hc, hn].every(Number.isFinite) && hc > hp && hc > hn) swingHighs.push(hc);
+    }
+
+    const details: Record<string, any> = { swing_lows_found: swingLows.length, swing_highs_found: swingHighs.length };
+
+    if (swingLows.length < 2 || swingHighs.length < 2) {
+      return { name: "no_valid_setup", ok: false, reasons: ["estrutura insuficiente — menos de 2 fundos/topos confirmados hoje"], details };
+    }
+
+    const [prevLow, lastLow] = swingLows.slice(-2);
+    const [prevHigh, lastHigh] = swingHighs.slice(-2);
+    const higherLow = lastLow > prevLow;
+    const lowerHigh = lastHigh < prevHigh;
+    const higherHigh = lastHigh > prevHigh;
+    const lowerLow = lastLow < prevLow;
+    Object.assign(details, { prev_low: prevLow, last_low: lastLow, prev_high: prevHigh, last_high: lastHigh });
+
+    const hardBlock: string[] = [];
+    let stopRef: number, targetRef: number;
+
+    if (intendedSide === "buy") {
+      const structureUp = higherLow && higherHigh;
+      if (!structureUp) hardBlock.push("sem estrutura de alta confirmada (precisa fundo e topo mais altos)");
+      if (price < lastLow) hardBlock.push("rompeu o último fundo estrutural — estrutura de alta invalidada");
+      stopRef = lastLow; targetRef = lastHigh;
+    } else {
+      const structureDown = lowerHigh && lowerLow;
+      if (!structureDown) hardBlock.push("sem estrutura de baixa confirmada (precisa topo e fundo mais baixos)");
+      if (price > lastHigh) hardBlock.push("rompeu o último topo estrutural — estrutura de baixa invalidada");
+      stopRef = lastHigh; targetRef = lastLow;
+    }
+
+    const stopDist = Math.abs(price - stopRef);
+    const targetDist = Math.abs(targetRef - price);
+    const rr = stopDist > 0 ? targetDist / stopDist : 0;
+
+    const soft: { label: string; pass: boolean }[] = [];
+    const nearStructPts = Math.max(stopPts * 0.6, 20);
+    soft.push({ label: "longe do fundo/topo estrutural (pullback não confirmado)", pass: stopDist <= nearStructPts });
+    soft.push({ label: intendedSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
+      pass: intendedSide === "buy" ? price > open : price < open });
+    soft.push({ label: `R:R estrutural ${rr.toFixed(2)} < 1.5`, pass: rr >= 1.5 });
+
+    const failedSoft = soft.filter(s => !s.pass).map(s => s.label);
+    const minHits = Number((cfg as any).setup_min_soft_hits_pa ?? 2);
+    const hits = soft.length - failedSoft.length;
+    const softOk = hits >= minHits;
+    const failures = [...hardBlock, ...(softOk ? [] : failedSoft)];
+    Object.assign(details, { stop_ref: stopRef, target_ref: targetRef, risk_reward: Number(rr.toFixed(2)), soft_hits: hits, soft_total: soft.length });
+
+    if (hardBlock.length === 0 && softOk) {
+      return { name: "trend_pullback", ok: true, reasons: [], details };
+    }
+    return { name: "no_valid_setup", ok: false, reasons: failures, details };
+  }
+
   function buildDecisionContext(params: {
     ctxLocal: any; priceLocal: any; cfg: any; mode: string; intendedSide: string;
     decision: any | null; derived: any; firstStop?: any;
