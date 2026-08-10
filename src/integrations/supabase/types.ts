@@ -2571,6 +2571,8 @@ export type Database = {
           force_close_time: string
           gain_pts: number
           id: string
+          lateral_strength_min: number | null
+          lateral_vol_min: number | null
           max_contracts: number
           max_volatility_pct: number
           min_approve_votes: number
@@ -2603,6 +2605,8 @@ export type Database = {
           force_close_time?: string
           gain_pts?: number
           id?: string
+          lateral_strength_min?: number | null
+          lateral_vol_min?: number | null
           max_contracts?: number
           max_volatility_pct?: number
           min_approve_votes?: number
@@ -2635,6 +2639,8 @@ export type Database = {
           force_close_time?: string
           gain_pts?: number
           id?: string
+          lateral_strength_min?: number | null
+          lateral_vol_min?: number | null
           max_contracts?: number
           max_volatility_pct?: number
           min_approve_votes?: number
