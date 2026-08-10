@@ -2567,6 +2567,7 @@ export type Database = {
           daily_loss_limit_brl: number
           enabled: boolean
           entry_cutoff_time: string
+          entry_style: string
           force_close_time: string
           gain_pts: number
           id: string
@@ -2598,6 +2599,7 @@ export type Database = {
           daily_loss_limit_brl?: number
           enabled?: boolean
           entry_cutoff_time?: string
+          entry_style?: string
           force_close_time?: string
           gain_pts?: number
           id?: string
@@ -2629,6 +2631,7 @@ export type Database = {
           daily_loss_limit_brl?: number
           enabled?: boolean
           entry_cutoff_time?: string
+          entry_style?: string
           force_close_time?: string
           gain_pts?: number
           id?: string
