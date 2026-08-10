@@ -138,11 +138,11 @@ interface ModeDefaults {
   trailing_activation_pts?: number; trailing_giveback_pts?: number; trailing_mode?: string;
 }
 const MODE_DEFAULTS: Record<Mode, ModeDefaults> = {
-  conservador:    { min_approve_votes: 4, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  moderado:       { min_approve_votes: 4, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  equilibrado:    { min_approve_votes: 4, min_confidence: 62, min_score: 62, max_contracts: 3, stop_pts: 220, gain_pts: 440, max_volatility_pct: 3.8, daily_loss_limit_brl: 500, daily_gain_target_brl: 700, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  semi_agressivo: { min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  agressivo:      { min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  conservador:    { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  moderado:       { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  equilibrado:    { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 62, min_score: 62, max_contracts: 3, stop_pts: 220, gain_pts: 440, max_volatility_pct: 3.8, daily_loss_limit_brl: 500, daily_gain_target_brl: 700, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  semi_agressivo: { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  agressivo:      { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
 };
 
 function hhmmToMin(s: string) { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; }
@@ -1727,7 +1727,9 @@ async function runB3SimulationTickInner(
       // podem operar (trend_pullback, breakout_retest, consolidation_breakout,
       // support_resistance_rejection), cada um com sua própria checagem de
       // evidência mínima dentro de classifySetup. no_valid_setup nunca opera.
-      const setupInfo = classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
+      const setupInfo = cfg.entry_style === "price_action"
+        ? classifySetupPriceAction({ ctxLocal: localCtx, intendedSide, cfg, marketHistory })
+        : classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
       const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
       addCheck(
         "setup",
@@ -2521,7 +2523,7 @@ export const listB3ModeSettings = createServerFn({ method: "POST" })
   });
 
 const SETTING_FIELDS = [
-  "enabled","min_approve_votes","min_confidence","min_score","max_contracts",
+  "enabled","entry_style","min_approve_votes","min_confidence","min_score","max_contracts",
   "stop_pts","gain_pts","max_volatility_pct","daily_loss_limit_brl","daily_gain_target_brl",
   "trading_start_time","entry_cutoff_time","force_close_time","notes",
   "trailing_activation_pts","trailing_giveback_pts","trailing_mode",
