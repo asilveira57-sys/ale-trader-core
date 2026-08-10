@@ -903,6 +903,16 @@ function ModeSettingsDialog({ runId, mode, runSymbol }: { runId: string; mode: M
             <Field label="Stop (pts)"><Input type="number" value={f.stop_pts ?? ""} onChange={(e) => set("stop_pts", Number(e.target.value))} /></Field>
             <Field label="Alvo / Gain (pts)"><Input type="number" value={f.gain_pts ?? ""} onChange={(e) => set("gain_pts", Number(e.target.value))} /></Field>
             <Field label="Ativar proteção após (pts a favor)"><Input type="number" value={f.trailing_activation_pts ?? 0} onChange={(e) => set("trailing_activation_pts", Number(e.target.value))} /></Field>
+            <Field label="Estilo de entrada">
+              <select
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                value={f.entry_style ?? "indicador"}
+                onChange={(e) => set("entry_style", e.target.value)}
+              >
+                <option value="indicador">Indicador (EMA/VWAP)</option>
+                <option value="price_action">Price action (fundo/topo estrutural)</option>
+              </select>
+            </Field>
             <Field label="Tipo de trailing">
               <select
                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
@@ -918,6 +928,11 @@ function ModeSettingsDialog({ runId, mode, runSymbol }: { runId: string; mode: M
               Ativação em 0 = trailing desligado (só stop/gain fixo). No modo "Estrutural", o campo de recuo em
               pontos não é usado — o fechamento acontece quando o preço rompe o último fundo (compra) ou topo
               (venda) confirmado desde a entrada.
+            </div>
+            <div className="col-span-2 text-xs text-muted-foreground -mt-2">
+              "Price action" troca a leitura de EMA/VWAP na entrada por estrutura de fundos e topos confirmados
+              (mesma técnica do trailing estrutural) — precisa de pelo menos 2 fundos e 2 topos formados no dia
+              pra avaliar, então pode ficar sem operar nas primeiras horas do pregão.
             </div>
             <Field label="Volatilidade máx. (%)"><Input type="number" step="0.1" value={f.max_volatility_pct ?? ""} onChange={(e) => set("max_volatility_pct", Number(e.target.value))} /></Field>
             <Field label="Limite diário de perda (R$)"><Input type="number" step="10" value={f.daily_loss_limit_brl ?? ""} onChange={(e) => set("daily_loss_limit_brl", Number(e.target.value))} /></Field>
