@@ -915,7 +915,9 @@ async function runB3SimulationTickInner(
 
     // Bloqueio DURO (estrutura mínima real — não é opinião, é pré-requisito
     // pro trade fazer sentido nesse lado): mercado tem que ter direção.
-    const lateral = trend.direction === "lateral" || trend.strength < 30 || vol < 0.3;
+    const lateralStrengthMin = Number((cfg as any).lateral_strength_min ?? 30);
+    const lateralVolMin = Number((cfg as any).lateral_vol_min ?? 0.3);
+    const lateral = trend.direction === "lateral" || trend.strength < lateralStrengthMin || vol < lateralVolMin;
     const wrongDirection =
       (intendedSide === "buy" && trend.direction === "baixa") ||
       (intendedSide === "sell" && trend.direction === "alta");
