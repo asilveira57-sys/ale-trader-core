@@ -1672,9 +1672,13 @@ async function runB3SimulationTickInner(
         await recordStatusIfChanged(mode, m, "bloqueado_perda_diaria", "daily_loss",
           { observed: realizedToday, limit: -Number(cfg.daily_loss_limit_brl), pnl: realizedToday,
             message: `Limite diário de perda atingido (${realizedToday.toFixed(2)} BRL).` });
+      } else if (beforeOpen) {
+        await recordStatusIfChanged(mode, m, "aguardando_abertura", "before_open",
+          { pnl: realizedToday, message: `Fora da janela de operação — abre às ${cfg.trading_start_time}.` });
       } else if (forceClose) {
         await recordStatusIfChanged(mode, m, "bloqueado_zeragem", "force_close",
           { pnl: realizedToday, message: "Janela de zeragem obrigatória." });
+
       } else if (!insideHours) {
         await recordStatusIfChanged(mode, m, "bloqueado_horario", "time",
           { pnl: realizedToday, message: "Fora da janela operacional." });
