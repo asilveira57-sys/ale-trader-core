@@ -143,13 +143,28 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
   // Quando a tela é dedicada a um ativo (symbolPrefix definido, ex: "WIN" ou
   // "WDO"), só mostra/seleciona runs daquele ativo — sem isso, o dropdown
   // "Run:" listava WIN e WDO misturados na mesma tela.
-  const runsQ = { ...runsQAll, data: symbolPrefix ? (runsQAll.data ?? []).filter((r: any) => String(r.symbol ?? "").startsWith(symbolPrefix)) : runsQAll.data };
-  // Auto-seleção: prefere sempre uma run 'running' (a mais recente entre
-  // as ativas), nunca uma cancelada/finalizada — antes bastava ser a mais
-  // recente por DATA, então uma run cancelada criada por engano podia ser
-  // escolhida no lugar da que está rodando de verdade.
+  const runsAsset: any[] = symbolPrefix
+    ? (runsQAll.data ?? []).filter((r: any) => String(r.symbol ?? "").startsWith(symbolPrefix))
+    : (runsQAll.data ?? []);
+
+  // Modalidades (variant) disponíveis entre as runs ATIVAS do ativo da tela.
+  // Cada modalidade tem sua própria run com os 5 modos, rodando em paralelo.
+  const variants: string[] = Array.from(
+    new Set(runsAsset.filter((r: any) => r.status === "running").map((r: any) => String(r.variant ?? "indicador"))),
+  );
+  // Aba inicial: sempre 'indicador' quando existir; nunca por data.
+  const defaultVariant = variants.includes("indicador") ? "indicador" : (variants[0] ?? "indicador");
+  const activeVariant = selectedVariant && variants.includes(selectedVariant) ? selectedVariant : defaultVariant;
+
+  // O seletor "Run:" continua listando runs antigas/finalizadas, mas só da
+  // modalidade selecionada na faixa de abas.
+  const runsQ = { ...runsQAll, data: runsAsset.filter((r: any) => String(r.variant ?? "indicador") === activeVariant) };
+  // Auto-seleção dentro da modalidade: sempre uma run 'running', nunca uma
+  // cancelada/finalizada.
   const autoRun = (runsQ.data ?? []).find((r: any) => r.status === "running") ?? runsQ.data?.[0];
-  const runId = selectedRun ?? autoRun?.id ?? null;
+  const selectedIsInVariant = !!selectedRun && (runsQ.data ?? []).some((r: any) => r.id === selectedRun);
+  const runId = (selectedIsInVariant ? selectedRun : null) ?? autoRun?.id ?? null;
+  const currentVariant = String((runsQ.data ?? []).find((r: any) => r.id === runId)?.variant ?? activeVariant);
   const detailQ = useQuery({
     queryKey: ["b3-sim-detail", runId],
     queryFn: () => getDetail({ data: { run_id: runId! } }),
