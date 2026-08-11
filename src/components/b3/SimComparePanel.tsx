@@ -114,9 +114,22 @@ function sampleStatus(trades: number): { label: string; cls: string } | null {
 }
 
 
+// Rótulos amigáveis das modalidades (coluna `variant` da run).
+const VARIANT_LABELS: Record<string, string> = {
+  indicador: "Indicador",
+  price_action: "Price action",
+  mean_reversion: "Reversão à média",
+  range: "Faixa",
+};
+function variantLabel(v?: string | null): string {
+  const key = String(v ?? "indicador");
+  return VARIANT_LABELS[key] ?? (key.charAt(0).toUpperCase() + key.slice(1));
+}
+
 export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?: string; defaultSymbol?: string } = {}) {
   const qc = useQueryClient();
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
   const [factoryWarn, setFactoryWarn] = useState<{ runId: string; symbol: string; text: string } | null>(null);
   const [ticks, setTicks] = useState(10);
   const [period, setPeriod] = useState<"today" | "all" | "custom">("today");
@@ -143,13 +156,28 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
   // Quando a tela é dedicada a um ativo (symbolPrefix definido, ex: "WIN" ou
   // "WDO"), só mostra/seleciona runs daquele ativo — sem isso, o dropdown
   // "Run:" listava WIN e WDO misturados na mesma tela.
-  const runsQ = { ...runsQAll, data: symbolPrefix ? (runsQAll.data ?? []).filter((r: any) => String(r.symbol ?? "").startsWith(symbolPrefix)) : runsQAll.data };
-  // Auto-seleção: prefere sempre uma run 'running' (a mais recente entre
-  // as ativas), nunca uma cancelada/finalizada — antes bastava ser a mais
-  // recente por DATA, então uma run cancelada criada por engano podia ser
-  // escolhida no lugar da que está rodando de verdade.
+  const runsAsset: any[] = symbolPrefix
+    ? (runsQAll.data ?? []).filter((r: any) => String(r.symbol ?? "").startsWith(symbolPrefix))
+    : (runsQAll.data ?? []);
+
+  // Modalidades (variant) disponíveis entre as runs ATIVAS do ativo da tela.
+  // Cada modalidade tem sua própria run com os 5 modos, rodando em paralelo.
+  const variants: string[] = Array.from(
+    new Set(runsAsset.filter((r: any) => r.status === "running").map((r: any) => String(r.variant ?? "indicador"))),
+  );
+  // Aba inicial: sempre 'indicador' quando existir; nunca por data.
+  const defaultVariant = variants.includes("indicador") ? "indicador" : (variants[0] ?? "indicador");
+  const activeVariant = selectedVariant && variants.includes(selectedVariant) ? selectedVariant : defaultVariant;
+
+  // O seletor "Run:" continua listando runs antigas/finalizadas, mas só da
+  // modalidade selecionada na faixa de abas.
+  const runsQ = { ...runsQAll, data: runsAsset.filter((r: any) => String(r.variant ?? "indicador") === activeVariant) };
+  // Auto-seleção dentro da modalidade: sempre uma run 'running', nunca uma
+  // cancelada/finalizada.
   const autoRun = (runsQ.data ?? []).find((r: any) => r.status === "running") ?? runsQ.data?.[0];
-  const runId = selectedRun ?? autoRun?.id ?? null;
+  const selectedIsInVariant = !!selectedRun && (runsQ.data ?? []).some((r: any) => r.id === selectedRun);
+  const runId = (selectedIsInVariant ? selectedRun : null) ?? autoRun?.id ?? null;
+  const currentVariant = String((runsQ.data ?? []).find((r: any) => r.id === runId)?.variant ?? activeVariant);
   const detailQ = useQuery({
     queryKey: ["b3-sim-detail", runId],
     queryFn: () => getDetail({ data: { run_id: runId! } }),
@@ -255,14 +283,38 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
       </div>
       {/* Cabeçalho / controles */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="w-4 h-4" /> Simulação 5 Modos (sandbox)
-            {detail?.run?.symbol && (
-              <Badge variant="outline" className="border-primary/40 bg-primary/10 font-semibold">{detail.run.symbol}</Badge>
-            )}
-          </CardTitle>
-          <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30">somente simulação</Badge>
+        <CardHeader className="space-y-2">
+          <div className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-4 h-4" /> Simulação 5 Modos (sandbox)
+              {detail?.run?.symbol && (
+                <Badge variant="outline" className="border-primary/40 bg-primary/10 font-semibold">{detail.run.symbol}</Badge>
+              )}
+              <Badge variant="outline" className="border-sky-500/40 bg-sky-500/10 text-sky-300">
+                {variantLabel(currentVariant)}
+              </Badge>
+            </CardTitle>
+            <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30">somente simulação</Badge>
+          </div>
+          {/* Faixa de abas por modalidade — só aparece quando o ativo tem mais
+              de uma variante rodando em paralelo (ex: WIN indicador + price action). */}
+          {variants.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1 border-b border-border/60 pb-2">
+              {variants.map((v) => (
+                <button
+                  key={v}
+                  onClick={() => { setSelectedVariant(v); setSelectedRun(null); }}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    v === activeVariant
+                      ? "bg-primary/15 text-primary border border-primary/40"
+                      : "text-muted-foreground hover:bg-muted/60 border border-transparent"
+                  }`}
+                >
+                  {variantLabel(v)}
+                </button>
+              ))}
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
           {factoryWarn && factoryWarn.runId === runId && (
@@ -284,7 +336,7 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
               <SelectContent>
                 {(runsQ.data ?? []).map((r: any) => (
                   <SelectItem key={r.id} value={r.id}>
-                    {r.symbol ?? "?"} · {new Date(r.started_at).toLocaleString("pt-BR")} · {r.status} · {BRL(r.initial_balance)}
+                    {r.symbol ?? "?"} · {variantLabel(r.variant)} · {new Date(r.started_at).toLocaleString("pt-BR")} · {r.status} · {BRL(r.initial_balance)}
                   </SelectItem>
                 ))}
               </SelectContent>
