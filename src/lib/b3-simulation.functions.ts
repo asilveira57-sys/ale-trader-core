@@ -796,6 +796,23 @@ async function runB3SimulationTickInner(
     return data ?? [];
   }
 
+  // Candles M1 REAIS, montados do fluxo de ticks pela função b3_m1_candles.
+  // Os campos candle_high/candle_low de b3_simulation_market_snapshots guardam
+  // extremos ACUMULADOS de janela (máxima/mínima correntes), e por isso nunca
+  // formam fractal (medido: ~3.100 snapshots em 7 pregões = 0 fundos, 1 topo).
+  // Toda lógica de estrutura (price action na entrada e trailing estrutural)
+  // deve usar esta série, não o histórico de snapshots.
+  async function fetchM1Candles(): Promise<any[]> {
+    const { data } = await supabase.rpc("b3_m1_candles", {
+      p_user_id: userId, p_symbol: asset.symbol, p_limit: 300,
+    });
+    return ((data as any[]) ?? [])
+      .slice()
+      .sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
+  }
+
+
+
   function deriveMarketMetrics(history: any[], ctxLocal: any, priceLocal: any) {
     const nowMs = Date.now();
     const prices: number[] = [];
@@ -976,15 +993,24 @@ async function runB3SimulationTickInner(
   // Price action de verdade na entrada: estrutura de fundos/topos confirmados
   // (fractal N=1, mesma técnica já usada no trailing estrutural), em vez de
   // EMA/VWAP. Só é chamada quando cfg.entry_style === 'price_action'.
+  // A série vem de b3_m1_candles (candles M1 reais); snapshots não servem
+  // porque candle_high/candle_low neles são extremos acumulados de janela.
   function classifySetupPriceAction(params: {
-    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; marketHistory: any[];
+    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
   }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
-    const { ctxLocal, intendedSide, cfg, marketHistory } = params;
+    const { ctxLocal, intendedSide, cfg, m1Candles } = params;
     const price = Number(ctxLocal.price);
     const open = Number(ctxLocal.open);
     const stopPts = Math.max(1, Number(cfg.stop_pts) || 0);
 
-    const sorted = marketHistory.slice().sort((a: any, b: any) => new Date(a.market_time).getTime() - new Date(b.market_time).getTime());
+    const sorted = (m1Candles ?? []).slice().sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
+    if (sorted.length < 5) {
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: ["aguardando candles de 1 minuto"],
+        details: { m1_candles: sorted.length },
+      };
+    }
     const swingLows: number[] = [];
     const swingHighs: number[] = [];
     for (let i = 1; i < sorted.length - 1; i++) {
@@ -995,7 +1021,8 @@ async function runB3SimulationTickInner(
       if ([hp, hc, hn].every(Number.isFinite) && hc > hp && hc > hn) swingHighs.push(hc);
     }
 
-    const details: Record<string, any> = { swing_lows_found: swingLows.length, swing_highs_found: swingHighs.length };
+    const details: Record<string, any> = { swing_lows_found: swingLows.length, swing_highs_found: swingHighs.length, m1_candles: sorted.length };
+
 
     if (swingLows.length < 2 || swingHighs.length < 2) {
       return { name: "no_valid_setup", ok: false, reasons: ["estrutura insuficiente — menos de 2 fundos/topos confirmados hoje"], details };
@@ -1123,6 +1150,8 @@ async function runB3SimulationTickInner(
     rememberProvider(priceSrc);
     const ctx = priceSrc.ctx;
     const marketHistory = await fetchMarketHistory();
+    const m1Candles = await fetchM1Candles();
+
     const derived = deriveMarketMetrics(marketHistory, ctx, priceSrc);
 
     const invalidMt5 = mt5InvalidReason(priceSrc);
@@ -1153,7 +1182,13 @@ async function runB3SimulationTickInner(
       : "Inativa";
     const snapshotExtra: any = { ema9: ctx.ema9, ema21: ctx.ema21, rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
       momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase,
+      // Telemetria de tendência do tick (para calibrar lateral_strength_min / lateral_vol_min).
+      trend_direction: classifyTrend(ctx, Number(asset?.trend_strength_factor ?? 5)).direction,
+      trend_strength: classifyTrend(ctx, Number(asset?.trend_strength_factor ?? 5)).strength,
+      volatility: Number(ctx.volatility_pct ?? 0),
+      m1_candles: m1Candles.length,
       price_source: priceSrc.source, quote_age_s: priceSrc.quote_age_s, quote_symbol: priceSrc.quote_symbol,
+
       bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last,
       provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
       mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls,
@@ -1248,6 +1283,10 @@ async function runB3SimulationTickInner(
       const forceMin = hhmmToMin(cfg.force_close_time);
       const insideHours = cur >= startMin && cur <= cutoffMin;
       const forceClose = cur >= forceMin || cur < startMin;
+      // Antes da abertura o motor também "força fechamento" (não há nada aberto),
+      // mas o rótulo de zeragem é enganoso — este estado é só pré-abertura.
+      const beforeOpen = cur < startMin;
+
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
 
@@ -1562,11 +1601,17 @@ async function runB3SimulationTickInner(
           const armed = peakPts >= Number(cfg.trailing_activation_pts);
 
           if (armed && cfg.trailing_mode === "structural") {
-            // Fractal N=1: candle i é fundo (compra) se candle_low[i] < low[i-1]
-            // e < low[i+1]; é topo (venda) se candle_high[i] > high[i-1] e > high[i+1].
+            // Fractal N=1 sobre candles M1 REAIS (b3_m1_candles): candle i é
+            // fundo (compra) se candle_low[i] < low[i-1] e < low[i+1]; é topo
+            // (venda) se candle_high[i] > high[i-1] e > high[i+1].
+            // Snapshots não servem: seus extremos são acumulados de janela.
+            const candlesSinceEntry = m1Candles.filter((c: any) => {
+              const t = new Date(c.minute_ts).getTime();
+              return t >= entryMsForTrailing && t <= Date.now();
+            });
             let structuralStopPrice: number | null = null;
-            for (let i = 1; i < sinceEntry.length - 1; i++) {
-              const prev = sinceEntry[i - 1], cur = sinceEntry[i], next = sinceEntry[i + 1];
+            for (let i = 1; i < candlesSinceEntry.length - 1; i++) {
+              const prev = candlesSinceEntry[i - 1], cur = candlesSinceEntry[i], next = candlesSinceEntry[i + 1];
               if (open.side === "buy") {
                 const lowPrev = Number(prev.candle_low), lowCur = Number(cur.candle_low), lowNext = Number(next.candle_low);
                 if ([lowPrev, lowCur, lowNext].every(Number.isFinite) && lowCur < lowPrev && lowCur < lowNext) {
@@ -1579,7 +1624,8 @@ async function runB3SimulationTickInner(
                 }
               }
             }
-            trailingDebug = { mode: "structural", structural_stop_price: structuralStopPrice, peak_pts: peakPts };
+            trailingDebug = { mode: "structural", structural_stop_price: structuralStopPrice, peak_pts: peakPts, m1_candles_since_entry: candlesSinceEntry.length };
+
             if (structuralStopPrice !== null) {
               hitTrailing = dirSign === 1 ? markPrice <= structuralStopPrice : markPrice >= structuralStopPrice;
             }
@@ -1626,9 +1672,13 @@ async function runB3SimulationTickInner(
         await recordStatusIfChanged(mode, m, "bloqueado_perda_diaria", "daily_loss",
           { observed: realizedToday, limit: -Number(cfg.daily_loss_limit_brl), pnl: realizedToday,
             message: `Limite diário de perda atingido (${realizedToday.toFixed(2)} BRL).` });
+      } else if (beforeOpen) {
+        await recordStatusIfChanged(mode, m, "aguardando_abertura", "before_open",
+          { pnl: realizedToday, message: `Fora da janela de operação — abre às ${cfg.trading_start_time}.` });
       } else if (forceClose) {
         await recordStatusIfChanged(mode, m, "bloqueado_zeragem", "force_close",
           { pnl: realizedToday, message: "Janela de zeragem obrigatória." });
+
       } else if (!insideHours) {
         await recordStatusIfChanged(mode, m, "bloqueado_horario", "time",
           { pnl: realizedToday, message: "Fora da janela operacional." });
@@ -1653,10 +1703,13 @@ async function runB3SimulationTickInner(
       }
 
       if (!insideHours || forceClose) {
-        log.push({ mode, action: "skip", reason: !insideHours ? "fora_horario" : "zeragem" });
-        finalizeAudit(!insideHours ? "Fora da janela operacional." : "Janela de zeragem obrigatória.");
+        log.push({ mode, action: "skip", reason: beforeOpen ? "aguardando_abertura" : !insideHours ? "fora_horario" : "zeragem" });
+        finalizeAudit(beforeOpen
+          ? `Fora da janela de operação — abre às ${cfg.trading_start_time}.`
+          : !insideHours ? "Fora da janela operacional." : "Janela de zeragem obrigatória.");
         continue;
       }
+
       if (macroBlock) {
         log.push({ mode, action: "skip", reason: `macro:${macroBlock.name}` });
         if (sigChanged(`block:${mode}`, `macro:${macroBlock.name}`)) {
@@ -1726,13 +1779,29 @@ async function runB3SimulationTickInner(
       addCheck("signal_buy", "Sinal BUY", decision.final === "approved" && intendedSide === "buy", intendedSide === "buy" ? decision.final : "lado avaliado SELL", false);
       addCheck("signal_sell", "Sinal SELL", decision.final === "approved" && intendedSide === "sell", intendedSide === "sell" ? decision.final : "lado avaliado BUY", false);
 
+      // Telemetria por modo dos limiares de lateralidade efetivamente aplicados.
+      {
+        const tTel = classifyTrend(localCtx, Number(asset?.trend_strength_factor ?? 5));
+        snapshotExtra.lateral_gates = {
+          ...(snapshotExtra.lateral_gates ?? {}),
+          [mode]: {
+            trend_direction: tTel.direction,
+            trend_strength: tTel.strength,
+            volatility: Number(localCtx.volatility_pct ?? 0),
+            lateral_strength_min: Number((cfg as any).lateral_strength_min ?? 30),
+            lateral_vol_min: Number((cfg as any).lateral_vol_min ?? 0.3),
+          },
+        };
+      }
+
       // Classificação de setup técnico — Fase 2: os 4 padrões classificados
       // podem operar (trend_pullback, breakout_retest, consolidation_breakout,
       // support_resistance_rejection), cada um com sua própria checagem de
       // evidência mínima dentro de classifySetup. no_valid_setup nunca opera.
       const setupInfo = cfg.entry_style === "price_action"
-        ? classifySetupPriceAction({ ctxLocal: localCtx, intendedSide, cfg, marketHistory })
+        ? classifySetupPriceAction({ ctxLocal: localCtx, intendedSide, cfg, m1Candles })
         : classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
+
       const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
       addCheck(
         "setup",
