@@ -1703,10 +1703,13 @@ async function runB3SimulationTickInner(
       }
 
       if (!insideHours || forceClose) {
-        log.push({ mode, action: "skip", reason: !insideHours ? "fora_horario" : "zeragem" });
-        finalizeAudit(!insideHours ? "Fora da janela operacional." : "Janela de zeragem obrigatória.");
+        log.push({ mode, action: "skip", reason: beforeOpen ? "aguardando_abertura" : !insideHours ? "fora_horario" : "zeragem" });
+        finalizeAudit(beforeOpen
+          ? `Fora da janela de operação — abre às ${cfg.trading_start_time}.`
+          : !insideHours ? "Fora da janela operacional." : "Janela de zeragem obrigatória.");
         continue;
       }
+
       if (macroBlock) {
         log.push({ mode, action: "skip", reason: `macro:${macroBlock.name}` });
         if (sigChanged(`block:${mode}`, `macro:${macroBlock.name}`)) {
