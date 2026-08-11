@@ -336,7 +336,7 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
               <SelectContent>
                 {(runsQ.data ?? []).map((r: any) => (
                   <SelectItem key={r.id} value={r.id}>
-                    {r.symbol ?? "?"} · {new Date(r.started_at).toLocaleString("pt-BR")} · {r.status} · {BRL(r.initial_balance)}
+                    {r.symbol ?? "?"} · {variantLabel(r.variant)} · {new Date(r.started_at).toLocaleString("pt-BR")} · {r.status} · {BRL(r.initial_balance)}
                   </SelectItem>
                 ))}
               </SelectContent>
