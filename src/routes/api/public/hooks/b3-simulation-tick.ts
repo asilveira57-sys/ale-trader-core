@@ -44,16 +44,19 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
             return Response.json({ ok: false, error: error.message }, { status: 500 });
           }
 
-          // Só 1 run ativa por usuário POR ATIVO (chave = user_id + symbol).
+          // Só 1 run ativa por usuário POR ATIVO E VARIANTE (chave = user_id + symbol + variant).
           // Antes era só por user_id, o que parava automaticamente qualquer
           // segunda run — impedindo rodar WIN e WDO ao mesmo tempo de
-          // propósito. Continua protegendo contra o problema original (runs
-          // órfãs esquecidas do MESMO ativo), mas agora deixa ativos
-          // diferentes coexistirem.
+          // propósito. Depois passou a ser por user_id + symbol, permitindo
+          // ativos diferentes coexistirem. Agora também incluímos a variant,
+          // para que o mesmo ativo possa rodar com entry_styles distintos
+          // (ex: indicador e price_action) em paralelo sem se cancelarem.
+          // A proteção contra runs órfãs continua valendo para runs do MESMO
+          // ativo E MESMA variante.
           const latestByUserAsset = new Map<string, any>();
           const staleIds: string[] = [];
           for (const r of runs ?? []) {
-            const key = `${r.user_id}:${r.symbol ?? "WINQ26"}`;
+            const key = `${r.user_id}:${r.symbol ?? "WINQ26"}:${r.variant ?? "indicador"}`;
             if (!latestByUserAsset.has(key)) latestByUserAsset.set(key, r);
             else staleIds.push(r.id);
           }
