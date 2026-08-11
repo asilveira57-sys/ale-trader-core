@@ -1761,13 +1761,29 @@ async function runB3SimulationTickInner(
       addCheck("signal_buy", "Sinal BUY", decision.final === "approved" && intendedSide === "buy", intendedSide === "buy" ? decision.final : "lado avaliado SELL", false);
       addCheck("signal_sell", "Sinal SELL", decision.final === "approved" && intendedSide === "sell", intendedSide === "sell" ? decision.final : "lado avaliado BUY", false);
 
+      // Telemetria por modo dos limiares de lateralidade efetivamente aplicados.
+      {
+        const tTel = classifyTrend(localCtx, Number(asset?.trend_strength_factor ?? 5));
+        snapshotExtra.lateral_gates = {
+          ...(snapshotExtra.lateral_gates ?? {}),
+          [mode]: {
+            trend_direction: tTel.direction,
+            trend_strength: tTel.strength,
+            volatility: Number(localCtx.volatility_pct ?? 0),
+            lateral_strength_min: Number((cfg as any).lateral_strength_min ?? 30),
+            lateral_vol_min: Number((cfg as any).lateral_vol_min ?? 0.3),
+          },
+        };
+      }
+
       // Classificação de setup técnico — Fase 2: os 4 padrões classificados
       // podem operar (trend_pullback, breakout_retest, consolidation_breakout,
       // support_resistance_rejection), cada um com sua própria checagem de
       // evidência mínima dentro de classifySetup. no_valid_setup nunca opera.
       const setupInfo = cfg.entry_style === "price_action"
-        ? classifySetupPriceAction({ ctxLocal: localCtx, intendedSide, cfg, marketHistory })
+        ? classifySetupPriceAction({ ctxLocal: localCtx, intendedSide, cfg, m1Candles })
         : classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
+
       const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
       addCheck(
         "setup",
