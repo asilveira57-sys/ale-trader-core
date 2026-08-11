@@ -1150,6 +1150,8 @@ async function runB3SimulationTickInner(
     rememberProvider(priceSrc);
     const ctx = priceSrc.ctx;
     const marketHistory = await fetchMarketHistory();
+    const m1Candles = await fetchM1Candles();
+
     const derived = deriveMarketMetrics(marketHistory, ctx, priceSrc);
 
     const invalidMt5 = mt5InvalidReason(priceSrc);
