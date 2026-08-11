@@ -271,14 +271,38 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
       </div>
       {/* Cabeçalho / controles */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="w-4 h-4" /> Simulação 5 Modos (sandbox)
-            {detail?.run?.symbol && (
-              <Badge variant="outline" className="border-primary/40 bg-primary/10 font-semibold">{detail.run.symbol}</Badge>
-            )}
-          </CardTitle>
-          <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30">somente simulação</Badge>
+        <CardHeader className="space-y-2">
+          <div className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-4 h-4" /> Simulação 5 Modos (sandbox)
+              {detail?.run?.symbol && (
+                <Badge variant="outline" className="border-primary/40 bg-primary/10 font-semibold">{detail.run.symbol}</Badge>
+              )}
+              <Badge variant="outline" className="border-sky-500/40 bg-sky-500/10 text-sky-300">
+                {variantLabel(currentVariant)}
+              </Badge>
+            </CardTitle>
+            <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30">somente simulação</Badge>
+          </div>
+          {/* Faixa de abas por modalidade — só aparece quando o ativo tem mais
+              de uma variante rodando em paralelo (ex: WIN indicador + price action). */}
+          {variants.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1 border-b border-border/60 pb-2">
+              {variants.map((v) => (
+                <button
+                  key={v}
+                  onClick={() => { setSelectedVariant(v); setSelectedRun(null); }}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    v === activeVariant
+                      ? "bg-primary/15 text-primary border border-primary/40"
+                      : "text-muted-foreground hover:bg-muted/60 border border-transparent"
+                  }`}
+                >
+                  {variantLabel(v)}
+                </button>
+              ))}
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
           {factoryWarn && factoryWarn.runId === runId && (
