@@ -114,6 +114,18 @@ function sampleStatus(trades: number): { label: string; cls: string } | null {
 }
 
 
+// Rótulos amigáveis das modalidades (coluna `variant` da run).
+const VARIANT_LABELS: Record<string, string> = {
+  indicador: "Indicador",
+  price_action: "Price action",
+  mean_reversion: "Reversão à média",
+  range: "Faixa",
+};
+function variantLabel(v?: string | null): string {
+  const key = String(v ?? "indicador");
+  return VARIANT_LABELS[key] ?? (key.charAt(0).toUpperCase() + key.slice(1));
+}
+
 export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?: string; defaultSymbol?: string } = {}) {
   const qc = useQueryClient();
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
