@@ -1182,7 +1182,13 @@ async function runB3SimulationTickInner(
       : "Inativa";
     const snapshotExtra: any = { ema9: ctx.ema9, ema21: ctx.ema21, rsi: ctx.rsi, macd: ctx.macd, macd_signal: ctx.macd_signal,
       momentum: ctx.momentum, volatility_pct: ctx.volatility_pct, session_phase: ctx.session_phase,
+      // Telemetria de tendência do tick (para calibrar lateral_strength_min / lateral_vol_min).
+      trend_direction: classifyTrend(ctx, Number(asset?.trend_strength_factor ?? 5)).direction,
+      trend_strength: classifyTrend(ctx, Number(asset?.trend_strength_factor ?? 5)).strength,
+      volatility: Number(ctx.volatility_pct ?? 0),
+      m1_candles: m1Candles.length,
       price_source: priceSrc.source, quote_age_s: priceSrc.quote_age_s, quote_symbol: priceSrc.quote_symbol,
+
       bid: priceSrc.raw?.bid, ask: priceSrc.raw?.ask, last: priceSrc.raw?.last,
       provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
       mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls,
