@@ -993,15 +993,24 @@ async function runB3SimulationTickInner(
   // Price action de verdade na entrada: estrutura de fundos/topos confirmados
   // (fractal N=1, mesma técnica já usada no trailing estrutural), em vez de
   // EMA/VWAP. Só é chamada quando cfg.entry_style === 'price_action'.
+  // A série vem de b3_m1_candles (candles M1 reais); snapshots não servem
+  // porque candle_high/candle_low neles são extremos acumulados de janela.
   function classifySetupPriceAction(params: {
-    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; marketHistory: any[];
+    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
   }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
-    const { ctxLocal, intendedSide, cfg, marketHistory } = params;
+    const { ctxLocal, intendedSide, cfg, m1Candles } = params;
     const price = Number(ctxLocal.price);
     const open = Number(ctxLocal.open);
     const stopPts = Math.max(1, Number(cfg.stop_pts) || 0);
 
-    const sorted = marketHistory.slice().sort((a: any, b: any) => new Date(a.market_time).getTime() - new Date(b.market_time).getTime());
+    const sorted = (m1Candles ?? []).slice().sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
+    if (sorted.length < 5) {
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: ["aguardando candles de 1 minuto"],
+        details: { m1_candles: sorted.length },
+      };
+    }
     const swingLows: number[] = [];
     const swingHighs: number[] = [];
     for (let i = 1; i < sorted.length - 1; i++) {
@@ -1012,7 +1021,8 @@ async function runB3SimulationTickInner(
       if ([hp, hc, hn].every(Number.isFinite) && hc > hp && hc > hn) swingHighs.push(hc);
     }
 
-    const details: Record<string, any> = { swing_lows_found: swingLows.length, swing_highs_found: swingHighs.length };
+    const details: Record<string, any> = { swing_lows_found: swingLows.length, swing_highs_found: swingHighs.length, m1_candles: sorted.length };
+
 
     if (swingLows.length < 2 || swingHighs.length < 2) {
       return { name: "no_valid_setup", ok: false, reasons: ["estrutura insuficiente — menos de 2 fundos/topos confirmados hoje"], details };
