@@ -796,6 +796,23 @@ async function runB3SimulationTickInner(
     return data ?? [];
   }
 
+  // Candles M1 REAIS, montados do fluxo de ticks pela função b3_m1_candles.
+  // Os campos candle_high/candle_low de b3_simulation_market_snapshots guardam
+  // extremos ACUMULADOS de janela (máxima/mínima correntes), e por isso nunca
+  // formam fractal (medido: ~3.100 snapshots em 7 pregões = 0 fundos, 1 topo).
+  // Toda lógica de estrutura (price action na entrada e trailing estrutural)
+  // deve usar esta série, não o histórico de snapshots.
+  async function fetchM1Candles(): Promise<any[]> {
+    const { data } = await supabase.rpc("b3_m1_candles", {
+      p_user_id: userId, p_symbol: asset.symbol, p_limit: 300,
+    });
+    return ((data as any[]) ?? [])
+      .slice()
+      .sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
+  }
+
+
+
   function deriveMarketMetrics(history: any[], ctxLocal: any, priceLocal: any) {
     const nowMs = Date.now();
     const prices: number[] = [];
