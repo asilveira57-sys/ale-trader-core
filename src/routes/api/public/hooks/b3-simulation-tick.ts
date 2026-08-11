@@ -37,7 +37,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
           // todas as runs ativas (todos os usuários)
           const { data: runs, error } = await (supabaseAdmin as any)
             .from("b3_simulation_runs")
-            .select("id, user_id, status, started_at, symbol")
+            .select("id, user_id, status, started_at, symbol, variant")
             .eq("status", "running")
             .order("started_at", { ascending: false });
           if (error) {
