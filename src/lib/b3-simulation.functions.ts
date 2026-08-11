@@ -1283,6 +1283,10 @@ async function runB3SimulationTickInner(
       const forceMin = hhmmToMin(cfg.force_close_time);
       const insideHours = cur >= startMin && cur <= cutoffMin;
       const forceClose = cur >= forceMin || cur < startMin;
+      // Antes da abertura o motor também "força fechamento" (não há nada aberto),
+      // mas o rótulo de zeragem é enganoso — este estado é só pré-abertura.
+      const beforeOpen = cur < startMin;
+
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
 
