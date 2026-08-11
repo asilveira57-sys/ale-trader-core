@@ -1597,11 +1597,17 @@ async function runB3SimulationTickInner(
           const armed = peakPts >= Number(cfg.trailing_activation_pts);
 
           if (armed && cfg.trailing_mode === "structural") {
-            // Fractal N=1: candle i é fundo (compra) se candle_low[i] < low[i-1]
-            // e < low[i+1]; é topo (venda) se candle_high[i] > high[i-1] e > high[i+1].
+            // Fractal N=1 sobre candles M1 REAIS (b3_m1_candles): candle i é
+            // fundo (compra) se candle_low[i] < low[i-1] e < low[i+1]; é topo
+            // (venda) se candle_high[i] > high[i-1] e > high[i+1].
+            // Snapshots não servem: seus extremos são acumulados de janela.
+            const candlesSinceEntry = m1Candles.filter((c: any) => {
+              const t = new Date(c.minute_ts).getTime();
+              return t >= entryMsForTrailing && t <= Date.now();
+            });
             let structuralStopPrice: number | null = null;
-            for (let i = 1; i < sinceEntry.length - 1; i++) {
-              const prev = sinceEntry[i - 1], cur = sinceEntry[i], next = sinceEntry[i + 1];
+            for (let i = 1; i < candlesSinceEntry.length - 1; i++) {
+              const prev = candlesSinceEntry[i - 1], cur = candlesSinceEntry[i], next = candlesSinceEntry[i + 1];
               if (open.side === "buy") {
                 const lowPrev = Number(prev.candle_low), lowCur = Number(cur.candle_low), lowNext = Number(next.candle_low);
                 if ([lowPrev, lowCur, lowNext].every(Number.isFinite) && lowCur < lowPrev && lowCur < lowNext) {
@@ -1614,7 +1620,8 @@ async function runB3SimulationTickInner(
                 }
               }
             }
-            trailingDebug = { mode: "structural", structural_stop_price: structuralStopPrice, peak_pts: peakPts };
+            trailingDebug = { mode: "structural", structural_stop_price: structuralStopPrice, peak_pts: peakPts, m1_candles_since_entry: candlesSinceEntry.length };
+
             if (structuralStopPrice !== null) {
               hitTrailing = dirSign === 1 ? markPrice <= structuralStopPrice : markPrice >= structuralStopPrice;
             }
