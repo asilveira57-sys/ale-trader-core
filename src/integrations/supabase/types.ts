@@ -1059,6 +1059,7 @@ export type Database = {
           symbol: string
           updated_at: string
           user_id: string
+          variant: string
         }
         Insert: {
           broker_ticket_entry?: string | null
@@ -1083,6 +1084,7 @@ export type Database = {
           symbol: string
           updated_at?: string
           user_id: string
+          variant?: string
         }
         Update: {
           broker_ticket_entry?: string | null
@@ -1107,6 +1109,7 @@ export type Database = {
           symbol?: string
           updated_at?: string
           user_id?: string
+          variant?: string
         }
         Relationships: [
           {
@@ -1275,6 +1278,7 @@ export type Database = {
           status: string
           symbol: string
           user_id: string
+          variant: string
         }
         Insert: {
           action: string
@@ -1299,6 +1303,7 @@ export type Database = {
           status?: string
           symbol: string
           user_id: string
+          variant?: string
         }
         Update: {
           action?: string
@@ -1323,6 +1328,7 @@ export type Database = {
           status?: string
           symbol?: string
           user_id?: string
+          variant?: string
         }
         Relationships: [
           {
@@ -2245,6 +2251,7 @@ export type Database = {
           symbol: string
           ts: string
           user_id: string
+          variant: string
         }
         Insert: {
           de_enabled?: boolean | null
@@ -2258,6 +2265,7 @@ export type Database = {
           symbol: string
           ts?: string
           user_id: string
+          variant?: string
         }
         Update: {
           de_enabled?: boolean | null
@@ -2271,6 +2279,7 @@ export type Database = {
           symbol?: string
           ts?: string
           user_id?: string
+          variant?: string
         }
         Relationships: []
       }
@@ -2289,6 +2298,7 @@ export type Database = {
           symbol: string
           updated_at: string
           user_id: string
+          variant: string
         }
         Insert: {
           authorized_at?: string | null
@@ -2304,6 +2314,7 @@ export type Database = {
           symbol: string
           updated_at?: string
           user_id: string
+          variant?: string
         }
         Update: {
           authorized_at?: string | null
@@ -2319,6 +2330,157 @@ export type Database = {
           symbol?: string
           updated_at?: string
           user_id?: string
+          variant?: string
+        }
+        Relationships: []
+      }
+      b3_robot_curation: {
+        Row: {
+          best_streak: number
+          last_evaluated_date: string | null
+          medal: boolean
+          medal_at: string | null
+          medal_revoked_at: string | null
+          mode: string
+          neg_streak: number
+          streak_days: number
+          symbol: string
+          updated_at: string
+          user_id: string
+          variant: string
+        }
+        Insert: {
+          best_streak?: number
+          last_evaluated_date?: string | null
+          medal?: boolean
+          medal_at?: string | null
+          medal_revoked_at?: string | null
+          mode: string
+          neg_streak?: number
+          streak_days?: number
+          symbol: string
+          updated_at?: string
+          user_id: string
+          variant?: string
+        }
+        Update: {
+          best_streak?: number
+          last_evaluated_date?: string | null
+          medal?: boolean
+          medal_at?: string | null
+          medal_revoked_at?: string | null
+          mode?: string
+          neg_streak?: number
+          streak_days?: number
+          symbol?: string
+          updated_at?: string
+          user_id?: string
+          variant?: string
+        }
+        Relationships: []
+      }
+      b3_robot_curation_log: {
+        Row: {
+          evento: string
+          id: string
+          mode: string
+          motivo: string | null
+          score: number | null
+          streak_days: number | null
+          symbol: string
+          trade_date: string
+          ts: string
+          user_id: string
+          variant: string
+        }
+        Insert: {
+          evento: string
+          id?: string
+          mode: string
+          motivo?: string | null
+          score?: number | null
+          streak_days?: number | null
+          symbol: string
+          trade_date: string
+          ts?: string
+          user_id: string
+          variant: string
+        }
+        Update: {
+          evento?: string
+          id?: string
+          mode?: string
+          motivo?: string | null
+          score?: number | null
+          streak_days?: number | null
+          symbol?: string
+          trade_date?: string
+          ts?: string
+          user_id?: string
+          variant?: string
+        }
+        Relationships: []
+      }
+      b3_robot_daily_score: {
+        Row: {
+          created_at: string
+          max_dd_brl: number
+          mode: string
+          net_brl: number
+          qualified: boolean
+          r_unit_brl: number
+          rank_day: number | null
+          s_dd: number
+          s_net: number
+          s_wr: number
+          score: number
+          symbol: string
+          trade_date: string
+          trades: number
+          user_id: string
+          variant: string
+          win_rate: number
+          wins: number
+        }
+        Insert: {
+          created_at?: string
+          max_dd_brl?: number
+          mode: string
+          net_brl?: number
+          qualified?: boolean
+          r_unit_brl?: number
+          rank_day?: number | null
+          s_dd?: number
+          s_net?: number
+          s_wr?: number
+          score?: number
+          symbol: string
+          trade_date: string
+          trades?: number
+          user_id: string
+          variant?: string
+          win_rate?: number
+          wins?: number
+        }
+        Update: {
+          created_at?: string
+          max_dd_brl?: number
+          mode?: string
+          net_brl?: number
+          qualified?: boolean
+          r_unit_brl?: number
+          rank_day?: number | null
+          s_dd?: number
+          s_net?: number
+          s_wr?: number
+          score?: number
+          symbol?: string
+          trade_date?: string
+          trades?: number
+          user_id?: string
+          variant?: string
+          win_rate?: number
+          wins?: number
         }
         Relationships: []
       }
@@ -2943,6 +3105,7 @@ export type Database = {
           trading_start_time: string
           updated_at: string
           user_id: string
+          variant: string
           winner_mode: string | null
         }
         Insert: {
@@ -2967,6 +3130,7 @@ export type Database = {
           trading_start_time?: string
           updated_at?: string
           user_id: string
+          variant?: string
           winner_mode?: string | null
         }
         Update: {
@@ -2991,6 +3155,7 @@ export type Database = {
           trading_start_time?: string
           updated_at?: string
           user_id?: string
+          variant?: string
           winner_mode?: string | null
         }
         Relationships: []
@@ -6257,6 +6422,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      b3_atualizar_curadoria: {
+        Args: { p_date?: string }
+        Returns: {
+          medalhas_novas: number
+          medalhas_revogadas: number
+        }[]
+      }
+      b3_calcular_score_dia: { Args: { p_date?: string }; Returns: number }
       b3_m1_candles: {
         Args: { p_limit?: number; p_symbol: string; p_user_id: string }
         Returns: {
@@ -6269,6 +6442,11 @@ export type Database = {
           volume: number
         }[]
       }
+      b3_magic: {
+        Args: { p_mode: string; p_symbol: string; p_variant: string }
+        Returns: number
+      }
+      b3_magic_valido: { Args: { p_magic: number }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
