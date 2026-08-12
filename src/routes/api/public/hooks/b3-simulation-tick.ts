@@ -68,14 +68,45 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
           }
 
           const results: any[] = [];
+          const summary: any[] = [];
           for (const r of latestByUserAsset.values()) {
+            const t0 = Date.now();
             try {
               const res = await runB3SimulationTick(supabaseAdmin, r.user_id, r.id, ticks);
               results.push({ run_id: r.id, ...res });
+              summary.push({ run_id: r.id, symbol: r.symbol ?? null, variant: r.variant ?? null, ok: true, elapsed_ms: Date.now() - t0 });
             } catch (e) {
+              const elapsed = Date.now() - t0;
               results.push({ run_id: r.id, error: (e as Error).message });
+              summary.push({ run_id: r.id, symbol: r.symbol ?? null, variant: r.variant ?? null, ok: false, elapsed_ms: elapsed });
+              try {
+                await (supabaseAdmin as any).from("system_logs").insert({
+                  event_type: "b3_run_error",
+                  source: "b3-simulation-tick",
+                  severity: "error",
+                  message: (e as Error).message,
+                  technical_data: {
+                    run_id: r.id,
+                    symbol: r.symbol ?? null,
+                    variant: r.variant ?? null,
+                    stack: String((e as Error).stack ?? "").slice(0, 2000),
+                  },
+                });
+              } catch { /* log nunca deve derrubar o cron */ }
             }
           }
+
+          // Resumo do tick inteiro: custo por run ao longo do dia.
+          try {
+            await (supabaseAdmin as any).from("system_logs").insert({
+              event_type: "b3_tick_summary",
+              source: "b3-simulation-tick",
+              severity: "info",
+              message: `Tick processou ${summary.length} run(s)`,
+              technical_data: { runs: summary, stale_runs_stopped: staleIds.length },
+            });
+          } catch { /* log nunca deve derrubar o cron */ }
+
           return Response.json({
             ok: true,
             runs: results.length,
