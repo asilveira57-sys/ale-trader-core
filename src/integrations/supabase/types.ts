@@ -672,6 +672,9 @@ export type Database = {
           fee_per_contract_brl: number
           fee_percent_volume: number
           indicator_timeframe: string
+          margin_model: string
+          margin_per_contract_brl: number
+          margin_percent_position: number
           near_resistance_pts: number | null
           price_deviation_limit: number
           quote_symbol: string
@@ -693,6 +696,9 @@ export type Database = {
           fee_per_contract_brl?: number
           fee_percent_volume?: number
           indicator_timeframe?: string
+          margin_model?: string
+          margin_per_contract_brl?: number
+          margin_percent_position?: number
           near_resistance_pts?: number | null
           price_deviation_limit?: number
           quote_symbol: string
@@ -714,6 +720,9 @@ export type Database = {
           fee_per_contract_brl?: number
           fee_percent_volume?: number
           indicator_timeframe?: string
+          margin_model?: string
+          margin_per_contract_brl?: number
+          margin_percent_position?: number
           near_resistance_pts?: number | null
           price_deviation_limit?: number
           quote_symbol?: string
@@ -2976,6 +2985,7 @@ export type Database = {
           close_reason: string | null
           contract_code: string
           created_at: string
+          diagnostic_payload: Json
           entry_price: number
           entry_time: string
           execution_price: number | null
@@ -2986,6 +2996,7 @@ export type Database = {
           gross_result_brl: number
           gross_result_points: number
           id: string
+          last_eval_minute_ts: string | null
           legacy_price_detected: boolean
           mode: string
           net_result_brl: number
@@ -3010,6 +3021,7 @@ export type Database = {
           close_reason?: string | null
           contract_code?: string
           created_at?: string
+          diagnostic_payload?: Json
           entry_price: number
           entry_time?: string
           execution_price?: number | null
@@ -3020,6 +3032,7 @@ export type Database = {
           gross_result_brl?: number
           gross_result_points?: number
           id?: string
+          last_eval_minute_ts?: string | null
           legacy_price_detected?: boolean
           mode: string
           net_result_brl?: number
@@ -3044,6 +3057,7 @@ export type Database = {
           close_reason?: string | null
           contract_code?: string
           created_at?: string
+          diagnostic_payload?: Json
           entry_price?: number
           entry_time?: string
           execution_price?: number | null
@@ -3054,6 +3068,7 @@ export type Database = {
           gross_result_brl?: number
           gross_result_points?: number
           id?: string
+          last_eval_minute_ts?: string | null
           legacy_price_detected?: boolean
           mode?: string
           net_result_brl?: number
