@@ -1595,8 +1595,65 @@ async function runB3SimulationTickInner(
         }
         const markPrice = markAudit.execution_price;
         const movePts = (markPrice - Number(open.entry_price)) * dirSign;
-        const hitStop = movePts <= -Number(cfg.stop_pts);
-        const hitGain = movePts >= Number(cfg.gain_pts);
+        let hitStop = movePts <= -Number(cfg.stop_pts);
+        let hitGain = movePts >= Number(cfg.gain_pts);
+
+        // ────────── avaliação INTRA-CANDLE de stop/alvo (fidelidade) ──────────
+        // O cron roda 1x/min, mas o mercado anda dentro do minuto (mediana de
+        // ~50 pts por candle M1 no WIN). Avaliar só o preço do tick corrente
+        // fazia o stop ser percebido tarde e executado num preço muito pior
+        // (medido: até +79% além do stop configurado). Aqui usamos máxima e
+        // mínima dos candles M1 já carregados (b3_m1_candles) para detectar o
+        // toque e EXECUTAR NO PREÇO DO NÍVEL, como faria uma ordem stop real.
+        // Convenção conservadora de backtest: stop e alvo no mesmo candle → stop.
+        const tickSizeExec = Number(asset.tick_size) || 1;
+        const slipPts = Number(run.simulated_slippage_pts) || 0;
+        const stopLevel = Number(open.entry_price) - dirSign * Number(cfg.stop_pts);
+        const gainLevel = Number(open.entry_price) + dirSign * Number(cfg.gain_pts);
+        const entryMsOpen = open.entry_time ? new Date(open.entry_time).getTime() : null;
+        const lastEvalMs = open.last_eval_minute_ts ? new Date(open.last_eval_minute_ts).getTime() : null;
+        const evalFromMs = lastEvalMs ?? entryMsOpen;
+        const candlesToEval = evalFromMs
+          ? m1Candles.filter((c: any) => {
+              const t = new Date(c.minute_ts).getTime();
+              return t > evalFromMs && t <= Date.now();
+            })
+          : [];
+        // Nível de saída executado no preço do nível, com slippage sempre contra.
+        const execAtLevel = (level: number) => {
+          const raw = level - dirSign * slipPts;
+          return Math.round(raw / tickSizeExec) * tickSizeExec;
+        };
+        // touched(): stop/trailing são adversos, alvo é favorável.
+        const adverseTouch = (c: any, level: number) => {
+          const low = Number(c.candle_low), high = Number(c.candle_high);
+          if (!Number.isFinite(low) || !Number.isFinite(high)) return false;
+          return dirSign === 1 ? low <= level : high >= level;
+        };
+        const favorableTouch = (c: any, level: number) => {
+          const low = Number(c.candle_low), high = Number(c.candle_high);
+          if (!Number.isFinite(low) || !Number.isFinite(high)) return false;
+          return dirSign === 1 ? high >= level : low <= level;
+        };
+        let intrabarHit: { reason: string; level: number; price: number; minute_ts: string; both: boolean } | null = null;
+        let lastEvaluatedMinuteTs: string | null = null;
+        for (const c of candlesToEval) {
+          lastEvaluatedMinuteTs = c.minute_ts;
+          const stopTouched = adverseTouch(c, stopLevel);
+          const gainTouched = favorableTouch(c, gainLevel);
+          if (stopTouched) {
+            intrabarHit = { reason: "stop", level: stopLevel, price: execAtLevel(stopLevel), minute_ts: c.minute_ts, both: gainTouched };
+            break;
+          }
+          if (gainTouched) {
+            intrabarHit = { reason: "gain", level: gainLevel, price: execAtLevel(gainLevel), minute_ts: c.minute_ts, both: false };
+            break;
+          }
+        }
+        if (intrabarHit) {
+          if (intrabarHit.reason === "stop") hitStop = true; else hitGain = true;
+        }
+
 
         // ────────── proteção de lucro: ativação + recuo (trailing) ──────────
         // Desligada por padrão (trailing_activation_pts=0). Quando ligada,
