@@ -46,6 +46,30 @@ async function loadAssetProfile(supabase: any, symbol: string | null | undefined
   }
   return WIN_FALLBACK_ASSET_PROFILE;
 }
+
+// ─────────────────────── custo operacional simulado ───────────────────────
+// Fonte única de verdade para taxas simuladas. Deriva do perfil do ativo:
+//  · fee_model = 'per_contract'   → R$ fixos por contrato, por ponta (futuros)
+//  · fee_model = 'percent_volume' → % sobre o volume financeiro de cada ponta
+//    (ações; fee_percent_volume está em PERCENTUAL, 0.0325 = 0,0325%)
+// run.simulated_fee_brl é mantido na tabela por compatibilidade, mas NÃO é
+// mais usado no cálculo.
+export function computeB3Fees({ assetProfile, quantity, entryPrice, exitPrice }: {
+  assetProfile: any; quantity: number; entryPrice: number; exitPrice?: number | null;
+}): number {
+  const qty = Math.max(0, Number(quantity) || 0);
+  const model = String(assetProfile?.fee_model ?? "per_contract");
+  const entry = Number(entryPrice) || 0;
+  const hasExit = exitPrice != null && isFinite(Number(exitPrice));
+  if (model === "percent_volume") {
+    const pct = Number(assetProfile?.fee_percent_volume ?? 0) / 100;
+    const volEntry = entry * qty;
+    const volExit = hasExit ? Number(exitPrice) * qty : 0;
+    return (volEntry + volExit) * pct;
+  }
+  const perContract = Number(assetProfile?.fee_per_contract_brl ?? 1.5) || 0;
+  return perContract * qty * (hasExit ? 2 : 1);
+}
 // Trava de risco AGREGADA: numa conta real, os 5 modos compartilham o mesmo
 // saldo/margem (diferente da simulação, onde cada modo tem saldo virtual
 // isolado). Esse limite olha a soma do resultado realizado hoje dos 5 modos
