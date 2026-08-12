@@ -2498,7 +2498,9 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
   const grossPts = (exitPrice - Number(order.entry_price)) * dir;
   const qty = Number(order.quantity) || 1;
   const grossBrl = grossPts * Number(assetProfile.tick_value_brl) * qty;
-  const fees = (Number(run.simulated_fee_brl) || 0) * 2 * qty; // round-trip
+  // Custo derivado do PERFIL DO ATIVO (não mais de run.simulated_fee_brl):
+  // futuros = R$ por contrato/ponta; ações = % sobre o volume financeiro.
+  const fees = computeB3Fees({ assetProfile, quantity: qty, entryPrice: Number(order.entry_price), exitPrice: exitPrice });
   const netBrl = grossBrl - fees;
 
   // MFE / MAE (em pontos) a partir dos snapshots entre entry_time e agora.
