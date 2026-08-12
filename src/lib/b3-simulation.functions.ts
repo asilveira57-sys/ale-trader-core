@@ -1943,7 +1943,34 @@ async function runB3SimulationTickInner(
           setup: setupInfo,
         });
       }
+      } catch (modeErr: any) {
+        const elapsedMs = Date.now() - modeT0;
+        log.push({ mode, action: "error", message: modeErr?.message ?? String(modeErr), elapsed_ms: elapsedMs });
+        try {
+          await supabase.from("system_logs").insert({
+            event_type: "b3_mode_error",
+            source: "b3-simulation-tick",
+            severity: "error",
+            message: String(modeErr?.message ?? modeErr),
+            technical_data: {
+              run_id: runId,
+              symbol: run?.symbol ?? asset?.symbol ?? null,
+              variant: run?.variant ?? null,
+              mode,
+              stack: String(modeErr?.stack ?? "").slice(0, 2000),
+              elapsed_ms: elapsedMs,
+            },
+          });
+        } catch { /* log nunca deve derrubar o tick */ }
+        continue;
+      } finally {
+        modeTimings[mode] = Date.now() - modeT0;
+      }
     }
+    snapshotExtra.timings = {
+      total_ms: Date.now() - runT0,
+      por_modo: modeTimings,
+    };
     snapshotExtra.engine_audit = tickAudit;
     snapshotExtra.write_sigs = writeSigs;
     // Persistência única: 1 INSERT a cada 10s. Fora da janela, nada é gravado
