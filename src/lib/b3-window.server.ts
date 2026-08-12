@@ -68,7 +68,7 @@ export function b3WindowState(d: Date = new Date()): B3WindowState {
     brt_date: b3BrtDate(d),
     weekday,
     minutes,
-    window: { start: "09:05", end: "17:00", tz: B3_WINDOW_TZ },
+    window: { start: minutesToHhMm(B3_WINDOW_START_MIN), end: minutesToHhMm(B3_WINDOW_END_MIN), tz: B3_WINDOW_TZ },
   };
 }
 
