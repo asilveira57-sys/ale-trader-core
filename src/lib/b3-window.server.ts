@@ -2,10 +2,22 @@
 // Usada ANTES de qualquer acesso ao banco, para que fora do pregão o sistema
 // não processe modos, não crie snapshots, não registre bloqueios e não gere logs.
 // Não altera nenhuma regra estratégica — apenas define quando o módulo B3 opera.
+//
+// WIN/WDO abrem às 09:00 (leilão 08:55–09:00) e negociam até 18:25/18:30.
+// A janela começava 09:05, atrasando o aquecimento dos indicadores M1 antes
+// das entradas das 09:15. Encerrava às 17:00, deixando apenas 5 minutos após
+// a zeragem obrigatória das 16:55 — se o tick falhar, a posição fica aberta.
+// Com 17:30 a margem de segurança passa a 35 minutos.
 
 export const B3_WINDOW_TZ = "America/Sao_Paulo";
-export const B3_WINDOW_START_MIN = 9 * 60 + 5;   // 09:05
-export const B3_WINDOW_END_MIN = 17 * 60;        // 17:00
+export const B3_WINDOW_START_MIN = 9 * 60;       // 09:00
+export const B3_WINDOW_END_MIN = 17 * 60 + 30;     // 17:30
+
+function minutesToHhMm(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
 
 export interface B3WindowState {
   open: boolean;
@@ -56,7 +68,7 @@ export function b3WindowState(d: Date = new Date()): B3WindowState {
     brt_date: b3BrtDate(d),
     weekday,
     minutes,
-    window: { start: "09:05", end: "17:00", tz: B3_WINDOW_TZ },
+    window: { start: minutesToHhMm(B3_WINDOW_START_MIN), end: minutesToHhMm(B3_WINDOW_END_MIN), tz: B3_WINDOW_TZ },
   };
 }
 
