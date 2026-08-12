@@ -372,7 +372,7 @@ export const openB3ManualOrder = createServerFn({ method: "POST" })
     if (Number(data.qty) > Number(settings?.max_contracts ?? 1)) throw new Error(`Quantidade ${data.qty} excede limite (${settings?.max_contracts ?? 1}).`);
     const info = await B3QuoteProvider(supabase, userId, { symbol: "WIN", contract: data.contract_code ?? "WINFUT", base: 130000 });
     const audit = getB3ExecutionAudit(info, data.side, "entry", "openB3ManualOrder");
-    if (info.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(audit, "openB3ManualOrder");
+    if (info.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(audit, "openB3ManualOrder", B3_MT5_SYMBOL);
     if (info.source === "mt5_xp_demo" && audit.quote_source !== "MT5 XP DEMO") throw new Error("Preço de execução incompatível com a cotação MT5 — operação bloqueada");
     const { error } = await (supabase as any).from("b3_orders").insert({
       user_id: userId,
@@ -418,7 +418,7 @@ export const closeB3ManualOrder = createServerFn({ method: "POST" })
       throw new Error("Operação aberta com preço legado invalidada — não será misturada com MT5 XP DEMO.");
     }
     const audit = getB3ExecutionAudit(info, order.side, "exit", "closeB3ManualOrder");
-    if (info.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(audit, "closeB3ManualOrder");
+    if (info.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(audit, "closeB3ManualOrder", B3_MT5_SYMBOL);
     if (info.source === "mt5_xp_demo" && audit.quote_source !== "MT5 XP DEMO") throw new Error("Preço de execução incompatível com a cotação MT5 — operação bloqueada");
     const points = order.side === "buy" ? audit.execution_price - Number(order.entry_price) : Number(order.entry_price) - audit.execution_price;
     const grossBRL = points * 0.2 * Number(order.quantity ?? 1);
