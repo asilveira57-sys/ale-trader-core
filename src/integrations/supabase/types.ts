@@ -2985,6 +2985,7 @@ export type Database = {
           close_reason: string | null
           contract_code: string
           created_at: string
+          diagnostic_payload: Json
           entry_price: number
           entry_time: string
           execution_price: number | null
@@ -2995,6 +2996,7 @@ export type Database = {
           gross_result_brl: number
           gross_result_points: number
           id: string
+          last_eval_minute_ts: string | null
           legacy_price_detected: boolean
           mode: string
           net_result_brl: number
@@ -3019,6 +3021,7 @@ export type Database = {
           close_reason?: string | null
           contract_code?: string
           created_at?: string
+          diagnostic_payload?: Json
           entry_price: number
           entry_time?: string
           execution_price?: number | null
@@ -3029,6 +3032,7 @@ export type Database = {
           gross_result_brl?: number
           gross_result_points?: number
           id?: string
+          last_eval_minute_ts?: string | null
           legacy_price_detected?: boolean
           mode: string
           net_result_brl?: number
@@ -3053,6 +3057,7 @@ export type Database = {
           close_reason?: string | null
           contract_code?: string
           created_at?: string
+          diagnostic_payload?: Json
           entry_price?: number
           entry_time?: string
           execution_price?: number | null
@@ -3063,6 +3068,7 @@ export type Database = {
           gross_result_brl?: number
           gross_result_points?: number
           id?: string
+          last_eval_minute_ts?: string | null
           legacy_price_detected?: boolean
           mode?: string
           net_result_brl?: number
