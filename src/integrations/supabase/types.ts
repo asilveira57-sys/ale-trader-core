@@ -668,6 +668,9 @@ export type Database = {
           contract_code: string
           created_at: string
           display_name: string
+          fee_model: string
+          fee_per_contract_brl: number
+          fee_percent_volume: number
           indicator_timeframe: string
           near_resistance_pts: number | null
           price_deviation_limit: number
@@ -686,6 +689,9 @@ export type Database = {
           contract_code: string
           created_at?: string
           display_name: string
+          fee_model?: string
+          fee_per_contract_brl?: number
+          fee_percent_volume?: number
           indicator_timeframe?: string
           near_resistance_pts?: number | null
           price_deviation_limit?: number
@@ -704,6 +710,9 @@ export type Database = {
           contract_code?: string
           created_at?: string
           display_name?: string
+          fee_model?: string
+          fee_per_contract_brl?: number
+          fee_percent_volume?: number
           indicator_timeframe?: string
           near_resistance_pts?: number | null
           price_deviation_limit?: number
