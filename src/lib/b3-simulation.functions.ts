@@ -35,6 +35,7 @@ const WIN_FALLBACK_ASSET_PROFILE = {
   symbol: "WINQ26", quote_symbol: "WIN", contract_code: "WINFUT",
   tick_size: TICK, tick_value_brl: POINT_VALUE_BRL, base_price_fallback: 130000,
   spread_max_price: 15, price_deviation_limit: 2000,
+  fee_model: "per_contract", fee_per_contract_brl: 1.5, fee_percent_volume: 0,
 };
 async function loadAssetProfile(supabase: any, symbol: string | null | undefined) {
   if (!symbol) return WIN_FALLBACK_ASSET_PROFILE;
@@ -45,6 +46,30 @@ async function loadAssetProfile(supabase: any, symbol: string | null | undefined
     // tabela pode não existir ainda (antes da migration) — cai no fallback
   }
   return WIN_FALLBACK_ASSET_PROFILE;
+}
+
+// ─────────────────────── custo operacional simulado ───────────────────────
+// Fonte única de verdade para taxas simuladas. Deriva do perfil do ativo:
+//  · fee_model = 'per_contract'   → R$ fixos por contrato, por ponta (futuros)
+//  · fee_model = 'percent_volume' → % sobre o volume financeiro de cada ponta
+//    (ações; fee_percent_volume está em PERCENTUAL, 0.0325 = 0,0325%)
+// run.simulated_fee_brl é mantido na tabela por compatibilidade, mas NÃO é
+// mais usado no cálculo.
+export function computeB3Fees({ assetProfile, quantity, entryPrice, exitPrice }: {
+  assetProfile: any; quantity: number; entryPrice: number; exitPrice?: number | null;
+}): number {
+  const qty = Math.max(0, Number(quantity) || 0);
+  const model = String(assetProfile?.fee_model ?? "per_contract");
+  const entry = Number(entryPrice) || 0;
+  const hasExit = exitPrice != null && isFinite(Number(exitPrice));
+  if (model === "percent_volume") {
+    const pct = Number(assetProfile?.fee_percent_volume ?? 0) / 100;
+    const volEntry = entry * qty;
+    const volExit = hasExit ? Number(exitPrice) * qty : 0;
+    return (volEntry + volExit) * pct;
+  }
+  const perContract = Number(assetProfile?.fee_per_contract_brl ?? 1.5) || 0;
+  return perContract * qty * (hasExit ? 2 : 1);
 }
 // Trava de risco AGREGADA: numa conta real, os 5 modos compartilham o mesmo
 // saldo/margem (diferente da simulação, onde cada modo tem saldo virtual
@@ -1901,7 +1926,8 @@ async function runB3SimulationTickInner(
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: intendedSide,
           entry_price: Math.round(entry / asset.tick_size) * asset.tick_size, quantity: qty,
-          fees: Number(run.simulated_fee_brl) || 0, status: "open",
+          // taxa da ponta de entrada, derivada do perfil do ativo
+          fees: computeB3Fees({ assetProfile: asset, quantity: qty, entryPrice: entry }), status: "open",
           ...orderAuditPatch(entryAudit),
         }).select("id").single();
         if (oErr) throw oErr;
@@ -2498,7 +2524,9 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
   const grossPts = (exitPrice - Number(order.entry_price)) * dir;
   const qty = Number(order.quantity) || 1;
   const grossBrl = grossPts * Number(assetProfile.tick_value_brl) * qty;
-  const fees = (Number(run.simulated_fee_brl) || 0) * 2 * qty; // round-trip
+  // Custo derivado do PERFIL DO ATIVO (não mais de run.simulated_fee_brl):
+  // futuros = R$ por contrato/ponta; ações = % sobre o volume financeiro.
+  const fees = computeB3Fees({ assetProfile, quantity: qty, entryPrice: Number(order.entry_price), exitPrice: exitPrice });
   const netBrl = grossBrl - fees;
 
   // MFE / MAE (em pontos) a partir dos snapshots entre entry_time e agora.
