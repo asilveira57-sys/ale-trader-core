@@ -1925,7 +1925,8 @@ async function runB3SimulationTickInner(
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: intendedSide,
           entry_price: Math.round(entry / asset.tick_size) * asset.tick_size, quantity: qty,
-          fees: Number(run.simulated_fee_brl) || 0, status: "open",
+          // taxa da ponta de entrada, derivada do perfil do ativo
+          fees: computeB3Fees({ assetProfile: asset, quantity: qty, entryPrice: entry }), status: "open",
           ...orderAuditPatch(entryAudit),
         }).select("id").single();
         if (oErr) throw oErr;
