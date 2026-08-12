@@ -1670,6 +1670,8 @@ async function runB3SimulationTickInner(
         let hitTrailing = false;
         let peakPts = movePts;
         let trailingDebug: any = null;
+        let trailingIntrabar: { level: number; price: number; minute_ts: string } | null = null;
+
         const trailingOn = Number(cfg.trailing_activation_pts) > 0;
         const entryMsForTrailing = open.entry_time ? new Date(open.entry_time).getTime() : null;
         if (trailingOn && entryMsForTrailing) {
