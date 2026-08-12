@@ -87,7 +87,10 @@ export interface B3QuoteExecutionAudit {
   provider_name: string;
 }
 
-export function isB3StrictMt5AuditRow(row: any, expectedSymbol: string = B3_MT5_SYMBOL): boolean {
+// expectedSymbol é OBRIGATÓRIO: o default antigo (B3_MT5_SYMBOL = "WINQ26")
+// fazia a auditoria de execução de WDO/PETR4/VALE3 falhar sempre, bloqueando
+// qualquer ordem fora do WIN. Nunca reintroduzir fallback aqui.
+export function isB3StrictMt5AuditRow(row: any, expectedSymbol: string): boolean {
   return row?.quote_source === "MT5 XP DEMO"
     && row?.provider_name === "B3QuoteProvider"
     && row?.quote_server === B3_MT5_SERVER
@@ -99,11 +102,12 @@ export function isB3StrictMt5AuditRow(row: any, expectedSymbol: string = B3_MT5_
     && Number(row?.execution_price) > 0;
 }
 
-export function assertB3StrictMt5ExecutionAudit(audit: B3QuoteExecutionAudit, functionName: string, expectedSymbol: string = B3_MT5_SYMBOL): void {
+export function assertB3StrictMt5ExecutionAudit(audit: B3QuoteExecutionAudit, functionName: string, expectedSymbol: string): void {
   if (!isB3StrictMt5AuditRow(audit, expectedSymbol)) {
-    throw new Error(`Tentativa de preço legado bloqueada — modo MT5 XP DEMO ativo (${functionName})`);
+    throw new Error(`Tentativa de preço legado bloqueada — modo MT5 XP DEMO ativo (${functionName}; esperado=${expectedSymbol}; recebido=${(audit as any)?.quote_symbol}; source=${(audit as any)?.quote_source}; legacy=${(audit as any)?.legacy_price_detected})`);
   }
 }
+
 
 function saoPauloPhase(d: Date): B3Context["session_phase"] {
   const parts = new Intl.DateTimeFormat("en-US", {
