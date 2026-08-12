@@ -1273,7 +1273,13 @@ async function runB3SimulationTickInner(
       threshold_s: 10,
     };
 
+    // Timings por modo + isolamento de falha: um modo que estoura não pode
+    // derrubar os modos seguintes nem impedir a gravação do snapshot.
+    const modeTimings: Record<string, number> = {};
+    const runT0 = Date.now();
     for (const mode of MODES) {
+      const modeT0 = Date.now();
+      try {
       const m = modeByName[mode];
       if (!m) continue;
       const cfg = settingsByMode[mode];
