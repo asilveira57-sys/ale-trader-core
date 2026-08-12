@@ -35,6 +35,7 @@ const WIN_FALLBACK_ASSET_PROFILE = {
   symbol: "WINQ26", quote_symbol: "WIN", contract_code: "WINFUT",
   tick_size: TICK, tick_value_brl: POINT_VALUE_BRL, base_price_fallback: 130000,
   spread_max_price: 15, price_deviation_limit: 2000,
+  fee_model: "per_contract", fee_per_contract_brl: 1.5, fee_percent_volume: 0,
 };
 async function loadAssetProfile(supabase: any, symbol: string | null | undefined) {
   if (!symbol) return WIN_FALLBACK_ASSET_PROFILE;
