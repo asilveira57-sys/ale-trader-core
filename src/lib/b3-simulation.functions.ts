@@ -1715,26 +1715,70 @@ async function runB3SimulationTickInner(
             trailingDebug = { mode: "structural", structural_stop_price: structuralStopPrice, peak_pts: peakPts, m1_candles_since_entry: candlesSinceEntry.length };
 
             if (structuralStopPrice !== null) {
-              hitTrailing = dirSign === 1 ? markPrice <= structuralStopPrice : markPrice >= structuralStopPrice;
+              // Nível estrutural também é testado contra máxima/mínima do candle
+              // e executado NO NÍVEL (não no preço do tick).
+              const touchCandle = candlesToEval.find((c: any) => adverseTouch(c, structuralStopPrice as number));
+              if (touchCandle) {
+                hitTrailing = true;
+                trailingIntrabar = { level: structuralStopPrice, price: execAtLevel(structuralStopPrice), minute_ts: touchCandle.minute_ts };
+              } else {
+                hitTrailing = dirSign === 1 ? markPrice <= structuralStopPrice : markPrice >= structuralStopPrice;
+              }
+              trailingDebug.trailing_level_price = structuralStopPrice;
             }
           } else if (armed && Number(cfg.trailing_giveback_pts) > 0) {
-            hitTrailing = (peakPts - movePts) >= Number(cfg.trailing_giveback_pts);
-            trailingDebug = { mode: "fixed", peak_pts: peakPts, giveback_pts: Number(cfg.trailing_giveback_pts) };
+            const trailLevel = Number(open.entry_price) + dirSign * (peakPts - Number(cfg.trailing_giveback_pts));
+            const touchCandle = candlesToEval.find((c: any) => adverseTouch(c, trailLevel));
+            if (touchCandle) {
+              hitTrailing = true;
+              trailingIntrabar = { level: trailLevel, price: execAtLevel(trailLevel), minute_ts: touchCandle.minute_ts };
+            } else {
+              hitTrailing = (peakPts - movePts) >= Number(cfg.trailing_giveback_pts);
+            }
+            trailingDebug = { mode: "fixed", peak_pts: peakPts, giveback_pts: Number(cfg.trailing_giveback_pts), trailing_level_price: trailLevel };
           }
         }
 
         if (forceClose || hitStop || hitGain || hitTrailing) {
           const reason = forceClose ? "force_close" : hitStop ? "stop" : hitGain ? "gain" : "trailing_stop";
-          const tradeCtx = await closeOrder(supabase, userId, run, m, open, markAudit, reason, marketHistory, asset);
-          providerStats.last_exit_price = markPrice;
+          // Preço de execução: no NÍVEL quando o toque veio de candle M1;
+          // fallback (sem candle novo) mantém o preço do tick corrente.
+          const levelExec = reason === "stop" || reason === "gain"
+            ? (intrabarHit && intrabarHit.reason === reason ? intrabarHit : null)
+            : reason === "trailing_stop" ? trailingIntrabar : null;
+          const exitAuditFinal: B3QuoteExecutionAudit = levelExec
+            ? { ...markAudit, execution_price: levelExec.price,
+                execution_price_origin: `${markAudit.execution_price_origin}+m1_level` }
+            : markAudit;
+          const exitPriceFinal = exitAuditFinal.execution_price;
+          const tradeCtx = await closeOrder(supabase, userId, run, m, open, exitAuditFinal, reason, marketHistory, asset);
+          providerStats.last_exit_price = exitPriceFinal;
           openOrdersCache = null;
           realizedTodayByMode = await getRealizedTodayByMode();
+          try {
+            await supabase.from("b3_simulation_orders").update({
+              diagnostic_payload: {
+                exit_evaluation: levelExec ? "m1_intrabar_level" : "tick_price_fallback",
+                close_reason: reason,
+                level_price: levelExec ? (levelExec as any).level : null,
+                executed_price: exitPriceFinal,
+                slippage_pts_applied: levelExec ? slipPts : 0,
+                candle_minute_ts: levelExec ? (levelExec as any).minute_ts : null,
+                candles_evaluated: candlesToEval.length,
+                ambos_no_mesmo_candle: Boolean(intrabarHit?.both && reason === "stop"),
+                tick_price_at_detection: markPrice,
+                trailing_debug: trailingDebug,
+              },
+              last_eval_minute_ts: lastEvaluatedMinuteTs ?? open.last_eval_minute_ts ?? null,
+            }).eq("id", open.id).eq("user_id", userId);
+          } catch { /* diagnóstico nunca derruba o fechamento */ }
           if (reason === "stop") {
+            const realPts = (exitPriceFinal - Number(open.entry_price)) * dirSign;
             await recordStatusIfChanged(mode, m, "stop_operacao", "stop_trade",
-              { observed: movePts, limit: -Number(cfg.stop_pts), pnl: realizedTodayByMode[mode] ?? 0,
-                related_order_id: open.id, message: `Stop da operação atingido (${movePts.toFixed(0)} pts).` });
+              { observed: realPts, limit: -Number(cfg.stop_pts), pnl: realizedTodayByMode[mode] ?? 0,
+                related_order_id: open.id, message: `Stop da operação atingido (${realPts.toFixed(0)} pts).` });
           }
-          log.push({ mode, action: "close", reason, price: markPrice, source: markAudit.quote_source, origin: markAudit.execution_price_origin });
+          log.push({ mode, action: "close", reason, price: exitPriceFinal, source: exitAuditFinal.quote_source, origin: exitAuditFinal.execution_price_origin });
           finalizeAudit(`Posição existente encerrada por ${reason}.`, {
             last_setup: `Posição ${open.side.toUpperCase()} em gestão`,
             signals: { evaluated_side: open.side, buy: false, sell: false },
@@ -1742,6 +1786,17 @@ async function runB3SimulationTickInner(
           });
           continue;
         }
+
+        // Sem saída: avança o marcador de minutos já avaliados (1 write/min no máximo).
+        if (lastEvaluatedMinuteTs && lastEvaluatedMinuteTs !== open.last_eval_minute_ts) {
+          try {
+            await supabase.from("b3_simulation_orders")
+              .update({ last_eval_minute_ts: lastEvaluatedMinuteTs })
+              .eq("id", open.id).eq("user_id", userId);
+            open.last_eval_minute_ts = lastEvaluatedMinuteTs;
+          } catch { /* best-effort */ }
+        }
+
 
       }
 
