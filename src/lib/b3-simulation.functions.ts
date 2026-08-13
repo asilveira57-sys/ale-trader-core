@@ -2882,31 +2882,59 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const { data: runs, error: runsErr } = await (supabase as any)
-      .from("b3_simulation_runs").select("id, symbol").eq("user_id", userId).eq("status", "running");
+      .from("b3_simulation_runs").select("id, symbol, variant").eq("user_id", userId).eq("status", "running");
     if (runsErr) throw runsErr;
+
+    const sessionDate = currentB3SessionDate();
+    const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3 (sem horário de verão)
+
+    // Ambiente da conta (real x simulação) — usado apenas pela UI pra liberar
+    // ou bloquear o botão de reativação após stop diário.
+    const { data: tset } = await (supabase as any).from("b3_trading_settings")
+      .select("environment").eq("user_id", userId).maybeSingle();
+    const environment = (tset?.environment ?? "simulation") as string;
+
+    // Intervenções de reset de stop diário registradas hoje.
+    const { data: interv } = await (supabase as any).from("b3_intervencoes")
+      .select("symbol, variant, mode, acao")
+      .eq("user_id", userId).eq("trade_date", sessionDate).eq("acao", "reset_stop_diario");
 
     const cards: any[] = [];
     for (const run of runs ?? []) {
       const asset = await loadAssetProfile(supabase, run.symbol);
-      const [{ data: modes }, { data: settings }, { data: openOrders }, { data: snaps }] = await Promise.all([
-        (supabase as any).from("b3_simulation_modes").select("mode, initial_balance, current_balance")
+      const [{ data: modes }, { data: settings }, { data: openOrders }, { data: snaps }, { data: closedToday }] = await Promise.all([
+        (supabase as any).from("b3_simulation_modes")
+          .select("mode, initial_balance, current_balance, current_status, protection_state, protection_block_reason")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
-        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled")
+        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, created_at")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
         (supabase as any).from("b3_simulation_market_snapshots").select("price, extra")
           .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1),
+        (supabase as any).from("b3_simulation_orders").select("mode, net_result_brl")
+          .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "closed")
+          .gte("exit_time", dayStartUtc),
       ]);
 
       const livePrice = Number(snaps?.[0]?.price ?? 0) || null;
       const auditModes: any[] = snaps?.[0]?.extra?.engine_audit?.modes ?? [];
       const enabledByMode: Record<string, boolean> = {};
-      for (const s of settings ?? []) enabledByMode[s.mode] = s.enabled !== false;
+      const lossLimitByMode: Record<string, number | null> = {};
+      for (const s of settings ?? []) {
+        enabledByMode[s.mode] = s.enabled !== false;
+        lossLimitByMode[s.mode] = s.daily_loss_limit_brl == null ? null : Number(s.daily_loss_limit_brl);
+      }
       const openByMode: Record<string, any> = {};
       for (const o of openOrders ?? []) openByMode[o.mode] = o;
       const auditByMode: Record<string, any> = {};
       for (const a of auditModes) auditByMode[a.mode] = a;
+      // Realizado do dia por modo: soma do net das ordens fechadas hoje.
+      const realizedTodayByMode: Record<string, number> = {};
+      for (const o of closedToday ?? []) {
+        realizedTodayByMode[o.mode] = (realizedTodayByMode[o.mode] ?? 0) + Number(o.net_result_brl ?? 0);
+      }
+      const variant = (run.variant ?? "indicador") as string;
 
       for (const m of MODES) {
         const mode = (modes ?? []).find((x: any) => x.mode === m);
@@ -2918,14 +2946,27 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           unrealizedPts = (livePrice - Number(open.entry_price)) * dir;
           unrealizedBrl = unrealizedPts * Number(asset.tick_value_brl) * Number(open.quantity);
         }
+        const realizedToday = realizedTodayByMode[m] ?? 0;
+        const reactivatedToday = (interv ?? []).some((i: any) =>
+          i.symbol === asset.quote_symbol && (i.variant ?? "indicador") === variant && i.mode === m);
         cards.push({
-          run_id: run.id, symbol: run.symbol, mode: m,
+          run_id: run.id, symbol: run.symbol, variant, mode: m,
+          quote_symbol: asset.quote_symbol,
+          tick_size: Number(asset.tick_size),
+          environment,
           enabled: enabledByMode[m] ?? true,
           open: open ? { side: open.side, entry_price: Number(open.entry_price), quantity: Number(open.quantity) } : null,
           live_price: livePrice,
           unrealized_pts: unrealizedPts, unrealized_brl: unrealizedBrl,
           balance: Number(mode?.current_balance ?? mode?.initial_balance ?? 0),
-          pnl_today: Number(mode?.current_balance ?? 0) - Number(mode?.initial_balance ?? 0),
+          realized_today: realizedToday,
+          total_today: realizedToday + (unrealizedBrl ?? 0),
+          pnl_accumulated: Number(mode?.current_balance ?? 0) - Number(mode?.initial_balance ?? 0),
+          current_status: mode?.current_status ?? null,
+          protection_state: mode?.protection_state ?? null,
+          protection_block_reason: mode?.protection_block_reason ?? null,
+          daily_loss_limit_brl: lossLimitByMode[m] ?? null,
+          reactivated_today: reactivatedToday,
           score: audit?.last_score ?? null, confidence: audit?.last_confidence ?? null,
           blocked_reason: open ? null : (audit?.first_stop?.label ?? audit?.last_refusal_reason ?? null),
         });
@@ -2933,6 +2974,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
     }
     return cards;
   });
+
 
 
 // Botão de fechamento manual por modo. Usa a MESMA cadeia de validação de
@@ -3047,4 +3089,117 @@ export const listB3ProtectionHistory = createServerFn({ method: "POST" })
     const { data: rows, error } = await q;
     if (error) throw error;
     return rows ?? [];
+  });
+
+// ─────────── Cockpit: comandos separados (zerar posições x desligar robôs) ───────────
+// Fecha toda posição aberta dos 5 modos da run SEM desligar nenhum modo.
+// Espelha closeAllModesManually, mas sem o update de enabled=false: o usuário
+// pediu para separar "zerar posições" de "desligar robôs".
+export const closeAllPositionsOnly = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: run } = await supabase.from("b3_simulation_runs")
+      .select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle();
+    if (!run) throw new Error("Simulação não encontrada.");
+
+    const asset = await loadAssetProfile(supabase, run.symbol);
+    const priceSrc = await B3QuoteProvider(supabase, userId, {
+      symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback),
+      expectedSymbol: asset.symbol, tickSize: Number(asset.tick_size),
+      spreadMaxPoints: Number(asset.spread_max_price), priceDeviationLimit: Number(asset.price_deviation_limit),
+      indicatorTimeframe: asset.indicator_timeframe === "m1" ? "m1" : "tick",
+    });
+
+    const results: Record<string, any> = {};
+    for (const modeName of MODES) {
+      try {
+        const { data: mode } = await (supabase as any).from("b3_simulation_modes")
+          .select("*").eq("simulation_run_id", data.run_id).eq("mode", modeName).eq("user_id", userId).maybeSingle();
+        const { data: open } = await (supabase as any).from("b3_simulation_orders")
+          .select("*").eq("simulation_run_id", data.run_id).eq("mode", modeName).eq("user_id", userId)
+          .eq("status", "open").maybeSingle();
+        if (!mode || !open) { results[modeName] = { closed: false, reason: "sem posição aberta" }; continue; }
+        const exitAudit = getB3ExecutionAudit(priceSrc, open.side, "exit", "closeAllPositionsOnly");
+        if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(exitAudit, "closeAllPositionsOnly", asset.symbol);
+        const closed = await closeOrder(supabase, userId, run, mode, open, exitAudit, "manual_close_all_user", [], asset);
+        results[modeName] = { closed: true, result: closed };
+      } catch (e) {
+        results[modeName] = { closed: false, reason: (e as Error).message };
+      }
+    }
+    return { ok: true, results };
+  });
+
+// Desliga (enabled=false) os 5 modos da run, sem tocar em posição aberta.
+export const disableAllModes = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { error } = await (supabase as any).from("b3_simulation_mode_settings")
+      .update({ enabled: false })
+      .eq("simulation_run_id", data.run_id).eq("user_id", userId);
+    if (error) throw error;
+    return { ok: true };
+  });
+
+// Reativa um modo que bateu o stop diário. Exige motivo escrito (>= 20 chars),
+// é recusado quando o ambiente da conta não é simulação, e registra a
+// intervenção em b3_intervencoes (symbol = raiz do ativo).
+export const resetB3DailyStop = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string; mode: Mode; motivo: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const motivo = (data.motivo ?? "").trim();
+    if (motivo.length < 20) throw new Error("Informe um motivo com pelo menos 20 caracteres.");
+
+    const { data: tset } = await (supabase as any).from("b3_trading_settings")
+      .select("environment").eq("user_id", userId).maybeSingle();
+    const environment = (tset?.environment ?? "simulation") as string;
+    if (environment !== "simulation") {
+      throw new Error("O stop diário não é contornável em conta real. Reativação bloqueada.");
+    }
+
+    const { data: run } = await (supabase as any).from("b3_simulation_runs")
+      .select("id, symbol, variant").eq("id", data.run_id).eq("user_id", userId).maybeSingle();
+    if (!run) throw new Error("Simulação não encontrada.");
+    const { data: mode } = await (supabase as any).from("b3_simulation_modes")
+      .select("id, current_status, realized_pnl, current_balance, initial_balance")
+      .eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId).maybeSingle();
+    if (!mode) throw new Error("Modo não encontrado nessa simulação.");
+    if (mode.current_status !== "blocked_stop") throw new Error("Esse robô não está bloqueado por stop diário.");
+
+    const { data: cfg } = await (supabase as any).from("b3_simulation_mode_settings")
+      .select("daily_loss_limit_brl").eq("simulation_run_id", data.run_id)
+      .eq("mode", data.mode).eq("user_id", userId).maybeSingle();
+    const asset = await loadAssetProfile(supabase, run.symbol);
+
+    const { error: updErr } = await (supabase as any).from("b3_simulation_modes")
+      .update({
+        current_status: "operando",
+        protection_state: "operating_normal",
+        protection_block_reason: null,
+        status_changed_at: new Date().toISOString(),
+        status_reason: "reset_stop_diario (painel)",
+      })
+      .eq("id", mode.id).eq("user_id", userId);
+    if (updErr) throw updErr;
+
+    await (supabase as any).from("b3_intervencoes").insert({
+      user_id: userId,
+      trade_date: currentB3SessionDate(),
+      symbol: asset.quote_symbol,
+      variant: run.variant ?? "indicador",
+      mode: data.mode,
+      acao: "reset_stop_diario",
+      pnl_no_momento: Number(mode.current_balance ?? 0) - Number(mode.initial_balance ?? 0),
+      limite_vigente: cfg?.daily_loss_limit_brl == null ? null : Number(cfg.daily_loss_limit_brl),
+      motivo,
+      origem: "painel",
+    });
+
+    return { ok: true };
   });

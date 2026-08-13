@@ -6,22 +6,45 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import {
-  getB3CockpitOverview, closeModeOrderManually, closeAllModesManually, updateB3ModeSettings,
+  getB3CockpitOverview, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
+  resetB3DailyStop, updateB3ModeSettings,
 } from "@/lib/b3-simulation.functions";
 
 export const Route = createFileRoute("/_authenticated/b3-cockpit")({
-  head: () => ({ meta: [{ title: "Cockpit — Todos os robôs — AleTrader AI" }] }),
+  head: () => ({
+    meta: [
+      { title: "Cockpit — Todos os robôs — AleTrader AI" },
+      { name: "description", content: "Visão consolidada dos robôs simulados B3 por ativo, modalidade e modo, com resultado do dia e controles manuais." },
+      { property: "og:title", content: "Cockpit — Todos os robôs — AleTrader AI" },
+      { property: "og:description", content: "Resultado do dia, posições abertas e controles manuais de todos os robôs simulados B3." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
   component: CockpitPage,
 });
 
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const NUM = (v: number, d = 0) => Number(v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+// Casas decimais derivadas do tick do ativo: tick 5 (WIN) = inteiro,
+// tick 0,5 (WDO) = 1 casa, tick 0,01 (ações) = 2 casas.
+const decimalsForTick = (tick: number) => {
+  const t = Number(tick);
+  if (!Number.isFinite(t) || t <= 0) return 0;
+  if (t >= 1) return 0;
+  const s = t.toString();
+  if (s.includes("e-")) return Math.min(4, Number(s.split("e-")[1]));
+  return Math.min(4, (s.split(".")[1] ?? "").length);
+};
+const PX = (v: number | null | undefined, tick: number) =>
+  v == null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: decimalsForTick(tick), maximumFractionDigits: decimalsForTick(tick) });
+
 const MODE_COLOR: Record<string, string> = {
   conservador: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
   moderado: "bg-sky-500/15 text-sky-300 border-sky-500/30",
@@ -29,14 +52,34 @@ const MODE_COLOR: Record<string, string> = {
   semi_agressivo: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   agressivo: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
+const VARIANT_LABEL: Record<string, string> = {
+  indicador: "Indicador",
+  price_action: "Price action",
+  mean_reversion: "Reversão à média",
+  range: "Faixa",
+};
+const VARIANT_COLOR: Record<string, string> = {
+  indicador: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+  price_action: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30",
+  mean_reversion: "bg-lime-500/15 text-lime-300 border-lime-500/30",
+  range: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+};
+const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
+const isRiskBlocked = (c: any) => c.current_status === "blocked_stop" || !!c.protection_block_reason;
+
+type Filter = "all" | "open" | "blocked";
 
 function CockpitPage() {
   const qc = useQueryClient();
   const getOverview = useServerFn(getB3CockpitOverview);
   const closeMode = useServerFn(closeModeOrderManually);
-  const closeAll = useServerFn(closeAllModesManually);
+  const closePositions = useServerFn(closeAllPositionsOnly);
+  const disableModes = useServerFn(disableAllModes);
+  const resetStop = useServerFn(resetB3DailyStop);
   const updEnabled = useServerFn(updateB3ModeSettings);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<Filter>("all");
+  const [motivo, setMotivo] = useState("");
 
   const q = useQuery({
     queryKey: ["b3-cockpit"],
@@ -44,6 +87,9 @@ function CockpitPage() {
     refetchInterval: useVisibleRefetchInterval(10000),
     refetchIntervalInBackground: false,
   });
+
+  const all: any[] = q.data ?? [];
+  const runIds = Array.from(new Set(all.map((c) => c.run_id)));
 
   const closeModeM = useMutation({
     mutationFn: (v: { run_id: string; mode: string }) => closeMode({ data: v as any }),
@@ -56,13 +102,20 @@ function CockpitPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["b3-cockpit"] }),
     onError: (e: any) => toast.error(e?.message ?? "Falha ao mudar status"),
   });
-  const closeAllM = useMutation({
-    mutationFn: async () => {
-      const runIds = Array.from(new Set((q.data ?? []).map((c: any) => c.run_id)));
-      for (const run_id of runIds) await closeAll({ data: { run_id } });
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["b3-cockpit"] }); toast.success("Todas as posições foram encerradas e todos os robôs foram pausados."); },
-    onError: (e: any) => toast.error(e?.message ?? "Falha ao fechar tudo"),
+  const zeroAllM = useMutation({
+    mutationFn: async () => { for (const run_id of runIds) await closePositions({ data: { run_id } }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["b3-cockpit"] }); toast.success("Posições zeradas. Os robôs seguem ligados."); },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao zerar posições"),
+  });
+  const disableAllM = useMutation({
+    mutationFn: async () => { for (const run_id of runIds) await disableModes({ data: { run_id } }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["b3-cockpit"] }); toast.success("Robôs desligados. Posições abertas não foram alteradas."); },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao desligar robôs"),
+  });
+  const resetM = useMutation({
+    mutationFn: (v: { run_id: string; mode: string; motivo: string }) => resetStop({ data: v as any }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["b3-cockpit"] }); setMotivo(""); toast.success("Robô reativado e intervenção registrada."); },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao reativar"),
   });
 
   const toggleExpand = (key: string) => setExpanded(prev => {
@@ -71,10 +124,22 @@ function CockpitPage() {
     return next;
   });
 
-  const bySymbol = new Map<string, any[]>();
-  for (const c of q.data ?? []) {
-    if (!bySymbol.has(c.symbol)) bySymbol.set(c.symbol, []);
-    bySymbol.get(c.symbol)!.push(c);
+  const totalRobots = all.length;
+  const withOpen = all.filter((c) => !!c.open).length;
+  const blocked = all.filter(isRiskBlocked).length;
+  const realizedToday = all.reduce((s, c) => s + Number(c.realized_today ?? 0), 0);
+  const openPnl = all.reduce((s, c) => s + Number(c.unrealized_brl ?? 0), 0);
+
+  const visible = all.filter((c) => filter === "all" ? true : filter === "open" ? !!c.open : isRiskBlocked(c));
+
+  // Agrupa por ativo e, dentro do ativo, por modalidade (variant).
+  const bySymbol = new Map<string, Map<string, any[]>>();
+  for (const c of visible) {
+    if (!bySymbol.has(c.symbol)) bySymbol.set(c.symbol, new Map());
+    const byVariant = bySymbol.get(c.symbol)!;
+    const v = c.variant ?? "indicador";
+    if (!byVariant.has(v)) byVariant.set(v, []);
+    byVariant.get(v)!.push(c);
   }
 
   return (
@@ -90,21 +155,42 @@ function CockpitPage() {
           <Button size="sm" variant="outline" onClick={() => q.refetch()}>
             <RefreshCw className="w-4 h-4 mr-1" />Atualizar
           </Button>
+
           <Dialog>
             <DialogTrigger asChild>
               <Button size="sm" variant="destructive" className="bg-red-900 hover:bg-red-800">
-                <ShieldAlert className="w-4 h-4 mr-1" />Fechar tudo (todos os ativos)
+                <ShieldAlert className="w-4 h-4 mr-1" />Zerar posições
               </Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Fechar TODAS as posições de TODOS os ativos?</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>Zerar TODAS as posições abertas?</DialogTitle></DialogHeader>
               <p className="text-sm text-muted-foreground">
-                Isso encerra agora qualquer posição aberta em qualquer robô, de qualquer ativo (WIN, WDO, e os
-                que vierem depois) ao preço de mercado atual, e pausa os 5 modos de cada um. Não dá pra desfazer.
+                Encerra agora qualquer posição aberta em qualquer robô, de qualquer ativo, ao preço de mercado
+                atual. Os robôs continuam LIGADOS e podem abrir nova posição. Não dá pra desfazer.
               </p>
               <DialogFooter>
-                <Button variant="destructive" disabled={closeAllM.isPending} onClick={() => closeAllM.mutate()}>
-                  {closeAllM.isPending ? "Fechando..." : "Sim, fechar tudo"}
+                <Button variant="destructive" disabled={zeroAllM.isPending} onClick={() => zeroAllM.mutate()}>
+                  {zeroAllM.isPending ? "Zerando..." : "Sim, zerar posições"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button size="sm" variant="outline">
+                <PowerOff className="w-4 h-4 mr-1" />Desligar robôs
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Desligar TODOS os robôs?</DialogTitle></DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                Desativa os 5 modos de cada ativo e modalidade — nenhuma entrada nova será aberta.
+                Posições já abertas NÃO são encerradas (use “Zerar posições” pra isso).
+              </p>
+              <DialogFooter>
+                <Button variant="destructive" disabled={disableAllM.isPending} onClick={() => disableAllM.mutate()}>
+                  {disableAllM.isPending ? "Desligando..." : "Sim, desligar robôs"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -112,107 +198,228 @@ function CockpitPage() {
         </div>
       </header>
 
+      {/* ── Resumo + filtro ── */}
+      <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
+        <p className="text-sm">
+          <strong>{totalRobots}</strong> robôs · <strong>{withOpen}</strong> com posição aberta ·{" "}
+          <strong>{blocked}</strong> bloqueados
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Realizado hoje:{" "}
+          <span className={`font-mono ${realizedToday >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{BRL(realizedToday)}</span>
+          {"   ·   "}Em aberto:{" "}
+          <span className={`font-mono ${openPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{BRL(openPnl)}</span>
+        </p>
+        <div className="flex items-center gap-2 pt-1">
+          {([["all", "Todos"], ["open", "Só com posição aberta"], ["blocked", "Só bloqueados"]] as [Filter, string][]).map(([v, label]) => (
+            <Button key={v} size="sm" variant={filter === v ? "default" : "outline"} className="h-7 text-[11px]"
+              onClick={() => setFilter(v)}>
+              {label}
+            </Button>
+          ))}
+        </div>
+      </section>
+
       {q.isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
-      {!q.isLoading && !(q.data ?? []).length && (
-        <p className="text-sm text-muted-foreground">Nenhuma simulação rodando no momento.</p>
+      {!q.isLoading && !visible.length && (
+        <p className="text-sm text-muted-foreground">Nenhum robô para o filtro selecionado.</p>
       )}
 
-      {Array.from(bySymbol.entries()).map(([symbol, cards]) => (
-        <div key={symbol} className="space-y-2">
+      {Array.from(bySymbol.entries()).map(([symbol, byVariant]) => (
+        <div key={symbol} className="space-y-3">
           <h2 className="text-sm font-semibold flex items-center gap-2">
             <Badge variant="outline" className="border-primary/40 bg-primary/10">{symbol}</Badge>
-            <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
+            <span className="text-muted-foreground font-normal">
+              {Array.from(byVariant.values()).reduce((s, arr) => s + arr.length, 0)} robôs
+            </span>
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            {cards.map((c: any) => {
-              const key = `${c.run_id}:${c.mode}`;
-              const isOpen = expanded.has(key);
-              const hasPosition = !!c.open;
-              const pnlColor = c.unrealized_brl == null ? "" : c.unrealized_brl >= 0 ? "text-emerald-300" : "text-rose-300";
-              return (
-                <div key={key} className="rounded-lg border border-border/60 bg-card overflow-hidden">
-                  {/* ── Cabeçalho compacto: sempre visível ── */}
-                  <button
-                    className="w-full text-left p-3 space-y-2"
-                    onClick={() => toggleExpand(key)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <Badge className={`uppercase text-[10px] ${MODE_COLOR[c.mode]}`}>{c.mode.replace("_", " ")}</Badge>
-                      {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-                    </div>
-                    {hasPosition ? (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={c.open.side === "buy" ? "default" : "destructive"} className="text-[10px]">
-                            {c.open.side === "buy" ? "COMPRA" : "VENDA"}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">{c.open.quantity}x</span>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Entrada {NUM(c.open.entry_price)} → agora {c.live_price != null ? NUM(c.live_price) : "—"}
-                        </div>
-                        <div className={`font-mono font-semibold text-sm ${pnlColor}`}>
-                          {c.unrealized_brl != null ? `${c.unrealized_pts! >= 0 ? "+" : ""}${NUM(c.unrealized_pts!)} pts · ${BRL(c.unrealized_brl)}` : "—"}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-xs text-muted-foreground italic min-h-[3.2rem] flex items-center">
-                        {c.enabled === false ? "Modo desativado" : (c.blocked_reason ?? "Sem posição — aguardando sinal")}
-                      </div>
-                    )}
-                    <div className="text-[11px] text-muted-foreground">
-                      Hoje: <span className={c.pnl_today >= 0 ? "text-emerald-300" : "text-rose-300"}>{BRL(c.pnl_today)}</span>
-                    </div>
-                  </button>
 
-                  {/* ── Detalhe expandido ── */}
-                  {isOpen && (
-                    <div className="border-t border-border/60 p-3 space-y-2 bg-background/40">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Modo ativo</span>
-                        <Switch
-                          checked={c.enabled !== false}
-                          onCheckedChange={(v: boolean) => toggleM.mutate({ run_id: c.run_id, mode: c.mode, enabled: v })}
-                        />
-                      </div>
-                      {c.score != null && (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Score / Confiança</span>
-                          <span className="font-mono">{NUM(c.score)} / {NUM(c.confidence)}</span>
+          {Array.from(byVariant.entries()).map(([variant, cards]) => (
+            <div key={variant} className="space-y-2 rounded-lg border border-border/40 bg-background/30 p-3">
+              <h3 className="text-xs font-semibold flex items-center gap-2">
+                <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
+                <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                {cards.map((c: any) => {
+                  const key = `${c.run_id}:${c.mode}`;
+                  const isOpen = expanded.has(key);
+                  const hasPosition = !!c.open;
+                  const tick = Number(c.tick_size ?? 5);
+                  const pnlColor = c.unrealized_brl == null ? "" : c.unrealized_brl >= 0 ? "text-emerald-300" : "text-rose-300";
+                  const riskBlocked = isRiskBlocked(c);
+                  const isRealEnv = c.environment && c.environment !== "simulation";
+                  return (
+                    <div key={key} className="rounded-lg border border-border/60 bg-card overflow-hidden">
+                      {/* ── Cabeçalho compacto: sempre visível ── */}
+                      <button className="w-full text-left p-3 space-y-2" onClick={() => toggleExpand(key)}>
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Badge className={`uppercase text-[10px] ${MODE_COLOR[c.mode]}`}>{c.mode.replace("_", " ")}</Badge>
+                            <Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge>
+                          </div>
+                          {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                        </div>
+
+                        {hasPosition ? (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={c.open.side === "buy" ? "default" : "destructive"} className="text-[10px]">
+                                {c.open.side === "buy" ? "COMPRA" : "VENDA"}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">{c.open.quantity}x</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Entrada {PX(c.open.entry_price, tick)} → agora {PX(c.live_price, tick)}
+                            </div>
+                            <div className={`font-mono font-semibold text-sm ${pnlColor}`}>
+                              {c.unrealized_brl != null
+                                ? `${c.unrealized_pts! >= 0 ? "+" : ""}${PX(c.unrealized_pts, tick)} pts · ${BRL(c.unrealized_brl)}`
+                                : "—"}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-xs italic min-h-[3.2rem] flex items-center">
+                            {riskBlocked ? (
+                              <span className="text-amber-300 not-italic flex items-center gap-1">
+                                <Lock className="w-3 h-3" />
+                                {c.current_status === "blocked_stop" ? "Bloqueado por stop diário" : "Bloqueado por trava de risco"}
+                              </span>
+                            ) : c.enabled === false ? (
+                              <span className="text-muted-foreground">Desligado por configuração</span>
+                            ) : (
+                              <span className="text-muted-foreground">{c.blocked_reason ?? "Sem posição — aguardando sinal"}</span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* ── Resultado do dia, separado do acumulado ── */}
+                        <div className="text-[11px] space-y-0.5 pt-1 border-t border-border/40">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Realizado hoje</span>
+                            <span className={`font-mono ${Number(c.realized_today) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                              {BRL(c.realized_today)}
+                            </span>
+                          </div>
+                          {hasPosition && (
+                            <div className="flex justify-between opacity-60">
+                              <span>Em aberto (não realizado)</span>
+                              <span className="font-mono">{c.unrealized_brl != null ? BRL(c.unrealized_brl) : "—"}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Total do dia</span>
+                            <span className={`font-mono ${Number(c.total_today) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                              {BRL(c.total_today)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Acumulado</span>
+                            <span className="font-mono text-muted-foreground">{BRL(c.pnl_accumulated)}</span>
+                          </div>
+                        </div>
+
+                        {c.reactivated_today && (
+                          <p className="text-[10px] text-amber-300/80">
+                            Reativado hoje após stop diário — resultado do dia não é limpo.
+                          </p>
+                        )}
+                      </button>
+
+                      {/* ── Fechar posição: sempre visível quando há posição ── */}
+                      {hasPosition && (
+                        <div className="px-3 pb-3">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button size="sm" variant="destructive" className="w-full h-7 text-[11px]">
+                                Fechar posição agora
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Fechar {c.mode} · {variantLabel(c.variant)} ({c.symbol}) agora?</DialogTitle>
+                              </DialogHeader>
+                              <p className="text-sm text-muted-foreground">
+                                Encerra a posição de {c.open.side === "buy" ? "compra" : "venda"} ao preço de mercado
+                                atual ({PX(c.live_price, tick)}). Não dá pra desfazer.
+                              </p>
+                              <DialogFooter>
+                                <Button variant="destructive" disabled={closeModeM.isPending}
+                                  onClick={() => closeModeM.mutate({ run_id: c.run_id, mode: c.mode })}>
+                                  {closeModeM.isPending ? "Fechando..." : "Sim, fechar agora"}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
                         </div>
                       )}
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Saldo atual</span>
-                        <span className="font-mono">{BRL(c.balance)}</span>
-                      </div>
-                      {hasPosition && (
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button size="sm" variant="destructive" className="w-full h-7 text-[11px]">
-                              Fechar posição agora
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent onClick={(e) => e.stopPropagation()}>
-                            <DialogHeader><DialogTitle>Fechar {c.mode} ({c.symbol}) agora?</DialogTitle></DialogHeader>
-                            <p className="text-sm text-muted-foreground">
-                              Encerra a posição de {c.open.side === "buy" ? "compra" : "venda"} ao preço de mercado
-                              atual ({c.live_price != null ? NUM(c.live_price) : "—"}). Não dá pra desfazer.
+
+                      {/* ── Detalhe expandido ── */}
+                      {isOpen && (
+                        <div className="border-t border-border/60 p-3 space-y-2 bg-background/40">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Modo ativo</span>
+                            <Switch
+                              checked={c.enabled !== false}
+                              onCheckedChange={(v: boolean) => toggleM.mutate({ run_id: c.run_id, mode: c.mode, enabled: v })}
+                            />
+                          </div>
+                          {riskBlocked && (
+                            <p className="text-[11px] text-amber-300">
+                              Trava de risco: {c.protection_block_reason ?? c.current_status}
                             </p>
-                            <DialogFooter>
-                              <Button variant="destructive" disabled={closeModeM.isPending}
-                                onClick={() => closeModeM.mutate({ run_id: c.run_id, mode: c.mode })}>
-                                {closeModeM.isPending ? "Fechando..." : "Sim, fechar agora"}
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
+                          )}
+                          {c.score != null && (
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Score / Confiança</span>
+                              <span className="font-mono">{c.score} / {c.confidence}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Saldo atual</span>
+                            <span className="font-mono">{BRL(c.balance)}</span>
+                          </div>
+
+                          {c.current_status === "blocked_stop" && (
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="w-full h-7 text-[11px]" disabled={isRealEnv}>
+                                  <RotateCcw className="w-3 h-3 mr-1" />Reativar após stop diário
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Reativar {c.mode} · {variantLabel(c.variant)} ({c.symbol})?</DialogTitle>
+                                </DialogHeader>
+                                <p className="text-sm text-muted-foreground">
+                                  O robô bateu o stop diário. Escreva o motivo da reativação (mínimo 20 caracteres).
+                                  A intervenção fica registrada com data, ativo, modalidade, modo, resultado no momento e limite vigente.
+                                </p>
+                                <Textarea value={motivo} onChange={(e) => setMotivo(e.target.value)}
+                                  placeholder="Motivo da reativação..." rows={3} />
+                                <p className="text-[11px] text-muted-foreground">{motivo.trim().length}/20 caracteres</p>
+                                <DialogFooter>
+                                  <Button disabled={resetM.isPending || motivo.trim().length < 20}
+                                    onClick={() => resetM.mutate({ run_id: c.run_id, mode: c.mode, motivo })}>
+                                    {resetM.isPending ? "Reativando..." : "Reativar robô"}
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+                          )}
+                          {c.current_status === "blocked_stop" && isRealEnv && (
+                            <p className="text-[11px] text-rose-300">
+                              Conta real: o stop diário não é contornável pelo painel.
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       ))}
     </div>
