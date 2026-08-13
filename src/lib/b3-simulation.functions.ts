@@ -1778,6 +1778,7 @@ async function runB3SimulationTickInner(
                 ambos_no_mesmo_candle: Boolean(intrabarHit?.both && reason === "stop"),
                 tick_price_at_detection: markPrice,
                 trailing_debug: trailingDebug,
+                candle_incompleto_ignorado: candleIncompletoIgnorado,
               },
               last_eval_minute_ts: lastEvaluatedMinuteTs ?? open.last_eval_minute_ts ?? null,
             }).eq("id", open.id).eq("user_id", userId);
