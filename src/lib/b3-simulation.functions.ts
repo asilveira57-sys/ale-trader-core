@@ -3090,3 +3090,116 @@ export const listB3ProtectionHistory = createServerFn({ method: "POST" })
     if (error) throw error;
     return rows ?? [];
   });
+
+// ─────────── Cockpit: comandos separados (zerar posições x desligar robôs) ───────────
+// Fecha toda posição aberta dos 5 modos da run SEM desligar nenhum modo.
+// Espelha closeAllModesManually, mas sem o update de enabled=false: o usuário
+// pediu para separar "zerar posições" de "desligar robôs".
+export const closeAllPositionsOnly = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: run } = await supabase.from("b3_simulation_runs")
+      .select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle();
+    if (!run) throw new Error("Simulação não encontrada.");
+
+    const asset = await loadAssetProfile(supabase, run.symbol);
+    const priceSrc = await B3QuoteProvider(supabase, userId, {
+      symbol: asset.quote_symbol, contract: asset.contract_code, base: Number(asset.base_price_fallback),
+      expectedSymbol: asset.symbol, tickSize: Number(asset.tick_size),
+      spreadMaxPoints: Number(asset.spread_max_price), priceDeviationLimit: Number(asset.price_deviation_limit),
+      indicatorTimeframe: asset.indicator_timeframe === "m1" ? "m1" : "tick",
+    });
+
+    const results: Record<string, any> = {};
+    for (const modeName of MODES) {
+      try {
+        const { data: mode } = await (supabase as any).from("b3_simulation_modes")
+          .select("*").eq("simulation_run_id", data.run_id).eq("mode", modeName).eq("user_id", userId).maybeSingle();
+        const { data: open } = await (supabase as any).from("b3_simulation_orders")
+          .select("*").eq("simulation_run_id", data.run_id).eq("mode", modeName).eq("user_id", userId)
+          .eq("status", "open").maybeSingle();
+        if (!mode || !open) { results[modeName] = { closed: false, reason: "sem posição aberta" }; continue; }
+        const exitAudit = getB3ExecutionAudit(priceSrc, open.side, "exit", "closeAllPositionsOnly");
+        if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(exitAudit, "closeAllPositionsOnly", asset.symbol);
+        const closed = await closeOrder(supabase, userId, run, mode, open, exitAudit, "manual_close_all_user", [], asset);
+        results[modeName] = { closed: true, result: closed };
+      } catch (e) {
+        results[modeName] = { closed: false, reason: (e as Error).message };
+      }
+    }
+    return { ok: true, results };
+  });
+
+// Desliga (enabled=false) os 5 modos da run, sem tocar em posição aberta.
+export const disableAllModes = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { error } = await (supabase as any).from("b3_simulation_mode_settings")
+      .update({ enabled: false })
+      .eq("simulation_run_id", data.run_id).eq("user_id", userId);
+    if (error) throw error;
+    return { ok: true };
+  });
+
+// Reativa um modo que bateu o stop diário. Exige motivo escrito (>= 20 chars),
+// é recusado quando o ambiente da conta não é simulação, e registra a
+// intervenção em b3_intervencoes (symbol = raiz do ativo).
+export const resetB3DailyStop = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { run_id: string; mode: Mode; motivo: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const motivo = (data.motivo ?? "").trim();
+    if (motivo.length < 20) throw new Error("Informe um motivo com pelo menos 20 caracteres.");
+
+    const { data: tset } = await (supabase as any).from("b3_trading_settings")
+      .select("environment").eq("user_id", userId).maybeSingle();
+    const environment = (tset?.environment ?? "simulation") as string;
+    if (environment !== "simulation") {
+      throw new Error("O stop diário não é contornável em conta real. Reativação bloqueada.");
+    }
+
+    const { data: run } = await (supabase as any).from("b3_simulation_runs")
+      .select("id, symbol, variant").eq("id", data.run_id).eq("user_id", userId).maybeSingle();
+    if (!run) throw new Error("Simulação não encontrada.");
+    const { data: mode } = await (supabase as any).from("b3_simulation_modes")
+      .select("id, current_status, realized_pnl, current_balance, initial_balance")
+      .eq("simulation_run_id", data.run_id).eq("mode", data.mode).eq("user_id", userId).maybeSingle();
+    if (!mode) throw new Error("Modo não encontrado nessa simulação.");
+    if (mode.current_status !== "blocked_stop") throw new Error("Esse robô não está bloqueado por stop diário.");
+
+    const { data: cfg } = await (supabase as any).from("b3_simulation_mode_settings")
+      .select("daily_loss_limit_brl").eq("simulation_run_id", data.run_id)
+      .eq("mode", data.mode).eq("user_id", userId).maybeSingle();
+    const asset = await loadAssetProfile(supabase, run.symbol);
+
+    const { error: updErr } = await (supabase as any).from("b3_simulation_modes")
+      .update({
+        current_status: "operando",
+        protection_state: "operating_normal",
+        protection_block_reason: null,
+        status_changed_at: new Date().toISOString(),
+        status_reason: "reset_stop_diario (painel)",
+      })
+      .eq("id", mode.id).eq("user_id", userId);
+    if (updErr) throw updErr;
+
+    await (supabase as any).from("b3_intervencoes").insert({
+      user_id: userId,
+      trade_date: currentB3SessionDate(),
+      symbol: asset.quote_symbol,
+      variant: run.variant ?? "indicador",
+      mode: data.mode,
+      acao: "reset_stop_diario",
+      pnl_no_momento: Number(mode.current_balance ?? 0) - Number(mode.initial_balance ?? 0),
+      limite_vigente: cfg?.daily_loss_limit_brl == null ? null : Number(cfg.daily_loss_limit_brl),
+      motivo,
+      origem: "painel",
+    });
+
+    return { ok: true };
+  });
