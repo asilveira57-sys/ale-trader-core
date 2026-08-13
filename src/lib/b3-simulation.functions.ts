@@ -1613,10 +1613,12 @@ async function runB3SimulationTickInner(
         const entryMsOpen = open.entry_time ? new Date(open.entry_time).getTime() : null;
         const lastEvalMs = open.last_eval_minute_ts ? new Date(open.last_eval_minute_ts).getTime() : null;
         const evalFromMs = lastEvalMs ?? entryMsOpen;
+        const nowMs = Date.now();
+        const minutoCorrenteMs = Math.floor(nowMs / 60000) * 60000;
         const candlesToEval = evalFromMs
           ? m1Candles.filter((c: any) => {
               const t = new Date(c.minute_ts).getTime();
-              return t > evalFromMs && t <= Date.now();
+              return t > evalFromMs && t <= nowMs;
             })
           : [];
         // Nível de saída executado no preço do nível, com slippage sempre contra.
@@ -1637,8 +1639,14 @@ async function runB3SimulationTickInner(
         };
         let intrabarHit: { reason: string; level: number; price: number; minute_ts: string; both: boolean } | null = null;
         let lastEvaluatedMinuteTs: string | null = null;
+        let candleIncompletoIgnorado = false;
         for (const c of candlesToEval) {
-          lastEvaluatedMinuteTs = c.minute_ts;
+          const candleMs = new Date(c.minute_ts).getTime();
+          if (candleMs < minutoCorrenteMs) {
+            lastEvaluatedMinuteTs = c.minute_ts;
+          } else {
+            candleIncompletoIgnorado = true;
+          }
           const stopTouched = adverseTouch(c, stopLevel);
           const gainTouched = favorableTouch(c, gainLevel);
           if (stopTouched) {
@@ -1770,6 +1778,7 @@ async function runB3SimulationTickInner(
                 ambos_no_mesmo_candle: Boolean(intrabarHit?.both && reason === "stop"),
                 tick_price_at_detection: markPrice,
                 trailing_debug: trailingDebug,
+                candle_incompleto_ignorado: candleIncompletoIgnorado,
               },
               last_eval_minute_ts: lastEvaluatedMinuteTs ?? open.last_eval_minute_ts ?? null,
             }).eq("id", open.id).eq("user_id", userId);
