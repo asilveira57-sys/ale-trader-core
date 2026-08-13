@@ -855,6 +855,51 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_intervencoes: {
+        Row: {
+          acao: string
+          id: string
+          limite_vigente: number | null
+          mode: string
+          motivo: string
+          origem: string
+          pnl_no_momento: number | null
+          symbol: string
+          trade_date: string
+          ts: string
+          user_id: string
+          variant: string
+        }
+        Insert: {
+          acao: string
+          id?: string
+          limite_vigente?: number | null
+          mode: string
+          motivo: string
+          origem?: string
+          pnl_no_momento?: number | null
+          symbol: string
+          trade_date: string
+          ts?: string
+          user_id: string
+          variant: string
+        }
+        Update: {
+          acao?: string
+          id?: string
+          limite_vigente?: number | null
+          mode?: string
+          motivo?: string
+          origem?: string
+          pnl_no_momento?: number | null
+          symbol?: string
+          trade_date?: string
+          ts?: string
+          user_id?: string
+          variant?: string
+        }
+        Relationships: []
+      }
       b3_legacy_mt5_candles: {
         Row: {
           close: number
@@ -2442,8 +2487,10 @@ export type Database = {
       b3_robot_daily_score: {
         Row: {
           created_at: string
+          dia_com_intervencao: boolean
           max_dd_brl: number
           mode: string
+          motivo_intervencao: string | null
           net_brl: number
           qualified: boolean
           r_unit_brl: number
@@ -2462,8 +2509,10 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          dia_com_intervencao?: boolean
           max_dd_brl?: number
           mode: string
+          motivo_intervencao?: string | null
           net_brl?: number
           qualified?: boolean
           r_unit_brl?: number
@@ -2482,8 +2531,10 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          dia_com_intervencao?: boolean
           max_dd_brl?: number
           mode?: string
+          motivo_intervencao?: string | null
           net_brl?: number
           qualified?: boolean
           r_unit_brl?: number
