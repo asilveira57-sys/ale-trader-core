@@ -1191,6 +1191,42 @@ export type Database = {
           },
         ]
       }
+      b3_m1_candles_hist: {
+        Row: {
+          candle_close: number
+          candle_high: number
+          candle_low: number
+          candle_open: number
+          minute_ts: string
+          symbol: string
+          ticks: number
+          user_id: string
+          volume: number
+        }
+        Insert: {
+          candle_close: number
+          candle_high: number
+          candle_low: number
+          candle_open: number
+          minute_ts: string
+          symbol: string
+          ticks?: number
+          user_id: string
+          volume?: number
+        }
+        Update: {
+          candle_close?: number
+          candle_high?: number
+          candle_low?: number
+          candle_open?: number
+          minute_ts?: string
+          symbol?: string
+          ticks?: number
+          user_id?: string
+          volume?: number
+        }
+        Relationships: []
+      }
       b3_macro_events: {
         Row: {
           active: boolean
