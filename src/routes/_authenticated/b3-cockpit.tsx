@@ -88,6 +88,7 @@ function CockpitPage() {
   const updEnabled = useServerFn(updateB3ModeSettings);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>("all");
+  const [variantFilter, setVariantFilter] = useState<VariantFilter>("all");
   const [motivo, setMotivo] = useState("");
 
   const q = useQuery({
