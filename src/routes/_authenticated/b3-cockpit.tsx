@@ -67,7 +67,16 @@ const VARIANT_COLOR: Record<string, string> = {
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
 const isRiskBlocked = (c: any) => c.current_status === "blocked_stop" || !!c.protection_block_reason;
 
+// Contratos futuros (WINV26, WDOU26) rolam de vencimento; agrupa pela raiz do
+// ativo pra que a virada de contrato não quebre o agrupamento da tela.
+const rootSymbol = (symbol: string) => {
+  const s = String(symbol ?? "").toUpperCase();
+  const m = s.match(/^([A-Z]{3})[A-Z]\d{2}$/);
+  return m ? m[1] : s;
+};
+
 type Filter = "all" | "open" | "blocked";
+type VariantFilter = "all" | string;
 
 function CockpitPage() {
   const qc = useQueryClient();
