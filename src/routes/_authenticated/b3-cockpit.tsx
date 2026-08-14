@@ -219,7 +219,7 @@ function CockpitPage() {
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
         <p className="text-sm">
           <strong>{totalRobots}</strong> robôs · <strong>{withOpen}</strong> com posição aberta ·{" "}
-          <strong>{blocked}</strong> bloqueados
+          <strong>{waiting}</strong> aguardando · <strong>{blocked}</strong> bloqueados
         </p>
         <p className="text-sm text-muted-foreground">
           Realizado hoje:{" "}
