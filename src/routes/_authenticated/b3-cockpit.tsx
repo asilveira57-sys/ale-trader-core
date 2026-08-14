@@ -67,7 +67,16 @@ const VARIANT_COLOR: Record<string, string> = {
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
 const isRiskBlocked = (c: any) => c.current_status === "blocked_stop" || !!c.protection_block_reason;
 
+// Contratos futuros (WINV26, WDOU26) rolam de vencimento; agrupa pela raiz do
+// ativo pra que a virada de contrato não quebre o agrupamento da tela.
+const rootSymbol = (symbol: string) => {
+  const s = String(symbol ?? "").toUpperCase();
+  const m = s.match(/^([A-Z]{3})[A-Z]\d{2}$/);
+  return m ? m[1] : s;
+};
+
 type Filter = "all" | "open" | "blocked";
+type VariantFilter = "all" | string;
 
 function CockpitPage() {
   const qc = useQueryClient();
@@ -79,6 +88,7 @@ function CockpitPage() {
   const updEnabled = useServerFn(updateB3ModeSettings);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>("all");
+  const [variantFilter, setVariantFilter] = useState<VariantFilter>("all");
   const [motivo, setMotivo] = useState("");
 
   const q = useQuery({
@@ -127,19 +137,26 @@ function CockpitPage() {
   const totalRobots = all.length;
   const withOpen = all.filter((c) => !!c.open).length;
   const blocked = all.filter(isRiskBlocked).length;
+  const waiting = all.filter((c) => !c.open && !isRiskBlocked(c)).length;
   const realizedToday = all.reduce((s, c) => s + Number(c.realized_today ?? 0), 0);
   const openPnl = all.reduce((s, c) => s + Number(c.unrealized_brl ?? 0), 0);
+  const variantsPresent = Array.from(new Set(all.map((c) => c.variant ?? "indicador")));
 
-  const visible = all.filter((c) => filter === "all" ? true : filter === "open" ? !!c.open : isRiskBlocked(c));
+  const visible = all
+    .filter((c) => filter === "all" ? true : filter === "open" ? !!c.open : isRiskBlocked(c))
+    .filter((c) => variantFilter === "all" ? true : (c.variant ?? "indicador") === variantFilter);
 
-  // Agrupa por ativo e, dentro do ativo, por modalidade (variant).
-  const bySymbol = new Map<string, Map<string, any[]>>();
+  // Agrupa pela RAIZ do ativo (WIN, WDO, PETR4) — o contrato rola de vencimento —
+  // e, dentro do ativo, por modalidade (variant).
+  const bySymbol = new Map<string, { contracts: Set<string>; byVariant: Map<string, any[]> }>();
   for (const c of visible) {
-    if (!bySymbol.has(c.symbol)) bySymbol.set(c.symbol, new Map());
-    const byVariant = bySymbol.get(c.symbol)!;
+    const root = rootSymbol(c.symbol);
+    if (!bySymbol.has(root)) bySymbol.set(root, { contracts: new Set(), byVariant: new Map() });
+    const group = bySymbol.get(root)!;
+    group.contracts.add(c.symbol);
     const v = c.variant ?? "indicador";
-    if (!byVariant.has(v)) byVariant.set(v, []);
-    byVariant.get(v)!.push(c);
+    if (!group.byVariant.has(v)) group.byVariant.set(v, []);
+    group.byVariant.get(v)!.push(c);
   }
 
   return (
@@ -202,7 +219,7 @@ function CockpitPage() {
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
         <p className="text-sm">
           <strong>{totalRobots}</strong> robôs · <strong>{withOpen}</strong> com posição aberta ·{" "}
-          <strong>{blocked}</strong> bloqueados
+          <strong>{waiting}</strong> aguardando · <strong>{blocked}</strong> bloqueados
         </p>
         <p className="text-sm text-muted-foreground">
           Realizado hoje:{" "}
@@ -210,11 +227,24 @@ function CockpitPage() {
           {"   ·   "}Em aberto:{" "}
           <span className={`font-mono ${openPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{BRL(openPnl)}</span>
         </p>
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
           {([["all", "Todos"], ["open", "Só com posição aberta"], ["blocked", "Só bloqueados"]] as [Filter, string][]).map(([v, label]) => (
             <Button key={v} size="sm" variant={filter === v ? "default" : "outline"} className="h-7 text-[11px]"
               onClick={() => setFilter(v)}>
               {label}
+            </Button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">Modalidade:</span>
+          <Button size="sm" variant={variantFilter === "all" ? "default" : "outline"} className="h-7 text-[11px]"
+            onClick={() => setVariantFilter("all")}>
+            Todas
+          </Button>
+          {variantsPresent.map((v: string) => (
+            <Button key={v} size="sm" variant={variantFilter === v ? "default" : "outline"} className="h-7 text-[11px]"
+              onClick={() => setVariantFilter(v)}>
+              {variantLabel(v)}
             </Button>
           ))}
         </div>
@@ -225,16 +255,19 @@ function CockpitPage() {
         <p className="text-sm text-muted-foreground">Nenhum robô para o filtro selecionado.</p>
       )}
 
-      {Array.from(bySymbol.entries()).map(([symbol, byVariant]) => (
-        <div key={symbol} className="space-y-3">
-          <h2 className="text-sm font-semibold flex items-center gap-2">
-            <Badge variant="outline" className="border-primary/40 bg-primary/10">{symbol}</Badge>
+      {Array.from(bySymbol.entries()).map(([root, group]) => (
+        <div key={root} className="space-y-3">
+          <h2 className="text-sm font-semibold flex items-center gap-2 flex-wrap">
+            <Badge variant="outline" className="border-primary/40 bg-primary/10">{root}</Badge>
+            <span className="text-[11px] text-muted-foreground font-normal">
+              {Array.from(group.contracts).join(" · ")}
+            </span>
             <span className="text-muted-foreground font-normal">
-              {Array.from(byVariant.values()).reduce((s, arr) => s + arr.length, 0)} robôs
+              {Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0)} robôs
             </span>
           </h2>
 
-          {Array.from(byVariant.entries()).map(([variant, cards]) => (
+          {Array.from(group.byVariant.entries()).map(([variant, cards]) => (
             <div key={variant} className="space-y-2 rounded-lg border border-border/40 bg-background/30 p-3">
               <h3 className="text-xs font-semibold flex items-center gap-2">
                 <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
