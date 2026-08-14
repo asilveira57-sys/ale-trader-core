@@ -227,11 +227,24 @@ function CockpitPage() {
           {"   ·   "}Em aberto:{" "}
           <span className={`font-mono ${openPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{BRL(openPnl)}</span>
         </p>
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
           {([["all", "Todos"], ["open", "Só com posição aberta"], ["blocked", "Só bloqueados"]] as [Filter, string][]).map(([v, label]) => (
             <Button key={v} size="sm" variant={filter === v ? "default" : "outline"} className="h-7 text-[11px]"
               onClick={() => setFilter(v)}>
               {label}
+            </Button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">Modalidade:</span>
+          <Button size="sm" variant={variantFilter === "all" ? "default" : "outline"} className="h-7 text-[11px]"
+            onClick={() => setVariantFilter("all")}>
+            Todas
+          </Button>
+          {variantsPresent.map((v: string) => (
+            <Button key={v} size="sm" variant={variantFilter === v ? "default" : "outline"} className="h-7 text-[11px]"
+              onClick={() => setVariantFilter(v)}>
+              {variantLabel(v)}
             </Button>
           ))}
         </div>
@@ -242,16 +255,19 @@ function CockpitPage() {
         <p className="text-sm text-muted-foreground">Nenhum robô para o filtro selecionado.</p>
       )}
 
-      {Array.from(bySymbol.entries()).map(([symbol, byVariant]) => (
-        <div key={symbol} className="space-y-3">
-          <h2 className="text-sm font-semibold flex items-center gap-2">
-            <Badge variant="outline" className="border-primary/40 bg-primary/10">{symbol}</Badge>
+      {Array.from(bySymbol.entries()).map(([root, group]) => (
+        <div key={root} className="space-y-3">
+          <h2 className="text-sm font-semibold flex items-center gap-2 flex-wrap">
+            <Badge variant="outline" className="border-primary/40 bg-primary/10">{root}</Badge>
+            <span className="text-[11px] text-muted-foreground font-normal">
+              {Array.from(group.contracts).join(" · ")}
+            </span>
             <span className="text-muted-foreground font-normal">
-              {Array.from(byVariant.values()).reduce((s, arr) => s + arr.length, 0)} robôs
+              {Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0)} robôs
             </span>
           </h2>
 
-          {Array.from(byVariant.entries()).map(([variant, cards]) => (
+          {Array.from(group.byVariant.entries()).map(([variant, cards]) => (
             <div key={variant} className="space-y-2 rounded-lg border border-border/40 bg-background/30 p-3">
               <h3 className="text-xs font-semibold flex items-center gap-2">
                 <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
