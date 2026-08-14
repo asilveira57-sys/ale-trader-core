@@ -137,19 +137,26 @@ function CockpitPage() {
   const totalRobots = all.length;
   const withOpen = all.filter((c) => !!c.open).length;
   const blocked = all.filter(isRiskBlocked).length;
+  const waiting = all.filter((c) => !c.open && !isRiskBlocked(c)).length;
   const realizedToday = all.reduce((s, c) => s + Number(c.realized_today ?? 0), 0);
   const openPnl = all.reduce((s, c) => s + Number(c.unrealized_brl ?? 0), 0);
+  const variantsPresent = Array.from(new Set(all.map((c) => c.variant ?? "indicador")));
 
-  const visible = all.filter((c) => filter === "all" ? true : filter === "open" ? !!c.open : isRiskBlocked(c));
+  const visible = all
+    .filter((c) => filter === "all" ? true : filter === "open" ? !!c.open : isRiskBlocked(c))
+    .filter((c) => variantFilter === "all" ? true : (c.variant ?? "indicador") === variantFilter);
 
-  // Agrupa por ativo e, dentro do ativo, por modalidade (variant).
-  const bySymbol = new Map<string, Map<string, any[]>>();
+  // Agrupa pela RAIZ do ativo (WIN, WDO, PETR4) — o contrato rola de vencimento —
+  // e, dentro do ativo, por modalidade (variant).
+  const bySymbol = new Map<string, { contracts: Set<string>; byVariant: Map<string, any[]> }>();
   for (const c of visible) {
-    if (!bySymbol.has(c.symbol)) bySymbol.set(c.symbol, new Map());
-    const byVariant = bySymbol.get(c.symbol)!;
+    const root = rootSymbol(c.symbol);
+    if (!bySymbol.has(root)) bySymbol.set(root, { contracts: new Set(), byVariant: new Map() });
+    const group = bySymbol.get(root)!;
+    group.contracts.add(c.symbol);
     const v = c.variant ?? "indicador";
-    if (!byVariant.has(v)) byVariant.set(v, []);
-    byVariant.get(v)!.push(c);
+    if (!group.byVariant.has(v)) group.byVariant.set(v, []);
+    group.byVariant.get(v)!.push(c);
   }
 
   return (
