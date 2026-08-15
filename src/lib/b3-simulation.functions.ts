@@ -1918,6 +1918,11 @@ async function runB3SimulationTickInner(
           } catch { /* best-effort */ }
         }
 
+        // Rede de segurança de OBSERVAÇÃO: se o nível de stop já foi atravessado
+        // (por candle M1 ou pelo tick) e ainda assim o tick terminou sem fechar,
+        // registra o stop pendente. Nada é fechado aqui.
+        await recordPendingStopIfCrossed(mode, m, open, cfg, "nível atravessado e tick encerrado sem execução");
+
 
       }
 
