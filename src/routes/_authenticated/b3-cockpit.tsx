@@ -32,18 +32,7 @@ export const Route = createFileRoute("/_authenticated/b3-cockpit")({
 });
 
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-// Casas decimais derivadas do tick do ativo: tick 5 (WIN) = inteiro,
-// tick 0,5 (WDO) = 1 casa, tick 0,01 (ações) = 2 casas.
-const decimalsForTick = (tick: number) => {
-  const t = Number(tick);
-  if (!Number.isFinite(t) || t <= 0) return 0;
-  if (t >= 1) return 0;
-  const s = t.toString();
-  if (s.includes("e-")) return Math.min(4, Number(s.split("e-")[1]));
-  return Math.min(4, (s.split(".")[1] ?? "").length);
-};
-const PX = (v: number | null | undefined, tick: number) =>
-  v == null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: decimalsForTick(tick), maximumFractionDigits: decimalsForTick(tick) });
+
 
 const MODE_COLOR: Record<string, string> = {
   conservador: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
