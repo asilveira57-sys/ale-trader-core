@@ -810,6 +810,7 @@ function SettingsForm({
 
           {F("daily_loss_limit", "Perda diária máx (R$)", "number")}
           {F("daily_gain_target", "Ganho diário alvo (R$)", "number")}
+          {F("global_daily_loss_limit_brl", "Perda diária máx. AGREGADA — 5 modos (R$)", "number")}
           {F("stop_points", "Stop (pontos)", "number")}
           {F("gain_points", "Gain (pontos)", "number")}
 
