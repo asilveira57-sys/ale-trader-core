@@ -404,6 +404,12 @@ function CockpitPage() {
                             <span className="font-mono">{BRL(c.balance)}</span>
                           </div>
 
+                          <Button asChild size="sm" variant="outline" className="w-full h-7 text-[11px]">
+                            <Link to="/b3/ativo/$symbol" params={{ symbol: rootSymbol(c.symbol) }}>
+                              Ver painel do ativo
+                            </Link>
+                          </Button>
+
                           {c.current_status === "blocked_stop" && (
                             <Dialog>
                               <DialogTrigger asChild>
