@@ -125,7 +125,7 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
       .maybeSingle();
 
     if (error) throw error;
-    if (!updated) throw new Error("Combinação ativo/modo não encontrada para este usuário.");
+    if (!updated) throw new Error("Combinação ativo/modalidade/modo não encontrada para este usuário.");
 
     return { ok: true as const, row: updated };
   });
