@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_authenticated/prd-autorizacoes")({
 });
 
 type Row = {
-  id: string; symbol: string; mode: string; enabled: boolean;
+  id: string; symbol: string; variant: string; mode: string; enabled: boolean;
   max_qty: number; max_daily_loss_brl: number;
   authorized_at: string | null; authorized_by: string | null;
 };
@@ -34,6 +34,11 @@ type Row = {
 const MODE_LABEL: Record<string, string> = {
   conservador: "Conservador", moderado: "Moderado", equilibrado: "Equilibrado",
   semi_agressivo: "Semi-agressivo", agressivo: "Agressivo",
+};
+
+const VARIANT_LABEL: Record<string, string> = {
+  indicador: "Indicador", price_action: "Price Action",
+  mean_reversion: "Reversão à média", range: "Range",
 };
 
 function PrdAuthorizationsPage() {
@@ -55,7 +60,8 @@ function PrdAuthorizationsPage() {
     mutationFn: (p: { row: Row; enabled: boolean; password: string; max_qty: number; max_daily_loss_brl: number }) =>
       setAuth({
         data: {
-          symbol: p.row.symbol as never, mode: p.row.mode as never,
+          symbol: p.row.symbol as never, variant: (p.row.variant ?? "indicador") as never,
+          mode: p.row.mode as never,
           enabled: p.enabled, max_qty: p.max_qty,
           max_daily_loss_brl: p.max_daily_loss_brl, password: p.password,
         },
@@ -81,8 +87,9 @@ function PrdAuthorizationsPage() {
   if (isLoading || !data) return <div className="p-8 text-muted-foreground">Carregando autorizações…</div>;
 
   const rows = (data.authorizations ?? []) as Row[];
+  // Agrupa por ativo + modalidade: o par autorizado é (ativo, modalidade, modo).
   const grouped = rows.reduce<Record<string, Row[]>>((acc, r) => {
-    (acc[r.symbol] ??= []).push(r);
+    (acc[`${r.symbol}||${r.variant ?? "indicador"}`] ??= []).push(r);
     return acc;
   }, {});
   const enabledCount = data.enabled_count ?? 0;
@@ -124,13 +131,19 @@ function PrdAuthorizationsPage() {
         </p>
       </div>
 
-      {Object.entries(grouped).map(([symbol, list]) => (
-        <section key={symbol} className="panel p-5 space-y-3">
-          <h2 className="font-medium">{symbol}</h2>
+      {Object.entries(grouped).map(([key, list]) => {
+        const [symbol, variant] = key.split("||");
+        return (
+        <section key={key} className="panel p-5 space-y-3">
+          <h2 className="font-medium flex items-center gap-2">
+            {symbol}
+            <Badge variant="outline">{VARIANT_LABEL[variant ?? ""] ?? variant}</Badge>
+          </h2>
           <table className="w-full text-sm">
             <thead className="text-xs uppercase text-muted-foreground border-b border-border">
               <tr>
                 <th className="text-left py-2">Modo</th>
+                <th className="text-left">Modalidade</th>
                 <th className="text-left">Status</th>
                 <th className="text-right">Qtd. máx.</th>
                 <th className="text-right">Perda diária máx.</th>
@@ -142,6 +155,7 @@ function PrdAuthorizationsPage() {
               {list.map((r) => (
                 <tr key={r.id} className="border-b border-border/40">
                   <td className="py-2 font-medium">{MODE_LABEL[r.mode] ?? r.mode}</td>
+                  <td className="text-muted-foreground">{VARIANT_LABEL[r.variant] ?? r.variant}</td>
                   <td>
                     {r.enabled
                       ? <Badge className="bg-orange-500 text-white">LIBERADO</Badge>
@@ -162,7 +176,8 @@ function PrdAuthorizationsPage() {
             </tbody>
           </table>
         </section>
-      ))}
+        );
+      })}
 
       <section className="panel p-5">
         <h2 className="font-medium mb-3">Histórico de mudanças</h2>
@@ -172,7 +187,7 @@ function PrdAuthorizationsPage() {
           <ul className="space-y-1 text-xs font-mono">
             {(data.log as any[]).map((l) => (
               <li key={l.id} className="text-muted-foreground">
-                {new Date(l.ts).toLocaleString("pt-BR")} · {l.symbol} · {l.mode} ·{" "}
+                {new Date(l.ts).toLocaleString("pt-BR")} · {l.symbol} · {VARIANT_LABEL[l.variant] ?? l.variant ?? "indicador"} · {l.mode} ·{" "}
                 <span className={l.para_enabled ? "text-orange-400" : "text-emerald-400"}>
                   {String(l.de_enabled)} → {String(l.para_enabled)}
                 </span>{" "}
@@ -197,6 +212,7 @@ function PrdAuthorizationsPage() {
             <div className="space-y-4">
               <div className="rounded-md border border-border p-3 text-sm space-y-1">
                 <div>Ativo: <span className="font-medium">{target.symbol}</span></div>
+                <div>Modalidade: <span className="font-medium">{VARIANT_LABEL[target.variant] ?? target.variant}</span></div>
                 <div>Modo: <span className="font-medium">{MODE_LABEL[target.mode] ?? target.mode}</span></div>
                 <div>Quantidade máxima: <span className="font-mono">{qty}</span> contrato(s)</div>
               </div>
