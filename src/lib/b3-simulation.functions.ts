@@ -3042,6 +3042,31 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       }
       const openByMode: Record<string, any> = {};
       for (const o of openOrders ?? []) openByMode[o.mode] = o;
+
+      // Stop pendente não executado (só leitura dos eventos gravados pelo motor).
+      const openIds = (openOrders ?? []).map((o: any) => o.id);
+      const pendingByMode: Record<string, any> = {};
+      if (openIds.length) {
+        const { data: pendEvents } = await (supabase as any).from("b3_simulation_block_events")
+          .select("mode, related_order_id, observed_value, limit_value, message, created_at, diagnostic_payload")
+          .eq("user_id", userId).eq("trigger", "stop_pendente_nao_executado")
+          .in("related_order_id", openIds)
+          .order("created_at", { ascending: false });
+        for (const ev of pendEvents ?? []) {
+          if (pendingByMode[ev.mode]) continue;
+          const ageMs = Date.now() - new Date(ev.created_at).getTime();
+          if (ageMs > 180_000) continue; // evento velho = já resolvido/sem sinal recente
+          pendingByMode[ev.mode] = {
+            beyond_pts: Number(ev.observed_value ?? 0),
+            stop_pts: Number(ev.limit_value ?? 0),
+            elapsed_s: Number(ev.diagnostic_payload?.elapsed_s ?? 0),
+            severidade: ev.diagnostic_payload?.severidade ?? "AVISO",
+            block_reason: ev.diagnostic_payload?.block_reason ?? null,
+            message: ev.message ?? null,
+            at: ev.created_at,
+          };
+        }
+      }
       const auditByMode: Record<string, any> = {};
       for (const a of auditModes) auditByMode[a.mode] = a;
       // Realizado do dia por modo: soma do net das ordens fechadas hoje.
