@@ -82,6 +82,7 @@ import { Route as ApiPublicHooksB3Mt5simTickRouteImport } from './routes/api/pub
 import { Route as ApiPublicHooksB3Mt5CommandsPendingRouteImport } from './routes/api/public/hooks/b3-mt5-commands-pending'
 import { Route as ApiPublicHooksB3Mt5CommandsAckRouteImport } from './routes/api/public/hooks/b3-mt5-commands-ack'
 import { Route as ApiPublicHooksAutoTickRouteImport } from './routes/api/public/hooks/auto-tick'
+import { Route as AuthenticatedB3AtivoSymbolRouteImport } from './routes/_authenticated/b3_.ativo.$symbol'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -481,6 +482,12 @@ const ApiPublicHooksAutoTickRoute = ApiPublicHooksAutoTickRouteImport.update({
   path: '/api/public/hooks/auto-tick',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedB3AtivoSymbolRoute =
+  AuthenticatedB3AtivoSymbolRouteImport.update({
+    id: '/b3_/ativo/$symbol',
+    path: '/b3/ativo/$symbol',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -544,6 +551,7 @@ export interface FileRoutesByFullPath {
   '/library/$expertId': typeof AuthenticatedLibraryExpertIdRoute
   '/reports/$reportId': typeof AuthenticatedReportsReportIdRoute
   '/backtest/': typeof AuthenticatedBacktestIndexRoute
+  '/b3/ativo/$symbol': typeof AuthenticatedB3AtivoSymbolRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
   '/api/public/hooks/b3-mt5-commands-ack': typeof ApiPublicHooksB3Mt5CommandsAckRoute
   '/api/public/hooks/b3-mt5-commands-pending': typeof ApiPublicHooksB3Mt5CommandsPendingRoute
@@ -618,6 +626,7 @@ export interface FileRoutesByTo {
   '/library/$expertId': typeof AuthenticatedLibraryExpertIdRoute
   '/reports/$reportId': typeof AuthenticatedReportsReportIdRoute
   '/backtest': typeof AuthenticatedBacktestIndexRoute
+  '/b3/ativo/$symbol': typeof AuthenticatedB3AtivoSymbolRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
   '/api/public/hooks/b3-mt5-commands-ack': typeof ApiPublicHooksB3Mt5CommandsAckRoute
   '/api/public/hooks/b3-mt5-commands-pending': typeof ApiPublicHooksB3Mt5CommandsPendingRoute
@@ -694,6 +703,7 @@ export interface FileRoutesById {
   '/_authenticated/library/$expertId': typeof AuthenticatedLibraryExpertIdRoute
   '/_authenticated/reports/$reportId': typeof AuthenticatedReportsReportIdRoute
   '/_authenticated/backtest/': typeof AuthenticatedBacktestIndexRoute
+  '/_authenticated/b3_/ativo/$symbol': typeof AuthenticatedB3AtivoSymbolRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
   '/api/public/hooks/b3-mt5-commands-ack': typeof ApiPublicHooksB3Mt5CommandsAckRoute
   '/api/public/hooks/b3-mt5-commands-pending': typeof ApiPublicHooksB3Mt5CommandsPendingRoute
@@ -770,6 +780,7 @@ export interface FileRouteTypes {
     | '/library/$expertId'
     | '/reports/$reportId'
     | '/backtest/'
+    | '/b3/ativo/$symbol'
     | '/api/public/hooks/auto-tick'
     | '/api/public/hooks/b3-mt5-commands-ack'
     | '/api/public/hooks/b3-mt5-commands-pending'
@@ -844,6 +855,7 @@ export interface FileRouteTypes {
     | '/library/$expertId'
     | '/reports/$reportId'
     | '/backtest'
+    | '/b3/ativo/$symbol'
     | '/api/public/hooks/auto-tick'
     | '/api/public/hooks/b3-mt5-commands-ack'
     | '/api/public/hooks/b3-mt5-commands-pending'
@@ -919,6 +931,7 @@ export interface FileRouteTypes {
     | '/_authenticated/library/$expertId'
     | '/_authenticated/reports/$reportId'
     | '/_authenticated/backtest/'
+    | '/_authenticated/b3_/ativo/$symbol'
     | '/api/public/hooks/auto-tick'
     | '/api/public/hooks/b3-mt5-commands-ack'
     | '/api/public/hooks/b3-mt5-commands-pending'
@@ -1462,6 +1475,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksAutoTickRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/b3_/ativo/$symbol': {
+      id: '/_authenticated/b3_/ativo/$symbol'
+      path: '/b3/ativo/$symbol'
+      fullPath: '/b3/ativo/$symbol'
+      preLoaderRoute: typeof AuthenticatedB3AtivoSymbolRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -1555,6 +1575,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBacktestDataRoute: typeof AuthenticatedBacktestDataRoute
   AuthenticatedBacktestNewRoute: typeof AuthenticatedBacktestNewRoute
   AuthenticatedBacktestIndexRoute: typeof AuthenticatedBacktestIndexRoute
+  AuthenticatedB3AtivoSymbolRoute: typeof AuthenticatedB3AtivoSymbolRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -1614,6 +1635,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBacktestDataRoute: AuthenticatedBacktestDataRoute,
   AuthenticatedBacktestNewRoute: AuthenticatedBacktestNewRoute,
   AuthenticatedBacktestIndexRoute: AuthenticatedBacktestIndexRoute,
+  AuthenticatedB3AtivoSymbolRoute: AuthenticatedB3AtivoSymbolRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

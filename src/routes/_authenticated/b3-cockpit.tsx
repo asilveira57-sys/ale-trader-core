@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, AlertTriangle } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
+import { rootSymbol, PX } from "@/lib/b3-format";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
   resetB3DailyStop, updateB3ModeSettings,
@@ -32,18 +33,7 @@ export const Route = createFileRoute("/_authenticated/b3-cockpit")({
 });
 
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-// Casas decimais derivadas do tick do ativo: tick 5 (WIN) = inteiro,
-// tick 0,5 (WDO) = 1 casa, tick 0,01 (ações) = 2 casas.
-const decimalsForTick = (tick: number) => {
-  const t = Number(tick);
-  if (!Number.isFinite(t) || t <= 0) return 0;
-  if (t >= 1) return 0;
-  const s = t.toString();
-  if (s.includes("e-")) return Math.min(4, Number(s.split("e-")[1]));
-  return Math.min(4, (s.split(".")[1] ?? "").length);
-};
-const PX = (v: number | null | undefined, tick: number) =>
-  v == null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: decimalsForTick(tick), maximumFractionDigits: decimalsForTick(tick) });
+
 
 const MODE_COLOR: Record<string, string> = {
   conservador: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
@@ -67,13 +57,6 @@ const VARIANT_COLOR: Record<string, string> = {
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
 const isRiskBlocked = (c: any) => c.current_status === "blocked_stop" || !!c.protection_block_reason;
 
-// Contratos futuros (WINV26, WDOU26) rolam de vencimento; agrupa pela raiz do
-// ativo pra que a virada de contrato não quebre o agrupamento da tela.
-const rootSymbol = (symbol: string) => {
-  const s = String(symbol ?? "").toUpperCase();
-  const m = s.match(/^([A-Z]{3})[A-Z]\d{2}$/);
-  return m ? m[1] : s;
-};
 
 type Filter = "all" | "open" | "blocked";
 type VariantFilter = "all" | string;
@@ -260,6 +243,9 @@ function CockpitPage() {
             <span className="text-muted-foreground font-normal">
               {Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0)} robôs
             </span>
+            <Button asChild size="sm" variant="outline" className="h-6 text-[10px] ml-auto">
+              <Link to="/b3/ativo/$symbol" params={{ symbol: root }}>ver painel</Link>
+            </Button>
           </h2>
 
           {Array.from(group.byVariant.entries()).map(([variant, cards]) => (
@@ -417,6 +403,12 @@ function CockpitPage() {
                             <span className="text-muted-foreground">Saldo atual</span>
                             <span className="font-mono">{BRL(c.balance)}</span>
                           </div>
+
+                          <Button asChild size="sm" variant="outline" className="w-full h-7 text-[11px]">
+                            <Link to="/b3/ativo/$symbol" params={{ symbol: rootSymbol(c.symbol) }}>
+                              Ver painel do ativo
+                            </Link>
+                          </Button>
 
                           {c.current_status === "blocked_stop" && (
                             <Dialog>
