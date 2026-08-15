@@ -580,6 +580,23 @@ function Scoreboard() {
           {overPeak && <p className="text-[11px] text-rose-400">exposição acima do capital disponível</p>}
         </div>
       </div>
+
+      {/* Saúde da cotação — idade do último tick por ativo */}
+      {quotes.length > 0 && (
+        <p className="text-[11px] text-muted-foreground border-t border-border/40 pt-2">
+          Cotação:{" "}
+          {quotes.map((q, i) => (
+            <span key={q.symbol}>
+              {i > 0 && " · "}
+              <span className={q.stale ? "text-rose-400 font-semibold" : ""}>
+                {rootSymbol(q.symbol)} {q.age_s == null ? "sem tick" : `${q.age_s}s`}
+              </span>
+            </span>
+          ))}
+          <span className="opacity-60"> (limite {guardLimit}s)</span>
+        </p>
+      )}
+
     </section>
   );
 }
