@@ -3109,6 +3109,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           reactivated_today: reactivatedToday,
           score: audit?.last_score ?? null, confidence: audit?.last_confidence ?? null,
           blocked_reason: open ? null : (audit?.first_stop?.label ?? audit?.last_refusal_reason ?? null),
+          pending_stop: open ? (pendingByMode[m] ?? null) : null,
         });
       }
     }
