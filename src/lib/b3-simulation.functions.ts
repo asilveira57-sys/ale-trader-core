@@ -1435,6 +1435,7 @@ async function runB3SimulationTickInner(
           related_order_id: open?.id ?? null,
           message: `Cotação interrompida há ${quoteAgeS.toFixed(0)}s com posição aberta — novas entradas bloqueadas até retomada.`,
         });
+        await recordPendingStopIfCrossed(mode, m, open, cfg, `cotação parada há ${quoteAgeS.toFixed(0)}s (guard de tick)`);
         log.push({ mode, action: "skip", reason: "quote_stall_open_position", stall_s: quoteAgeS, has_open: Boolean(open) });
         // finalizeAudit ainda não está definida neste ponto (é declarada dentro do bloco abaixo),
         // portanto empilhamos manualmente uma entrada mínima no tickAudit e continuamos.
