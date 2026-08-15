@@ -1325,6 +1325,87 @@ async function runB3SimulationTickInner(
       threshold_s: 10,
     };
 
+    // ───────── STOP PENDENTE NÃO EXECUTADO (somente observação) ─────────
+    // Não fecha nada, não altera limiar, entrada, saída nem trailing: apenas
+    // detecta que o nível de stop já foi atravessado e o tick terminou sem
+    // execução, registra o evento e escala a severidade pelo tempo parado.
+    const pendingStopSeen = new Set<string>();
+    async function recordPendingStopIfCrossed(
+      mode: string, m: any, open: any, cfg: any, blockReason: string,
+    ) {
+      try {
+        if (!open || !cfg || pendingStopSeen.has(open.id)) return;
+        pendingStopSeen.add(open.id);
+        const dir = open.side === "buy" ? 1 : -1;
+        const stopPts = Number(cfg.stop_pts ?? 0);
+        if (!(stopPts > 0)) return;
+        const entryPrice = Number(open.entry_price);
+        if (!Number.isFinite(entryPrice)) return;
+        const stopLevel = entryPrice - dir * stopPts;
+        const entryMs = open.entry_time ? new Date(open.entry_time).getTime() : 0;
+
+        // Pior preço adverso já observado: tick corrente + extremos dos candles M1 desde a entrada.
+        let worst = Number(priceSrc.raw?.last ?? ctx.price);
+        let crossedAtMs: number | null = null;
+        for (const c of m1Candles ?? []) {
+          const t = new Date(c.minute_ts).getTime();
+          if (!(t >= entryMs)) continue;
+          const ext = dir === 1 ? Number(c.candle_low) : Number(c.candle_high);
+          if (!Number.isFinite(ext)) continue;
+          if (dir === 1 ? ext < worst : ext > worst) worst = ext;
+          const touched = dir === 1 ? ext <= stopLevel : ext >= stopLevel;
+          if (touched && crossedAtMs == null) crossedAtMs = t;
+        }
+        const beyondPts = (stopLevel - worst) * dir;
+        if (!(beyondPts > 0)) return;
+
+        const nowPendMs = Date.now();
+        const { data: prevEvents } = await (supabase as any).from("b3_simulation_block_events")
+          .select("id, created_at")
+          .eq("user_id", userId).eq("related_order_id", open.id)
+          .eq("trigger", "stop_pendente_nao_executado")
+          .order("created_at", { ascending: true });
+        const list: any[] = prevEvents ?? [];
+        const firstMs = list.length ? new Date(list[0].created_at).getTime() : (crossedAtMs ?? nowPendMs);
+        const lastMs = list.length ? new Date(list[list.length - 1].created_at).getTime() : 0;
+        const elapsedS = Math.max(0, Math.round((nowPendMs - firstMs) / 1000));
+        const attempts = list.length + 1;
+        const nivel = elapsedS > 300 ? "CRÍTICO" : elapsedS > 60 ? "GRAVE" : "AVISO";
+        const severity = elapsedS > 300 ? "critical" : elapsedS > 60 ? "error" : "warning";
+        const message = `Stop atravessado em ${beyondPts.toFixed(0)} pts há ${elapsedS}s sem execução — motivo: ${blockReason} [${nivel}, ${attempts} tentativa(s)]`;
+
+        // Agrupamento anti-enxurrada: no máximo 1 registro por minuto por ordem.
+        if (lastMs && nowPendMs - lastMs < 60_000) return;
+
+        await (supabase as any).from("b3_simulation_block_events").insert({
+          simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId, mode,
+          prev_status: m.current_status ?? null, new_status: m.current_status ?? null,
+          trigger: "stop_pendente_nao_executado",
+          observed_value: beyondPts, limit_value: stopPts,
+          related_order_id: open.id, message,
+          provider_name: priceSrc.provider_name ?? null,
+          price_source: priceSrc.quote_source ?? null,
+          mt5_last: Number(priceSrc.raw?.last ?? ctx.price) || null,
+          diagnostic_payload: {
+            severidade: nivel, elapsed_s: elapsedS, attempts, block_reason: blockReason,
+            stop_level: stopLevel, worst_price: worst, entry_price: entryPrice, side: open.side,
+            quote_age_s: Number(priceSrc.quote_age_s ?? 0), symbol: asset.symbol,
+          },
+        });
+        await supabase.from("system_logs").insert({
+          event_type: "stop_pendente_nao_executado",
+          source: `b3:${asset.symbol}:${mode}`,
+          message, severity,
+          technical_data: {
+            order_id: open.id, run_id: runId, mode, symbol: asset.symbol,
+            beyond_pts: beyondPts, stop_pts: stopPts, elapsed_s: elapsedS,
+            attempts, block_reason: blockReason,
+          } as any,
+        });
+      } catch { /* observação nunca derruba o motor */ }
+    }
+
+
     // Timings por modo + isolamento de falha: um modo que estoura não pode
     // derrubar os modos seguintes nem impedir a gravação do snapshot.
     const modeTimings: Record<string, number> = {};
