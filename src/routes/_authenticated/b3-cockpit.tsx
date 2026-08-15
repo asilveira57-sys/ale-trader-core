@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock } from "lucide-react";
+import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, AlertTriangle } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
@@ -356,7 +356,17 @@ function CockpitPage() {
 
                       {/* ── Fechar posição: sempre visível quando há posição ── */}
                       {hasPosition && (
-                        <div className="px-3 pb-3">
+                        <div className="px-3 pb-3 space-y-2">
+                          {c.pending_stop && (
+                            <div className="rounded-md border border-rose-500/60 bg-rose-950/50 px-2 py-1.5 text-[11px] font-semibold text-rose-200 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                              <span>
+                                STOP PENDENTE há {Math.max(1, Math.round(Number(c.pending_stop.elapsed_s ?? 0) / 60))} min ·{" "}
+                                {Math.round(Number(c.pending_stop.beyond_pts ?? 0))} pts além do nível
+                              </span>
+                            </div>
+                          )}
+
                           <Dialog>
                             <DialogTrigger asChild>
                               <Button size="sm" variant="destructive" className="w-full h-7 text-[11px]">
@@ -495,8 +505,20 @@ function Scoreboard() {
   const overNow = capital > 0 && exposicao > capital;
   const overPeak = capital > 0 && pico > capital;
 
+  const stopsPendentes = Number(d.stops_pendentes ?? 0);
+  const quotes: any[] = d.quotes_health ?? [];
+  const guardLimit = Number(d.quote_guard_limit_s ?? 45);
+
   return (
     <section className="rounded-xl border border-border/60 bg-card p-4 space-y-4">
+      {/* Faixa de alerta — stop pendente não executado */}
+      {stopsPendentes > 0 && (
+        <div className="-m-4 mb-0 rounded-t-xl bg-rose-600/90 px-4 py-2 text-sm font-semibold text-white flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4" />
+          {stopsPendentes} {stopsPendentes === 1 ? "robô" : "robôs"} com stop pendente não executado
+        </div>
+      )}
+
       {/* Linha 1 — números em corpo muito grande */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
@@ -558,6 +580,23 @@ function Scoreboard() {
           {overPeak && <p className="text-[11px] text-rose-400">exposição acima do capital disponível</p>}
         </div>
       </div>
+
+      {/* Saúde da cotação — idade do último tick por ativo */}
+      {quotes.length > 0 && (
+        <p className="text-[11px] text-muted-foreground border-t border-border/40 pt-2">
+          Cotação:{" "}
+          {quotes.map((q, i) => (
+            <span key={q.symbol}>
+              {i > 0 && " · "}
+              <span className={q.stale ? "text-rose-400 font-semibold" : ""}>
+                {rootSymbol(q.symbol)} {q.age_s == null ? "sem tick" : `${q.age_s}s`}
+              </span>
+            </span>
+          ))}
+          <span className="opacity-60"> (limite {guardLimit}s)</span>
+        </p>
+      )}
+
     </section>
   );
 }

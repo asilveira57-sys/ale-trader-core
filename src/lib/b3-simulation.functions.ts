@@ -1325,6 +1325,87 @@ async function runB3SimulationTickInner(
       threshold_s: 10,
     };
 
+    // ───────── STOP PENDENTE NÃO EXECUTADO (somente observação) ─────────
+    // Não fecha nada, não altera limiar, entrada, saída nem trailing: apenas
+    // detecta que o nível de stop já foi atravessado e o tick terminou sem
+    // execução, registra o evento e escala a severidade pelo tempo parado.
+    const pendingStopSeen = new Set<string>();
+    async function recordPendingStopIfCrossed(
+      mode: string, m: any, open: any, cfg: any, blockReason: string,
+    ) {
+      try {
+        if (!open || !cfg || pendingStopSeen.has(open.id)) return;
+        pendingStopSeen.add(open.id);
+        const dir = open.side === "buy" ? 1 : -1;
+        const stopPts = Number(cfg.stop_pts ?? 0);
+        if (!(stopPts > 0)) return;
+        const entryPrice = Number(open.entry_price);
+        if (!Number.isFinite(entryPrice)) return;
+        const stopLevel = entryPrice - dir * stopPts;
+        const entryMs = open.entry_time ? new Date(open.entry_time).getTime() : 0;
+
+        // Pior preço adverso já observado: tick corrente + extremos dos candles M1 desde a entrada.
+        let worst = Number(priceSrc.raw?.last ?? ctx.price);
+        let crossedAtMs: number | null = null;
+        for (const c of m1Candles ?? []) {
+          const t = new Date(c.minute_ts).getTime();
+          if (!(t >= entryMs)) continue;
+          const ext = dir === 1 ? Number(c.candle_low) : Number(c.candle_high);
+          if (!Number.isFinite(ext)) continue;
+          if (dir === 1 ? ext < worst : ext > worst) worst = ext;
+          const touched = dir === 1 ? ext <= stopLevel : ext >= stopLevel;
+          if (touched && crossedAtMs == null) crossedAtMs = t;
+        }
+        const beyondPts = (stopLevel - worst) * dir;
+        if (!(beyondPts > 0)) return;
+
+        const nowPendMs = Date.now();
+        const { data: prevEvents } = await (supabase as any).from("b3_simulation_block_events")
+          .select("id, created_at")
+          .eq("user_id", userId).eq("related_order_id", open.id)
+          .eq("trigger", "stop_pendente_nao_executado")
+          .order("created_at", { ascending: true });
+        const list: any[] = prevEvents ?? [];
+        const firstMs = list.length ? new Date(list[0].created_at).getTime() : (crossedAtMs ?? nowPendMs);
+        const lastMs = list.length ? new Date(list[list.length - 1].created_at).getTime() : 0;
+        const elapsedS = Math.max(0, Math.round((nowPendMs - firstMs) / 1000));
+        const attempts = list.length + 1;
+        const nivel = elapsedS > 300 ? "CRÍTICO" : elapsedS > 60 ? "GRAVE" : "AVISO";
+        const severity = elapsedS > 300 ? "critical" : elapsedS > 60 ? "error" : "warning";
+        const message = `Stop atravessado em ${beyondPts.toFixed(0)} pts há ${elapsedS}s sem execução — motivo: ${blockReason} [${nivel}, ${attempts} tentativa(s)]`;
+
+        // Agrupamento anti-enxurrada: no máximo 1 registro por minuto por ordem.
+        if (lastMs && nowPendMs - lastMs < 60_000) return;
+
+        await (supabase as any).from("b3_simulation_block_events").insert({
+          simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId, mode,
+          prev_status: m.current_status ?? null, new_status: m.current_status ?? null,
+          trigger: "stop_pendente_nao_executado",
+          observed_value: beyondPts, limit_value: stopPts,
+          related_order_id: open.id, message,
+          provider_name: priceSrc.provider_name ?? null,
+          price_source: priceSrc.quote_source ?? null,
+          mt5_last: Number(priceSrc.raw?.last ?? ctx.price) || null,
+          diagnostic_payload: {
+            severidade: nivel, elapsed_s: elapsedS, attempts, block_reason: blockReason,
+            stop_level: stopLevel, worst_price: worst, entry_price: entryPrice, side: open.side,
+            quote_age_s: Number(priceSrc.quote_age_s ?? 0), symbol: asset.symbol,
+          },
+        });
+        await supabase.from("system_logs").insert({
+          event_type: "stop_pendente_nao_executado",
+          source: `b3:${asset.symbol}:${mode}`,
+          message, severity,
+          technical_data: {
+            order_id: open.id, run_id: runId, mode, symbol: asset.symbol,
+            beyond_pts: beyondPts, stop_pts: stopPts, elapsed_s: elapsedS,
+            attempts, block_reason: blockReason,
+          } as any,
+        });
+      } catch { /* observação nunca derruba o motor */ }
+    }
+
+
     // Timings por modo + isolamento de falha: um modo que estoura não pode
     // derrubar os modos seguintes nem impedir a gravação do snapshot.
     const modeTimings: Record<string, number> = {};
@@ -1354,6 +1435,7 @@ async function runB3SimulationTickInner(
           related_order_id: open?.id ?? null,
           message: `Cotação interrompida há ${quoteAgeS.toFixed(0)}s com posição aberta — novas entradas bloqueadas até retomada.`,
         });
+        await recordPendingStopIfCrossed(mode, m, open, cfg, `cotação parada há ${quoteAgeS.toFixed(0)}s (guard de tick)`);
         log.push({ mode, action: "skip", reason: "quote_stall_open_position", stall_s: quoteAgeS, has_open: Boolean(open) });
         // finalizeAudit ainda não está definida neste ponto (é declarada dentro do bloco abaixo),
         // portanto empilhamos manualmente uma entrada mínima no tickAudit e continuamos.
@@ -1616,6 +1698,7 @@ async function runB3SimulationTickInner(
             forceLog: false,
             diagnostic_payload: { function: "runB3SimulationTick.markToMarket", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
+          await recordPendingStopIfCrossed(mode, m, open, cfg, `auditoria de execução/guard de preço rejeitou: ${(e as Error).message}`);
           log.push({ mode, action: "skip", reason: "price_guard", message: (e as Error).message });
           finalizeAudit((e as Error).message);
           continue;
@@ -1834,6 +1917,11 @@ async function runB3SimulationTickInner(
             open.last_eval_minute_ts = lastEvaluatedMinuteTs;
           } catch { /* best-effort */ }
         }
+
+        // Rede de segurança de OBSERVAÇÃO: se o nível de stop já foi atravessado
+        // (por candle M1 ou pelo tick) e ainda assim o tick terminou sem fechar,
+        // registra o stop pendente. Nada é fechado aqui.
+        await recordPendingStopIfCrossed(mode, m, open, cfg, "nível atravessado e tick encerrado sem execução");
 
 
       }
@@ -2954,6 +3042,31 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       }
       const openByMode: Record<string, any> = {};
       for (const o of openOrders ?? []) openByMode[o.mode] = o;
+
+      // Stop pendente não executado (só leitura dos eventos gravados pelo motor).
+      const openIds = (openOrders ?? []).map((o: any) => o.id);
+      const pendingByMode: Record<string, any> = {};
+      if (openIds.length) {
+        const { data: pendEvents } = await (supabase as any).from("b3_simulation_block_events")
+          .select("mode, related_order_id, observed_value, limit_value, message, created_at, diagnostic_payload")
+          .eq("user_id", userId).eq("trigger", "stop_pendente_nao_executado")
+          .in("related_order_id", openIds)
+          .order("created_at", { ascending: false });
+        for (const ev of pendEvents ?? []) {
+          if (pendingByMode[ev.mode]) continue;
+          const ageMs = Date.now() - new Date(ev.created_at).getTime();
+          if (ageMs > 180_000) continue; // evento velho = já resolvido/sem sinal recente
+          pendingByMode[ev.mode] = {
+            beyond_pts: Number(ev.observed_value ?? 0),
+            stop_pts: Number(ev.limit_value ?? 0),
+            elapsed_s: Number(ev.diagnostic_payload?.elapsed_s ?? 0),
+            severidade: ev.diagnostic_payload?.severidade ?? "AVISO",
+            block_reason: ev.diagnostic_payload?.block_reason ?? null,
+            message: ev.message ?? null,
+            at: ev.created_at,
+          };
+        }
+      }
       const auditByMode: Record<string, any> = {};
       for (const a of auditModes) auditByMode[a.mode] = a;
       // Realizado do dia por modo: soma do net das ordens fechadas hoje.
@@ -2996,6 +3109,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           reactivated_today: reactivatedToday,
           score: audit?.last_score ?? null, confidence: audit?.last_confidence ?? null,
           blocked_reason: open ? null : (audit?.first_stop?.label ?? audit?.last_refusal_reason ?? null),
+          pending_stop: open ? (pendingByMode[m] ?? null) : null,
         });
       }
     }
@@ -3034,6 +3148,9 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
       lucro_bruto_brl: 0, prejuizo_bruto_brl: 0, aberto_positivo_brl: 0, aberto_negativo_brl: 0,
       melhor_robo: null as any, pior_robo: null as any,
       pico_exposicao_brl: 0, pico_exposicao_hora: null as string | null, pico_posicoes: 0,
+      stops_pendentes: 0,
+      quotes_health: [] as { symbol: string; age_s: number | null; stale: boolean }[],
+      quote_guard_limit_s: 45,
     };
     if (!runIds.length) return empty;
 
@@ -3048,7 +3165,7 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     // Ordens do dia (abertas + fechadas hoje) e último preço por run.
     const [{ data: orders }, { data: snaps }] = await Promise.all([
       (supabase as any).from("b3_simulation_orders")
-        .select("simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
+        .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
         .eq("user_id", userId).in("simulation_run_id", runIds).in("status", ["open", "closed"])
         .gte("entry_time", dayStartUtc),
       (supabase as any).from("b3_simulation_market_snapshots")
@@ -3124,6 +3241,33 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
       timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit",
     }).format(new Date(picoT));
 
+    // Stops pendentes não executados: contagem de ordens abertas com evento
+    // recente (último 3 min) gravado pelo motor. Somente leitura.
+    const openIdsToday = (orders ?? []).filter((o: any) => o.status === "open").map((o: any) => o.id);
+    let stopsPendentes = 0;
+    if (openIdsToday.length) {
+      const { data: pendEvents } = await (supabase as any).from("b3_simulation_block_events")
+        .select("related_order_id, created_at")
+        .eq("user_id", userId).eq("trigger", "stop_pendente_nao_executado")
+        .in("related_order_id", openIdsToday)
+        .gte("created_at", new Date(Date.now() - 180_000).toISOString());
+      stopsPendentes = new Set((pendEvents ?? []).map((e: any) => e.related_order_id)).size;
+    }
+
+    // Saúde da cotação: idade do último tick por ativo das runs ativas.
+    const quotesHealth: { symbol: string; age_s: number | null; stale: boolean }[] = [];
+    const quoteGuardLimitS = 45;
+    for (const symbol of Array.from(new Set(runList.map((r) => r.symbol)))) {
+      const asset = profiles[symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
+      const candidates = Array.from(new Set([asset.symbol, asset.quote_symbol, symbol].filter(Boolean)));
+      const { data: q } = await (supabase as any).from("b3_mt5sim_quotes")
+        .select("tick_ts").eq("user_id", userId).in("symbol", candidates as string[])
+        .order("tick_ts", { ascending: false }).limit(1);
+      const tickTs = q?.[0]?.tick_ts ? new Date(q[0].tick_ts).getTime() : null;
+      const ageS = tickTs == null ? null : Math.max(0, Math.round((Date.now() - tickTs) / 1000));
+      quotesHealth.push({ symbol, age_s: ageS, stale: ageS == null || ageS > quoteGuardLimitS });
+    }
+
     return {
       ...empty,
       saldo_dia_brl: saldoDia,
@@ -3139,6 +3283,9 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
       pico_exposicao_brl: picoM * 1.3,
       pico_exposicao_hora: horaPico,
       pico_posicoes: picoQ,
+      stops_pendentes: stopsPendentes,
+      quotes_health: quotesHealth,
+      quote_guard_limit_s: quoteGuardLimitS,
     };
   });
 
