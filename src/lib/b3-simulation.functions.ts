@@ -3283,6 +3283,9 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
       pico_exposicao_brl: picoM * 1.3,
       pico_exposicao_hora: horaPico,
       pico_posicoes: picoQ,
+      stops_pendentes: stopsPendentes,
+      quotes_health: quotesHealth,
+      quote_guard_limit_s: quoteGuardLimitS,
     };
   });
 
