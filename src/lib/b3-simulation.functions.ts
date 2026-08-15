@@ -1698,6 +1698,7 @@ async function runB3SimulationTickInner(
             forceLog: false,
             diagnostic_payload: { function: "runB3SimulationTick.markToMarket", attempted_context_price: ctx.price, ...quoteAuditBase(priceSrc) },
           });
+          await recordPendingStopIfCrossed(mode, m, open, cfg, `auditoria de execução/guard de preço rejeitou: ${(e as Error).message}`);
           log.push({ mode, action: "skip", reason: "price_guard", message: (e as Error).message });
           finalizeAudit((e as Error).message);
           continue;
