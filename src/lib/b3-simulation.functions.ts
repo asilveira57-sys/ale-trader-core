@@ -108,19 +108,27 @@ const REAL_QTY_BY_MODE: Record<Mode, number> = {
 const MODE_INDEX: Record<Mode, number> = {
   conservador: 1, moderado: 2, equilibrado: 3, semi_agressivo: 4, agressivo: 5,
 };
-// Magic number = 2000 + (bloco de 100 por ativo) + índice do modo (1-5).
+// Magic number = 2000 + (bloco de 100 por ativo) + (bloco de 500 por
+// modalidade) + índice do modo (1-5).
 // Faixa 2000+ nunca colide com nada que a conta demo venha a usar (essa
 // ficaria em 1000+, se um dia o espelho demo também usar essa fila).
-// CORRIGIDO em 06/08/2026: antes o número era só por modo, então WIN e WDO
-// (e agora PETR4/VALE3) usariam o MESMO magic number — risco real numa
-// conta com vários ativos simultâneos. Agora cada ativo tem seu bloco:
-// WIN=2001-2005, WDO=2101-2105, PETR4=2201-2205, VALE3=2301-2305.
+// CORRIGIDO em 06/08/2026: cada ativo ganhou seu bloco (WIN=2000, WDO=2100,
+// PETR4=2200, VALE3=2300).
+// CORRIGIDO em 15/08/2026: com duas modalidades rodando no mesmo ativo, o
+// número era igual para os dois robôs e no MT5 um fecharia a posição do
+// outro. Agora a modalidade entra no cálculo:
+//   indicador=+0, price_action=+500, mean_reversion=+1000, range=+1500.
+// Ex.: WIN price_action semi_agressivo = 2000 + 500 + 4 = 2504.
 const REAL_MAGIC_ASSET_BLOCK: Record<string, number> = {
   WIN: 2000, WDO: 2100, PETR4: 2200, VALE3: 2300,
 };
-function realMagicNumber(quoteSymbol: string, mode: Mode): number {
+export const REAL_MAGIC_VARIANT_BLOCK: Record<string, number> = {
+  indicador: 0, price_action: 500, mean_reversion: 1000, range: 1500,
+};
+export function realMagicNumber(quoteSymbol: string, variant: string, mode: Mode): number {
   const block = REAL_MAGIC_ASSET_BLOCK[quoteSymbol] ?? 2900; // ativo novo não cadastrado: bloco genérico
-  return block + MODE_INDEX[mode];
+  const variantBlock = REAL_MAGIC_VARIANT_BLOCK[variant ?? "indicador"] ?? 2000; // modalidade nova: bloco genérico
+  return block + variantBlock + MODE_INDEX[mode];
 }
 
 async function mirrorToReal(
@@ -128,13 +136,16 @@ async function mirrorToReal(
   action: "open" | "close", side: "buy" | "sell", idempotencyKey: string,
   requestedBy: "engine_auto" | "user_manual_close" | "user_close_all",
   symbol: string = "WIN",
+  variant: string = "indicador",
 ) {
   if (!REAL_MIRROR_ENABLED) return;
 
   // ── PORTÃO DE AUTORIZAÇÃO REAL (nega por padrão) ──
-  // Sem linha autorizada em b3_prd_authorizations para user+symbol+mode,
-  // nenhum comando real é enfileirado. Falha de consulta = falha FECHADA.
-  // Nenhum registro de bloqueio é gravado (decisão do usuário).
+  // Sem linha autorizada em b3_prd_authorizations para
+  // user+symbol+variant+mode, nenhum comando real é enfileirado. Falha de
+  // consulta = falha FECHADA. Nenhum registro de bloqueio é gravado
+  // (decisão do usuário). A modalidade entrou na chave em 15/08/2026:
+  // autorizar 'indicador' não autoriza 'price_action' no mesmo ativo/modo.
   let authMaxQty = 1;
   try {
     const { data: auth, error: authErr } = await supabase
@@ -142,6 +153,7 @@ async function mirrorToReal(
       .select("enabled, max_qty")
       .eq("user_id", userId)
       .eq("symbol", symbol)
+      .eq("variant", variant)
       .eq("mode", mode)
       .maybeSingle();
     if (authErr) return;
@@ -155,14 +167,14 @@ async function mirrorToReal(
 
   try {
     await supabase.from("b3_mt5_commands").insert({
-      user_id: userId, env: "real", simulation_run_id: runId, mode,
+      user_id: userId, env: "real", simulation_run_id: runId, mode, variant,
       action, side, symbol, quantity,
-      magic_number: realMagicNumber(symbol, mode), idempotency_key: idempotencyKey,
+      magic_number: realMagicNumber(symbol, variant, mode), idempotency_key: idempotencyKey,
       requested_by: requestedBy,
     });
   } catch (e) {
     // Espelhamento nunca pode derrubar o motor de simulação — só loga.
-    console.error(`[mirror] falha ao espelhar ${action} de ${mode} pra real:`, (e as Error).message);
+    console.error(`[mirror] falha ao espelhar ${action} de ${mode}/${variant} pra real:`, (e as Error).message);
   }
 }
 
