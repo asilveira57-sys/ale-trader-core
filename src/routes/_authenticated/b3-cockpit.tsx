@@ -13,7 +13,7 @@ import {
 import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import {
-  getB3CockpitOverview, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
+  getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
   resetB3DailyStop, updateB3ModeSettings,
 } from "@/lib/b3-simulation.functions";
 
@@ -138,8 +138,6 @@ function CockpitPage() {
   const withOpen = all.filter((c) => !!c.open).length;
   const blocked = all.filter(isRiskBlocked).length;
   const waiting = all.filter((c) => !c.open && !isRiskBlocked(c)).length;
-  const realizedToday = all.reduce((s, c) => s + Number(c.realized_today ?? 0), 0);
-  const openPnl = all.reduce((s, c) => s + Number(c.unrealized_brl ?? 0), 0);
   const variantsPresent = Array.from(new Set(all.map((c) => c.variant ?? "indicador")));
 
   const visible = all
@@ -453,5 +451,113 @@ function CockpitPage() {
         </div>
       ))}
     </div>
+  );
+}
+
+// ── Placar digital do dia: poucos números grandes, o resto em linha secundária.
+// Somente leitura; nada aqui altera o motor de simulação.
+const SIGNED = (v: number) => `${v > 0 ? "+" : ""}${BRL(v)}`;
+const pnlColorOf = (v: number) => (v >= 0 ? "text-emerald-400" : "text-rose-400");
+
+function RobotLine({ label, robot }: { label: string; robot: any }) {
+  if (!robot) return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-xs text-muted-foreground">—</p>
+    </div>
+  );
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-xs">
+        <span className="font-medium">{rootSymbol(robot.symbol)}</span>
+        <span className="text-muted-foreground"> · {variantLabel(robot.variant).toLowerCase()} · {robot.mode} </span>
+        <span className={`font-mono ${pnlColorOf(Number(robot.brl))}`}>{SIGNED(Number(robot.brl))}</span>
+      </p>
+    </div>
+  );
+}
+
+function Scoreboard() {
+  const getScoreboard = useServerFn(getB3CockpitScoreboard);
+  const q = useQuery({
+    queryKey: ["b3-cockpit-scoreboard"],
+    queryFn: () => getScoreboard(),
+    refetchInterval: useVisibleRefetchInterval(10000),
+    refetchIntervalInBackground: false,
+  });
+  const d: any = q.data;
+  if (!d) return <section className="rounded-lg border border-border/60 bg-card p-4 text-sm text-muted-foreground">Carregando placar do dia...</section>;
+
+  const capital = Number(d.capital_disponivel_brl ?? 0);
+  const exposicao = Number(d.exposicao_atual_brl ?? 0);
+  const pico = Number(d.pico_exposicao_brl ?? 0);
+  const overNow = capital > 0 && exposicao > capital;
+  const overPeak = capital > 0 && pico > capital;
+
+  return (
+    <section className="rounded-xl border border-border/60 bg-card p-4 space-y-4">
+      {/* Linha 1 — números em corpo muito grande */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Saldo do dia</p>
+          <p className={`font-mono font-bold text-3xl sm:text-4xl leading-tight ${pnlColorOf(Number(d.saldo_dia_brl))}`}>
+            {SIGNED(Number(d.saldo_dia_brl))}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Se fechasse agora</p>
+          <p className={`font-mono font-bold text-3xl sm:text-4xl leading-tight ${pnlColorOf(Number(d.se_fechasse_agora_brl))}`}>
+            {SIGNED(Number(d.se_fechasse_agora_brl))}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Exposição atual</p>
+          <p className={`font-mono font-bold text-3xl sm:text-4xl leading-tight ${overNow ? "text-rose-400" : ""}`}>
+            {BRL(exposicao)}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {d.robots_posicionados} de {d.robots_total} posicionados
+          </p>
+          {overNow && (
+            <p className="text-[11px] text-rose-400">exposição acima do capital disponível</p>
+          )}
+        </div>
+      </div>
+
+      {/* Linha 2 — corpo médio */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border/40 pt-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Lucro bruto do dia</p>
+          <p className="font-mono text-lg text-emerald-400">{BRL(Number(d.lucro_bruto_brl))}</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Prejuízo bruto do dia</p>
+          <p className="font-mono text-lg text-rose-400">{BRL(Number(d.prejuizo_bruto_brl))}</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Aberto positivo</p>
+          <p className="font-mono text-lg text-emerald-400">{BRL(Number(d.aberto_positivo_brl))}</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Aberto negativo</p>
+          <p className="font-mono text-lg text-rose-400">{BRL(Number(d.aberto_negativo_brl))}</p>
+        </div>
+      </div>
+
+      {/* Linha 3 — corpo pequeno */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-border/40 pt-3">
+        <RobotLine label="Melhor robô do dia" robot={d.melhor_robo} />
+        <RobotLine label="Pior robô do dia" robot={d.pior_robo} />
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Pico de exposição do dia</p>
+          <p className={`text-xs font-mono ${overPeak ? "text-rose-400" : ""}`}>
+            {BRL(pico)}{d.pico_exposicao_hora ? ` às ${d.pico_exposicao_hora}` : ""}
+            <span className="text-muted-foreground font-sans"> · máx. {d.pico_posicoes} posições</span>
+          </p>
+          {overPeak && <p className="text-[11px] text-rose-400">exposição acima do capital disponível</p>}
+        </div>
+      </div>
+    </section>
   );
 }
