@@ -60,7 +60,7 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
         .order("mode", { ascending: true }),
       supabase
         .from("b3_prd_authorization_log")
-        .select("id, symbol, mode, de_enabled, para_enabled, de_max_qty, para_max_qty, motivo, origem, ts")
+        .select("id, symbol, variant, mode, de_enabled, para_enabled, de_max_qty, para_max_qty, motivo, origem, ts")
         .eq("user_id", userId)
         .order("ts", { ascending: false })
         .limit(20),
