@@ -6,13 +6,33 @@
 // Isso garante que o banco nunca "acha" que uma ordem foi executada sem o
 // MT5 ter confirmado de verdade.
 //
-// TODO (multi-ativo): point_value hoje está fixo em 0.2 (WIN). Quando o
-// perfil de ativo existir (asset_profile.tick_value_brl), isso deixa de
-// ser constante e passa a vir do símbolo do comando.
+// CORRIGIDO em 15/08/2026: o valor do ponto era fixo em 0.2 (WIN), o que
+// contabilizava o resultado do WDO 50x errado. Agora vem de
+// b3_asset_profiles.tick_value_brl pelo símbolo do comando (mesma fonte
+// usada por computeB3Fees).
 import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "crypto";
 
-const POINT_VALUE_BRL_WIN = 0.2;
+const POINT_VALUE_BRL_FALLBACK = 0.2; // WIN — usado só se o perfil do ativo não existir
+
+// Resolve o valor do ponto pelo símbolo do comando (ex.: "WINQ26" → perfil WIN).
+async function resolvePointValueBrl(admin: any, symbol: string): Promise<number> {
+  const root = String(symbol ?? "").toUpperCase();
+  try {
+    const { data } = await admin
+      .from("b3_asset_profiles")
+      .select("symbol, quote_symbol, tick_value_brl");
+    const rows = (data ?? []) as Array<{ symbol: string; quote_symbol: string; tick_value_brl: number }>;
+    const hit =
+      rows.find((r) => String(r.symbol).toUpperCase() === root) ??
+      rows.find((r) => String(r.quote_symbol).toUpperCase() === root) ??
+      rows.find((r) => root.startsWith(String(r.quote_symbol).toUpperCase()));
+    const v = Number(hit?.tick_value_brl);
+    return Number.isFinite(v) && v > 0 ? v : POINT_VALUE_BRL_FALLBACK;
+  } catch {
+    return POINT_VALUE_BRL_FALLBACK;
+  }
+}
 
 interface AckRequest {
   user_id: string;
