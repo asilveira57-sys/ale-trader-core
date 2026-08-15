@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, AlertTriangle } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
+import { rootSymbol, PX } from "@/lib/b3-format";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
   resetB3DailyStop, updateB3ModeSettings,
@@ -56,13 +57,6 @@ const VARIANT_COLOR: Record<string, string> = {
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
 const isRiskBlocked = (c: any) => c.current_status === "blocked_stop" || !!c.protection_block_reason;
 
-// Contratos futuros (WINV26, WDOU26) rolam de vencimento; agrupa pela raiz do
-// ativo pra que a virada de contrato não quebre o agrupamento da tela.
-const rootSymbol = (symbol: string) => {
-  const s = String(symbol ?? "").toUpperCase();
-  const m = s.match(/^([A-Z]{3})[A-Z]\d{2}$/);
-  return m ? m[1] : s;
-};
 
 type Filter = "all" | "open" | "blocked";
 type VariantFilter = "all" | string;
@@ -249,6 +243,9 @@ function CockpitPage() {
             <span className="text-muted-foreground font-normal">
               {Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0)} robôs
             </span>
+            <Button asChild size="sm" variant="outline" className="h-6 text-[10px] ml-auto">
+              <Link to="/b3/ativo/$symbol" params={{ symbol: root }}>ver painel</Link>
+            </Button>
           </h2>
 
           {Array.from(group.byVariant.entries()).map(([variant, cards]) => (
