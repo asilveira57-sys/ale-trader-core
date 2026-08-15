@@ -83,6 +83,7 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
     z
       .object({
         symbol: z.enum(SYMBOLS),
+        variant: z.enum(VARIANTS),
         mode: z.enum(MODES),
         enabled: z.boolean(),
         max_qty: z.number().int().min(1).max(100),
