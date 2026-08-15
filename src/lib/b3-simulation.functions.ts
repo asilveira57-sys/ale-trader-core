@@ -2081,7 +2081,7 @@ async function runB3SimulationTickInner(
           ...orderAuditPatch(entryAudit),
         }).select("id").single();
         if (oErr) throw oErr;
-        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", intendedSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol);
+        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", intendedSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant);
         providerStats.last_entry_price = entry;
         openOrdersCache = null;
         await supabase.from("b3_simulation_modes")
