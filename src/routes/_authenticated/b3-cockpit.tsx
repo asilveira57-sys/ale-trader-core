@@ -215,6 +215,9 @@ function CockpitPage() {
         </div>
       </header>
 
+      {/* ── Placar do dia ── */}
+      <Scoreboard />
+
       {/* ── Resumo + filtro ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
         <p className="text-sm">
