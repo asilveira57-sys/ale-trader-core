@@ -80,6 +80,9 @@ interface B3Settings {
   // Limite de perda diária AGREGADO da conta (soma dos 5 modos da simulação
   // B3). Antes era constante no código (R$ 1.000).
   global_daily_loss_limit_brl?: number;
+  // Capital disponível na conta (R$). Só serve de referência para o alerta
+  // de exposição no Cockpit — não interfere no motor.
+  capital_disponivel_brl?: number;
 }
 
 interface B3Order {
