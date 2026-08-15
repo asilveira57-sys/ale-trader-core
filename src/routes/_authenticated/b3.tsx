@@ -77,6 +77,9 @@ interface B3Settings {
   auto_trade_enabled: boolean;
   alert_only_enabled: boolean;
   price_source?: "csv" | "mt5_xp_demo";
+  // Limite de perda diária AGREGADO da conta (soma dos 5 modos da simulação
+  // B3). Antes era constante no código (R$ 1.000).
+  global_daily_loss_limit_brl?: number;
 }
 
 interface B3Order {
