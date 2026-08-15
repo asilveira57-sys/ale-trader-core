@@ -3002,6 +3002,146 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
     return cards;
   });
 
+// ─────────────────── placar do dia (topo do Cockpit) ───────────────────
+// Somente LEITURA. Não toca em nenhuma regra do motor: apenas soma ordens
+// de b3_simulation_orders, perfis de b3_asset_profiles e o capital
+// disponível de b3_trading_settings.
+// O pico de exposição é reconstruído por linha do tempo de eventos
+// (+margem na entrada, −margem na saída ou agora), porque não existe
+// histórico de exposição gravado.
+export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const sessionDate = currentB3SessionDate();
+    const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3
+
+    const [{ data: runs }, { data: tset }] = await Promise.all([
+      (supabase as any).from("b3_simulation_runs")
+        .select("id, symbol, variant").eq("user_id", userId).eq("status", "running"),
+      (supabase as any).from("b3_trading_settings")
+        .select("capital_disponivel_brl").eq("user_id", userId).maybeSingle(),
+    ]);
+    const capitalDisponivelBrl = Number(tset?.capital_disponivel_brl ?? 0) || 0;
+
+    const runList: any[] = runs ?? [];
+    const runIds = runList.map((r) => r.id);
+    const empty = {
+      session_date: sessionDate,
+      capital_disponivel_brl: capitalDisponivelBrl,
+      saldo_dia_brl: 0, se_fechasse_agora_brl: 0,
+      exposicao_atual_brl: 0, robots_posicionados: 0, robots_total: runList.length * MODES.length,
+      lucro_bruto_brl: 0, prejuizo_bruto_brl: 0, aberto_positivo_brl: 0, aberto_negativo_brl: 0,
+      melhor_robo: null as any, pior_robo: null as any,
+      pico_exposicao_brl: 0, pico_exposicao_hora: null as string | null, pico_posicoes: 0,
+    };
+    if (!runIds.length) return empty;
+
+    // Perfis dos ativos das runs ativas.
+    const profiles: Record<string, any> = {};
+    for (const symbol of Array.from(new Set(runList.map((r) => r.symbol)))) {
+      profiles[symbol] = await loadAssetProfile(supabase, symbol);
+    }
+    const runById: Record<string, any> = {};
+    for (const r of runList) runById[r.id] = r;
+
+    // Ordens do dia (abertas + fechadas hoje) e último preço por run.
+    const [{ data: orders }, { data: snaps }] = await Promise.all([
+      (supabase as any).from("b3_simulation_orders")
+        .select("simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
+        .eq("user_id", userId).in("simulation_run_id", runIds).in("status", ["open", "closed"])
+        .gte("entry_time", dayStartUtc),
+      (supabase as any).from("b3_simulation_market_snapshots")
+        .select("simulation_run_id, price, market_time")
+        .eq("user_id", userId).in("simulation_run_id", runIds)
+        .order("market_time", { ascending: false }).limit(400),
+    ]);
+
+    const priceByRun: Record<string, number> = {};
+    for (const s of snaps ?? []) {
+      if (priceByRun[s.simulation_run_id] == null && Number(s.price) > 0) {
+        priceByRun[s.simulation_run_id] = Number(s.price);
+      }
+    }
+
+    const nowMs = Date.now();
+    let saldoDia = 0, lucroBruto = 0, prejuizoBruto = 0;
+    let abertoPos = 0, abertoNeg = 0, exposicaoAtual = 0, posicionados = 0;
+    const byRobot = new Map<string, { symbol: string; variant: string; mode: string; brl: number }>();
+    const events: { t: number; dm: number; dq: number }[] = [];
+
+    for (const o of orders ?? []) {
+      const run = runById[o.simulation_run_id];
+      if (!run) continue;
+      const asset = profiles[run.symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
+      const qty = Number(o.quantity ?? 0);
+      const entry = Number(o.entry_price ?? 0);
+      const key = `${run.symbol}|${run.variant ?? "indicador"}|${o.mode}`;
+      if (!byRobot.has(key)) {
+        byRobot.set(key, { symbol: run.symbol, variant: run.variant ?? "indicador", mode: o.mode, brl: 0 });
+      }
+
+      // Margem exigida pela posição, conforme o modelo do ativo.
+      const margem = String(asset.margin_model ?? "per_contract") === "per_contract"
+        ? Number(asset.margin_per_contract_brl ?? 0) * qty
+        : entry * qty * Number(asset.margin_percent_position ?? 0) / 100;
+
+      const tIn = new Date(o.entry_time ?? o.created_at ?? nowMs).getTime();
+      const tOut = o.exit_time ? new Date(o.exit_time).getTime() : nowMs;
+      events.push({ t: tIn, dm: margem, dq: 1 });
+      events.push({ t: tOut, dm: -margem, dq: -1 });
+
+      if (o.status === "closed") {
+        const net = Number(o.net_result_brl ?? 0);
+        saldoDia += net;
+        if (net >= 0) lucroBruto += net; else prejuizoBruto += net;
+        byRobot.get(key)!.brl += net;
+      } else {
+        posicionados += 1;
+        exposicaoAtual += margem;
+        const live = priceByRun[o.simulation_run_id];
+        if (live != null) {
+          const dir = o.side === "buy" ? 1 : -1;
+          const brl = (live - entry) * dir * Number(asset.tick_value_brl ?? POINT_VALUE_BRL) * qty;
+          if (brl >= 0) abertoPos += brl; else abertoNeg += brl;
+          byRobot.get(key)!.brl += brl;
+        }
+      }
+    }
+
+    // Pico do dia: acumula os eventos em ordem de tempo (entradas antes de
+    // saídas no mesmo instante, para não subestimar o pico).
+    events.sort((a, b) => a.t - b.t || b.dq - a.dq);
+    let accM = 0, accQ = 0, picoM = 0, picoQ = 0, picoT: number | null = null;
+    for (const e of events) {
+      accM += e.dm; accQ += e.dq;
+      if (accM > picoM) { picoM = accM; picoT = e.t; }
+      if (accQ > picoQ) picoQ = accQ;
+    }
+
+    const ranked = Array.from(byRobot.values()).sort((a, b) => b.brl - a.brl);
+    const horaPico = picoT == null ? null : new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit",
+    }).format(new Date(picoT));
+
+    return {
+      ...empty,
+      saldo_dia_brl: saldoDia,
+      se_fechasse_agora_brl: saldoDia + abertoPos + abertoNeg,
+      exposicao_atual_brl: exposicaoAtual * 1.3,
+      robots_posicionados: posicionados,
+      lucro_bruto_brl: lucroBruto,
+      prejuizo_bruto_brl: prejuizoBruto,
+      aberto_positivo_brl: abertoPos,
+      aberto_negativo_brl: abertoNeg,
+      melhor_robo: ranked[0] ?? null,
+      pior_robo: ranked.length > 1 ? ranked[ranked.length - 1] : null,
+      pico_exposicao_brl: picoM * 1.3,
+      pico_exposicao_hora: horaPico,
+      pico_posicoes: picoQ,
+    };
+  });
+
 
 
 // Botão de fechamento manual por modo. Usa a MESMA cadeia de validação de
