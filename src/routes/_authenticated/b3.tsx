@@ -77,6 +77,9 @@ interface B3Settings {
   auto_trade_enabled: boolean;
   alert_only_enabled: boolean;
   price_source?: "csv" | "mt5_xp_demo";
+  // Limite de perda diária AGREGADO da conta (soma dos 5 modos da simulação
+  // B3). Antes era constante no código (R$ 1.000).
+  global_daily_loss_limit_brl?: number;
 }
 
 interface B3Order {
@@ -110,6 +113,7 @@ const DEFAULTS: B3Settings = {
   max_contracts: 1,
   daily_loss_limit: 300,
   daily_gain_target: 500,
+  global_daily_loss_limit_brl: 1000,
   stop_points: 150,
   gain_points: 300,
   start_time: "09:05",
@@ -806,6 +810,7 @@ function SettingsForm({
 
           {F("daily_loss_limit", "Perda diária máx (R$)", "number")}
           {F("daily_gain_target", "Ganho diário alvo (R$)", "number")}
+          {F("global_daily_loss_limit_brl", "Perda diária máx. AGREGADA — 5 modos (R$)", "number")}
           {F("stop_points", "Stop (pontos)", "number")}
           {F("gain_points", "Gain (pontos)", "number")}
 

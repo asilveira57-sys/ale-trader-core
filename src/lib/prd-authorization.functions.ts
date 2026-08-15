@@ -4,6 +4,7 @@ import { z } from "zod";
 
 const MODES = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
 const SYMBOLS = ["WIN", "WDO", "PETR4", "VALE3"] as const;
+const VARIANTS = ["indicador", "price_action", "mean_reversion", "range"] as const;
 
 // Valida a senha mestra contra o hash guardado em B3_PRD_MASTER_PASSWORD_HASH.
 // Formato: scrypt$<salt_hex>$<derivado_hex>. Falha FECHADA: sem env var, erro.
@@ -52,13 +53,14 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
     const [rows, logs] = await Promise.all([
       supabase
         .from("b3_prd_authorizations")
-        .select("id, symbol, mode, enabled, max_qty, max_daily_loss_brl, authorized_at, authorized_by, revoked_at, notes, updated_at")
+        .select("id, symbol, variant, mode, enabled, max_qty, max_daily_loss_brl, authorized_at, authorized_by, revoked_at, notes, updated_at")
         .eq("user_id", userId)
         .order("symbol", { ascending: true })
+        .order("variant", { ascending: true })
         .order("mode", { ascending: true }),
       supabase
         .from("b3_prd_authorization_log")
-        .select("id, symbol, mode, de_enabled, para_enabled, de_max_qty, para_max_qty, motivo, origem, ts")
+        .select("id, symbol, variant, mode, de_enabled, para_enabled, de_max_qty, para_max_qty, motivo, origem, ts")
         .eq("user_id", userId)
         .order("ts", { ascending: false })
         .limit(20),
@@ -81,6 +83,7 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
     z
       .object({
         symbol: z.enum(SYMBOLS),
+        variant: z.enum(VARIANTS),
         mode: z.enum(MODES),
         enabled: z.boolean(),
         max_qty: z.number().int().min(1).max(100),
@@ -116,12 +119,13 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
       .update(patch as never)
       .eq("user_id", userId)
       .eq("symbol", data.symbol)
+      .eq("variant", data.variant)
       .eq("mode", data.mode)
-      .select("id, symbol, mode, enabled, max_qty")
+      .select("id, symbol, variant, mode, enabled, max_qty")
       .maybeSingle();
 
     if (error) throw error;
-    if (!updated) throw new Error("Combinação ativo/modo não encontrada para este usuário.");
+    if (!updated) throw new Error("Combinação ativo/modalidade/modo não encontrada para este usuário.");
 
     return { ok: true as const, row: updated };
   });

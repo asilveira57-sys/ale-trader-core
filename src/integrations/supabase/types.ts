@@ -3285,6 +3285,7 @@ export type Database = {
           environment: string
           force_close_time: string
           gain_points: number
+          global_daily_loss_limit_brl: number
           id: string
           max_contracts: number
           mt5_guard_mode: string
@@ -3314,6 +3315,7 @@ export type Database = {
           environment?: string
           force_close_time?: string
           gain_points?: number
+          global_daily_loss_limit_brl?: number
           id?: string
           max_contracts?: number
           mt5_guard_mode?: string
@@ -3343,6 +3345,7 @@ export type Database = {
           environment?: string
           force_close_time?: string
           gain_points?: number
+          global_daily_loss_limit_brl?: number
           id?: string
           max_contracts?: number
           mt5_guard_mode?: string
