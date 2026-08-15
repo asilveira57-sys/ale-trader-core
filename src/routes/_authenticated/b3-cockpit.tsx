@@ -224,12 +224,6 @@ function CockpitPage() {
           <strong>{totalRobots}</strong> robôs · <strong>{withOpen}</strong> com posição aberta ·{" "}
           <strong>{waiting}</strong> aguardando · <strong>{blocked}</strong> bloqueados
         </p>
-        <p className="text-sm text-muted-foreground">
-          Realizado hoje:{" "}
-          <span className={`font-mono ${realizedToday >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{BRL(realizedToday)}</span>
-          {"   ·   "}Em aberto:{" "}
-          <span className={`font-mono ${openPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{BRL(openPnl)}</span>
-        </p>
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {([["all", "Todos"], ["open", "Só com posição aberta"], ["blocked", "Só bloqueados"]] as [Filter, string][]).map(([v, label]) => (
             <Button key={v} size="sm" variant={filter === v ? "default" : "outline"} className="h-7 text-[11px]"
