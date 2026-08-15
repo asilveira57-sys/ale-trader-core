@@ -3241,6 +3241,33 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
       timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit",
     }).format(new Date(picoT));
 
+    // Stops pendentes não executados: contagem de ordens abertas com evento
+    // recente (último 3 min) gravado pelo motor. Somente leitura.
+    const openIdsToday = (orders ?? []).filter((o: any) => o.status === "open").map((o: any) => o.id);
+    let stopsPendentes = 0;
+    if (openIdsToday.length) {
+      const { data: pendEvents } = await (supabase as any).from("b3_simulation_block_events")
+        .select("related_order_id, created_at")
+        .eq("user_id", userId).eq("trigger", "stop_pendente_nao_executado")
+        .in("related_order_id", openIdsToday)
+        .gte("created_at", new Date(Date.now() - 180_000).toISOString());
+      stopsPendentes = new Set((pendEvents ?? []).map((e: any) => e.related_order_id)).size;
+    }
+
+    // Saúde da cotação: idade do último tick por ativo das runs ativas.
+    const quotesHealth: { symbol: string; age_s: number | null; stale: boolean }[] = [];
+    const quoteGuardLimitS = 45;
+    for (const symbol of Array.from(new Set(runList.map((r) => r.symbol)))) {
+      const asset = profiles[symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
+      const candidates = Array.from(new Set([asset.symbol, asset.quote_symbol, symbol].filter(Boolean)));
+      const { data: q } = await (supabase as any).from("b3_mt5sim_quotes")
+        .select("tick_ts").eq("user_id", userId).in("symbol", candidates as string[])
+        .order("tick_ts", { ascending: false }).limit(1);
+      const tickTs = q?.[0]?.tick_ts ? new Date(q[0].tick_ts).getTime() : null;
+      const ageS = tickTs == null ? null : Math.max(0, Math.round((Date.now() - tickTs) / 1000));
+      quotesHealth.push({ symbol, age_s: ageS, stale: ageS == null || ageS > quoteGuardLimitS });
+    }
+
     return {
       ...empty,
       saldo_dia_brl: saldoDia,
