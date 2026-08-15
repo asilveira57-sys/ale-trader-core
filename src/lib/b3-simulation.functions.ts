@@ -499,6 +499,8 @@ async function runB3SimulationTickInner(
   if (!run) throw new Error("Run não encontrada");
   if (run.status !== "running") return { skipped: true, reason: `Status ${run.status}`, log: [] };
   const asset = await loadAssetProfile(supabase, run.symbol);
+  const runVariant = String(run.variant ?? "indicador");
+  const globalDailyLossLimitBrl = await loadGlobalDailyLossLimit(supabase, userId);
 
   const { data: modeRows, error: mErr } = await supabase.from("b3_simulation_modes")
     .select("*").eq("simulation_run_id", runId).eq("user_id", userId);
