@@ -53,9 +53,10 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
     const [rows, logs] = await Promise.all([
       supabase
         .from("b3_prd_authorizations")
-        .select("id, symbol, mode, enabled, max_qty, max_daily_loss_brl, authorized_at, authorized_by, revoked_at, notes, updated_at")
+        .select("id, symbol, variant, mode, enabled, max_qty, max_daily_loss_brl, authorized_at, authorized_by, revoked_at, notes, updated_at")
         .eq("user_id", userId)
         .order("symbol", { ascending: true })
+        .order("variant", { ascending: true })
         .order("mode", { ascending: true }),
       supabase
         .from("b3_prd_authorization_log")
