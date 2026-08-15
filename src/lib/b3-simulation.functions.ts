@@ -2718,7 +2718,7 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
 
   await mirrorToReal(supabase, userId, run.id, mode.mode as Mode, "close", order.side, `close-${order.id}`,
     reason === "manual_close_user" ? "user_manual_close" : reason === "manual_close_all_user" ? "user_close_all" : "engine_auto",
-    assetProfile.quote_symbol);
+    assetProfile.quote_symbol, String(run?.variant ?? "indicador"));
 
   const newRealized = Number(mode.realized_pnl) + netBrl;
   const newBalance = Number(mode.current_balance) + netBrl;
