@@ -6564,6 +6564,10 @@ export type Database = {
         Returns: number
       }
       b3_magic_valido: { Args: { p_magic: number }; Returns: boolean }
+      b3_marcar_dias_com_intervencao: {
+        Args: { p_date?: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
