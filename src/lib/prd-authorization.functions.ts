@@ -119,8 +119,9 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
       .update(patch as never)
       .eq("user_id", userId)
       .eq("symbol", data.symbol)
+      .eq("variant", data.variant)
       .eq("mode", data.mode)
-      .select("id, symbol, mode, enabled, max_qty")
+      .select("id, symbol, variant, mode, enabled, max_qty")
       .maybeSingle();
 
     if (error) throw error;
