@@ -3148,6 +3148,9 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
       lucro_bruto_brl: 0, prejuizo_bruto_brl: 0, aberto_positivo_brl: 0, aberto_negativo_brl: 0,
       melhor_robo: null as any, pior_robo: null as any,
       pico_exposicao_brl: 0, pico_exposicao_hora: null as string | null, pico_posicoes: 0,
+      stops_pendentes: 0,
+      quotes_health: [] as { symbol: string; age_s: number | null; stale: boolean }[],
+      quote_guard_limit_s: 45,
     };
     if (!runIds.length) return empty;
 
@@ -3162,7 +3165,7 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     // Ordens do dia (abertas + fechadas hoje) e último preço por run.
     const [{ data: orders }, { data: snaps }] = await Promise.all([
       (supabase as any).from("b3_simulation_orders")
-        .select("simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
+        .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
         .eq("user_id", userId).in("simulation_run_id", runIds).in("status", ["open", "closed"])
         .gte("entry_time", dayStartUtc),
       (supabase as any).from("b3_simulation_market_snapshots")
