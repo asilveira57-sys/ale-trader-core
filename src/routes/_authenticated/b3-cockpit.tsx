@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock } from "lucide-react";
+import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, AlertTriangle } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
