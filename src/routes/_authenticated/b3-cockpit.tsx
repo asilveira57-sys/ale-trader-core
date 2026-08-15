@@ -356,7 +356,17 @@ function CockpitPage() {
 
                       {/* ── Fechar posição: sempre visível quando há posição ── */}
                       {hasPosition && (
-                        <div className="px-3 pb-3">
+                        <div className="px-3 pb-3 space-y-2">
+                          {c.pending_stop && (
+                            <div className="rounded-md border border-rose-500/60 bg-rose-950/50 px-2 py-1.5 text-[11px] font-semibold text-rose-200 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                              <span>
+                                STOP PENDENTE há {Math.max(1, Math.round(Number(c.pending_stop.elapsed_s ?? 0) / 60))} min ·{" "}
+                                {Math.round(Number(c.pending_stop.beyond_pts ?? 0))} pts além do nível
+                              </span>
+                            </div>
+                          )}
+
                           <Dialog>
                             <DialogTrigger asChild>
                               <Button size="sm" variant="destructive" className="w-full h-7 text-[11px]">
