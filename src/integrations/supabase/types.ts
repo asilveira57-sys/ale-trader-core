@@ -3278,6 +3278,7 @@ export type Database = {
           auto_trade_enabled: boolean
           broker_name: string
           capital_allocated: number
+          capital_disponivel_brl: number
           created_at: string
           daily_gain_target: number
           daily_loss_limit: number
@@ -3308,6 +3309,7 @@ export type Database = {
           auto_trade_enabled?: boolean
           broker_name?: string
           capital_allocated?: number
+          capital_disponivel_brl?: number
           created_at?: string
           daily_gain_target?: number
           daily_loss_limit?: number
@@ -3338,6 +3340,7 @@ export type Database = {
           auto_trade_enabled?: boolean
           broker_name?: string
           capital_allocated?: number
+          capital_disponivel_brl?: number
           created_at?: string
           daily_gain_target?: number
           daily_loss_limit?: number
