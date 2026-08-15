@@ -3517,3 +3517,249 @@ export const resetB3DailyStop = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
+
+
+// ─────────────────── painel por ativo (/b3/ativo/$symbol) ───────────────────
+// Somente LEITURA. Nenhuma regra de entrada, saída, trailing, limiar,
+// quantidade, capital, taxa ou janela é lida/alterada aqui: apenas soma
+// b3_simulation_orders, b3_simulation_mode_settings e b3_asset_profiles.
+// Datas sempre em America/Sao_Paulo (currentB3SessionDate).
+export const getB3AssetDashboard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { symbol: string; variant?: string; mode?: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const root = String(data.symbol ?? "").toUpperCase();
+    const variantFilter = data.variant && data.variant !== "all" ? data.variant : null;
+    const modeFilter = data.mode && data.mode !== "all" ? data.mode : null;
+    const sessionDate = currentB3SessionDate();
+    const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3
+
+    const rootOf = (s: string) => {
+      const up = String(s ?? "").toUpperCase();
+      const m = up.match(/^([A-Z]{3})[A-Z]\d{2}$/);
+      return m ? m[1] : up;
+    };
+
+    const { data: allRuns } = await (supabase as any).from("b3_simulation_runs")
+      .select("id, symbol, variant").eq("user_id", userId).eq("status", "running");
+    const assetRuns = (allRuns ?? []).filter((r: any) => rootOf(r.symbol) === root);
+    const variantsPresent = Array.from(new Set(assetRuns.map((r: any) => r.variant ?? "indicador"))) as string[];
+    const runList = variantFilter
+      ? assetRuns.filter((r: any) => (r.variant ?? "indicador") === variantFilter)
+      : assetRuns;
+
+    const base = {
+      session_date: sessionDate,
+      root,
+      variant: variantFilter ?? "all",
+      mode: modeFilter ?? "all",
+      variants_present: variantsPresent,
+      contracts: Array.from(new Set(assetRuns.map((r: any) => r.symbol))) as string[],
+      quote_symbol: null as string | null,
+      tick_size: 5,
+      scale_brl: 0,
+      resultado_dia_brl: 0,
+      realizado_brl: 0,
+      aberto_brl: 0,
+      pior_ponto_brl: 0,
+      pior_ponto_pct: 0,
+      ganhos_brl: 0,
+      perdas_brl: 0,
+      ops_total: 0,
+      ops_lucro: 0,
+      pico_exposicao_brl: 0,
+      pico_exposicao_hora: null as string | null,
+      pico_contratos: 0,
+      groups: [] as any[],
+    };
+    if (!runList.length) return base;
+
+    const profiles: Record<string, any> = {};
+    for (const symbol of Array.from(new Set(runList.map((r: any) => r.symbol))) as string[]) {
+      profiles[symbol] = await loadAssetProfile(supabase, symbol);
+    }
+    const firstProfile = profiles[runList[0].symbol];
+    const runById: Record<string, any> = {};
+    for (const r of runList) runById[r.id] = r;
+    const runIds = runList.map((r: any) => r.id);
+
+    const [{ data: orders }, { data: snaps }, { data: settings }] = await Promise.all([
+      (supabase as any).from("b3_simulation_orders")
+        .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
+        .eq("user_id", userId).in("simulation_run_id", runIds).in("status", ["open", "closed"])
+        .gte("entry_time", dayStartUtc),
+      (supabase as any).from("b3_simulation_market_snapshots")
+        .select("simulation_run_id, price, market_time")
+        .eq("user_id", userId).in("simulation_run_id", runIds)
+        .order("market_time", { ascending: false }).limit(200),
+      (supabase as any).from("b3_simulation_mode_settings")
+        .select("simulation_run_id, mode, enabled, daily_loss_limit_brl")
+        .eq("user_id", userId).in("simulation_run_id", runIds),
+    ]);
+
+    const priceByRun: Record<string, number> = {};
+    for (const s of snaps ?? []) {
+      if (priceByRun[s.simulation_run_id] == null && Number(s.price) > 0) {
+        priceByRun[s.simulation_run_id] = Number(s.price);
+      }
+    }
+
+    // Fundo de escala = soma dos limites de perda dos modos HABILITADOS
+    // das runs consideradas (respeita o filtro de modalidade/modo).
+    let scale = 0;
+    const settingByKey: Record<string, any> = {};
+    for (const s of settings ?? []) {
+      settingByKey[`${s.simulation_run_id}|${s.mode}`] = s;
+      if (modeFilter && s.mode !== modeFilter) continue;
+      if (s.enabled === false) continue;
+      scale += Number(s.daily_loss_limit_brl ?? 0) || 0;
+    }
+
+    const nowMs = Date.now();
+    const rows = (orders ?? []).filter((o: any) => !modeFilter || o.mode === modeFilter);
+
+    type Agg = { ops: number; wins: number; ganhos: number; perdas: number; resultado: number; aberto: number; open: boolean };
+    const perMode = new Map<string, Agg>(); // `${variant}|${mode}`
+    const ensure = (k: string) => {
+      if (!perMode.has(k)) perMode.set(k, { ops: 0, wins: 0, ganhos: 0, perdas: 0, resultado: 0, aberto: 0, open: false });
+      return perMode.get(k)!;
+    };
+
+    let realizado = 0, aberto = 0, ganhos = 0, perdas = 0, opsTotal = 0, opsLucro = 0;
+    const events: { t: number; dm: number; dq: number }[] = [];
+    const closedTimeline: { t: number; net: number }[] = [];
+
+    for (const o of rows) {
+      const run = runById[o.simulation_run_id];
+      if (!run) continue;
+      const asset = profiles[run.symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
+      const variant = (run.variant ?? "indicador") as string;
+      const agg = ensure(`${variant}|${o.mode}`);
+      const qty = Number(o.quantity ?? 0);
+      const entry = Number(o.entry_price ?? 0);
+
+      const margem = String(asset.margin_model ?? "per_contract") === "per_contract"
+        ? Number(asset.margin_per_contract_brl ?? 0) * qty
+        : entry * qty * Number(asset.margin_percent_position ?? 0) / 100;
+      const tIn = new Date(o.entry_time ?? o.created_at ?? nowMs).getTime();
+      const tOut = o.exit_time ? new Date(o.exit_time).getTime() : nowMs;
+      events.push({ t: tIn, dm: margem, dq: qty });
+      events.push({ t: tOut, dm: -margem, dq: -qty });
+
+      if (o.status === "closed") {
+        const net = Number(o.net_result_brl ?? 0);
+        realizado += net;
+        opsTotal += 1;
+        agg.ops += 1;
+        agg.resultado += net;
+        if (net > 0) { ganhos += net; opsLucro += 1; agg.ganhos += net; agg.wins += 1; }
+        else { perdas += net; agg.perdas += net; }
+        closedTimeline.push({ t: tOut, net });
+      } else {
+        agg.open = true;
+        const live = priceByRun[o.simulation_run_id];
+        if (live != null) {
+          const dir = o.side === "buy" ? 1 : -1;
+          const brl = (live - entry) * dir * Number(asset.tick_value_brl ?? POINT_VALUE_BRL) * qty;
+          aberto += brl;
+          agg.aberto += brl;
+          agg.resultado += brl;
+        }
+      }
+    }
+
+    // Pico de exposição (margem simultânea × 1,30) por linha do tempo de eventos.
+    events.sort((a, b) => a.t - b.t || b.dq - a.dq);
+    let accM = 0, accQ = 0, picoM = 0, picoQ = 0, picoT: number | null = null;
+    for (const e of events) {
+      accM += e.dm; accQ += e.dq;
+      if (accM > picoM) { picoM = accM; picoT = e.t; picoQ = Math.max(picoQ, accQ); }
+      if (accQ > picoQ) picoQ = accQ;
+    }
+    const horaPico = picoT == null ? null : new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit",
+    }).format(new Date(picoT));
+
+    // Pior ponto do dia: mínimo do acumulado realizado ao longo do dia,
+    // considerando também o resultado atual (realizado + aberto).
+    closedTimeline.sort((a, b) => a.t - b.t);
+    let acc = 0, pior = 0;
+    for (const c of closedTimeline) { acc += c.net; if (acc < pior) pior = acc; }
+    const resultado = realizado + aberto;
+    if (resultado < pior) pior = resultado;
+
+    const modeOrder: Record<string, number> = {};
+    MODES.forEach((m, i) => { modeOrder[m] = i; });
+    const groupMap = new Map<string, any[]>();
+    for (const [key, agg] of perMode.entries()) {
+      const [variant, mode] = key.split("|");
+      const run = runList.find((r: any) => (r.variant ?? "indicador") === variant);
+      const st = run ? settingByKey[`${run.id}|${mode}`] : null;
+      if (!groupMap.has(variant)) groupMap.set(variant, []);
+      groupMap.get(variant)!.push({
+        variant, mode,
+        ops: agg.ops,
+        wins: agg.wins,
+        hit_rate: agg.ops ? (agg.wins / agg.ops) * 100 : 0,
+        ganhos_brl: agg.ganhos,
+        perdas_brl: agg.perdas,
+        resultado_brl: agg.resultado,
+        aberto_brl: agg.aberto,
+        tem_posicao: agg.open,
+        enabled: st ? st.enabled !== false : true,
+        daily_loss_limit_brl: st?.daily_loss_limit_brl == null ? null : Number(st.daily_loss_limit_brl),
+      });
+    }
+    // Modos habilitados sem nenhuma ordem hoje também aparecem (card zerado).
+    for (const s of settings ?? []) {
+      if (modeFilter && s.mode !== modeFilter) continue;
+      const run = runById[s.simulation_run_id];
+      if (!run) continue;
+      const variant = (run.variant ?? "indicador") as string;
+      if (!groupMap.has(variant)) groupMap.set(variant, []);
+      const list = groupMap.get(variant)!;
+      if (list.some((c) => c.mode === s.mode)) continue;
+      list.push({
+        variant, mode: s.mode, ops: 0, wins: 0, hit_rate: 0,
+        ganhos_brl: 0, perdas_brl: 0, resultado_brl: 0, aberto_brl: 0, tem_posicao: false,
+        enabled: s.enabled !== false,
+        daily_loss_limit_brl: s.daily_loss_limit_brl == null ? null : Number(s.daily_loss_limit_brl),
+      });
+    }
+
+    const groups = Array.from(groupMap.entries())
+      .map(([variant, modes]) => {
+        const sorted = modes.sort((a, b) => (modeOrder[a.mode] ?? 99) - (modeOrder[b.mode] ?? 99));
+        const ops = sorted.reduce((s, m) => s + m.ops, 0);
+        const wins = sorted.reduce((s, m) => s + m.wins, 0);
+        return {
+          variant, modes: sorted, ops, wins,
+          hit_rate: ops ? (wins / ops) * 100 : 0,
+          resultado_brl: sorted.reduce((s, m) => s + m.resultado_brl, 0),
+          ganhos_brl: sorted.reduce((s, m) => s + m.ganhos_brl, 0),
+          perdas_brl: sorted.reduce((s, m) => s + m.perdas_brl, 0),
+        };
+      })
+      .sort((a, b) => a.variant.localeCompare(b.variant));
+
+    return {
+      ...base,
+      quote_symbol: firstProfile?.quote_symbol ?? null,
+      tick_size: Number(firstProfile?.tick_size ?? 5),
+      scale_brl: scale,
+      resultado_dia_brl: resultado,
+      realizado_brl: realizado,
+      aberto_brl: aberto,
+      pior_ponto_brl: pior,
+      pior_ponto_pct: scale > 0 ? Math.min(100, (Math.abs(Math.min(0, pior)) / scale) * 100) : 0,
+      ganhos_brl: ganhos,
+      perdas_brl: perdas,
+      ops_total: opsTotal,
+      ops_lucro: opsLucro,
+      pico_exposicao_brl: picoM * 1.3,
+      pico_exposicao_hora: horaPico,
+      pico_contratos: picoQ,
+      groups,
+    };
+  });
