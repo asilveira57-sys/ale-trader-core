@@ -77,7 +77,20 @@ export function computeB3Fees({ assetProfile, quantity, entryPrice, exitPrice }:
 // juntos e bloqueia NOVAS entradas em TODOS os modos quando estourado —
 // posições já abertas continuam sendo geridas normalmente (stop/gain/zeragem).
 // Valor definido pelo usuário em 04/08/2026.
-const GLOBAL_DAILY_LOSS_LIMIT_BRL = 1000;
+// CONFIGURÁVEL desde 15/08/2026: o valor vem de
+// b3_trading_settings.global_daily_loss_limit_brl. Sem linha/valor válido,
+// cai no padrão histórico de R$ 1.000.
+const GLOBAL_DAILY_LOSS_LIMIT_DEFAULT_BRL = 1000;
+async function loadGlobalDailyLossLimit(supabase: any, userId: string): Promise<number> {
+  try {
+    const { data } = await supabase.from("b3_trading_settings")
+      .select("global_daily_loss_limit_brl").eq("user_id", userId).maybeSingle();
+    const v = Number(data?.global_daily_loss_limit_brl);
+    return Number.isFinite(v) && v > 0 ? v : GLOBAL_DAILY_LOSS_LIMIT_DEFAULT_BRL;
+  } catch {
+    return GLOBAL_DAILY_LOSS_LIMIT_DEFAULT_BRL;
+  }
+}
 
 // ─────────────────────── espelhamento demo → real ───────────────────────
 // Toda vez que o motor (demo) abre/fecha uma posição em qualquer um dos 5
