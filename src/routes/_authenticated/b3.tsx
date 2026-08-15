@@ -113,6 +113,7 @@ const DEFAULTS: B3Settings = {
   max_contracts: 1,
   daily_loss_limit: 300,
   daily_gain_target: 500,
+  global_daily_loss_limit_brl: 1000,
   stop_points: 150,
   gain_points: 300,
   start_time: "09:05",
