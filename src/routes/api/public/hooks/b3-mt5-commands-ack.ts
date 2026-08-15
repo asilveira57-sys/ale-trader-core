@@ -170,7 +170,8 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-ack")({
           const entryPrice = Number(openOrder.entry_price);
           const dir = openOrder.side === "buy" ? 1 : -1;
           const grossPts = Number.isFinite(exitPrice) && Number.isFinite(entryPrice) ? (exitPrice - entryPrice) * dir : null;
-          const grossBrl = grossPts != null ? grossPts * POINT_VALUE_BRL_WIN * Number(openOrder.quantity) : null;
+          const pointValueBrl = await resolvePointValueBrl(supabaseAdmin, String(openOrder.symbol ?? cmd.symbol));
+          const grossBrl = grossPts != null ? grossPts * pointValueBrl * Number(openOrder.quantity) : null;
           const { error: updErr } = await (supabaseAdmin as any)
             .from("b3_live_orders")
             .update({
