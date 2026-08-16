@@ -2433,6 +2433,57 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_pregao_saude: {
+        Row: {
+          avaliado_em: string
+          cotacao_parada: number
+          fechamentos_manuais: number
+          guard_preco: number
+          limpo: boolean
+          maior_buraco_min: number
+          minutos_com_candle: number
+          minutos_esperados: number
+          motivo_sujo: string | null
+          primeiro_tick: string | null
+          stops_pendentes: number
+          trade_date: string
+          ultimo_tick: string | null
+          user_id: string
+        }
+        Insert: {
+          avaliado_em?: string
+          cotacao_parada?: number
+          fechamentos_manuais?: number
+          guard_preco?: number
+          limpo?: boolean
+          maior_buraco_min?: number
+          minutos_com_candle?: number
+          minutos_esperados?: number
+          motivo_sujo?: string | null
+          primeiro_tick?: string | null
+          stops_pendentes?: number
+          trade_date: string
+          ultimo_tick?: string | null
+          user_id: string
+        }
+        Update: {
+          avaliado_em?: string
+          cotacao_parada?: number
+          fechamentos_manuais?: number
+          guard_preco?: number
+          limpo?: boolean
+          maior_buraco_min?: number
+          minutos_com_candle?: number
+          minutos_esperados?: number
+          motivo_sujo?: string | null
+          primeiro_tick?: string | null
+          stops_pendentes?: number
+          trade_date?: string
+          ultimo_tick?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_robot_curation: {
         Row: {
           best_streak: number
@@ -2528,6 +2579,9 @@ export type Database = {
           mode: string
           motivo_intervencao: string | null
           net_brl: number
+          pico_contratos: number | null
+          pico_hora: string | null
+          pico_margem_brl: number | null
           qualified: boolean
           r_unit_brl: number
           rank_day: number | null
@@ -2550,6 +2604,9 @@ export type Database = {
           mode: string
           motivo_intervencao?: string | null
           net_brl?: number
+          pico_contratos?: number | null
+          pico_hora?: string | null
+          pico_margem_brl?: number | null
           qualified?: boolean
           r_unit_brl?: number
           rank_day?: number | null
@@ -2572,6 +2629,9 @@ export type Database = {
           mode?: string
           motivo_intervencao?: string | null
           net_brl?: number
+          pico_contratos?: number | null
+          pico_hora?: string | null
+          pico_margem_brl?: number | null
           qualified?: boolean
           r_unit_brl?: number
           rank_day?: number | null
@@ -3282,6 +3342,8 @@ export type Database = {
           created_at: string
           daily_gain_target: number
           daily_loss_limit: number
+          data_inicio_analise: string | null
+          dias_limpos_para_medalha: number
           end_time: string
           environment: string
           force_close_time: string
@@ -3313,6 +3375,8 @@ export type Database = {
           created_at?: string
           daily_gain_target?: number
           daily_loss_limit?: number
+          data_inicio_analise?: string | null
+          dias_limpos_para_medalha?: number
           end_time?: string
           environment?: string
           force_close_time?: string
@@ -3344,6 +3408,8 @@ export type Database = {
           created_at?: string
           daily_gain_target?: number
           daily_loss_limit?: number
+          data_inicio_analise?: string | null
+          dias_limpos_para_medalha?: number
           end_time?: string
           environment?: string
           force_close_time?: string
@@ -6544,6 +6610,14 @@ export type Database = {
         Returns: {
           medalhas_novas: number
           medalhas_revogadas: number
+        }[]
+      }
+      b3_avaliar_saude_pregao: {
+        Args: { p_date?: string }
+        Returns: {
+          out_data: string
+          out_limpo: boolean
+          out_motivo: string
         }[]
       }
       b3_calcular_score_dia: { Args: { p_date?: string }; Returns: number }

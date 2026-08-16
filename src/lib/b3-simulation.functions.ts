@@ -3763,3 +3763,168 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       groups,
     };
   });
+
+
+// ─────────────────────── BI analítico (/b3/bi) ───────────────────────
+// Somente LEITURA. Lê apenas b3_robot_daily_score (uma linha por dia/ativo/
+// modalidade/modo, com pico_margem_brl já com folga) e b3_pregao_saude
+// (veredito de pregão limpo). Nada do motor é lido ou alterado aqui.
+// Datas em America/Sao_Paulo (as colunas já são `date` do dia BRT).
+export const getB3BiDashboard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
+    de: string; ate: string;
+    symbol?: string; variant?: string; mode?: string;
+    excluir_intervencao?: boolean;
+  }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const de = String(data.de);
+    const ate = String(data.ate);
+    const fSymbol = data.symbol && data.symbol !== "all" ? String(data.symbol).toUpperCase() : null;
+    const fVariant = data.variant && data.variant !== "all" ? String(data.variant) : null;
+    const fMode = data.mode && data.mode !== "all" ? String(data.mode) : null;
+    const excluirIntervencao = data.excluir_intervencao !== false;
+
+    const [{ data: rowsRaw }, { data: saudeRaw }] = await Promise.all([
+      (supabase as any).from("b3_robot_daily_score")
+        .select("trade_date, symbol, variant, mode, net_brl, trades, wins, win_rate, max_dd_brl, score, rank_day, qualified, pico_margem_brl, pico_contratos, pico_hora, dia_com_intervencao, motivo_intervencao")
+        .eq("user_id", userId).gte("trade_date", de).lte("trade_date", ate)
+        .order("trade_date", { ascending: true }).limit(20000),
+      (supabase as any).from("b3_pregao_saude")
+        .select("trade_date, limpo, motivo_sujo, fechamentos_manuais, stops_pendentes, cotacao_parada, guard_preco, minutos_com_candle, minutos_esperados")
+        .eq("user_id", userId).gte("trade_date", de).lte("trade_date", ate)
+        .order("trade_date", { ascending: true }).limit(2000),
+    ]);
+
+    const saude = (saudeRaw ?? []) as any[];
+    const saudeByDay: Record<string, any> = {};
+    for (const s of saude) saudeByDay[String(s.trade_date)] = s;
+
+    const rows = ((rowsRaw ?? []) as any[]).filter((r) => {
+      if (excluirIntervencao && r.dia_com_intervencao === true) return false;
+      if (fSymbol && String(r.symbol).toUpperCase() !== fSymbol) return false;
+      if (fVariant && String(r.variant ?? "indicador") !== fVariant) return false;
+      if (fMode && String(r.mode) !== fMode) return false;
+      return true;
+    });
+
+    const N = (v: any) => Number(v ?? 0);
+    const capOf = (list: any[]) => list.reduce((m, r) => Math.max(m, N(r.pico_margem_brl)), 0);
+    const netOf = (list: any[]) => list.reduce((s, r) => s + N(r.net_brl), 0);
+
+    // ── cartões do cenário
+    const total_positivo = rows.filter((r) => N(r.net_brl) > 0).reduce((s, r) => s + N(r.net_brl), 0);
+    const total_negativo = rows.filter((r) => N(r.net_brl) < 0).reduce((s, r) => s + N(r.net_brl), 0);
+    const resultado = total_positivo + total_negativo;
+    const pico_investimento = capOf(rows);
+    const retorno_pct = pico_investimento > 0 ? (resultado / pico_investimento) * 100 : 0;
+
+    // ── torre por dia
+    const byDay = new Map<string, any[]>();
+    for (const r of rows) {
+      const d = String(r.trade_date);
+      if (!byDay.has(d)) byDay.set(d, []);
+      byDay.get(d)!.push(r);
+    }
+    const dias = Array.from(byDay.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([d, list]) => {
+        const s = saudeByDay[d];
+        return {
+          trade_date: d,
+          resultado_brl: netOf(list),
+          trades: list.reduce((x, r) => x + N(r.trades), 0),
+          pico_margem_brl: capOf(list),
+          limpo: s ? s.limpo !== false : true,
+          motivo_sujo: s?.motivo_sujo ?? null,
+          intervencao: list.some((r) => r.dia_com_intervencao === true),
+        };
+      });
+    const pregoes = dias.length;
+    const pregoes_positivos = dias.filter((d) => d.resultado_brl > 0).length;
+    const pregoes_negativos = dias.filter((d) => d.resultado_brl < 0).length;
+    const pregoes_limpos = dias.filter((d) => d.limpo).length;
+
+    // ── composição por dimensão
+    const compose = (keyOf: (r: any) => string) => {
+      const m = new Map<string, any[]>();
+      for (const r of rows) {
+        const k = keyOf(r);
+        if (!m.has(k)) m.set(k, []);
+        m.get(k)!.push(r);
+      }
+      return Array.from(m.entries()).map(([label, list]) => {
+        const res = netOf(list);
+        const cap = capOf(list);
+        return {
+          label,
+          resultado_brl: res,
+          capital_brl: cap,
+          retorno_pct: cap > 0 ? (res / cap) * 100 : 0,
+          trades: list.reduce((x, r) => x + N(r.trades), 0),
+          dias: new Set(list.map((r) => String(r.trade_date))).size,
+        };
+      }).sort((a, b) => b.resultado_brl - a.resultado_brl);
+    };
+
+    const modeLabelOf = (m: string) => String(m ?? "");
+    const composicao = {
+      robo: compose((r) => `${r.symbol} · ${r.variant ?? "indicador"} · ${modeLabelOf(r.mode)}`),
+      ativo: compose((r) => String(r.symbol).toUpperCase()),
+      modalidade: compose((r) => String(r.variant ?? "indicador")),
+      modo: compose((r) => modeLabelOf(r.mode)),
+    };
+
+    // ── pizza: capital exigido por ativo (MAX por ativo)
+    const capitalPorAtivo = composicao.ativo
+      .map((a) => ({ label: a.label, capital_brl: a.capital_brl }))
+      .filter((a) => a.capital_brl > 0)
+      .sort((a, b) => b.capital_brl - a.capital_brl);
+    const capital_total_brl = capitalPorAtivo.reduce((s, a) => s + a.capital_brl, 0);
+
+    // ── tabela por robô
+    const roboMap = new Map<string, any[]>();
+    for (const r of rows) {
+      const k = `${r.symbol}|${r.variant ?? "indicador"}|${r.mode}`;
+      if (!roboMap.has(k)) roboMap.set(k, []);
+      roboMap.get(k)!.push(r);
+    }
+    const robos = Array.from(roboMap.entries()).map(([k, list]) => {
+      const [symbol, variant, mode] = k.split("|");
+      const res = netOf(list);
+      const cap = capOf(list);
+      const trades = list.reduce((x, r) => x + N(r.trades), 0);
+      const wins = list.reduce((x, r) => x + N(r.wins), 0);
+      return {
+        symbol, variant, mode,
+        dias: new Set(list.map((r) => String(r.trade_date))).size,
+        resultado_brl: res,
+        capital_brl: cap,
+        retorno_pct: cap > 0 ? (res / cap) * 100 : 0,
+        pior_dd_brl: list.reduce((m, r) => Math.min(m, -Math.abs(N(r.max_dd_brl))), 0),
+        trades, wins,
+        acerto_pct: trades ? (wins / trades) * 100 : 0,
+      };
+    }).sort((a, b) => b.retorno_pct - a.retorno_pct);
+
+    return {
+      periodo: { de, ate },
+      filtros: {
+        symbol: fSymbol ?? "all",
+        variant: fVariant ?? "all",
+        mode: fMode ?? "all",
+        excluir_intervencao: excluirIntervencao,
+      },
+      cartoes: {
+        total_positivo, total_negativo, resultado,
+        pico_investimento, retorno_pct,
+        pregoes, pregoes_positivos, pregoes_negativos, pregoes_limpos,
+      },
+      dias,
+      composicao,
+      capital_por_ativo: capitalPorAtivo,
+      capital_total_brl,
+      robos,
+    };
+  });
