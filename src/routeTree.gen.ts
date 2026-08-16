@@ -69,6 +69,7 @@ import { Route as AuthenticatedBacktestNewRouteImport } from './routes/_authenti
 import { Route as AuthenticatedBacktestDataRouteImport } from './routes/_authenticated/backtest.data'
 import { Route as AuthenticatedBacktestCriteriaRouteImport } from './routes/_authenticated/backtest.criteria'
 import { Route as AuthenticatedBacktestRunIdRouteImport } from './routes/_authenticated/backtest.$runId'
+import { Route as AuthenticatedB3BiRouteImport } from './routes/_authenticated/b3_.bi'
 import { Route as AuthenticatedAuditReportIdRouteImport } from './routes/_authenticated/audit.$reportId'
 import { Route as AuthenticatedAnalysisAssetIdRouteImport } from './routes/_authenticated/analysis.$assetId'
 import { Route as ApiPublicHooksWeeklyReportRouteImport } from './routes/api/public/hooks/weekly-report'
@@ -406,6 +407,11 @@ const AuthenticatedBacktestRunIdRoute =
     path: '/backtest/$runId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedB3BiRoute = AuthenticatedB3BiRouteImport.update({
+  id: '/b3_/bi',
+  path: '/b3/bi',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAuditReportIdRoute =
   AuthenticatedAuditReportIdRouteImport.update({
     id: '/$reportId',
@@ -544,6 +550,7 @@ export interface FileRoutesByFullPath {
   '/war-room': typeof AuthenticatedWarRoomRoute
   '/analysis/$assetId': typeof AuthenticatedAnalysisAssetIdRoute
   '/audit/$reportId': typeof AuthenticatedAuditReportIdRoute
+  '/b3/bi': typeof AuthenticatedB3BiRoute
   '/backtest/$runId': typeof AuthenticatedBacktestRunIdRoute
   '/backtest/criteria': typeof AuthenticatedBacktestCriteriaRoute
   '/backtest/data': typeof AuthenticatedBacktestDataRoute
@@ -619,6 +626,7 @@ export interface FileRoutesByTo {
   '/war-room': typeof AuthenticatedWarRoomRoute
   '/analysis/$assetId': typeof AuthenticatedAnalysisAssetIdRoute
   '/audit/$reportId': typeof AuthenticatedAuditReportIdRoute
+  '/b3/bi': typeof AuthenticatedB3BiRoute
   '/backtest/$runId': typeof AuthenticatedBacktestRunIdRoute
   '/backtest/criteria': typeof AuthenticatedBacktestCriteriaRoute
   '/backtest/data': typeof AuthenticatedBacktestDataRoute
@@ -696,6 +704,7 @@ export interface FileRoutesById {
   '/_authenticated/war-room': typeof AuthenticatedWarRoomRoute
   '/_authenticated/analysis/$assetId': typeof AuthenticatedAnalysisAssetIdRoute
   '/_authenticated/audit/$reportId': typeof AuthenticatedAuditReportIdRoute
+  '/_authenticated/b3_/bi': typeof AuthenticatedB3BiRoute
   '/_authenticated/backtest/$runId': typeof AuthenticatedBacktestRunIdRoute
   '/_authenticated/backtest/criteria': typeof AuthenticatedBacktestCriteriaRoute
   '/_authenticated/backtest/data': typeof AuthenticatedBacktestDataRoute
@@ -773,6 +782,7 @@ export interface FileRouteTypes {
     | '/war-room'
     | '/analysis/$assetId'
     | '/audit/$reportId'
+    | '/b3/bi'
     | '/backtest/$runId'
     | '/backtest/criteria'
     | '/backtest/data'
@@ -848,6 +858,7 @@ export interface FileRouteTypes {
     | '/war-room'
     | '/analysis/$assetId'
     | '/audit/$reportId'
+    | '/b3/bi'
     | '/backtest/$runId'
     | '/backtest/criteria'
     | '/backtest/data'
@@ -924,6 +935,7 @@ export interface FileRouteTypes {
     | '/_authenticated/war-room'
     | '/_authenticated/analysis/$assetId'
     | '/_authenticated/audit/$reportId'
+    | '/_authenticated/b3_/bi'
     | '/_authenticated/backtest/$runId'
     | '/_authenticated/backtest/criteria'
     | '/_authenticated/backtest/data'
@@ -1384,6 +1396,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBacktestRunIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/b3_/bi': {
+      id: '/_authenticated/b3_/bi'
+      path: '/b3/bi'
+      fullPath: '/b3/bi'
+      preLoaderRoute: typeof AuthenticatedB3BiRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/audit/$reportId': {
       id: '/_authenticated/audit/$reportId'
       path: '/$reportId'
@@ -1570,6 +1589,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedWalletRoute: typeof AuthenticatedWalletRoute
   AuthenticatedWarRoomRoute: typeof AuthenticatedWarRoomRoute
   AuthenticatedAnalysisAssetIdRoute: typeof AuthenticatedAnalysisAssetIdRoute
+  AuthenticatedB3BiRoute: typeof AuthenticatedB3BiRoute
   AuthenticatedBacktestRunIdRoute: typeof AuthenticatedBacktestRunIdRoute
   AuthenticatedBacktestCriteriaRoute: typeof AuthenticatedBacktestCriteriaRoute
   AuthenticatedBacktestDataRoute: typeof AuthenticatedBacktestDataRoute
@@ -1630,6 +1650,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedWalletRoute: AuthenticatedWalletRoute,
   AuthenticatedWarRoomRoute: AuthenticatedWarRoomRoute,
   AuthenticatedAnalysisAssetIdRoute: AuthenticatedAnalysisAssetIdRoute,
+  AuthenticatedB3BiRoute: AuthenticatedB3BiRoute,
   AuthenticatedBacktestRunIdRoute: AuthenticatedBacktestRunIdRoute,
   AuthenticatedBacktestCriteriaRoute: AuthenticatedBacktestCriteriaRoute,
   AuthenticatedBacktestDataRoute: AuthenticatedBacktestDataRoute,

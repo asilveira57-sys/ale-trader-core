@@ -153,6 +153,9 @@ function CockpitPage() {
           <Button size="sm" variant="outline" onClick={() => q.refetch()}>
             <RefreshCw className="w-4 h-4 mr-1" />Atualizar
           </Button>
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/b3/bi">BI analítico</Link>
+          </Button>
 
           <Dialog>
             <DialogTrigger asChild>
