@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_authenticated/b3_/ativo/$symbol")({
   component: AssetDashboardPage,
 });
 
-const ASSETS = ["WIN", "WDO", "PETR4", "VALE3"] as const;
+
 
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "Indicador",
