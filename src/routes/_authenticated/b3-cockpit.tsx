@@ -10,9 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, AlertTriangle, Copy } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { rootSymbol, PX } from "@/lib/b3-format";
+import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
   resetB3DailyStop, updateB3ModeSettings,
@@ -117,6 +118,23 @@ function CockpitPage() {
     return next;
   });
 
+  // ── Copiar estado dos robôs como texto puro (somente interface) ──
+  const copyCards = async (cards: any[], scope: string, includeScoreboard = false) => {
+    if (!cards.length) { toast.error("Nada para copiar"); return; }
+    const text = buildCockpitCopyText(cards, {
+      scope,
+      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-scoreboard"]) : undefined,
+      includeScoreboard,
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${cards.length} ${cards.length === 1 ? "robô copiado" : "robôs copiados"}`);
+    } catch {
+      toast.error("Não foi possível copiar para a área de transferência");
+    }
+  };
+
+
   const totalRobots = all.length;
   const withOpen = all.filter((c) => !!c.open).length;
   const blocked = all.filter(isRiskBlocked).length;
@@ -153,6 +171,11 @@ function CockpitPage() {
           <Button size="sm" variant="outline" onClick={() => q.refetch()}>
             <RefreshCw className="w-4 h-4 mr-1" />Atualizar
           </Button>
+          <Button size="sm" variant="outline"
+            onClick={() => copyCards(visible, "todos os robôs", true)}>
+            <Copy className="w-4 h-4 mr-1" />Copiar tudo
+          </Button>
+
           <Button size="sm" variant="outline" asChild>
             <Link to="/b3/bi">BI analítico</Link>
           </Button>
@@ -246,7 +269,15 @@ function CockpitPage() {
             <span className="text-muted-foreground font-normal">
               {Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0)} robôs
             </span>
-            <Button asChild size="sm" variant="outline" className="h-6 text-[10px] ml-auto">
+            <Button size="sm" variant="outline" className="h-6 text-[10px] ml-auto"
+              onClick={() => copyCards(
+                Array.from(group.byVariant.values()).flat(),
+                root,
+                true,
+              )}>
+              <Copy className="w-3 h-3 mr-1" />Copiar ativo
+            </Button>
+            <Button asChild size="sm" variant="outline" className="h-6 text-[10px]">
               <Link to="/b3/ativo/$symbol" params={{ symbol: root }}>ver painel</Link>
             </Button>
           </h2>
@@ -256,6 +287,10 @@ function CockpitPage() {
               <h3 className="text-xs font-semibold flex items-center gap-2">
                 <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
                 <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
+                <Button size="sm" variant="outline" className="h-6 text-[10px] ml-auto"
+                  onClick={() => copyCards(cards, `${root} · ${variantLabel(variant).toLowerCase()}`)}>
+                  <Copy className="w-3 h-3 mr-1" />Copiar ativo + modalidade
+                </Button>
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 {cards.map((c: any) => {
@@ -267,15 +302,29 @@ function CockpitPage() {
                   const riskBlocked = isRiskBlocked(c);
                   const isRealEnv = c.environment && c.environment !== "simulation";
                   return (
-                    <div key={key} className="rounded-lg border border-border/60 bg-card overflow-hidden">
+                    <div key={key} className="relative rounded-lg border border-border/60 bg-card overflow-hidden">
+                      {/* Copiar este robô — fora do <button> do card pra não aninhar botões */}
+                      <button
+                        type="button"
+                        aria-label="Copiar este robô"
+                        title="Copiar este robô"
+                        className="absolute top-1.5 right-1.5 z-10 rounded p-1 text-muted-foreground/70 hover:text-foreground hover:bg-muted/50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyCards([c], `${rootSymbol(c.symbol)} · ${variantLabel(c.variant ?? "indicador").toLowerCase()} · ${String(c.mode).replace("_", " ")}`);
+                        }}
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
                       {/* ── Cabeçalho compacto: sempre visível ── */}
                       <button className="w-full text-left p-3 space-y-2" onClick={() => toggleExpand(key)}>
+
                         <div className="flex items-center justify-between gap-1">
                           <div className="flex flex-wrap items-center gap-1">
                             <Badge className={`uppercase text-[10px] ${MODE_COLOR[c.mode]}`}>{c.mode.replace("_", " ")}</Badge>
                             <Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge>
                           </div>
-                          {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                          {isOpen ? <ChevronUp className="w-4 h-4 mr-5 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 mr-5 text-muted-foreground" />}
                         </div>
 
                         {hasPosition ? (
