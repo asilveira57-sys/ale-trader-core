@@ -86,8 +86,8 @@ function AssetDashboardPage() {
       {/* ── Chips de navegação ── */}
       <section className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          {ASSETS.map((a) => (
-            <Button key={a} asChild size="sm" variant={a === root ? "default" : "outline"} className="h-7 text-[11px]">
+          {assetsPresent.map((a) => (
+            <Button key={a} asChild size="sm" variant={a === root ? "default" : "outline"} className="h-7 text-[11px]" title={assetLabel(a)}>
               <Link to="/b3/ativo/$symbol" params={{ symbol: a }}>{a}</Link>
             </Button>
           ))}
