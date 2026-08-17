@@ -6621,6 +6621,20 @@ export type Database = {
         }[]
       }
       b3_calcular_score_dia: { Args: { p_date?: string }; Returns: number }
+      b3_detectar_ordens_fantasma: {
+        Args: never
+        Returns: {
+          alem_do_stop: number
+          entrada: number
+          lado: string
+          minutos_aberta: number
+          modo: string
+          nivel_stop: number
+          preco_atual: number
+          symbol: string
+          variant: string
+        }[]
+      }
       b3_m1_candles: {
         Args: { p_limit?: number; p_symbol: string; p_user_id: string }
         Returns: {
