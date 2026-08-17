@@ -1729,12 +1729,18 @@ async function runB3SimulationTickInner(
         const evalFromMs = lastEvalMs ?? entryMsOpen;
         const nowMs = Date.now();
         const minutoCorrenteMs = Math.floor(nowMs / 60000) * 60000;
-        const candlesToEval = evalFromMs
+        // DEFEITO CORRIGIDO: b3_m1_candles retorna ORDER BY m DESC (mais novo
+        // primeiro). O laço abaixo faz break no primeiro toque, então sem
+        // reordenar ele encontrava o toque MAIS RECENTE em vez do PRIMEIRO —
+        // preço de saída e candle_minute_ts errados. Semântica correta de
+        // backtest: "qual foi o PRIMEIRO candle que tocou o nível".
+        const candlesToEval = (evalFromMs
           ? m1Candles.filter((c: any) => {
               const t = new Date(c.minute_ts).getTime();
               return t > evalFromMs && t <= nowMs;
             })
-          : [];
+          : []
+        ).slice().sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
         // Nível de saída executado no preço do nível, com slippage sempre contra.
         const execAtLevel = (level: number) => {
           const raw = level - dirSign * slipPts;
