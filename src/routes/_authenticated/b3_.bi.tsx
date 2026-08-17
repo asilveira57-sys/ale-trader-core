@@ -142,6 +142,10 @@ function BiPage() {
 
   const d = q.data;
   const c = d?.cartoes;
+  // Filtro de ativo vem do histórico do período; inclui o ativo já filtrado.
+  const assetsPresent: string[] = Array.from(
+    new Set([...(d?.symbols_present ?? []), ...(symbol !== "all" ? [symbol] : [])]),
+  ).sort();
 
   const cenario = [
     symbol === "all" ? "todos os ativos" : symbol,
