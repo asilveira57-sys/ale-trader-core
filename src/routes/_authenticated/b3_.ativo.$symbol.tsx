@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, ArrowLeft } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { getB3AssetDashboard } from "@/lib/b3-simulation.functions";
-import { BRL, SIGNED_BRL, shortBRL } from "@/lib/b3-format";
+import { BRL, SIGNED_BRL, shortBRL, assetLabel } from "@/lib/b3-format";
 
 export const Route = createFileRoute("/_authenticated/b3_/ativo/$symbol")({
   head: ({ params }) => {
