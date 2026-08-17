@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { B3_ASSETS } from "@/lib/b3-format";
 
 const MODES = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
 const SYMBOLS = B3_ASSETS;
