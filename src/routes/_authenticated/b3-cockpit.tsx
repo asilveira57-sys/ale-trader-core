@@ -324,7 +324,7 @@ function CockpitPage() {
                             <Badge className={`uppercase text-[10px] ${MODE_COLOR[c.mode]}`}>{c.mode.replace("_", " ")}</Badge>
                             <Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge>
                           </div>
-                          {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                          {isOpen ? <ChevronUp className="w-4 h-4 mr-5 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 mr-5 text-muted-foreground" />}
                         </div>
 
                         {hasPosition ? (
