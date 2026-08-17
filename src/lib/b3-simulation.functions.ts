@@ -3716,6 +3716,9 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       variant: variantFilter ?? "all",
       mode: modeFilter ?? "all",
       variants_present: variantsPresent,
+      // Ativos com run ativa — os chips da tela vêm daqui, então um ativo novo
+      // aparece sozinho no dia em que a run for criada, sem novo deploy.
+      assets_present: Array.from(new Set((allRuns ?? []).map((r: any) => rootOf(r.symbol)))).sort() as string[],
       contracts: Array.from(new Set(assetRuns.map((r: any) => r.symbol))) as string[],
       quote_symbol: null as string | null,
       tick_size: 5,
