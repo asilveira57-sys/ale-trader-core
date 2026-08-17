@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
 const MODES = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
-const SYMBOLS = ["WIN", "WDO", "PETR4", "VALE3"] as const;
+const SYMBOLS = B3_ASSETS;
 const VARIANTS = ["indicador", "price_action", "mean_reversion", "range"] as const;
 
 // Valida a senha mestra contra o hash guardado em B3_PRD_MASTER_PASSWORD_HASH.
