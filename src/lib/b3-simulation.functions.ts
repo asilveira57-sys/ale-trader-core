@@ -181,6 +181,10 @@ async function mirrorToReal(
 type Mode = "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agressivo";
 const MODES: Mode[] = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"];
 
+// Instrumentação da gestão de posição aberta: no máximo 1 gravação por minuto
+// por ordem (chave = order_id → minuto epoch já registrado).
+const openEvalLogMinute = new Map<string, number>();
+
 interface ModeDefaults {
   entry_style: string;
   min_approve_votes: number; min_confidence: number; min_score: number;
@@ -1664,9 +1668,14 @@ async function runB3SimulationTickInner(
       if (cfg.enabled === false) {
         await recordStatusIfChanged(mode, m, "pausado", "paused",
           { pnl: realizedToday, message: "Modo desativado nas configurações." });
-        log.push({ mode, action: "skip", reason: "modo_desativado" });
-        finalizeAudit("Robô desativado nas configurações.");
-        continue;
+        // Um bloqueio pode impedir ENTRADA nova, nunca a GESTÃO de posição já
+        // aberta. Sem posição, para aqui; com posição, segue para stop/gain/
+        // trailing/zeragem e o gate de entrada é reaplicado depois.
+        if (!open) {
+          log.push({ mode, action: "skip", reason: "modo_desativado" });
+          finalizeAudit("Robô desativado nas configurações.");
+          continue;
+        }
       }
 
       if (open) {
@@ -1725,12 +1734,18 @@ async function runB3SimulationTickInner(
         const evalFromMs = lastEvalMs ?? entryMsOpen;
         const nowMs = Date.now();
         const minutoCorrenteMs = Math.floor(nowMs / 60000) * 60000;
-        const candlesToEval = evalFromMs
+        // DEFEITO CORRIGIDO: b3_m1_candles retorna ORDER BY m DESC (mais novo
+        // primeiro). O laço abaixo faz break no primeiro toque, então sem
+        // reordenar ele encontrava o toque MAIS RECENTE em vez do PRIMEIRO —
+        // preço de saída e candle_minute_ts errados. Semântica correta de
+        // backtest: "qual foi o PRIMEIRO candle que tocou o nível".
+        const candlesToEval = (evalFromMs
           ? m1Candles.filter((c: any) => {
               const t = new Date(c.minute_ts).getTime();
               return t > evalFromMs && t <= nowMs;
             })
-          : [];
+          : []
+        ).slice().sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
         // Nível de saída executado no preço do nível, com slippage sempre contra.
         const execAtLevel = (level: number) => {
           const raw = level - dirSign * slipPts;
@@ -1750,10 +1765,16 @@ async function runB3SimulationTickInner(
         let intrabarHit: { reason: string; level: number; price: number; minute_ts: string; both: boolean } | null = null;
         let lastEvaluatedMinuteTs: string | null = null;
         let candleIncompletoIgnorado = false;
+        // DEFEITO CORRIGIDO: o marcador deve ser o MAIOR minute_ts entre os
+        // candles COMPLETOS avaliados e nunca pode retroceder.
+        let lastEvaluatedMs = lastEvalMs ?? 0;
         for (const c of candlesToEval) {
           const candleMs = new Date(c.minute_ts).getTime();
           if (candleMs < minutoCorrenteMs) {
-            lastEvaluatedMinuteTs = c.minute_ts;
+            if (candleMs > lastEvaluatedMs) {
+              lastEvaluatedMs = candleMs;
+              lastEvaluatedMinuteTs = c.minute_ts;
+            }
           } else {
             candleIncompletoIgnorado = true;
           }
@@ -1908,6 +1929,7 @@ async function runB3SimulationTickInner(
           continue;
         }
 
+        const marcadorAntes = open.last_eval_minute_ts ?? null;
         // Sem saída: avança o marcador de minutos já avaliados (1 write/min no máximo).
         if (lastEvaluatedMinuteTs && lastEvaluatedMinuteTs !== open.last_eval_minute_ts) {
           try {
@@ -1918,12 +1940,107 @@ async function runB3SimulationTickInner(
           } catch { /* best-effort */ }
         }
 
+        // ───────── REDE DE SEGURANÇA INCONDICIONAL DE STOP ─────────
+        // Se o preço corrente já ultrapassou o nível de stop e a posição ainda
+        // está aberta, fecha AGORA. Isto não substitui a avaliação normal —
+        // é o que impede uma posição de correr 1400 pts por falha de caminho.
+        const crossedNow = dirSign === 1 ? markPrice <= stopLevel : markPrice >= stopLevel;
+        if (crossedNow) {
+          const beyondPts = Math.abs(markPrice - stopLevel);
+          try {
+            const safetyAudit: B3QuoteExecutionAudit = {
+              ...markAudit,
+              execution_price_origin: `${markAudit.execution_price_origin}+stop_safety_net`,
+            };
+            await closeOrder(supabase, userId, run, m, open, safetyAudit, "stop_safety_net", marketHistory, asset);
+            providerStats.last_exit_price = safetyAudit.execution_price;
+            openOrdersCache = null;
+            realizedTodayByMode = await getRealizedTodayByMode();
+            try {
+              await supabase.from("b3_simulation_orders").update({
+                diagnostic_payload: {
+                  exit_evaluation: "stop_safety_net",
+                  close_reason: "stop_safety_net",
+                  motivo: "preço corrente além do nível de stop e posição ainda aberta",
+                  por_que_caminhos_normais_falharam: {
+                    hit_stop_tick: hitStop, hit_gain: hitGain, hit_trailing: hitTrailing,
+                    intrabar_hit: intrabarHit ? intrabarHit.reason : null,
+                    candles_to_eval: candlesToEval.length,
+                    candle_incompleto_ignorado: candleIncompletoIgnorado,
+                    marcador_antes: marcadorAntes,
+                    marcador_depois: open.last_eval_minute_ts ?? null,
+                  },
+                  stop_level: stopLevel, gain_level: gainLevel,
+                  beyond_pts: beyondPts, move_pts: movePts,
+                  executed_price: safetyAudit.execution_price,
+                  tick_price_at_detection: markPrice,
+                  quote_age_s: Number(priceSrc.quote_age_s ?? 0),
+                },
+              }).eq("id", open.id).eq("user_id", userId);
+            } catch { /* diagnóstico nunca derruba o fechamento */ }
+            try {
+              await supabase.from("system_logs").insert({
+                event_type: "stop_safety_net",
+                source: `b3:${asset.symbol}:${mode}`,
+                severity: "critical",
+                message: `Rede de segurança fechou posição ${open.side} ${beyondPts.toFixed(0)} pts além do stop.`,
+                technical_data: { order_id: open.id, run_id: runId, mode, symbol: asset.symbol, stop_level: stopLevel, mark_price: markPrice, beyond_pts: beyondPts } as any,
+              });
+            } catch { /* best-effort */ }
+            log.push({ mode, action: "close", reason: "stop_safety_net", price: safetyAudit.execution_price, beyond_pts: beyondPts });
+            finalizeAudit(`Rede de segurança: stop atravessado em ${beyondPts.toFixed(0)} pts — posição encerrada.`, {
+              last_setup: `Posição ${open.side.toUpperCase()} em gestão`,
+              signals: { evaluated_side: open.side, buy: false, sell: false },
+            });
+            continue;
+          } catch (safetyErr) {
+            log.push({ mode, action: "safety_net_error", message: (safetyErr as Error).message });
+          }
+        }
+
         // Rede de segurança de OBSERVAÇÃO: se o nível de stop já foi atravessado
         // (por candle M1 ou pelo tick) e ainda assim o tick terminou sem fechar,
         // registra o stop pendente. Nada é fechado aqui.
         await recordPendingStopIfCrossed(mode, m, open, cfg, "nível atravessado e tick encerrado sem execução");
 
+        // ───────── Instrumentação: estado da avaliação, 1x/min por ordem ─────────
+        try {
+          const minuteKey = Math.floor(Date.now() / 60000);
+          if (openEvalLogMinute.get(open.id) !== minuteKey) {
+            openEvalLogMinute.set(open.id, minuteKey);
+            await supabase.from("b3_simulation_orders").update({
+              diagnostic_payload: {
+                exit_evaluation: "em_gestao",
+                move_pts: movePts,
+                stop_level: stopLevel,
+                gain_level: gainLevel,
+                hit_stop: hitStop,
+                hit_gain: hitGain,
+                hit_trailing: hitTrailing,
+                candles_to_eval: candlesToEval.length,
+                primeiro_candle: candlesToEval[0]?.minute_ts ?? null,
+                ultimo_candle: candlesToEval[candlesToEval.length - 1]?.minute_ts ?? null,
+                marcador_antes: marcadorAntes,
+                marcador_depois: open.last_eval_minute_ts ?? null,
+                candle_incompleto_ignorado: candleIncompletoIgnorado,
+                tick_price: markPrice,
+                quote_age_s: Number(priceSrc.quote_age_s ?? 0),
+                at: new Date().toISOString(),
+              },
+            }).eq("id", open.id).eq("user_id", userId);
+          }
+        } catch { /* instrumentação nunca derruba o motor */ }
 
+      }
+
+      // Robô desativado: a ENTRADA é bloqueada, mas a GESTÃO da posição aberta
+      // acima já foi executada. Antes este gate ficava ANTES do bloco de gestão,
+      // e por isso posições de robôs desativados nunca eram avaliadas para
+      // stop/gain/trailing — causa raiz do stop atravessado sem execução.
+      if (cfg.enabled === false) {
+        log.push({ mode, action: "skip", reason: "modo_desativado" });
+        finalizeAudit("Robô desativado nas configurações.");
+        continue;
       }
 
       // Bloqueio de proteção B3 substitui o antigo gate "meta atingida".

@@ -6642,6 +6642,7 @@ export type Database = {
         Args: { p_date?: string }
         Returns: number
       }
+      b3_materializar_m1: { Args: { p_date?: string }; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
