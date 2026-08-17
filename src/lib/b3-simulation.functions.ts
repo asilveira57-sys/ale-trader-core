@@ -21,6 +21,7 @@ import {
   type B3QuoteExecutionAudit,
 } from "./b3-price-source.server";
 import { b3WindowState } from "./b3-window.server";
+import { realMagicNumber, MagicNumberNotRegisteredError } from "./b3-magic";
 
 
 const POINT_VALUE_BRL = 0.2;
