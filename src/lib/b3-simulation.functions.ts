@@ -4074,6 +4074,11 @@ export const getB3BiDashboard = createServerFn({ method: "POST" })
 
     return {
       periodo: { de, ate },
+      // Ativos que existem nos dados do período (antes dos filtros) — o filtro
+      // de ativo da tela vem daqui, para não oferecer ativo sem histórico.
+      symbols_present: Array.from(
+        new Set(((rowsRaw ?? []) as any[]).map((r) => String(r.symbol).toUpperCase())),
+      ).sort() as string[],
       filtros: {
         symbol: fSymbol ?? "all",
         variant: fVariant ?? "all",
