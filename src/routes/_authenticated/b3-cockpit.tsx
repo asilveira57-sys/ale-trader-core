@@ -118,6 +118,23 @@ function CockpitPage() {
     return next;
   });
 
+  // ── Copiar estado dos robôs como texto puro (somente interface) ──
+  const copyCards = async (cards: any[], scope: string, includeScoreboard = false) => {
+    if (!cards.length) { toast.error("Nada para copiar"); return; }
+    const text = buildCockpitCopyText(cards, {
+      scope,
+      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-scoreboard"]) : undefined,
+      includeScoreboard,
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${cards.length} ${cards.length === 1 ? "robô copiado" : "robôs copiados"}`);
+    } catch {
+      toast.error("Não foi possível copiar para a área de transferência");
+    }
+  };
+
+
   const totalRobots = all.length;
   const withOpen = all.filter((c) => !!c.open).length;
   const blocked = all.filter(isRiskBlocked).length;
