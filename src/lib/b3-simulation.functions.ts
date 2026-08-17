@@ -106,9 +106,6 @@ const REAL_MIRROR_ENABLED = true;
 const REAL_QTY_BY_MODE: Record<Mode, number> = {
   conservador: 1, moderado: 1, equilibrado: 1, semi_agressivo: 1, agressivo: 1,
 };
-const MODE_INDEX: Record<Mode, number> = {
-  conservador: 1, moderado: 2, equilibrado: 3, semi_agressivo: 4, agressivo: 5,
-};
 // Magic number: ver src/lib/b3-magic.ts (blocos por ativo/modalidade/modo).
 // CORRIGIDO em 17/08/2026: os dez ativos ganharam bloco próprio e o fallback
 // genérico 2900 (que colidiria com SOL) foi removido — ativo não cadastrado
