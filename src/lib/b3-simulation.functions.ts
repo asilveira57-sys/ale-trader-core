@@ -181,6 +181,10 @@ async function mirrorToReal(
 type Mode = "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agressivo";
 const MODES: Mode[] = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"];
 
+// Instrumentação da gestão de posição aberta: no máximo 1 gravação por minuto
+// por ordem (chave = order_id → minuto epoch já registrado).
+const openEvalLogMinute = new Map<string, number>();
+
 interface ModeDefaults {
   entry_style: string;
   min_approve_votes: number; min_confidence: number; min_score: number;
