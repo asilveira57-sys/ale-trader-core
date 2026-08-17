@@ -157,15 +157,14 @@ async function mirrorToReal(
     console.error(`[mirror] magic number não cadastrado — comando real NÃO enfileirado: ${message}`);
     try {
       await supabase.from("system_logs").insert({
-        user_id: userId,
-        level: "critical",
+        event_type: "magic_number_nao_cadastrado",
+        source: `b3_real_mirror:${symbol}:${variant}:${mode}`,
         severity: "critical",
-        source: "b3_real_mirror",
-        message: `Comando real bloqueado: ${message}`,
-        metadata: {
-          motivo: e instanceof MagicNumberNotRegisteredError ? "magic_number_nao_cadastrado" : "magic_number_erro",
-          symbol, variant, mode, action, side, simulation_run_id: runId,
-        },
+        message: `Comando real NÃO enfileirado: ${message}`,
+        technical_data: {
+          symbol, variant, mode, action, side, run_id: runId,
+          erro: e instanceof MagicNumberNotRegisteredError ? "nao_cadastrado" : "inesperado",
+        } as any,
       });
     } catch { /* log é best-effort; o bloqueio já aconteceu */ }
     return;
