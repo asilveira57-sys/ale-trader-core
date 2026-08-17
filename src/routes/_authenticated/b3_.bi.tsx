@@ -75,7 +75,7 @@ const PRESETS: { key: Preset; label: string }[] = [
   { key: "custom", label: "personalizado" },
 ];
 
-const ASSETS = ["WIN", "WDO", "PETR4", "VALE3"] as const;
+
 const VARIANTS = [
   { key: "indicador", label: "indicador" },
   { key: "price_action", label: "price action" },
