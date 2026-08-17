@@ -75,7 +75,7 @@ const PRESETS: { key: Preset; label: string }[] = [
   { key: "custom", label: "personalizado" },
 ];
 
-const ASSETS = ["WIN", "WDO", "PETR4", "VALE3"] as const;
+
 const VARIANTS = [
   { key: "indicador", label: "indicador" },
   { key: "price_action", label: "price action" },
@@ -142,6 +142,10 @@ function BiPage() {
 
   const d = q.data;
   const c = d?.cartoes;
+  // Filtro de ativo vem do histórico do período; inclui o ativo já filtrado.
+  const assetsPresent: string[] = Array.from(
+    new Set([...(d?.symbols_present ?? []), ...(symbol !== "all" ? [symbol] : [])]),
+  ).sort();
 
   const cenario = [
     symbol === "all" ? "todos os ativos" : symbol,
@@ -216,7 +220,7 @@ function BiPage() {
         </div>
 
         <FilterRow label="Ativo:" value={symbol} onChange={setSymbol}
-          options={ASSETS.map((a) => ({ key: a, label: a }))} allLabel="todos" />
+          options={assetsPresent.map((a) => ({ key: a, label: a }))} allLabel="todos" />
         <FilterRow label="Modalidade:" value={variant} onChange={setVariant}
           options={VARIANTS.map((v) => ({ key: v.key, label: v.label }))} allLabel="todas" />
         <FilterRow label="Modo:" value={mode} onChange={setMode}

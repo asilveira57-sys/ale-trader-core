@@ -12,6 +12,30 @@ export const decimalsForTick = (tick: number) => {
   return Math.min(4, (s.split(".")[1] ?? "").length);
 };
 
+// Lista única de ativos conhecidos pelas telas. Expandir aqui, não nas rotas.
+export const B3_ASSETS = [
+  "WIN", "WDO", "PETR4", "VALE3",
+  "ITUB4", "BBDC4", "BBAS3",
+  "BIT", "ETR", "SOL",
+] as const;
+export type B3Asset = (typeof B3_ASSETS)[number];
+
+export const B3_ASSET_LABEL: Record<string, string> = {
+  WIN: "Mini índice",
+  WDO: "Mini dólar",
+  PETR4: "Petrobras PN",
+  VALE3: "Vale ON",
+  ITUB4: "Itaú PN",
+  BBDC4: "Bradesco PN",
+  BBAS3: "Banco do Brasil ON",
+  BIT: "Bitcoin futuro",
+  ETR: "Ethereum futuro",
+  SOL: "Solana futuro",
+};
+
+export const assetLabel = (symbol: string) =>
+  B3_ASSET_LABEL[String(symbol ?? "").toUpperCase()] ?? String(symbol ?? "").toUpperCase();
+
 // Contratos futuros (WINV26, WDOU26) rolam de vencimento; agrupa pela raiz do
 // ativo pra que a virada de contrato não quebre o agrupamento da tela.
 export const rootSymbol = (symbol: string) => {

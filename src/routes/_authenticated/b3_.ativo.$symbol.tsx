@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, ArrowLeft } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { getB3AssetDashboard } from "@/lib/b3-simulation.functions";
-import { BRL, SIGNED_BRL, shortBRL } from "@/lib/b3-format";
+import { BRL, SIGNED_BRL, shortBRL, assetLabel } from "@/lib/b3-format";
 
 export const Route = createFileRoute("/_authenticated/b3_/ativo/$symbol")({
   head: ({ params }) => {
@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_authenticated/b3_/ativo/$symbol")({
   component: AssetDashboardPage,
 });
 
-const ASSETS = ["WIN", "WDO", "PETR4", "VALE3"] as const;
+
 
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "Indicador",
@@ -55,6 +55,10 @@ function AssetDashboardPage() {
 
   const d = q.data;
   const variantsPresent: string[] = d?.variants_present ?? [];
+  // Chips só para ativos com run ativa; inclui o ativo aberto para não sumir.
+  const assetsPresent: string[] = Array.from(
+    new Set([...(d?.assets_present ?? []), root].filter(Boolean)),
+  ).sort();
 
   return (
     <div className="container mx-auto py-6 space-y-5 tabular-nums">
@@ -82,8 +86,8 @@ function AssetDashboardPage() {
       {/* ── Chips de navegação ── */}
       <section className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          {ASSETS.map((a) => (
-            <Button key={a} asChild size="sm" variant={a === root ? "default" : "outline"} className="h-7 text-[11px]">
+          {assetsPresent.map((a) => (
+            <Button key={a} asChild size="sm" variant={a === root ? "default" : "outline"} className="h-7 text-[11px]" title={assetLabel(a)}>
               <Link to="/b3/ativo/$symbol" params={{ symbol: a }}>{a}</Link>
             </Button>
           ))}

@@ -21,6 +21,7 @@ import {
   type B3QuoteExecutionAudit,
 } from "./b3-price-source.server";
 import { b3WindowState } from "./b3-window.server";
+import { realMagicNumber, MagicNumberNotRegisteredError } from "./b3-magic";
 
 
 const POINT_VALUE_BRL = 0.2;
@@ -105,31 +106,11 @@ const REAL_MIRROR_ENABLED = true;
 const REAL_QTY_BY_MODE: Record<Mode, number> = {
   conservador: 1, moderado: 1, equilibrado: 1, semi_agressivo: 1, agressivo: 1,
 };
-const MODE_INDEX: Record<Mode, number> = {
-  conservador: 1, moderado: 2, equilibrado: 3, semi_agressivo: 4, agressivo: 5,
-};
-// Magic number = 2000 + (bloco de 100 por ativo) + (bloco de 500 por
-// modalidade) + índice do modo (1-5).
-// Faixa 2000+ nunca colide com nada que a conta demo venha a usar (essa
-// ficaria em 1000+, se um dia o espelho demo também usar essa fila).
-// CORRIGIDO em 06/08/2026: cada ativo ganhou seu bloco (WIN=2000, WDO=2100,
-// PETR4=2200, VALE3=2300).
-// CORRIGIDO em 15/08/2026: com duas modalidades rodando no mesmo ativo, o
-// número era igual para os dois robôs e no MT5 um fecharia a posição do
-// outro. Agora a modalidade entra no cálculo:
-//   indicador=+0, price_action=+500, mean_reversion=+1000, range=+1500.
-// Ex.: WIN price_action semi_agressivo = 2000 + 500 + 4 = 2504.
-const REAL_MAGIC_ASSET_BLOCK: Record<string, number> = {
-  WIN: 2000, WDO: 2100, PETR4: 2200, VALE3: 2300,
-};
-export const REAL_MAGIC_VARIANT_BLOCK: Record<string, number> = {
-  indicador: 0, price_action: 500, mean_reversion: 1000, range: 1500,
-};
-export function realMagicNumber(quoteSymbol: string, variant: string, mode: Mode): number {
-  const block = REAL_MAGIC_ASSET_BLOCK[quoteSymbol] ?? 2900; // ativo novo não cadastrado: bloco genérico
-  const variantBlock = REAL_MAGIC_VARIANT_BLOCK[variant ?? "indicador"] ?? 2000; // modalidade nova: bloco genérico
-  return block + variantBlock + MODE_INDEX[mode];
-}
+// Magic number: ver src/lib/b3-magic.ts (blocos por ativo/modalidade/modo).
+// CORRIGIDO em 17/08/2026: os dez ativos ganharam bloco próprio e o fallback
+// genérico 2900 (que colidiria com SOL) foi removido — ativo não cadastrado
+// falha FECHADA e nenhum comando real é enfileirado.
+
 
 async function mirrorToReal(
   supabase: any, userId: string, runId: string, mode: Mode,
@@ -165,11 +146,35 @@ async function mirrorToReal(
 
   const quantity = Math.max(1, Math.min(REAL_QTY_BY_MODE[mode] ?? 1, authMaxQty));
 
+  // Falha FECHADA: ativo/modalidade/modo sem magic number cadastrado não pode
+  // receber número genérico (dois robôs com o mesmo magic fechariam a posição
+  // um do outro no MT5). Registra em system_logs e não enfileira o comando.
+  let magic: number;
+  try {
+    magic = realMagicNumber(symbol, variant, mode);
+  } catch (e) {
+    const message = (e as Error).message;
+    console.error(`[mirror] magic number não cadastrado — comando real NÃO enfileirado: ${message}`);
+    try {
+      await supabase.from("system_logs").insert({
+        event_type: "magic_number_nao_cadastrado",
+        source: `b3_real_mirror:${symbol}:${variant}:${mode}`,
+        severity: "critical",
+        message: `Comando real NÃO enfileirado: ${message}`,
+        technical_data: {
+          symbol, variant, mode, action, side, run_id: runId,
+          erro: e instanceof MagicNumberNotRegisteredError ? "nao_cadastrado" : "inesperado",
+        } as any,
+      });
+    } catch { /* log é best-effort; o bloqueio já aconteceu */ }
+    return;
+  }
+
   try {
     await supabase.from("b3_mt5_commands").insert({
       user_id: userId, env: "real", simulation_run_id: runId, mode, variant,
       action, side, symbol, quantity,
-      magic_number: realMagicNumber(symbol, variant, mode), idempotency_key: idempotencyKey,
+      magic_number: magic, idempotency_key: idempotencyKey,
       requested_by: requestedBy,
     });
   } catch (e) {
@@ -3711,6 +3716,9 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       variant: variantFilter ?? "all",
       mode: modeFilter ?? "all",
       variants_present: variantsPresent,
+      // Ativos com run ativa — os chips da tela vêm daqui, então um ativo novo
+      // aparece sozinho no dia em que a run for criada, sem novo deploy.
+      assets_present: Array.from(new Set((allRuns ?? []).map((r: any) => rootOf(r.symbol)))).sort() as string[],
       contracts: Array.from(new Set(assetRuns.map((r: any) => r.symbol))) as string[],
       quote_symbol: null as string | null,
       tick_size: 5,
@@ -4066,6 +4074,11 @@ export const getB3BiDashboard = createServerFn({ method: "POST" })
 
     return {
       periodo: { de, ate },
+      // Ativos que existem nos dados do período (antes dos filtros) — o filtro
+      // de ativo da tela vem daqui, para não oferecer ativo sem histórico.
+      symbols_present: Array.from(
+        new Set(((rowsRaw ?? []) as any[]).map((r) => String(r.symbol).toUpperCase())),
+      ).sort() as string[],
       filtros: {
         symbol: fSymbol ?? "all",
         variant: fVariant ?? "all",
