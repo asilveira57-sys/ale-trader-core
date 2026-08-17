@@ -146,11 +146,36 @@ async function mirrorToReal(
 
   const quantity = Math.max(1, Math.min(REAL_QTY_BY_MODE[mode] ?? 1, authMaxQty));
 
+  // Falha FECHADA: ativo/modalidade/modo sem magic number cadastrado não pode
+  // receber número genérico (dois robôs com o mesmo magic fechariam a posição
+  // um do outro no MT5). Registra em system_logs e não enfileira o comando.
+  let magic: number;
+  try {
+    magic = realMagicNumber(symbol, variant, mode);
+  } catch (e) {
+    const message = (e as Error).message;
+    console.error(`[mirror] magic number não cadastrado — comando real NÃO enfileirado: ${message}`);
+    try {
+      await supabase.from("system_logs").insert({
+        user_id: userId,
+        level: "critical",
+        severity: "critical",
+        source: "b3_real_mirror",
+        message: `Comando real bloqueado: ${message}`,
+        metadata: {
+          motivo: e instanceof MagicNumberNotRegisteredError ? "magic_number_nao_cadastrado" : "magic_number_erro",
+          symbol, variant, mode, action, side, simulation_run_id: runId,
+        },
+      });
+    } catch { /* log é best-effort; o bloqueio já aconteceu */ }
+    return;
+  }
+
   try {
     await supabase.from("b3_mt5_commands").insert({
       user_id: userId, env: "real", simulation_run_id: runId, mode, variant,
       action, side, symbol, quantity,
-      magic_number: realMagicNumber(symbol, variant, mode), idempotency_key: idempotencyKey,
+      magic_number: magic, idempotency_key: idempotencyKey,
       requested_by: requestedBy,
     });
   } catch (e) {
