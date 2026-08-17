@@ -1668,9 +1668,14 @@ async function runB3SimulationTickInner(
       if (cfg.enabled === false) {
         await recordStatusIfChanged(mode, m, "pausado", "paused",
           { pnl: realizedToday, message: "Modo desativado nas configurações." });
-        log.push({ mode, action: "skip", reason: "modo_desativado" });
-        finalizeAudit("Robô desativado nas configurações.");
-        continue;
+        // Um bloqueio pode impedir ENTRADA nova, nunca a GESTÃO de posição já
+        // aberta. Sem posição, para aqui; com posição, segue para stop/gain/
+        // trailing/zeragem e o gate de entrada é reaplicado depois.
+        if (!open) {
+          log.push({ mode, action: "skip", reason: "modo_desativado" });
+          finalizeAudit("Robô desativado nas configurações.");
+          continue;
+        }
       }
 
       if (open) {
