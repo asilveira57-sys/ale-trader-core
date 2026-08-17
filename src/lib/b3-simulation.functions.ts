@@ -1723,10 +1723,9 @@ async function runB3SimulationTickInner(
         // fazia o stop ser percebido tarde e executado num preço muito pior
         // (medido: até +79% além do stop configurado). Aqui usamos máxima e
         // mínima dos candles M1 já carregados (b3_m1_candles) para detectar o
-        // toque e EXECUTAR NO PREÇO DO NÍVEL, como faria uma ordem stop real.
+        // toque. A execução é sempre no Bid/Ask corrente auditado: o candle
+        // prova que o nível foi tocado, mas não prova liquidez naquele preço.
         // Convenção conservadora de backtest: stop e alvo no mesmo candle → stop.
-        const tickSizeExec = Number(asset.tick_size) || 1;
-        const slipPts = Number(run.simulated_slippage_pts) || 0;
         const stopLevel = Number(open.entry_price) - dirSign * Number(cfg.stop_pts);
         const gainLevel = Number(open.entry_price) + dirSign * Number(cfg.gain_pts);
         const entryMsOpen = open.entry_time ? new Date(open.entry_time).getTime() : null;
@@ -1746,11 +1745,6 @@ async function runB3SimulationTickInner(
             })
           : []
         ).slice().sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
-        // Nível de saída executado no preço do nível, com slippage sempre contra.
-        const execAtLevel = (level: number) => {
-          const raw = level - dirSign * slipPts;
-          return Math.round(raw / tickSizeExec) * tickSizeExec;
-        };
         // touched(): stop/trailing são adversos, alvo é favorável.
         const adverseTouch = (c: any, level: number) => {
           const low = Number(c.candle_low), high = Number(c.candle_high);
@@ -1781,11 +1775,11 @@ async function runB3SimulationTickInner(
           const stopTouched = adverseTouch(c, stopLevel);
           const gainTouched = favorableTouch(c, gainLevel);
           if (stopTouched) {
-            intrabarHit = { reason: "stop", level: stopLevel, price: execAtLevel(stopLevel), minute_ts: c.minute_ts, both: gainTouched };
+            intrabarHit = { reason: "stop", level: stopLevel, price: markAudit.execution_price, minute_ts: c.minute_ts, both: gainTouched };
             break;
           }
           if (gainTouched) {
-            intrabarHit = { reason: "gain", level: gainLevel, price: execAtLevel(gainLevel), minute_ts: c.minute_ts, both: false };
+            intrabarHit = { reason: "gain", level: gainLevel, price: markAudit.execution_price, minute_ts: c.minute_ts, both: false };
             break;
           }
         }
@@ -1856,12 +1850,12 @@ async function runB3SimulationTickInner(
             trailingDebug = { mode: "structural", structural_stop_price: structuralStopPrice, peak_pts: peakPts, m1_candles_since_entry: candlesSinceEntry.length };
 
             if (structuralStopPrice !== null) {
-              // Nível estrutural também é testado contra máxima/mínima do candle
-              // e executado NO NÍVEL (não no preço do tick).
+              // Nível estrutural é testado contra máxima/mínima do candle; a
+              // execução continua sendo no Bid/Ask corrente auditado.
               const touchCandle = candlesToEval.find((c: any) => adverseTouch(c, structuralStopPrice as number));
               if (touchCandle) {
                 hitTrailing = true;
-                trailingIntrabar = { level: structuralStopPrice, price: execAtLevel(structuralStopPrice), minute_ts: touchCandle.minute_ts };
+                trailingIntrabar = { level: structuralStopPrice, price: markAudit.execution_price, minute_ts: touchCandle.minute_ts };
               } else {
                 hitTrailing = dirSign === 1 ? markPrice <= structuralStopPrice : markPrice >= structuralStopPrice;
               }
@@ -1872,7 +1866,7 @@ async function runB3SimulationTickInner(
             const touchCandle = candlesToEval.find((c: any) => adverseTouch(c, trailLevel));
             if (touchCandle) {
               hitTrailing = true;
-              trailingIntrabar = { level: trailLevel, price: execAtLevel(trailLevel), minute_ts: touchCandle.minute_ts };
+              trailingIntrabar = { level: trailLevel, price: markAudit.execution_price, minute_ts: touchCandle.minute_ts };
             } else {
               hitTrailing = (peakPts - movePts) >= Number(cfg.trailing_giveback_pts);
             }
@@ -1882,14 +1876,14 @@ async function runB3SimulationTickInner(
 
         if (forceClose || hitStop || hitGain || hitTrailing) {
           const reason = forceClose ? "force_close" : hitStop ? "stop" : hitGain ? "gain" : "trailing_stop";
-          // Preço de execução: no NÍVEL quando o toque veio de candle M1;
-          // fallback (sem candle novo) mantém o preço do tick corrente.
+          // O nível detecta o toque; o preço executado é sempre o Bid/Ask
+          // corrente de markAudit, compatível com a auditoria MT5 do banco.
           const levelExec = reason === "stop" || reason === "gain"
             ? (intrabarHit && intrabarHit.reason === reason ? intrabarHit : null)
             : reason === "trailing_stop" ? trailingIntrabar : null;
           const exitAuditFinal: B3QuoteExecutionAudit = levelExec
-            ? { ...markAudit, execution_price: levelExec.price,
-                execution_price_origin: `${markAudit.execution_price_origin}+m1_level` }
+            ? { ...markAudit,
+                execution_price_origin: `${markAudit.execution_price_origin}+m1_market` }
             : markAudit;
           const exitPriceFinal = exitAuditFinal.execution_price;
           const tradeCtx = await closeOrder(supabase, userId, run, m, open, exitAuditFinal, reason, marketHistory, asset);
@@ -1903,7 +1897,7 @@ async function runB3SimulationTickInner(
                 close_reason: reason,
                 level_price: levelExec ? (levelExec as any).level : null,
                 executed_price: exitPriceFinal,
-                slippage_pts_applied: levelExec ? slipPts : 0,
+                overshoot_pts: levelExec ? Math.abs(exitPriceFinal - Number((levelExec as any).level)) : 0,
                 candle_minute_ts: levelExec ? (levelExec as any).minute_ts : null,
                 candles_evaluated: candlesToEval.length,
                 ambos_no_mesmo_candle: Boolean(intrabarHit?.both && reason === "stop"),
@@ -1995,6 +1989,7 @@ async function runB3SimulationTickInner(
             continue;
           } catch (safetyErr) {
             log.push({ mode, action: "safety_net_error", message: (safetyErr as Error).message });
+            throw safetyErr;
           }
         }
 
@@ -2901,7 +2896,7 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
   }
   const durationS = entryTimeMs ? Math.max(0, Math.round((nowMs - entryTimeMs) / 1000)) : null;
 
-  await supabase.from("b3_simulation_orders").update({
+  const { data: closedOrder, error: closeError } = await supabase.from("b3_simulation_orders").update({
     exit_price: Math.round(exitPrice / assetProfile.tick_size) * assetProfile.tick_size,
     exit_time: new Date().toISOString(),
     gross_result_points: grossPts,
@@ -2919,7 +2914,51 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
     execution_price_origin: exitAudit.execution_price_origin,
     legacy_price_detected: exitAudit.legacy_price_detected,
     provider_name: exitAudit.provider_name,
-  }).eq("id", order.id).eq("user_id", userId);
+  }).eq("id", order.id).eq("user_id", userId).select("id, status").maybeSingle();
+
+  if (closeError || closedOrder?.status !== "closed") {
+    const failureMessage = closeError?.message
+      ?? `UPDATE de fechamento não confirmou status closed para a ordem ${order.id}`;
+    const failureDetails = {
+      order_id: order.id,
+      run_id: run.id,
+      mode: mode.mode,
+      symbol: assetProfile.symbol,
+      close_reason: reason,
+      attempted_execution_price: exitAudit.execution_price,
+      quote_bid: exitAudit.quote_bid,
+      quote_ask: exitAudit.quote_ask,
+      database_message: failureMessage,
+    };
+    try {
+      await supabase.from("system_logs").insert({
+        event_type: "falha_ao_fechar_posicao",
+        source: `b3:${assetProfile.symbol}:${mode.mode}`,
+        severity: "critical",
+        message: failureMessage,
+        technical_data: failureDetails,
+      });
+    } catch { /* preservar e propagar o erro original do fechamento */ }
+    try {
+      await supabase.from("b3_simulation_block_events").insert({
+        simulation_run_id: run.id,
+        simulation_mode_id: mode.id,
+        user_id: userId,
+        mode: mode.mode,
+        prev_status: mode.current_status ?? "operando",
+        new_status: "erro_tecnico",
+        trigger: "falha_ao_fechar_posicao",
+        related_order_id: order.id,
+        message: failureMessage,
+        provider_name: exitAudit.provider_name,
+        price_source: exitAudit.quote_source,
+        rejected_price: exitAudit.execution_price,
+        mt5_last: exitAudit.quote_last,
+        diagnostic_payload: failureDetails,
+      });
+    } catch { /* preservar e propagar o erro original do fechamento */ }
+    throw new Error(`Falha ao fechar posição ${order.id}: ${failureMessage}`);
+  }
 
   await mirrorToReal(supabase, userId, run.id, mode.mode as Mode, "close", order.side, `close-${order.id}`,
     reason === "manual_close_user" ? "user_manual_close" : reason === "manual_close_all_user" ? "user_close_all" : "engine_auto",
