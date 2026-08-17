@@ -1,19 +1,27 @@
 // Magic number do espelhamento real (MT5). Módulo puro — nenhuma regra de
 // motor aqui, apenas a numeração que separa robôs na conta real.
 //
-// magic = bloco do ativo (100 em 100) + bloco da modalidade (500 em 500) +
-//         índice do modo (1..5).
+// magic = bloco do ativo + bloco da modalidade (500 em 500) + índice do modo (1..5).
 // Ex.: WIN price_action semi_agressivo = 2000 + 500 + 4 = 2504.
-// Maior valor possível hoje: 2900 (SOL) + 1500 (range) + 5 = 4405.
+//
+// ATENÇÃO à espessura do bloco: cada ativo ocupa 1505 números (4 modalidades ×
+// 500 + 5 modos), então blocos de ativo espaçados de 100 em 100 COLIDEM — WIN
+// price_action (2500) cairia sobre BBDC4 indicador. Os quatro ativos originais
+// mantêm os números que já estão em uso (2000..2300, teto 3805) e os seis novos
+// entram acima disso, espaçados de 2000 em 2000. Dois robôs com o mesmo magic
+// fechariam a posição um do outro no MT5 — o teste b3-magic.test.ts guarda isso.
 //
 // FALHA FECHADA: ativo ou modalidade não cadastrados aqui NÃO recebem número
 // genérico — a função lança erro e o comando real não é enfileirado.
 
 export const REAL_MAGIC_ASSET_BLOCK: Record<string, number> = {
+  // originais — não mudar, há histórico de comandos com estes números
   WIN: 2000, WDO: 2100, PETR4: 2200, VALE3: 2300,
-  ITUB4: 2400, BBDC4: 2500, BBAS3: 2600,
-  BIT: 2700, ETR: 2800, SOL: 2900,
+  // novos — acima do teto antigo (3805), espaçamento 2000
+  ITUB4: 4000, BBDC4: 6000, BBAS3: 8000,
+  BIT: 10000, ETR: 12000, SOL: 14000,
 };
+
 
 export const REAL_MAGIC_VARIANT_BLOCK: Record<string, number> = {
   indicador: 0, price_action: 500, mean_reversion: 1000, range: 1500,
