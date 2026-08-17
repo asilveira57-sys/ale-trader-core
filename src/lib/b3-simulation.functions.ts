@@ -108,28 +108,11 @@ const REAL_QTY_BY_MODE: Record<Mode, number> = {
 const MODE_INDEX: Record<Mode, number> = {
   conservador: 1, moderado: 2, equilibrado: 3, semi_agressivo: 4, agressivo: 5,
 };
-// Magic number = 2000 + (bloco de 100 por ativo) + (bloco de 500 por
-// modalidade) + índice do modo (1-5).
-// Faixa 2000+ nunca colide com nada que a conta demo venha a usar (essa
-// ficaria em 1000+, se um dia o espelho demo também usar essa fila).
-// CORRIGIDO em 06/08/2026: cada ativo ganhou seu bloco (WIN=2000, WDO=2100,
-// PETR4=2200, VALE3=2300).
-// CORRIGIDO em 15/08/2026: com duas modalidades rodando no mesmo ativo, o
-// número era igual para os dois robôs e no MT5 um fecharia a posição do
-// outro. Agora a modalidade entra no cálculo:
-//   indicador=+0, price_action=+500, mean_reversion=+1000, range=+1500.
-// Ex.: WIN price_action semi_agressivo = 2000 + 500 + 4 = 2504.
-const REAL_MAGIC_ASSET_BLOCK: Record<string, number> = {
-  WIN: 2000, WDO: 2100, PETR4: 2200, VALE3: 2300,
-};
-export const REAL_MAGIC_VARIANT_BLOCK: Record<string, number> = {
-  indicador: 0, price_action: 500, mean_reversion: 1000, range: 1500,
-};
-export function realMagicNumber(quoteSymbol: string, variant: string, mode: Mode): number {
-  const block = REAL_MAGIC_ASSET_BLOCK[quoteSymbol] ?? 2900; // ativo novo não cadastrado: bloco genérico
-  const variantBlock = REAL_MAGIC_VARIANT_BLOCK[variant ?? "indicador"] ?? 2000; // modalidade nova: bloco genérico
-  return block + variantBlock + MODE_INDEX[mode];
-}
+// Magic number: ver src/lib/b3-magic.ts (blocos por ativo/modalidade/modo).
+// CORRIGIDO em 17/08/2026: os dez ativos ganharam bloco próprio e o fallback
+// genérico 2900 (que colidiria com SOL) foi removido — ativo não cadastrado
+// falha FECHADA e nenhum comando real é enfileirado.
+
 
 async function mirrorToReal(
   supabase: any, userId: string, runId: string, mode: Mode,
