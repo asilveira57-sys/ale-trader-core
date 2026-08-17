@@ -55,6 +55,10 @@ function AssetDashboardPage() {
 
   const d = q.data;
   const variantsPresent: string[] = d?.variants_present ?? [];
+  // Chips só para ativos com run ativa; inclui o ativo aberto para não sumir.
+  const assetsPresent: string[] = Array.from(
+    new Set([...(d?.assets_present ?? []), root].filter(Boolean)),
+  ).sort();
 
   return (
     <div className="container mx-auto py-6 space-y-5 tabular-nums">
