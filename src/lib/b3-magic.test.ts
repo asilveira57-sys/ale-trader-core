@@ -26,12 +26,15 @@ describe("realMagicNumber", () => {
     }
     expect(seen.size).toBe(assets.length * variants.length * modes.length);
     expect(seen.size).toBe(200);
-    expect(Math.max(...seen.keys())).toBe(4405);
+    expect(Math.max(...seen.keys())).toBe(15505);
+    // Os quatro ativos originais precisam manter a numeração já em uso.
+    expect(realMagicNumber("WIN", "indicador", "conservador")).toBe(2001);
+    expect(realMagicNumber("VALE3", "range", "agressivo")).toBe(3805);
   });
 
   it("reduz contrato futuro à raiz", () => {
-    expect(realMagicNumber("BITQ26", "indicador", "conservador")).toBe(2701);
-    expect(realMagicNumber("ITUB4", "indicador", "conservador")).toBe(2401);
+    expect(realMagicNumber("BITQ26", "indicador", "conservador")).toBe(10001);
+    expect(realMagicNumber("ITUB4", "indicador", "conservador")).toBe(4001);
   });
 
   it("falha fechada para ativo/modalidade/modo não cadastrado", () => {
