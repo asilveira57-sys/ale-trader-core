@@ -1760,10 +1760,16 @@ async function runB3SimulationTickInner(
         let intrabarHit: { reason: string; level: number; price: number; minute_ts: string; both: boolean } | null = null;
         let lastEvaluatedMinuteTs: string | null = null;
         let candleIncompletoIgnorado = false;
+        // DEFEITO CORRIGIDO: o marcador deve ser o MAIOR minute_ts entre os
+        // candles COMPLETOS avaliados e nunca pode retroceder.
+        let lastEvaluatedMs = lastEvalMs ?? 0;
         for (const c of candlesToEval) {
           const candleMs = new Date(c.minute_ts).getTime();
           if (candleMs < minutoCorrenteMs) {
-            lastEvaluatedMinuteTs = c.minute_ts;
+            if (candleMs > lastEvaluatedMs) {
+              lastEvaluatedMs = candleMs;
+              lastEvaluatedMinuteTs = c.minute_ts;
+            }
           } else {
             candleIncompletoIgnorado = true;
           }
