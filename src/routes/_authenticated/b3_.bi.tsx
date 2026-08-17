@@ -220,7 +220,7 @@ function BiPage() {
         </div>
 
         <FilterRow label="Ativo:" value={symbol} onChange={setSymbol}
-          options={ASSETS.map((a) => ({ key: a, label: a }))} allLabel="todos" />
+          options={assetsPresent.map((a) => ({ key: a, label: a }))} allLabel="todos" />
         <FilterRow label="Modalidade:" value={variant} onChange={setVariant}
           options={VARIANTS.map((v) => ({ key: v.key, label: v.label }))} allLabel="todas" />
         <FilterRow label="Modo:" value={mode} onChange={setMode}
