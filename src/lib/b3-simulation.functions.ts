@@ -1,6 +1,8 @@
 // B3 Day Trade — Fase 2.5: simulação comparativa dos 3 modos
 import { createServerFn } from "@tanstack/react-start";
+import { rootSymbol } from "./b3-format";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
 import {
   runB3Agents, buildB3Decision,
   type B3Side, type B3RiskState, type B3CommitteeSettings,
