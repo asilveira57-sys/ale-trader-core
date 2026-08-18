@@ -82,8 +82,10 @@ function CockpitPage() {
     refetchIntervalInBackground: false,
   });
 
-  const all: any[] = q.data ?? [];
+  const all: any[] = q.data?.cards ?? [];
+  const porAtivo: any[] = q.data?.por_ativo ?? [];
   const runIds = Array.from(new Set(all.map((c) => c.run_id)));
+
 
   const closeModeM = useMutation({
     mutationFn: (v: { run_id: string; mode: string }) => closeMode({ data: v as any }),
