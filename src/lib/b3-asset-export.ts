@@ -59,6 +59,7 @@ const stamp = () => {
 // ─────────────────────────── copiar (texto puro) ───────────────────────────
 
 export function buildAssetCopyText(d: any): string {
+
   const tick = Number(d?.tick_size ?? 5);
   const lines: string[] = [`AleTrader B3 — ${stamp()} — ${scopeLabel(d)} (${assetLabel(d.root)})`];
   lines.push(
