@@ -3687,14 +3687,32 @@ export const resetB3DailyStop = createServerFn({ method: "POST" })
 // Datas sempre em America/Sao_Paulo (currentB3SessionDate).
 export const getB3AssetDashboard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { symbol: string; variant?: string; mode?: string }) => d)
+  .inputValidator((d: { symbol: string; variant?: string; mode?: string; de?: string; ate?: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const root = String(data.symbol ?? "").toUpperCase();
     const variantFilter = data.variant && data.variant !== "all" ? data.variant : null;
     const modeFilter = data.mode && data.mode !== "all" ? data.mode : null;
-    const sessionDate = currentB3SessionDate();
-    const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3
+    const today = currentB3SessionDate();
+    const isDate = (s: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(s ?? ""));
+    let de = isDate(data.de) ? String(data.de) : today;
+    let ate = isDate(data.ate) ? String(data.ate) : de;
+    if (de > ate) { const t = de; de = ate; ate = t; }
+    const sessionDate = ate;
+    const addDays = (d: string, n: number) => {
+      const dt = new Date(`${d}T12:00:00.000Z`);
+      dt.setUTCDate(dt.getUTCDate() + n);
+      return dt.toISOString().slice(0, 10);
+    };
+    // Fronteiras do período em UTC — o dia do pregão BRT começa às 03:00Z.
+    const dayStartUtc = `${de}T03:00:00.000Z`;
+    const dayEndUtc = `${addDays(ate, 1)}T03:00:00.000Z`;
+    const multiDay = de !== ate;
+    const brtDay = (iso: string | number | Date) =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(new Date(iso));
+
 
     const rootOf = (s: string) => {
       const up = String(s ?? "").toUpperCase();
