@@ -3157,8 +3157,12 @@ export const deleteModeUserDefault = createServerFn({ method: "POST" })
 // resultado de hoje, não do histórico completo.
 export const getB3CockpitOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  // Filtro de modalidade da tela (somente leitura): quando vem preenchido, a
+  // agregação por ativo/modalidade descreve exatamente o recorte visível.
+  .inputValidator((d?: { variant?: string | null }) => d ?? {})
+  .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
+    const variantFilter = data?.variant && data.variant !== "all" ? String(data.variant) : null;
     const { data: runs, error: runsErr } = await (supabase as any)
       .from("b3_simulation_runs").select("id, symbol, variant").eq("user_id", userId).eq("status", "running");
     if (runsErr) throw runsErr;
