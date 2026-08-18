@@ -621,11 +621,11 @@ function RobotLine({ label, robot }: { label: string; robot: any }) {
   );
 }
 
-function Scoreboard() {
+function Scoreboard({ variantFilter = "all" }: { variantFilter?: string }) {
   const getScoreboard = useServerFn(getB3CockpitScoreboard);
   const q = useQuery({
-    queryKey: ["b3-cockpit-scoreboard"],
-    queryFn: () => getScoreboard(),
+    queryKey: ["b3-cockpit-scoreboard", variantFilter],
+    queryFn: () => getScoreboard({ data: { variant: variantFilter } }),
     refetchInterval: useVisibleRefetchInterval(10000),
     refetchIntervalInBackground: false,
   });
