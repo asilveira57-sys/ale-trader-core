@@ -3406,8 +3406,12 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
 // histórico de exposição gravado.
 export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  // Mesmo filtro de modalidade da tela: o placar tem que descrever o recorte
+  // que o usuário está vendo, inclusive no pico de exposição.
+  .inputValidator((d?: { variant?: string | null }) => d ?? {})
+  .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
+    const variantFilter = data?.variant && data.variant !== "all" ? String(data.variant) : null;
     const sessionDate = currentB3SessionDate();
     const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3
 
@@ -3419,7 +3423,8 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     ]);
     const capitalDisponivelBrl = Number(tset?.capital_disponivel_brl ?? 0) || 0;
 
-    const runList: any[] = runs ?? [];
+    const runList: any[] = ((runs ?? []) as any[])
+      .filter((r) => !variantFilter || (r.variant ?? "indicador") === variantFilter);
     const runIds = runList.map((r) => r.id);
     const empty = {
       session_date: sessionDate,
