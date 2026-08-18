@@ -3787,11 +3787,12 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
     for (const r of runList) runById[r.id] = r;
     const runIds = runList.map((r: any) => r.id);
 
-    const [{ data: orders }, { data: snaps }, { data: settings }] = await Promise.all([
+    const [{ data: orders }, { data: snaps }, { data: settings }, { data: saudeRows }] = await Promise.all([
       (supabase as any).from("b3_simulation_orders")
-        .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
+        .select("id, simulation_run_id, mode, side, status, quantity, entry_price, exit_price, entry_time, exit_time, net_result_brl, gross_result_points, close_reason, created_at")
         .eq("user_id", userId).in("simulation_run_id", runIds).in("status", ["open", "closed"])
-        .gte("entry_time", dayStartUtc),
+        .gte("entry_time", dayStartUtc).lt("entry_time", dayEndUtc)
+        .order("entry_time", { ascending: true }).limit(20000),
       (supabase as any).from("b3_simulation_market_snapshots")
         .select("simulation_run_id, price, market_time")
         .eq("user_id", userId).in("simulation_run_id", runIds)
@@ -3799,7 +3800,13 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       (supabase as any).from("b3_simulation_mode_settings")
         .select("simulation_run_id, mode, enabled, daily_loss_limit_brl")
         .eq("user_id", userId).in("simulation_run_id", runIds),
+      (supabase as any).from("b3_pregao_saude")
+        .select("trade_date, limpo, motivo_sujo")
+        .eq("user_id", userId).gte("trade_date", de).lte("trade_date", ate).limit(2000),
     ]);
+
+    const saudeByDay: Record<string, any> = {};
+    for (const s of (saudeRows ?? []) as any[]) saudeByDay[String(s.trade_date)] = s;
 
     const priceByRun: Record<string, number> = {};
     for (const s of snaps ?? []) {
@@ -3809,18 +3816,24 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
     }
 
     // Fundo de escala = soma dos limites de perda dos modos HABILITADOS
-    // das runs consideradas (respeita o filtro de modalidade/modo).
-    let scale = 0;
+    // das runs consideradas (respeita o filtro de modalidade/modo). Deduplica
+    // por modalidade+modo: runs repetidas do mesmo robô não dobram a escala.
     const settingByKey: Record<string, any> = {};
+    const scaleByRobot: Record<string, number> = {};
     for (const s of settings ?? []) {
       settingByKey[`${s.simulation_run_id}|${s.mode}`] = s;
       if (modeFilter && s.mode !== modeFilter) continue;
       if (s.enabled === false) continue;
-      scale += Number(s.daily_loss_limit_brl ?? 0) || 0;
+      const run = runById[s.simulation_run_id];
+      if (!run) continue;
+      const k = `${run.variant ?? "indicador"}|${s.mode}`;
+      scaleByRobot[k] = Math.max(scaleByRobot[k] ?? 0, Number(s.daily_loss_limit_brl ?? 0) || 0);
     }
+    const scale = Object.values(scaleByRobot).reduce((a, b) => a + b, 0);
 
     const nowMs = Date.now();
     const rows = (orders ?? []).filter((o: any) => !modeFilter || o.mode === modeFilter);
+
 
     type Agg = { ops: number; wins: number; ganhos: number; perdas: number; resultado: number; aberto: number; open: boolean };
     const perMode = new Map<string, Agg>(); // `${variant}|${mode}`
