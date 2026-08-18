@@ -58,6 +58,22 @@ const VARIANT_COLOR: Record<string, string> = {
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
 const isRiskBlocked = (c: any) => c.current_status === "blocked_stop" || !!c.protection_block_reason;
 
+// ── Testeira: formatação somente de apresentação ──
+const SIGNED = (v: number) => `${Number(v ?? 0) > 0 ? "+" : ""}${BRL(v)}`;
+const PCT = (v: number | null | undefined, digits = 0) =>
+  v == null ? "—" : `${(Number(v) * 100).toLocaleString("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
+const PCT_SIGNED = (v: number | null | undefined) =>
+  v == null ? "—" : `${Number(v) > 0 ? "+" : ""}${PCT(v, 1)}`;
+const BRL0 = (v: number) =>
+  Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const moneyColor = (v: number) => (Number(v ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300");
+const VARIANT_SHORT: Record<string, string> = {
+  indicador: "ind", price_action: "PA", mean_reversion: "rev", range: "faixa",
+};
+const roboShort = (r: any) =>
+  !r ? "—" : `${VARIANT_SHORT[r.variant] ?? r.variant} ${String(r.mode).replace("_", "-")} ${SIGNED(r.brl)}`;
+
+
 
 type Filter = "all" | "open" | "blocked";
 type VariantFilter = "all" | string;
