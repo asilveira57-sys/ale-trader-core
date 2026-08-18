@@ -573,9 +573,12 @@ function CockpitPage() {
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
-      ))}
+        );
+      })}
+
     </div>
   );
 }
