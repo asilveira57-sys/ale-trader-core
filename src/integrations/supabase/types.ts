@@ -2436,6 +2436,7 @@ export type Database = {
       b3_pregao_saude: {
         Row: {
           avaliado_em: string
+          cobertura_pct: number | null
           cotacao_parada: number
           fechamentos_manuais: number
           guard_preco: number
@@ -2444,6 +2445,7 @@ export type Database = {
           minutos_com_candle: number
           minutos_esperados: number
           motivo_sujo: string | null
+          ordens_fantasma: number
           primeiro_tick: string | null
           stops_pendentes: number
           trade_date: string
@@ -2452,6 +2454,7 @@ export type Database = {
         }
         Insert: {
           avaliado_em?: string
+          cobertura_pct?: number | null
           cotacao_parada?: number
           fechamentos_manuais?: number
           guard_preco?: number
@@ -2460,6 +2463,7 @@ export type Database = {
           minutos_com_candle?: number
           minutos_esperados?: number
           motivo_sujo?: string | null
+          ordens_fantasma?: number
           primeiro_tick?: string | null
           stops_pendentes?: number
           trade_date: string
@@ -2468,6 +2472,7 @@ export type Database = {
         }
         Update: {
           avaliado_em?: string
+          cobertura_pct?: number | null
           cotacao_parada?: number
           fechamentos_manuais?: number
           guard_preco?: number
@@ -2476,6 +2481,7 @@ export type Database = {
           minutos_com_candle?: number
           minutos_esperados?: number
           motivo_sujo?: string | null
+          ordens_fantasma?: number
           primeiro_tick?: string | null
           stops_pendentes?: number
           trade_date?: string
