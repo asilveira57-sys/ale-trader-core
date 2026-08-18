@@ -211,7 +211,7 @@ function B3Page() {
           <TabsTrigger value="live"><Activity className="w-4 h-4 mr-1" />Painel Ao Vivo</TabsTrigger>
           <TabsTrigger value="diagnostic"><ShieldAlert className="w-4 h-4 mr-1" />Diagnóstico do Motor</TabsTrigger>
           <TabsTrigger value="report"><FileBarChart className="w-4 h-4 mr-1" />Relatório</TabsTrigger>
-          <TabsTrigger value="settings"><SettingsIcon className="w-4 h-4 mr-1" />Configurações</TabsTrigger>
+          <TabsTrigger value="settings"><SettingsIcon className="w-4 h-4 mr-1" />Padrões e globais</TabsTrigger>
         </TabsList>
 
         <TabsContent value="panel">
