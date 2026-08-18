@@ -4069,6 +4069,7 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       if (!groupMap.has(variant)) groupMap.set(variant, []);
       groupMap.get(variant)!.push({
         variant, mode,
+        run_id: run?.id ?? null, symbol: run?.symbol ?? null,
         ops: agg.ops,
         wins: agg.wins,
         hit_rate: agg.ops ? (agg.wins / agg.ops) * 100 : 0,
@@ -4091,7 +4092,8 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       const list = groupMap.get(variant)!;
       if (list.some((c) => c.mode === s.mode)) continue;
       list.push({
-        variant, mode: s.mode, ops: 0, wins: 0, hit_rate: 0,
+        variant, mode: s.mode, run_id: run.id, symbol: run.symbol,
+        ops: 0, wins: 0, hit_rate: 0,
         ganhos_brl: 0, perdas_brl: 0, resultado_brl: 0, aberto_brl: 0, tem_posicao: false,
         enabled: s.enabled !== false,
         daily_loss_limit_brl: s.daily_loss_limit_brl == null ? null : Number(s.daily_loss_limit_brl),
