@@ -151,7 +151,7 @@ function CockpitPage() {
     if (!cards.length) { toast.error("Nada para copiar"); return; }
     const text = buildCockpitCopyText(cards, {
       scope,
-      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-scoreboard"]) : undefined,
+      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-scoreboard", variantFilter]) : undefined,
       includeScoreboard,
     });
     try {
