@@ -99,9 +99,11 @@ function CockpitPage() {
   });
 
 
+  // O filtro de modalidade entra na chave e na chamada: as faixas por ativo,
+  // a ordenação e o placar passam a descrever o mesmo recorte dos cards.
   const q = useQuery({
-    queryKey: ["b3-cockpit"],
-    queryFn: () => getOverview(),
+    queryKey: ["b3-cockpit", variantFilter],
+    queryFn: () => getOverview({ data: { variant: variantFilter } }),
     refetchInterval: useVisibleRefetchInterval(10000),
     refetchIntervalInBackground: false,
   });
