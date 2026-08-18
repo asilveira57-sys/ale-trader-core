@@ -3687,14 +3687,32 @@ export const resetB3DailyStop = createServerFn({ method: "POST" })
 // Datas sempre em America/Sao_Paulo (currentB3SessionDate).
 export const getB3AssetDashboard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { symbol: string; variant?: string; mode?: string }) => d)
+  .inputValidator((d: { symbol: string; variant?: string; mode?: string; de?: string; ate?: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const root = String(data.symbol ?? "").toUpperCase();
     const variantFilter = data.variant && data.variant !== "all" ? data.variant : null;
     const modeFilter = data.mode && data.mode !== "all" ? data.mode : null;
-    const sessionDate = currentB3SessionDate();
-    const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3
+    const today = currentB3SessionDate();
+    const isDate = (s: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(s ?? ""));
+    let de = isDate(data.de) ? String(data.de) : today;
+    let ate = isDate(data.ate) ? String(data.ate) : de;
+    if (de > ate) { const t = de; de = ate; ate = t; }
+    const sessionDate = ate;
+    const addDays = (d: string, n: number) => {
+      const dt = new Date(`${d}T12:00:00.000Z`);
+      dt.setUTCDate(dt.getUTCDate() + n);
+      return dt.toISOString().slice(0, 10);
+    };
+    // Fronteiras do período em UTC — o dia do pregão BRT começa às 03:00Z.
+    const dayStartUtc = `${de}T03:00:00.000Z`;
+    const dayEndUtc = `${addDays(ate, 1)}T03:00:00.000Z`;
+    const multiDay = de !== ate;
+    const brtDay = (iso: string | number | Date) =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(new Date(iso));
+
 
     const rootOf = (s: string) => {
       const up = String(s ?? "").toUpperCase();
@@ -3703,22 +3721,41 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
     };
 
     const { data: allRuns } = await (supabase as any).from("b3_simulation_runs")
-      .select("id, symbol, variant").eq("user_id", userId).eq("status", "running");
+      .select("id, symbol, variant, status").eq("user_id", userId);
+    // Runs do ativo em qualquer status — pregões passados podem ter runs encerradas.
     const assetRuns = (allRuns ?? []).filter((r: any) => rootOf(r.symbol) === root);
     const variantsPresent = Array.from(new Set(assetRuns.map((r: any) => r.variant ?? "indicador"))) as string[];
     const runList = variantFilter
       ? assetRuns.filter((r: any) => (r.variant ?? "indicador") === variantFilter)
       : assetRuns;
 
+    // Dias com pregão (dias que de fato têm ordens) — usados pelas setas de
+    // navegação, que pulam fim de semana e dia sem pregão.
+    const { data: diasScore } = await (supabase as any).from("b3_robot_daily_score")
+      .select("trade_date, symbol").eq("user_id", userId)
+      .gte("trade_date", addDays(today, -400)).order("trade_date", { ascending: true }).limit(20000);
+    const diasDisponiveis = Array.from(new Set(
+      ((diasScore ?? []) as any[])
+        .filter((r) => rootOf(String(r.symbol)) === root)
+        .map((r) => String(r.trade_date)),
+    )).sort() as string[];
+
     const base = {
       session_date: sessionDate,
+      periodo: { de, ate },
+      multi_day: multiDay,
+      dias_disponiveis: diasDisponiveis,
+      dias: [] as any[],
+      orders: [] as any[],
       root,
       variant: variantFilter ?? "all",
       mode: modeFilter ?? "all",
       variants_present: variantsPresent,
       // Ativos com run ativa — os chips da tela vêm daqui, então um ativo novo
       // aparece sozinho no dia em que a run for criada, sem novo deploy.
-      assets_present: Array.from(new Set((allRuns ?? []).map((r: any) => rootOf(r.symbol)))).sort() as string[],
+      assets_present: Array.from(new Set(
+        ((allRuns ?? []) as any[]).filter((r) => r.status === "running").map((r) => rootOf(r.symbol)),
+      )).sort() as string[],
       contracts: Array.from(new Set(assetRuns.map((r: any) => r.symbol))) as string[],
       quote_symbol: null as string | null,
       tick_size: 5,
@@ -3734,10 +3771,12 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       ops_lucro: 0,
       pico_exposicao_brl: 0,
       pico_exposicao_hora: null as string | null,
+      pico_exposicao_data: null as string | null,
       pico_contratos: 0,
       groups: [] as any[],
     };
     if (!runList.length) return base;
+
 
     const profiles: Record<string, any> = {};
     for (const symbol of Array.from(new Set(runList.map((r: any) => r.symbol))) as string[]) {
@@ -3748,11 +3787,12 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
     for (const r of runList) runById[r.id] = r;
     const runIds = runList.map((r: any) => r.id);
 
-    const [{ data: orders }, { data: snaps }, { data: settings }] = await Promise.all([
+    const [{ data: orders }, { data: snaps }, { data: settings }, { data: saudeRows }] = await Promise.all([
       (supabase as any).from("b3_simulation_orders")
-        .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
+        .select("id, simulation_run_id, mode, side, status, quantity, entry_price, exit_price, entry_time, exit_time, net_result_brl, gross_result_points, close_reason, created_at")
         .eq("user_id", userId).in("simulation_run_id", runIds).in("status", ["open", "closed"])
-        .gte("entry_time", dayStartUtc),
+        .gte("entry_time", dayStartUtc).lt("entry_time", dayEndUtc)
+        .order("entry_time", { ascending: true }).limit(20000),
       (supabase as any).from("b3_simulation_market_snapshots")
         .select("simulation_run_id, price, market_time")
         .eq("user_id", userId).in("simulation_run_id", runIds)
@@ -3760,7 +3800,13 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       (supabase as any).from("b3_simulation_mode_settings")
         .select("simulation_run_id, mode, enabled, daily_loss_limit_brl")
         .eq("user_id", userId).in("simulation_run_id", runIds),
+      (supabase as any).from("b3_pregao_saude")
+        .select("trade_date, limpo, motivo_sujo")
+        .eq("user_id", userId).gte("trade_date", de).lte("trade_date", ate).limit(2000),
     ]);
+
+    const saudeByDay: Record<string, any> = {};
+    for (const s of (saudeRows ?? []) as any[]) saudeByDay[String(s.trade_date)] = s;
 
     const priceByRun: Record<string, number> = {};
     for (const s of snaps ?? []) {
@@ -3770,18 +3816,24 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
     }
 
     // Fundo de escala = soma dos limites de perda dos modos HABILITADOS
-    // das runs consideradas (respeita o filtro de modalidade/modo).
-    let scale = 0;
+    // das runs consideradas (respeita o filtro de modalidade/modo). Deduplica
+    // por modalidade+modo: runs repetidas do mesmo robô não dobram a escala.
     const settingByKey: Record<string, any> = {};
+    const scaleByRobot: Record<string, number> = {};
     for (const s of settings ?? []) {
       settingByKey[`${s.simulation_run_id}|${s.mode}`] = s;
       if (modeFilter && s.mode !== modeFilter) continue;
       if (s.enabled === false) continue;
-      scale += Number(s.daily_loss_limit_brl ?? 0) || 0;
+      const run = runById[s.simulation_run_id];
+      if (!run) continue;
+      const k = `${run.variant ?? "indicador"}|${s.mode}`;
+      scaleByRobot[k] = Math.max(scaleByRobot[k] ?? 0, Number(s.daily_loss_limit_brl ?? 0) || 0);
     }
+    const scale = Object.values(scaleByRobot).reduce((a, b) => a + b, 0);
 
     const nowMs = Date.now();
     const rows = (orders ?? []).filter((o: any) => !modeFilter || o.mode === modeFilter);
+
 
     type Agg = { ops: number; wins: number; ganhos: number; perdas: number; resultado: number; aberto: number; open: boolean };
     const perMode = new Map<string, Agg>(); // `${variant}|${mode}`
@@ -3793,6 +3845,16 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
     let realizado = 0, aberto = 0, ganhos = 0, perdas = 0, opsTotal = 0, opsLucro = 0;
     const events: { t: number; dm: number; dq: number }[] = [];
     const closedTimeline: { t: number; net: number }[] = [];
+    type DayAgg = { resultado: number; ops: number; wins: number };
+    const perDay = new Map<string, DayAgg>();
+    const ensureDay = (d: string) => {
+      if (!perDay.has(d)) perDay.set(d, { resultado: 0, ops: 0, wins: 0 });
+      return perDay.get(d)!;
+    };
+    const orderRows: any[] = [];
+    const hhmm = (t: number) => new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit",
+    }).format(new Date(t));
 
     for (const o of rows) {
       const run = runById[o.simulation_run_id];
@@ -3810,6 +3872,8 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       const tOut = o.exit_time ? new Date(o.exit_time).getTime() : nowMs;
       events.push({ t: tIn, dm: margem, dq: qty });
       events.push({ t: tOut, dm: -margem, dq: -qty });
+      const dia = brtDay(tIn);
+      const dayAgg = ensureDay(dia);
 
       if (o.status === "closed") {
         const net = Number(o.net_result_brl ?? 0);
@@ -3817,7 +3881,9 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
         opsTotal += 1;
         agg.ops += 1;
         agg.resultado += net;
-        if (net > 0) { ganhos += net; opsLucro += 1; agg.ganhos += net; agg.wins += 1; }
+        dayAgg.ops += 1;
+        dayAgg.resultado += net;
+        if (net > 0) { ganhos += net; opsLucro += 1; agg.ganhos += net; agg.wins += 1; dayAgg.wins += 1; }
         else { perdas += net; agg.perdas += net; }
         closedTimeline.push({ t: tOut, net });
       } else {
@@ -3831,7 +3897,22 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
           agg.resultado += brl;
         }
       }
+
+      orderRows.push({
+        id: o.id,
+        trade_date: dia,
+        hora_entrada: hhmm(tIn),
+        hora_saida: o.exit_time ? hhmm(tOut) : null,
+        variant, mode: o.mode, side: o.side, status: o.status,
+        quantity: qty,
+        entry_price: entry,
+        exit_price: o.exit_price == null ? null : Number(o.exit_price),
+        pontos: o.gross_result_points == null ? null : Number(o.gross_result_points),
+        net_brl: o.status === "closed" ? Number(o.net_result_brl ?? 0) : null,
+        close_reason: o.close_reason ?? null,
+      });
     }
+
 
     // Pico de exposição (margem simultânea × 1,30) por linha do tempo de eventos.
     events.sort((a, b) => a.t - b.t || b.dq - a.dq);
@@ -3907,8 +3988,23 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       })
       .sort((a, b) => a.variant.localeCompare(b.variant));
 
+    // Série por pregão — usada pela barra por dia quando o período tem mais
+    // de um dia. Marca dia sujo (b3_pregao_saude.limpo = false).
+    const dias = Array.from(perDay.entries())
+      .map(([d, v]) => ({
+        trade_date: d,
+        resultado_brl: v.resultado,
+        ops: v.ops,
+        wins: v.wins,
+        limpo: saudeByDay[d]?.limpo !== false,
+        motivo_sujo: saudeByDay[d]?.motivo_sujo ?? null,
+      }))
+      .sort((a, b) => a.trade_date.localeCompare(b.trade_date));
+
     return {
       ...base,
+      dias,
+      orders: orderRows,
       quote_symbol: firstProfile?.quote_symbol ?? null,
       tick_size: Number(firstProfile?.tick_size ?? 5),
       scale_brl: scale,
@@ -3923,9 +4019,11 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       ops_lucro: opsLucro,
       pico_exposicao_brl: picoM * 1.3,
       pico_exposicao_hora: horaPico,
+      pico_exposicao_data: picoT == null ? null : brtDay(picoT),
       pico_contratos: picoQ,
       groups,
     };
+
   });
 
 
