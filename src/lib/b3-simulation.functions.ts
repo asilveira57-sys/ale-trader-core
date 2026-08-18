@@ -3157,8 +3157,12 @@ export const deleteModeUserDefault = createServerFn({ method: "POST" })
 // resultado de hoje, não do histórico completo.
 export const getB3CockpitOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  // Filtro de modalidade da tela (somente leitura): quando vem preenchido, a
+  // agregação por ativo/modalidade descreve exatamente o recorte visível.
+  .inputValidator((d?: { variant?: string | null }) => d ?? {})
+  .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
+    const variantFilter = data?.variant && data.variant !== "all" ? String(data.variant) : null;
     const { data: runs, error: runsErr } = await (supabase as any)
       .from("b3_simulation_runs").select("id, symbol, variant").eq("user_id", userId).eq("status", "running");
     if (runsErr) throw runsErr;
@@ -3311,6 +3315,9 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         if (!run) continue;
         const root = rootSymbol(run.symbol);
         const variant = (run.variant ?? "indicador") as string;
+        // Recorte da modalidade: a ordem descartada aqui não entra em nenhuma
+        // soma nem na linha do tempo de margem, então o pico também é do recorte.
+        if (variantFilter && variant !== variantFilter) continue;
         const asset = assetBySymbol[run.symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
         if (!byAsset.has(root)) byAsset.set(root, { contracts: new Set(), agg: mkAgg(), byVariant: new Map() });
         const entryAsset = byAsset.get(root)!;
@@ -3386,7 +3393,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       porAtivo.sort((a, b) => b.resultado_brl - a.resultado_brl);
     }
 
-    return { session_date: sessionDate, cards, por_ativo: porAtivo };
+    return { session_date: sessionDate, variant: variantFilter ?? "all", cards, por_ativo: porAtivo };
 
   });
 
@@ -3399,8 +3406,12 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
 // histórico de exposição gravado.
 export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  // Mesmo filtro de modalidade da tela: o placar tem que descrever o recorte
+  // que o usuário está vendo, inclusive no pico de exposição.
+  .inputValidator((d?: { variant?: string | null }) => d ?? {})
+  .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
+    const variantFilter = data?.variant && data.variant !== "all" ? String(data.variant) : null;
     const sessionDate = currentB3SessionDate();
     const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3
 
@@ -3412,7 +3423,8 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     ]);
     const capitalDisponivelBrl = Number(tset?.capital_disponivel_brl ?? 0) || 0;
 
-    const runList: any[] = runs ?? [];
+    const runList: any[] = ((runs ?? []) as any[])
+      .filter((r) => !variantFilter || (r.variant ?? "indicador") === variantFilter);
     const runIds = runList.map((r) => r.id);
     const empty = {
       session_date: sessionDate,

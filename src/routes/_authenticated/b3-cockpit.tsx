@@ -99,9 +99,11 @@ function CockpitPage() {
   });
 
 
+  // O filtro de modalidade entra na chave e na chamada: as faixas por ativo,
+  // a ordenação e o placar passam a descrever o mesmo recorte dos cards.
   const q = useQuery({
-    queryKey: ["b3-cockpit"],
-    queryFn: () => getOverview(),
+    queryKey: ["b3-cockpit", variantFilter],
+    queryFn: () => getOverview({ data: { variant: variantFilter } }),
     refetchInterval: useVisibleRefetchInterval(10000),
     refetchIntervalInBackground: false,
   });
@@ -149,7 +151,7 @@ function CockpitPage() {
     if (!cards.length) { toast.error("Nada para copiar"); return; }
     const text = buildCockpitCopyText(cards, {
       scope,
-      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-scoreboard"]) : undefined,
+      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-scoreboard", variantFilter]) : undefined,
       includeScoreboard,
     });
     try {
@@ -257,8 +259,8 @@ function CockpitPage() {
         </div>
       </header>
 
-      {/* ── Placar do dia ── */}
-      <Scoreboard />
+      {/* ── Placar do dia — mesmo recorte do filtro de modalidade ── */}
+      <Scoreboard variantFilter={variantFilter} />
 
       {/* ── Resumo + filtro ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
@@ -355,15 +357,21 @@ function CockpitPage() {
               <h3 className="text-xs font-semibold flex items-center gap-2 flex-wrap">
                 <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
                 <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
-                <span className={`font-mono ${moneyColor(sub?.resultado_brl ?? 0)}`}>
-                  {SIGNED_HDR(sub?.resultado_brl ?? 0)}
-                </span>
-                <span className="text-muted-foreground font-normal">
-                  {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})
-                </span>
-                <span className="text-muted-foreground font-normal">
-                  pico {BRL0(sub?.pico_capital_brl ?? 0)}
-                </span>
+                {/* Com o filtro numa modalidade, a testeira do ativo já mostra
+                    exatamente estes números — o subtotal viraria repetição. */}
+                {variantFilter === "all" && (
+                  <>
+                    <span className={`font-mono ${moneyColor(sub?.resultado_brl ?? 0)}`}>
+                      {SIGNED_HDR(sub?.resultado_brl ?? 0)}
+                    </span>
+                    <span className="text-muted-foreground font-normal">
+                      {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})
+                    </span>
+                    <span className="text-muted-foreground font-normal">
+                      pico {BRL0(sub?.pico_capital_brl ?? 0)}
+                    </span>
+                  </>
+                )}
                 <Button size="sm" variant="outline" className="h-6 text-[10px] ml-auto"
                   onClick={() => copyCards(cards, `${root} · ${variantLabel(variant).toLowerCase()}`)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo + modalidade
@@ -613,11 +621,11 @@ function RobotLine({ label, robot }: { label: string; robot: any }) {
   );
 }
 
-function Scoreboard() {
+function Scoreboard({ variantFilter = "all" }: { variantFilter?: string }) {
   const getScoreboard = useServerFn(getB3CockpitScoreboard);
   const q = useQuery({
-    queryKey: ["b3-cockpit-scoreboard"],
-    queryFn: () => getScoreboard(),
+    queryKey: ["b3-cockpit-scoreboard", variantFilter],
+    queryFn: () => getScoreboard({ data: { variant: variantFilter } }),
     refetchInterval: useVisibleRefetchInterval(10000),
     refetchIntervalInBackground: false,
   });
