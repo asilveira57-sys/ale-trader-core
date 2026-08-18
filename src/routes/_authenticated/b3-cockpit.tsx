@@ -168,6 +168,15 @@ function CockpitPage() {
     group.byVariant.get(v)!.push(c);
   }
 
+  // Testeira por ativo/modalidade vem do servidor (linha do tempo de margem).
+  const headerByAsset = new Map<string, any>(porAtivo.map((a) => [a.symbol, a]));
+  // Ordena os ativos por resultado do dia, decrescente — o que drena fica embaixo.
+  const orderedAssets = Array.from(bySymbol.entries()).sort(
+    (a, b) => Number(headerByAsset.get(b[0])?.resultado_brl ?? 0) - Number(headerByAsset.get(a[0])?.resultado_brl ?? 0),
+  );
+  const allCollapsed = orderedAssets.length > 0 && orderedAssets.every(([root]) => collapsedAssets.has(root));
+
+
   return (
     <div className="container mx-auto py-6 space-y-4">
       <header className="flex items-center justify-between flex-wrap gap-2">
