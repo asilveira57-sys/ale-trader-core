@@ -426,9 +426,12 @@ function ModeCard({ m, active, onClick, onCopy }: { m: any; active: boolean; onC
   const positive = Number(m.resultado_brl ?? 0) >= 0;
   const ring = positive ? "stroke-emerald-400" : "stroke-rose-500";
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`relative rounded-lg border bg-card p-3 text-center transition-colors ${active ? "border-primary ring-1 ring-primary/40" : "border-border/60 hover:border-primary/50"}`}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+      className={`relative rounded-lg border bg-card p-3 text-center transition-colors cursor-pointer ${active ? "border-primary ring-1 ring-primary/40" : "border-border/60 hover:border-primary/50"}`}
     >
       <span
         role="button"
@@ -473,6 +476,6 @@ function ModeCard({ m, active, onClick, onCopy }: { m: any; active: boolean; onC
           />
         </span>
       )}
-    </button>
+    </div>
   );
 }
