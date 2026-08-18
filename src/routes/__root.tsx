@@ -28,21 +28,55 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+const CHUNK_RELOAD_KEY = "aletrader:chunk-reload";
+
+function isStaleChunkError(error: unknown) {
+  const msg = String((error as any)?.message ?? error ?? "");
+  return /dynamically imported module|Importing a module script failed|Loading chunk|ChunkLoadError|Failed to fetch dynamically/i.test(msg);
+}
+
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   const router = useRouter();
-  useEffect(() => { reportLovableError(error, { boundary: "tanstack_root_error_component" }); }, [error]);
+  const message =
+    (error as any)?.message ??
+    (typeof error === "string" ? error : "") ??
+    "";
+
+  useEffect(() => {
+    // A new deploy invalidates old asset URLs; the failed dynamic import surfaces
+    // here as an empty/undefined throw. Reload once to pick up the fresh bundle.
+    if (typeof window !== "undefined" && (isStaleChunkError(error) || error == null)) {
+      if (!sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+        sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+        window.location.reload();
+        return;
+      }
+    }
+    reportLovableError(error instanceof Error ? error : new Error(message || "Erro desconhecido"), {
+      boundary: "tanstack_root_error_component",
+    });
+  }, [error, message]);
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold text-foreground">Erro ao carregar</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
-        <button onClick={() => { router.invalidate(); reset(); }} className="mt-6 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
+        <p className="mt-2 text-sm text-muted-foreground">{message || "Falha inesperada ao renderizar a página."}</p>
+        <button
+          onClick={() => {
+            if (typeof window !== "undefined") sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+            router.invalidate();
+            reset();
+          }}
+          className="mt-6 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+        >
           Tentar novamente
         </button>
       </div>
     </div>
   );
 }
+
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
