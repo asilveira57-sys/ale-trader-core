@@ -3721,22 +3721,41 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
     };
 
     const { data: allRuns } = await (supabase as any).from("b3_simulation_runs")
-      .select("id, symbol, variant").eq("user_id", userId).eq("status", "running");
+      .select("id, symbol, variant, status").eq("user_id", userId);
+    // Runs do ativo em qualquer status — pregões passados podem ter runs encerradas.
     const assetRuns = (allRuns ?? []).filter((r: any) => rootOf(r.symbol) === root);
     const variantsPresent = Array.from(new Set(assetRuns.map((r: any) => r.variant ?? "indicador"))) as string[];
     const runList = variantFilter
       ? assetRuns.filter((r: any) => (r.variant ?? "indicador") === variantFilter)
       : assetRuns;
 
+    // Dias com pregão (dias que de fato têm ordens) — usados pelas setas de
+    // navegação, que pulam fim de semana e dia sem pregão.
+    const { data: diasScore } = await (supabase as any).from("b3_robot_daily_score")
+      .select("trade_date, symbol").eq("user_id", userId)
+      .gte("trade_date", addDays(today, -400)).order("trade_date", { ascending: true }).limit(20000);
+    const diasDisponiveis = Array.from(new Set(
+      ((diasScore ?? []) as any[])
+        .filter((r) => rootOf(String(r.symbol)) === root)
+        .map((r) => String(r.trade_date)),
+    )).sort() as string[];
+
     const base = {
       session_date: sessionDate,
+      periodo: { de, ate },
+      multi_day: multiDay,
+      dias_disponiveis: diasDisponiveis,
+      dias: [] as any[],
+      orders: [] as any[],
       root,
       variant: variantFilter ?? "all",
       mode: modeFilter ?? "all",
       variants_present: variantsPresent,
       // Ativos com run ativa — os chips da tela vêm daqui, então um ativo novo
       // aparece sozinho no dia em que a run for criada, sem novo deploy.
-      assets_present: Array.from(new Set((allRuns ?? []).map((r: any) => rootOf(r.symbol)))).sort() as string[],
+      assets_present: Array.from(new Set(
+        ((allRuns ?? []) as any[]).filter((r) => r.status === "running").map((r) => rootOf(r.symbol)),
+      )).sort() as string[],
       contracts: Array.from(new Set(assetRuns.map((r: any) => r.symbol))) as string[],
       quote_symbol: null as string | null,
       tick_size: 5,
@@ -3752,10 +3771,12 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       ops_lucro: 0,
       pico_exposicao_brl: 0,
       pico_exposicao_hora: null as string | null,
+      pico_exposicao_data: null as string | null,
       pico_contratos: 0,
       groups: [] as any[],
     };
     if (!runList.length) return base;
+
 
     const profiles: Record<string, any> = {};
     for (const symbol of Array.from(new Set(runList.map((r: any) => r.symbol))) as string[]) {
