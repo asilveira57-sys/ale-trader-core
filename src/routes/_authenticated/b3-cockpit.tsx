@@ -294,39 +294,76 @@ function CockpitPage() {
         <p className="text-sm text-muted-foreground">Nenhum robô para o filtro selecionado.</p>
       )}
 
-      {Array.from(bySymbol.entries()).map(([root, group]) => (
+      {orderedAssets.map(([root, group]) => {
+        const hdr = headerByAsset.get(root);
+        const isCollapsed = collapsedAssets.has(root);
+        const robotCount = Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0);
+        return (
         <div key={root} className="space-y-3">
-          <h2 className="text-sm font-semibold flex items-center gap-2 flex-wrap">
-            <Badge variant="outline" className="border-primary/40 bg-primary/10">{root}</Badge>
-            <span className="text-[11px] text-muted-foreground font-normal">
-              {Array.from(group.contracts).join(" · ")}
-            </span>
-            <span className="text-muted-foreground font-normal">
-              {Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0)} robôs
-            </span>
-            <Button size="sm" variant="outline" className="h-6 text-[10px] ml-auto"
-              onClick={() => copyCards(
-                Array.from(group.byVariant.values()).flat(),
-                root,
-                true,
-              )}>
-              <Copy className="w-3 h-3 mr-1" />Copiar ativo
-            </Button>
-            <Button asChild size="sm" variant="outline" className="h-6 text-[10px]">
-              <Link to="/b3/ativo/$symbol" params={{ symbol: root }}>ver painel</Link>
-            </Button>
-          </h2>
+          {/* ── Testeira do ativo: sempre visível, mesmo recolhida ── */}
+          <div className="rounded-lg border border-border/60 bg-card px-3 py-2">
+            <div className="flex items-start gap-2 flex-wrap">
+              <button type="button" onClick={() => toggleAsset(root)}
+                aria-label={isCollapsed ? `Expandir ${root}` : `Recolher ${root}`}
+                className="mt-0.5 rounded p-0.5 text-muted-foreground hover:text-foreground">
+                {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+              </button>
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap text-sm font-semibold">
+                  <Badge variant="outline" className="border-primary/40 bg-primary/10">{root}</Badge>
+                  <span className="text-[11px] text-muted-foreground font-normal">
+                    {Array.from(group.contracts).join(" · ")}
+                  </span>
+                  <span className="text-muted-foreground font-normal">{robotCount} robôs</span>
+                  <span className={`ml-auto font-mono text-xl ${moneyColor(hdr?.resultado_brl ?? 0)}`}>
+                    {SIGNED_HDR(hdr?.resultado_brl ?? 0)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {hdr?.ops ?? 0} ops · {hdr?.ganhos ?? 0} no lucro ({PCT(hdr?.taxa_acerto)}){"   "}
+                  <span className="mx-1">·</span>
+                  pico de capital {BRL0(hdr?.pico_capital_brl ?? 0)} · retorno {PCT_SIGNED(hdr?.retorno_sobre_capital)}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  melhor: {roboShort(hdr?.melhor_robo)}
+                  <span className="mx-2">·</span>
+                  pior: {roboShort(hdr?.pior_robo)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" className="h-6 text-[10px]"
+                  onClick={() => copyCards(Array.from(group.byVariant.values()).flat(), root, true)}>
+                  <Copy className="w-3 h-3 mr-1" />Copiar ativo
+                </Button>
+                <Button asChild size="sm" variant="outline" className="h-6 text-[10px]">
+                  <Link to="/b3/ativo/$symbol" params={{ symbol: root }}>ver painel</Link>
+                </Button>
+              </div>
+            </div>
+          </div>
 
-          {Array.from(group.byVariant.entries()).map(([variant, cards]) => (
+          {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
+            const sub = (hdr?.por_modalidade ?? []).find((m: any) => m.variant === variant);
+            return (
             <div key={variant} className="space-y-2 rounded-lg border border-border/40 bg-background/30 p-3">
-              <h3 className="text-xs font-semibold flex items-center gap-2">
+              <h3 className="text-xs font-semibold flex items-center gap-2 flex-wrap">
                 <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
                 <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
+                <span className={`font-mono ${moneyColor(sub?.resultado_brl ?? 0)}`}>
+                  {SIGNED_HDR(sub?.resultado_brl ?? 0)}
+                </span>
+                <span className="text-muted-foreground font-normal">
+                  {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})
+                </span>
+                <span className="text-muted-foreground font-normal">
+                  pico {BRL0(sub?.pico_capital_brl ?? 0)}
+                </span>
                 <Button size="sm" variant="outline" className="h-6 text-[10px] ml-auto"
                   onClick={() => copyCards(cards, `${root} · ${variantLabel(variant).toLowerCase()}`)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo + modalidade
                 </Button>
               </h3>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 {cards.map((c: any) => {
                   const key = `${c.run_id}:${c.mode}`;
