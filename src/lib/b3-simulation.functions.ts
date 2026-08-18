@@ -3315,6 +3315,9 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         if (!run) continue;
         const root = rootSymbol(run.symbol);
         const variant = (run.variant ?? "indicador") as string;
+        // Recorte da modalidade: a ordem descartada aqui não entra em nenhuma
+        // soma nem na linha do tempo de margem, então o pico também é do recorte.
+        if (variantFilter && variant !== variantFilter) continue;
         const asset = assetBySymbol[run.symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
         if (!byAsset.has(root)) byAsset.set(root, { contracts: new Set(), agg: mkAgg(), byVariant: new Map() });
         const entryAsset = byAsset.get(root)!;
