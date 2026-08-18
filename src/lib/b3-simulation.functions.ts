@@ -3988,8 +3988,23 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       })
       .sort((a, b) => a.variant.localeCompare(b.variant));
 
+    // Série por pregão — usada pela barra por dia quando o período tem mais
+    // de um dia. Marca dia sujo (b3_pregao_saude.limpo = false).
+    const dias = Array.from(perDay.entries())
+      .map(([d, v]) => ({
+        trade_date: d,
+        resultado_brl: v.resultado,
+        ops: v.ops,
+        wins: v.wins,
+        limpo: saudeByDay[d]?.limpo !== false,
+        motivo_sujo: saudeByDay[d]?.motivo_sujo ?? null,
+      }))
+      .sort((a, b) => a.trade_date.localeCompare(b.trade_date));
+
     return {
       ...base,
+      dias,
+      orders: orderRows,
       quote_symbol: firstProfile?.quote_symbol ?? null,
       tick_size: Number(firstProfile?.tick_size ?? 5),
       scale_brl: scale,
@@ -4004,9 +4019,11 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       ops_lucro: opsLucro,
       pico_exposicao_brl: picoM * 1.3,
       pico_exposicao_hora: horaPico,
+      pico_exposicao_data: picoT == null ? null : brtDay(picoT),
       pico_contratos: picoQ,
       groups,
     };
+
   });
 
 
