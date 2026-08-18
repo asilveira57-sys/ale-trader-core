@@ -211,7 +211,7 @@ function B3Page() {
           <TabsTrigger value="live"><Activity className="w-4 h-4 mr-1" />Painel Ao Vivo</TabsTrigger>
           <TabsTrigger value="diagnostic"><ShieldAlert className="w-4 h-4 mr-1" />Diagnóstico do Motor</TabsTrigger>
           <TabsTrigger value="report"><FileBarChart className="w-4 h-4 mr-1" />Relatório</TabsTrigger>
-          <TabsTrigger value="settings"><SettingsIcon className="w-4 h-4 mr-1" />Configurações</TabsTrigger>
+          <TabsTrigger value="settings"><SettingsIcon className="w-4 h-4 mr-1" />Padrões e globais</TabsTrigger>
         </TabsList>
 
         <TabsContent value="panel">
@@ -779,8 +779,17 @@ function SettingsForm({
 
   return (
     <Card className="mt-3">
-      <CardHeader><CardTitle className="text-base">Configurações B3 — Day Trade</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="text-base">Padrões para novos robôs</CardTitle>
+      </CardHeader>
       <CardContent className="space-y-4">
+        <div className="rounded-md border border-amber-500/50 bg-amber-950/20 p-3 text-xs text-amber-200 flex gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            Estes valores <strong>não afetam os robôs em operação</strong>. Cada robô tem a própria
+            configuração, acessível pela engrenagem do card no Cockpit.
+          </span>
+        </div>
         <div className="grid gap-3 md:grid-cols-3">
           {F("broker_name", "Corretora")}
           <div>
@@ -814,14 +823,25 @@ function SettingsForm({
 
           {F("daily_loss_limit", "Perda diária máx (R$)", "number")}
           {F("daily_gain_target", "Ganho diário alvo (R$)", "number")}
-          {F("global_daily_loss_limit_brl", "Perda diária máx. AGREGADA — 5 modos (R$)", "number")}
-          {F("capital_disponivel_brl", "Capital disponível na conta (R$) — alerta de exposição", "number")}
           {F("stop_points", "Stop (pontos)", "number")}
           {F("gain_points", "Gain (pontos)", "number")}
 
           {F("start_time", "Horário inicial", "time")}
           {F("end_time", "Horário final", "time")}
           {F("force_close_time", "Zeragem obrigatória", "time")}
+        </div>
+
+        <div className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-2">
+          <div>
+            <p className="text-sm font-medium">Limites globais de verdade</p>
+            <p className="text-xs text-muted-foreground">
+              Estes dois valores valem para todos os robôs somados, em qualquer ativo ou modalidade.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {F("global_daily_loss_limit_brl", "Perda diária máx. AGREGADA — todos os robôs (R$)", "number")}
+            {F("capital_disponivel_brl", "Capital disponível na conta (R$) — alerta de exposição", "number")}
+          </div>
         </div>
 
         <div className="flex items-center gap-6 pt-2">

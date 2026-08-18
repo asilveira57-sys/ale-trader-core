@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { RobotConfigDialog } from "@/components/b3/RobotConfigDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -425,9 +426,12 @@ function ModeCard({ m, active, onClick, onCopy }: { m: any; active: boolean; onC
   const positive = Number(m.resultado_brl ?? 0) >= 0;
   const ring = positive ? "stroke-emerald-400" : "stroke-rose-500";
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`relative rounded-lg border bg-card p-3 text-center transition-colors ${active ? "border-primary ring-1 ring-primary/40" : "border-border/60 hover:border-primary/50"}`}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+      className={`relative rounded-lg border bg-card p-3 text-center transition-colors cursor-pointer ${active ? "border-primary ring-1 ring-primary/40" : "border-border/60 hover:border-primary/50"}`}
     >
       <span
         role="button"
@@ -458,6 +462,20 @@ function ModeCard({ m, active, onClick, onCopy }: { m: any; active: boolean; onC
         <span className="text-rose-400">{shortBRL(Math.abs(Number(m.perdas_brl ?? 0)))}</span>
       </p>
       {!m.enabled && <p className="text-[10px] text-muted-foreground italic">desligado</p>}
-    </button>
+      {m.run_id && (
+        <span
+          className="mt-1 flex justify-center"
+          onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        >
+          <RobotConfigDialog
+            runId={m.run_id}
+            mode={m.mode}
+            symbol={m.symbol ?? m.mode}
+            variant={m.variant ?? "indicador"}
+            compact
+          />
+        </span>
+      )}
+    </div>
   );
 }
