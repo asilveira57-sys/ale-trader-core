@@ -3393,7 +3393,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       porAtivo.sort((a, b) => b.resultado_brl - a.resultado_brl);
     }
 
-    return { session_date: sessionDate, cards, por_ativo: porAtivo };
+    return { session_date: sessionDate, variant: variantFilter ?? "all", cards, por_ativo: porAtivo };
 
   });
 
