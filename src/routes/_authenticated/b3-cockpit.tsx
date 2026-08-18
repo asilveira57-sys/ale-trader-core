@@ -74,6 +74,14 @@ function CockpitPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [variantFilter, setVariantFilter] = useState<VariantFilter>("all");
   const [motivo, setMotivo] = useState("");
+  // Faixas de ativo recolhidas — preferência só enquanto a página está aberta.
+  const [collapsedAssets, setCollapsedAssets] = useState<Set<string>>(new Set());
+  const toggleAsset = (root: string) => setCollapsedAssets((prev) => {
+    const next = new Set(prev);
+    next.has(root) ? next.delete(root) : next.add(root);
+    return next;
+  });
+
 
   const q = useQuery({
     queryKey: ["b3-cockpit"],
