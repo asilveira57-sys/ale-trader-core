@@ -259,8 +259,8 @@ function CockpitPage() {
         </div>
       </header>
 
-      {/* ── Placar do dia ── */}
-      <Scoreboard />
+      {/* ── Placar do dia — mesmo recorte do filtro de modalidade ── */}
+      <Scoreboard variantFilter={variantFilter} />
 
       {/* ── Resumo + filtro ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
