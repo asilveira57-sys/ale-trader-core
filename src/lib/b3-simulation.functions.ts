@@ -3845,6 +3845,16 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
     let realizado = 0, aberto = 0, ganhos = 0, perdas = 0, opsTotal = 0, opsLucro = 0;
     const events: { t: number; dm: number; dq: number }[] = [];
     const closedTimeline: { t: number; net: number }[] = [];
+    type DayAgg = { resultado: number; ops: number; wins: number };
+    const perDay = new Map<string, DayAgg>();
+    const ensureDay = (d: string) => {
+      if (!perDay.has(d)) perDay.set(d, { resultado: 0, ops: 0, wins: 0 });
+      return perDay.get(d)!;
+    };
+    const orderRows: any[] = [];
+    const hhmm = (t: number) => new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit",
+    }).format(new Date(t));
 
     for (const o of rows) {
       const run = runById[o.simulation_run_id];
@@ -3862,6 +3872,8 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
       const tOut = o.exit_time ? new Date(o.exit_time).getTime() : nowMs;
       events.push({ t: tIn, dm: margem, dq: qty });
       events.push({ t: tOut, dm: -margem, dq: -qty });
+      const dia = brtDay(tIn);
+      const dayAgg = ensureDay(dia);
 
       if (o.status === "closed") {
         const net = Number(o.net_result_brl ?? 0);
@@ -3869,7 +3881,9 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
         opsTotal += 1;
         agg.ops += 1;
         agg.resultado += net;
-        if (net > 0) { ganhos += net; opsLucro += 1; agg.ganhos += net; agg.wins += 1; }
+        dayAgg.ops += 1;
+        dayAgg.resultado += net;
+        if (net > 0) { ganhos += net; opsLucro += 1; agg.ganhos += net; agg.wins += 1; dayAgg.wins += 1; }
         else { perdas += net; agg.perdas += net; }
         closedTimeline.push({ t: tOut, net });
       } else {
@@ -3883,7 +3897,22 @@ export const getB3AssetDashboard = createServerFn({ method: "POST" })
           agg.resultado += brl;
         }
       }
+
+      orderRows.push({
+        id: o.id,
+        trade_date: dia,
+        hora_entrada: hhmm(tIn),
+        hora_saida: o.exit_time ? hhmm(tOut) : null,
+        variant, mode: o.mode, side: o.side, status: o.status,
+        quantity: qty,
+        entry_price: entry,
+        exit_price: o.exit_price == null ? null : Number(o.exit_price),
+        pontos: o.gross_result_points == null ? null : Number(o.gross_result_points),
+        net_brl: o.status === "closed" ? Number(o.net_result_brl ?? 0) : null,
+        close_reason: o.close_reason ?? null,
+      });
     }
+
 
     // Pico de exposição (margem simultânea × 1,30) por linha do tempo de eventos.
     events.sort((a, b) => a.t - b.t || b.dq - a.dq);
