@@ -357,15 +357,21 @@ function CockpitPage() {
               <h3 className="text-xs font-semibold flex items-center gap-2 flex-wrap">
                 <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
                 <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
-                <span className={`font-mono ${moneyColor(sub?.resultado_brl ?? 0)}`}>
-                  {SIGNED_HDR(sub?.resultado_brl ?? 0)}
-                </span>
-                <span className="text-muted-foreground font-normal">
-                  {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})
-                </span>
-                <span className="text-muted-foreground font-normal">
-                  pico {BRL0(sub?.pico_capital_brl ?? 0)}
-                </span>
+                {/* Com o filtro numa modalidade, a testeira do ativo já mostra
+                    exatamente estes números — o subtotal viraria repetição. */}
+                {variantFilter === "all" && (
+                  <>
+                    <span className={`font-mono ${moneyColor(sub?.resultado_brl ?? 0)}`}>
+                      {SIGNED_HDR(sub?.resultado_brl ?? 0)}
+                    </span>
+                    <span className="text-muted-foreground font-normal">
+                      {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})
+                    </span>
+                    <span className="text-muted-foreground font-normal">
+                      pico {BRL0(sub?.pico_capital_brl ?? 0)}
+                    </span>
+                  </>
+                )}
                 <Button size="sm" variant="outline" className="h-6 text-[10px] ml-auto"
                   onClick={() => copyCards(cards, `${root} · ${variantLabel(variant).toLowerCase()}`)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo + modalidade
