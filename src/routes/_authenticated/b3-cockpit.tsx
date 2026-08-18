@@ -286,7 +286,13 @@ function CockpitPage() {
               {variantLabel(v)}
             </Button>
           ))}
+          <Button size="sm" variant="outline" className="h-7 text-[11px] ml-auto"
+            onClick={() => setCollapsedAssets(allCollapsed ? new Set() : new Set(orderedAssets.map(([r]) => r)))}>
+            {allCollapsed ? <ChevronDown className="w-3 h-3 mr-1" /> : <ChevronUp className="w-3 h-3 mr-1" />}
+            {allCollapsed ? "Expandir todos" : "Recolher todos"}
+          </Button>
         </div>
+
       </section>
 
       {q.isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
