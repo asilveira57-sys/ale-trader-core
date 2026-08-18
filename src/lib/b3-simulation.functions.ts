@@ -3176,8 +3176,11 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       .eq("user_id", userId).eq("trade_date", sessionDate).eq("acao", "reset_stop_diario");
 
     const cards: any[] = [];
+    const assetBySymbol: Record<string, any> = {};
     for (const run of runs ?? []) {
       const asset = await loadAssetProfile(supabase, run.symbol);
+      assetBySymbol[run.symbol] = asset;
+
       const [{ data: modes }, { data: settings }, { data: openOrders }, { data: snaps }, { data: closedToday }] = await Promise.all([
         (supabase as any).from("b3_simulation_modes")
           .select("mode, initial_balance, current_balance, current_status, protection_state, protection_block_reason")
