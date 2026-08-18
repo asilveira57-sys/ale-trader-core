@@ -60,7 +60,6 @@ const stamp = () => {
 
 export function buildAssetCopyText(d: any): string {
 
-  const tick = Number(d?.tick_size ?? 5);
   const lines: string[] = [`AleTrader B3 — ${stamp()} — ${scopeLabel(d)} (${assetLabel(d.root)})`];
   lines.push(
     `resultado ${SIGNED_BRL(d.resultado_dia_brl)} · realizado ${BRL(d.realizado_brl)} · em aberto ${BRL(d.aberto_brl)}`,
@@ -91,7 +90,6 @@ export function buildAssetCopyText(d: any): string {
       lines.push(`  ${modeLabel(m.mode)}: ${SIGNED_BRL(m.resultado_brl)} · ${m.ops} ops · ${Number(m.hit_rate ?? 0).toFixed(0)}% acerto${m.enabled === false ? " · desligado" : ""}`);
     }
   }
-  void PXn; void tick;
   return lines.join("\n").trimEnd();
 }
 
