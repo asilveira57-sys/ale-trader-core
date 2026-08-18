@@ -3,8 +3,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { rootSymbol } from "./b3-format";
+import { B3_ROBOT_MODES } from "./b3-robot-fields";
 import {
-  B3_ROBOT_MODES,
   averageDailyRangePts,
   buildNotesHistory,
   diffChanges,

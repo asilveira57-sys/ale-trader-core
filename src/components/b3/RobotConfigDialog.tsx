@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { getB3RobotConfig, saveB3RobotConfig } from "@/lib/b3-robot-config.functions";
-import { B3_ROBOT_FIELD_LABEL } from "@/lib/b3-robot-config.server";
+import { B3_ROBOT_FIELD_LABEL } from "@/lib/b3-robot-fields";
 import { BRL, rootSymbol } from "@/lib/b3-format";
 
 const VARIANT_LABEL: Record<string, string> = {
