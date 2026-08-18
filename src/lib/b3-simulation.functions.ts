@@ -1,6 +1,8 @@
 // B3 Day Trade — Fase 2.5: simulação comparativa dos 3 modos
 import { createServerFn } from "@tanstack/react-start";
+import { rootSymbol } from "./b3-format";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
 import {
   runB3Agents, buildB3Decision,
   type B3Side, type B3RiskState, type B3CommitteeSettings,
@@ -3176,8 +3178,11 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       .eq("user_id", userId).eq("trade_date", sessionDate).eq("acao", "reset_stop_diario");
 
     const cards: any[] = [];
+    const assetBySymbol: Record<string, any> = {};
     for (const run of runs ?? []) {
       const asset = await loadAssetProfile(supabase, run.symbol);
+      assetBySymbol[run.symbol] = asset;
+
       const [{ data: modes }, { data: settings }, { data: openOrders }, { data: snaps }, { data: closedToday }] = await Promise.all([
         (supabase as any).from("b3_simulation_modes")
           .select("mode, initial_balance, current_balance, current_status, protection_state, protection_block_reason")
@@ -3274,7 +3279,115 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         });
       }
     }
-    return cards;
+    // ── Testeira por ativo e subtotal por modalidade (SOMENTE LEITURA) ──
+    // Mesmo método de linha do tempo de eventos do placar: +margem na entrada,
+    // −margem na saída (ou agora), ordenado com entradas antes de saídas, e o
+    // máximo acumulado × 1,30. Somar picos individuais superestima.
+    const runList: any[] = runs ?? [];
+    const runIds = runList.map((r) => r.id);
+    const porAtivo: any[] = [];
+    if (runIds.length) {
+      const runById: Record<string, any> = {};
+      for (const r of runList) runById[r.id] = r;
+      const priceByRun: Record<string, number | null> = {};
+      for (const c of cards) if (priceByRun[c.run_id] == null) priceByRun[c.run_id] = c.live_price ?? null;
+
+      const { data: dayOrders } = await (supabase as any).from("b3_simulation_orders")
+        .select("simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
+        .eq("user_id", userId).in("simulation_run_id", runIds).in("status", ["open", "closed"])
+        .gte("entry_time", dayStartUtc);
+
+      const nowMs = Date.now();
+      type Agg = {
+        realizado: number; nao_realizado: number; ops: number; ganhos: number;
+        events: { t: number; dm: number }[];
+        robots: Map<string, { variant: string; mode: string; brl: number }>;
+      };
+      const mkAgg = (): Agg => ({ realizado: 0, nao_realizado: 0, ops: 0, ganhos: 0, events: [], robots: new Map() });
+      const byAsset = new Map<string, { contracts: Set<string>; agg: Agg; byVariant: Map<string, Agg> }>();
+
+      for (const o of dayOrders ?? []) {
+        const run = runById[o.simulation_run_id];
+        if (!run) continue;
+        const root = rootSymbol(run.symbol);
+        const variant = (run.variant ?? "indicador") as string;
+        const asset = assetBySymbol[run.symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
+        if (!byAsset.has(root)) byAsset.set(root, { contracts: new Set(), agg: mkAgg(), byVariant: new Map() });
+        const entryAsset = byAsset.get(root)!;
+        entryAsset.contracts.add(run.symbol);
+        if (!entryAsset.byVariant.has(variant)) entryAsset.byVariant.set(variant, mkAgg());
+        const aggs = [entryAsset.agg, entryAsset.byVariant.get(variant)!];
+
+        const qty = Number(o.quantity ?? 0);
+        const entry = Number(o.entry_price ?? 0);
+        const margem = String(asset.margin_model ?? "per_contract") === "per_contract"
+          ? Number(asset.margin_per_contract_brl ?? 0) * qty
+          : entry * qty * Number(asset.margin_percent_position ?? 0) / 100;
+        const tIn = new Date(o.entry_time ?? o.created_at ?? nowMs).getTime();
+        const tOut = o.exit_time ? new Date(o.exit_time).getTime() : nowMs;
+
+        let brl = 0;
+        if (o.status === "closed") {
+          brl = Number(o.net_result_brl ?? 0);
+          for (const a of aggs) {
+            a.realizado += brl; a.ops += 1; if (brl > 0) a.ganhos += 1;
+          }
+        } else {
+          const live = priceByRun[o.simulation_run_id];
+          if (live != null) {
+            const dir = o.side === "buy" ? 1 : -1;
+            brl = (live - entry) * dir * Number(asset.tick_value_brl ?? POINT_VALUE_BRL) * qty;
+          }
+          for (const a of aggs) a.nao_realizado += brl;
+        }
+        for (const a of aggs) {
+          a.events.push({ t: tIn, dm: margem });
+          a.events.push({ t: tOut, dm: -margem });
+          const key = `${variant}|${o.mode}`;
+          if (!a.robots.has(key)) a.robots.set(key, { variant, mode: o.mode, brl: 0 });
+          a.robots.get(key)!.brl += brl;
+        }
+      }
+
+      const picoDe = (evts: { t: number; dm: number }[]) => {
+        const sorted = [...evts].sort((a, b) => a.t - b.t || b.dm - a.dm);
+        let acc = 0, pico = 0;
+        for (const e of sorted) { acc += e.dm; if (acc > pico) pico = acc; }
+        return pico * 1.3;
+      };
+      const shape = (a: Agg) => {
+        const resultado = a.realizado + a.nao_realizado;
+        const pico = picoDe(a.events);
+        const ranked = Array.from(a.robots.values()).sort((x, y) => y.brl - x.brl);
+        return {
+          resultado_brl: resultado,
+          realizado_brl: a.realizado,
+          nao_realizado_brl: a.nao_realizado,
+          ops: a.ops,
+          ganhos: a.ganhos,
+          taxa_acerto: a.ops ? a.ganhos / a.ops : null,
+          pico_capital_brl: pico,
+          retorno_sobre_capital: pico > 0 ? resultado / pico : null,
+          melhor_robo: ranked[0] ?? null,
+          pior_robo: ranked.length > 1 ? ranked[ranked.length - 1] : null,
+        };
+      };
+
+      for (const [root, v] of byAsset.entries()) {
+        porAtivo.push({
+          symbol: root,
+          contracts: Array.from(v.contracts),
+          ...shape(v.agg),
+          por_modalidade: Array.from(v.byVariant.entries()).map(([variant, agg]) => ({
+            variant, ...shape(agg),
+          })),
+        });
+      }
+      porAtivo.sort((a, b) => b.resultado_brl - a.resultado_brl);
+    }
+
+    return { session_date: sessionDate, cards, por_ativo: porAtivo };
+
   });
 
 // ─────────────────── placar do dia (topo do Cockpit) ───────────────────

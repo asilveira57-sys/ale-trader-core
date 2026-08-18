@@ -58,6 +58,22 @@ const VARIANT_COLOR: Record<string, string> = {
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
 const isRiskBlocked = (c: any) => c.current_status === "blocked_stop" || !!c.protection_block_reason;
 
+// ── Testeira: formatação somente de apresentação ──
+const SIGNED_HDR = (v: number) => `${Number(v ?? 0) > 0 ? "+" : ""}${BRL(v)}`;
+const PCT = (v: number | null | undefined, digits = 0) =>
+  v == null ? "—" : `${(Number(v) * 100).toLocaleString("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
+const PCT_SIGNED = (v: number | null | undefined) =>
+  v == null ? "—" : `${Number(v) > 0 ? "+" : ""}${PCT(v, 1)}`;
+const BRL0 = (v: number) =>
+  Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const moneyColor = (v: number) => (Number(v ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300");
+const VARIANT_SHORT: Record<string, string> = {
+  indicador: "ind", price_action: "PA", mean_reversion: "rev", range: "faixa",
+};
+const roboShort = (r: any) =>
+  !r ? "—" : `${VARIANT_SHORT[r.variant] ?? r.variant} ${String(r.mode).replace("_", "-")} ${SIGNED_HDR(r.brl)}`;
+
+
 
 type Filter = "all" | "open" | "blocked";
 type VariantFilter = "all" | string;
@@ -74,6 +90,14 @@ function CockpitPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [variantFilter, setVariantFilter] = useState<VariantFilter>("all");
   const [motivo, setMotivo] = useState("");
+  // Faixas de ativo recolhidas — preferência só enquanto a página está aberta.
+  const [collapsedAssets, setCollapsedAssets] = useState<Set<string>>(new Set());
+  const toggleAsset = (root: string) => setCollapsedAssets((prev) => {
+    const next = new Set(prev);
+    next.has(root) ? next.delete(root) : next.add(root);
+    return next;
+  });
+
 
   const q = useQuery({
     queryKey: ["b3-cockpit"],
@@ -82,8 +106,10 @@ function CockpitPage() {
     refetchIntervalInBackground: false,
   });
 
-  const all: any[] = q.data ?? [];
+  const all: any[] = q.data?.cards ?? [];
+  const porAtivo: any[] = q.data?.por_ativo ?? [];
   const runIds = Array.from(new Set(all.map((c) => c.run_id)));
+
 
   const closeModeM = useMutation({
     mutationFn: (v: { run_id: string; mode: string }) => closeMode({ data: v as any }),
@@ -157,6 +183,15 @@ function CockpitPage() {
     if (!group.byVariant.has(v)) group.byVariant.set(v, []);
     group.byVariant.get(v)!.push(c);
   }
+
+  // Testeira por ativo/modalidade vem do servidor (linha do tempo de margem).
+  const headerByAsset = new Map<string, any>(porAtivo.map((a) => [a.symbol, a]));
+  // Ordena os ativos por resultado do dia, decrescente — o que drena fica embaixo.
+  const orderedAssets = Array.from(bySymbol.entries()).sort(
+    (a, b) => Number(headerByAsset.get(b[0])?.resultado_brl ?? 0) - Number(headerByAsset.get(a[0])?.resultado_brl ?? 0),
+  );
+  const allCollapsed = orderedAssets.length > 0 && orderedAssets.every(([root]) => collapsedAssets.has(root));
+
 
   return (
     <div className="container mx-auto py-6 space-y-4">
@@ -251,7 +286,13 @@ function CockpitPage() {
               {variantLabel(v)}
             </Button>
           ))}
+          <Button size="sm" variant="outline" className="h-7 text-[11px] ml-auto"
+            onClick={() => setCollapsedAssets(allCollapsed ? new Set() : new Set(orderedAssets.map(([r]) => r)))}>
+            {allCollapsed ? <ChevronDown className="w-3 h-3 mr-1" /> : <ChevronUp className="w-3 h-3 mr-1" />}
+            {allCollapsed ? "Expandir todos" : "Recolher todos"}
+          </Button>
         </div>
+
       </section>
 
       {q.isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
@@ -259,39 +300,76 @@ function CockpitPage() {
         <p className="text-sm text-muted-foreground">Nenhum robô para o filtro selecionado.</p>
       )}
 
-      {Array.from(bySymbol.entries()).map(([root, group]) => (
+      {orderedAssets.map(([root, group]) => {
+        const hdr = headerByAsset.get(root);
+        const isCollapsed = collapsedAssets.has(root);
+        const robotCount = Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0);
+        return (
         <div key={root} className="space-y-3">
-          <h2 className="text-sm font-semibold flex items-center gap-2 flex-wrap">
-            <Badge variant="outline" className="border-primary/40 bg-primary/10">{root}</Badge>
-            <span className="text-[11px] text-muted-foreground font-normal">
-              {Array.from(group.contracts).join(" · ")}
-            </span>
-            <span className="text-muted-foreground font-normal">
-              {Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0)} robôs
-            </span>
-            <Button size="sm" variant="outline" className="h-6 text-[10px] ml-auto"
-              onClick={() => copyCards(
-                Array.from(group.byVariant.values()).flat(),
-                root,
-                true,
-              )}>
-              <Copy className="w-3 h-3 mr-1" />Copiar ativo
-            </Button>
-            <Button asChild size="sm" variant="outline" className="h-6 text-[10px]">
-              <Link to="/b3/ativo/$symbol" params={{ symbol: root }}>ver painel</Link>
-            </Button>
-          </h2>
+          {/* ── Testeira do ativo: sempre visível, mesmo recolhida ── */}
+          <div className="rounded-lg border border-border/60 bg-card px-3 py-2">
+            <div className="flex items-start gap-2 flex-wrap">
+              <button type="button" onClick={() => toggleAsset(root)}
+                aria-label={isCollapsed ? `Expandir ${root}` : `Recolher ${root}`}
+                className="mt-0.5 rounded p-0.5 text-muted-foreground hover:text-foreground">
+                {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+              </button>
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap text-sm font-semibold">
+                  <Badge variant="outline" className="border-primary/40 bg-primary/10">{root}</Badge>
+                  <span className="text-[11px] text-muted-foreground font-normal">
+                    {Array.from(group.contracts).join(" · ")}
+                  </span>
+                  <span className="text-muted-foreground font-normal">{robotCount} robôs</span>
+                  <span className={`ml-auto font-mono text-xl ${moneyColor(hdr?.resultado_brl ?? 0)}`}>
+                    {SIGNED_HDR(hdr?.resultado_brl ?? 0)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {hdr?.ops ?? 0} ops · {hdr?.ganhos ?? 0} no lucro ({PCT(hdr?.taxa_acerto)}){"   "}
+                  <span className="mx-1">·</span>
+                  pico de capital {BRL0(hdr?.pico_capital_brl ?? 0)} · retorno {PCT_SIGNED(hdr?.retorno_sobre_capital)}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  melhor: {roboShort(hdr?.melhor_robo)}
+                  <span className="mx-2">·</span>
+                  pior: {roboShort(hdr?.pior_robo)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" className="h-6 text-[10px]"
+                  onClick={() => copyCards(Array.from(group.byVariant.values()).flat(), root, true)}>
+                  <Copy className="w-3 h-3 mr-1" />Copiar ativo
+                </Button>
+                <Button asChild size="sm" variant="outline" className="h-6 text-[10px]">
+                  <Link to="/b3/ativo/$symbol" params={{ symbol: root }}>ver painel</Link>
+                </Button>
+              </div>
+            </div>
+          </div>
 
-          {Array.from(group.byVariant.entries()).map(([variant, cards]) => (
+          {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
+            const sub = (hdr?.por_modalidade ?? []).find((m: any) => m.variant === variant);
+            return (
             <div key={variant} className="space-y-2 rounded-lg border border-border/40 bg-background/30 p-3">
-              <h3 className="text-xs font-semibold flex items-center gap-2">
+              <h3 className="text-xs font-semibold flex items-center gap-2 flex-wrap">
                 <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
                 <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
+                <span className={`font-mono ${moneyColor(sub?.resultado_brl ?? 0)}`}>
+                  {SIGNED_HDR(sub?.resultado_brl ?? 0)}
+                </span>
+                <span className="text-muted-foreground font-normal">
+                  {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})
+                </span>
+                <span className="text-muted-foreground font-normal">
+                  pico {BRL0(sub?.pico_capital_brl ?? 0)}
+                </span>
                 <Button size="sm" variant="outline" className="h-6 text-[10px] ml-auto"
                   onClick={() => copyCards(cards, `${root} · ${variantLabel(variant).toLowerCase()}`)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo + modalidade
                 </Button>
               </h3>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 {cards.map((c: any) => {
                   const key = `${c.run_id}:${c.mode}`;
@@ -501,9 +579,12 @@ function CockpitPage() {
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
-      ))}
+        );
+      })}
+
     </div>
   );
 }
