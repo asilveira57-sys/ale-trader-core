@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { RobotConfigDialog } from "@/components/b3/RobotConfigDialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
@@ -389,6 +390,16 @@ function CockpitPage() {
                   const isRealEnv = c.environment && c.environment !== "simulation";
                   return (
                     <div key={key} className="relative rounded-lg border border-border/60 bg-card overflow-hidden">
+                      {/* Configurar este robô — fora do <button> do card pra não aninhar botões */}
+                      <div className="absolute top-1 right-7 z-10">
+                        <RobotConfigDialog
+                          runId={c.run_id}
+                          mode={c.mode}
+                          symbol={c.symbol}
+                          variant={c.variant ?? "indicador"}
+                          compact
+                        />
+                      </div>
                       {/* Copiar este robô — fora do <button> do card pra não aninhar botões */}
                       <button
                         type="button"
