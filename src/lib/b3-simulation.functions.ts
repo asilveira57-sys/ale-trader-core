@@ -3195,7 +3195,9 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, created_at")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
-        (supabase as any).from("b3_simulation_market_snapshots").select("price, extra")
+        // `extra` inteiro tem ~6 KB por linha; aqui só o bloco de auditoria é
+        // usado, então projetamos o caminho JSON para não puxar o payload todo.
+        (supabase as any).from("b3_simulation_market_snapshots").select("price, engine_modes:extra->engine_audit->modes")
           .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1),
         (supabase as any).from("b3_simulation_orders").select("mode, net_result_brl")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "closed")
