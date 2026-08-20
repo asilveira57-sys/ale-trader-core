@@ -3223,7 +3223,11 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           .select("mode, related_order_id, observed_value, limit_value, message, created_at, diagnostic_payload")
           .eq("user_id", userId).eq("trigger", "stop_pendente_nao_executado")
           .in("related_order_id", openIds)
-          .order("created_at", { ascending: false });
+          // Eventos com mais de 180 s são descartados abaixo; filtrar no banco
+          // evita ler o histórico inteiro (tabela com payloads grandes).
+          .gte("created_at", new Date(Date.now() - 180_000).toISOString())
+          .order("created_at", { ascending: false })
+          .limit(40);
         for (const ev of pendEvents ?? []) {
           if (pendingByMode[ev.mode]) continue;
           const ageMs = Date.now() - new Date(ev.created_at).getTime();
