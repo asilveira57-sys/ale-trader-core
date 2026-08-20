@@ -3195,7 +3195,9 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, created_at")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
-        (supabase as any).from("b3_simulation_market_snapshots").select("price, extra")
+        // `extra` inteiro tem ~6 KB por linha; aqui só o bloco de auditoria é
+        // usado, então projetamos o caminho JSON para não puxar o payload todo.
+        (supabase as any).from("b3_simulation_market_snapshots").select("price, engine_modes:extra->engine_audit->modes")
           .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1),
         (supabase as any).from("b3_simulation_orders").select("mode, net_result_brl")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "closed")
@@ -3203,7 +3205,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       ]);
 
       const livePrice = Number(snaps?.[0]?.price ?? 0) || null;
-      const auditModes: any[] = snaps?.[0]?.extra?.engine_audit?.modes ?? [];
+      const auditModes: any[] = snaps?.[0]?.engine_modes ?? [];
       const enabledByMode: Record<string, boolean> = {};
       const lossLimitByMode: Record<string, number | null> = {};
       for (const s of settings ?? []) {
@@ -3221,7 +3223,11 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           .select("mode, related_order_id, observed_value, limit_value, message, created_at, diagnostic_payload")
           .eq("user_id", userId).eq("trigger", "stop_pendente_nao_executado")
           .in("related_order_id", openIds)
-          .order("created_at", { ascending: false });
+          // Eventos com mais de 180 s são descartados abaixo; filtrar no banco
+          // evita ler o histórico inteiro (tabela com payloads grandes).
+          .gte("created_at", new Date(Date.now() - 180_000).toISOString())
+          .order("created_at", { ascending: false })
+          .limit(40);
         for (const ev of pendEvents ?? []) {
           if (pendingByMode[ev.mode]) continue;
           const ageMs = Date.now() - new Date(ev.created_at).getTime();
