@@ -3205,7 +3205,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       ]);
 
       const livePrice = Number(snaps?.[0]?.price ?? 0) || null;
-      const auditModes: any[] = snaps?.[0]?.extra?.engine_audit?.modes ?? [];
+      const auditModes: any[] = snaps?.[0]?.engine_modes ?? [];
       const enabledByMode: Record<string, boolean> = {};
       const lossLimitByMode: Record<string, number | null> = {};
       for (const s of settings ?? []) {
