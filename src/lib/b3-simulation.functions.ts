@@ -1751,7 +1751,8 @@ async function runB3SimulationTickInner(
       addCheck("spread", "Spread", Number(ctx.spread_pts ?? priceSrc.raw?.spread ?? 0) > 0, `${Number(ctx.spread_pts ?? priceSrc.raw?.spread ?? 0)} pts`, false);
       addCheck("global_protection", "Proteção Global", !globalProtectionActive, globalProtectionReason);
 
-      const quoteStalledForMode = quoteAgeS > 10;
+      const quoteStalledForMode = Boolean(open) && quoteAgeS > 10;
+      const entryBlockedByQuoteStall = quoteAgeS > 10;
       if (quoteStalledForMode) {
         await recordStatusIfChanged(mode, m, open ? "cotacao_interrompida_posicao_aberta" : "erro_tecnico", "quote_stall_entry_block", {
           pnl: realizedToday,
@@ -2305,6 +2306,15 @@ async function runB3SimulationTickInner(
           }
         } catch { /* instrumentação nunca derruba o motor */ }
 
+      }
+
+      // Cotação antiga bloqueia somente a próxima entrada. Se havia posição,
+      // todo o bloco acima já avaliou stop, alvo, trailing, force_close e
+      // last_eval_minute_ts usando o último Bid/Ask conhecido.
+      if (entryBlockedByQuoteStall) {
+        log.push({ mode, action: "skip", reason: "quote_stall_new_entry", stall_s: quoteAgeS, had_open: quoteStalledForMode });
+        finalizeAudit(`Cotação interrompida há ${quoteAgeS.toFixed(0)}s — nova entrada bloqueada; gestão de posição preservada.`);
+        continue;
       }
 
       // Robô desativado: a ENTRADA é bloqueada, mas a GESTÃO da posição aberta
