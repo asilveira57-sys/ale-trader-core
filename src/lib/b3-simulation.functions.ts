@@ -1141,6 +1141,268 @@ async function runB3SimulationTickInner(
     return { name: "no_valid_setup", ok: false, reasons: failures, details };
   }
 
+  // Reversão à média: entra CONTRA o movimento recente quando o preço se
+  // esticou demais da referência (VWAP, com fallback na EMA21) e o próprio
+  // candle já dá sinal de exaustão. Bloqueio duro quando existe tendência
+  // forte na direção do esticão — brigar com tendência é o jeito mais rápido
+  // de perder dinheiro nessa modalidade. Série de candles M1 reais.
+  function classifySetupMeanReversion(params: {
+    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
+  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
+    const { ctxLocal, intendedSide, cfg, m1Candles } = params;
+    const price = Number(ctxLocal.price);
+    const open = Number(ctxLocal.open);
+    const vwap = Number(ctxLocal.vwap);
+    const ema21 = Number(ctxLocal.ema21);
+    const stopPts = Math.max(1, Number(cfg.stop_pts) || 0);
+    const gainPts = Math.max(0, Number(cfg.gain_pts) || 0);
+    const rr = stopPts > 0 ? gainPts / stopPts : 0;
+    const trend = classifyTrend(ctxLocal, Number(asset?.trend_strength_factor ?? 5));
+
+    const sorted = (m1Candles ?? []).slice()
+      .sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
+    if (sorted.length < 6) {
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: ["aguardando candles de 1 minuto (mínimo 6)"],
+        details: { m1_candles: sorted.length, entry_style: "mean_reversion" },
+      };
+    }
+
+    // Referência da média e amplitude típica dos últimos minutos (proxy de ATR).
+    const ref = Number.isFinite(vwap) && vwap > 0 ? vwap : ema21;
+    const refName = Number.isFinite(vwap) && vwap > 0 ? "vwap" : "ema21";
+    const recent = sorted.slice(-10);
+    const ranges = recent
+      .map((c: any) => Number(c.candle_high) - Number(c.candle_low))
+      .filter((v: number) => Number.isFinite(v) && v >= 0);
+    const atrLike = ranges.length ? ranges.reduce((a, b) => a + b, 0) / ranges.length : 0;
+    const stretchPts = Number.isFinite(ref) ? price - ref : 0;
+    const stretchAbs = Math.abs(stretchPts);
+    // Esticão mínimo: configurável por modo; padrão 1,5x a amplitude média M1,
+    // com piso em 40% do stop pra não virar ruído em ativo parado.
+    const minStretch = Number((cfg as any).mean_reversion_min_stretch_pts
+      ?? Math.max(atrLike * 1.5, stopPts * 0.4));
+
+    const last = sorted[sorted.length - 1];
+    const prev = sorted[sorted.length - 2];
+    const lastHigh = Number(last?.candle_high), lastLow = Number(last?.candle_low);
+    const lastClose = Number(last?.candle_close ?? price);
+    const prevHigh = Number(prev?.candle_high), prevLow = Number(prev?.candle_low);
+
+    const details: Record<string, any> = {
+      entry_style: "mean_reversion",
+      m1_candles: sorted.length,
+      reference: refName, reference_value: Number.isFinite(ref) ? ref : null,
+      price, open, vwap, ema21,
+      stretch_pts: Math.round(stretchPts),
+      stretch_abs_pts: Math.round(stretchAbs),
+      min_stretch_pts: Math.round(minStretch),
+      atr_like_pts: Math.round(atrLike * 100) / 100,
+      trend_direction: trend.direction, trend_strength: trend.strength,
+      risk_reward: Number(rr.toFixed(2)), min_risk_reward: 1.2,
+      last_candle: { high: lastHigh, low: lastLow, close: lastClose },
+    };
+
+    const hardBlock: string[] = [];
+    if (!Number.isFinite(ref) || ref <= 0) hardBlock.push("referência de média indisponível (VWAP/EMA21)");
+    // O lado tem que ser contra o esticão: compra só quando o preço está
+    // ABAIXO da média, venda só quando está ACIMA.
+    if (intendedSide === "buy" && stretchPts >= 0) hardBlock.push("compra exige preço abaixo da média de referência");
+    if (intendedSide === "sell" && stretchPts <= 0) hardBlock.push("venda exige preço acima da média de referência");
+    if (stretchAbs < minStretch) {
+      hardBlock.push(`esticão insuficiente (${Math.round(stretchAbs)} pts < ${Math.round(minStretch)} pts)`);
+    }
+    // Tendência forte na direção do esticão = não reverter.
+    const trendStrongMin = Number((cfg as any).mean_reversion_trend_block_strength ?? 55);
+    const trendAgainst =
+      (intendedSide === "buy" && trend.direction === "baixa" && trend.strength >= trendStrongMin) ||
+      (intendedSide === "sell" && trend.direction === "alta" && trend.strength >= trendStrongMin);
+    if (trendAgainst) {
+      hardBlock.push(`tendência forte na direção do esticão (${trend.direction} ${trend.strength}) — reversão bloqueada`);
+    }
+    details["trend_block_strength"] = trendStrongMin;
+
+    // Evidências macias de exaustão.
+    const soft: { label: string; pass: boolean }[] = [];
+    if (intendedSide === "buy") {
+      soft.push({ label: "candle atual não reagiu para cima (sem exaustão da queda)", pass: price > open });
+      soft.push({ label: "sem rejeição do fundo (fechamento na parte baixa do candle)",
+        pass: Number.isFinite(lastHigh) && Number.isFinite(lastLow) && lastHigh > lastLow
+          ? (lastClose - lastLow) / (lastHigh - lastLow) >= 0.4 : false });
+      soft.push({ label: "fundo ainda cedendo (fundo abaixo do fundo anterior)",
+        pass: Number.isFinite(prevLow) && Number.isFinite(lastLow) ? lastLow >= prevLow : false });
+    } else {
+      soft.push({ label: "candle atual não reagiu para baixo (sem exaustão da alta)", pass: price < open });
+      soft.push({ label: "sem rejeição do topo (fechamento na parte alta do candle)",
+        pass: Number.isFinite(lastHigh) && Number.isFinite(lastLow) && lastHigh > lastLow
+          ? (lastHigh - lastClose) / (lastHigh - lastLow) >= 0.4 : false });
+      soft.push({ label: "topo ainda avançando (topo acima do topo anterior)",
+        pass: Number.isFinite(prevHigh) && Number.isFinite(lastHigh) ? lastHigh <= prevHigh : false });
+    }
+    soft.push({ label: `alvo maior que o esticão disponível (${gainPts} pts > ${Math.round(stretchAbs)} pts até a média)`,
+      pass: gainPts > 0 ? gainPts <= Math.max(stretchAbs, stopPts) : false });
+    soft.push({ label: `R:R ${rr.toFixed(2)} < 1.2`, pass: rr >= 1.2 });
+
+    const failedSoft = soft.filter((s) => !s.pass).map((s) => s.label);
+    const minHits = Number((cfg as any).setup_min_soft_hits_mr ?? 3);
+    const hits = soft.length - failedSoft.length;
+    const softOk = hits >= minHits;
+    Object.assign(details, { soft_hits: hits, soft_total: soft.length, soft_min_hits: minHits, soft_failed: failedSoft });
+
+    if (hardBlock.length === 0 && softOk) {
+      return { name: "mean_reversion_snapback", ok: true, reasons: [], details };
+    }
+    return {
+      name: "no_valid_setup", ok: false,
+      reasons: [...hardBlock, ...(softOk ? [] : failedSoft)],
+      details,
+    };
+  }
+
+  // Faixa lateral: identifica topo e fundo da faixa nos candles M1 recentes e
+  // opera a favor do retorno ao meio — compra perto do fundo, vende perto do
+  // topo. Bloqueia quando a faixa está sendo rompida (preço fora dela ou
+  // fechamento M1 além do extremo) ou quando ela é fina/instável demais.
+  function classifySetupRange(params: {
+    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
+  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
+    const { ctxLocal, intendedSide, cfg, m1Candles } = params;
+    const price = Number(ctxLocal.price);
+    const open = Number(ctxLocal.open);
+    const stopPts = Math.max(1, Number(cfg.stop_pts) || 0);
+    const gainPts = Math.max(0, Number(cfg.gain_pts) || 0);
+    const rr = stopPts > 0 ? gainPts / stopPts : 0;
+    const trend = classifyTrend(ctxLocal, Number(asset?.trend_strength_factor ?? 5));
+
+    const sorted = (m1Candles ?? []).slice()
+      .sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
+    const lookback = Math.max(8, Math.min(60, Number((cfg as any).range_lookback_candles ?? 20)));
+    if (sorted.length < 8) {
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: ["aguardando candles de 1 minuto (mínimo 8)"],
+        details: { m1_candles: sorted.length, entry_style: "range" },
+      };
+    }
+    const window = sorted.slice(-lookback);
+    const highs = window.map((c: any) => Number(c.candle_high)).filter(Number.isFinite);
+    const lows = window.map((c: any) => Number(c.candle_low)).filter(Number.isFinite);
+    if (highs.length < 5 || lows.length < 5) {
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: ["candles M1 sem máxima/mínima suficientes para desenhar a faixa"],
+        details: { m1_candles: sorted.length, entry_style: "range" },
+      };
+    }
+    const rangeTop = Math.max(...highs);
+    const rangeBottom = Math.min(...lows);
+    const rangeSize = rangeTop - rangeBottom;
+    const mid = (rangeTop + rangeBottom) / 2;
+    const posInRange = rangeSize > 0 ? (price - rangeBottom) / rangeSize : 0.5;
+    // Zona de operação nos extremos: 25% da faixa por padrão.
+    const edgePct = Math.min(0.45, Math.max(0.05, Number((cfg as any).range_edge_pct ?? 0.25)));
+    // Faixa mínima: precisa caber o stop com folga, senão qualquer oscilação
+    // estoura a operação antes de voltar ao meio.
+    const minRangeSize = Number((cfg as any).range_min_size_pts ?? stopPts * 1.5);
+
+    const last = sorted[sorted.length - 1];
+    const lastClose = Number(last?.candle_close ?? price);
+
+    const details: Record<string, any> = {
+      entry_style: "range",
+      m1_candles: sorted.length, lookback_candles: window.length,
+      range_top: rangeTop, range_bottom: rangeBottom,
+      range_size_pts: Math.round(rangeSize),
+      min_range_size_pts: Math.round(minRangeSize),
+      range_mid: mid,
+      position_in_range: Number(posInRange.toFixed(3)),
+      edge_pct: edgePct,
+      price, open,
+      trend_direction: trend.direction, trend_strength: trend.strength,
+      risk_reward: Number(rr.toFixed(2)), min_risk_reward: 1.2,
+      dist_to_top_pts: Math.round(rangeTop - price),
+      dist_to_bottom_pts: Math.round(price - rangeBottom),
+    };
+
+    const hardBlock: string[] = [];
+    if (rangeSize < minRangeSize) {
+      hardBlock.push(`faixa estreita demais (${Math.round(rangeSize)} pts < ${Math.round(minRangeSize)} pts)`);
+    }
+    // Rompimento: preço fora da faixa ou fechamento M1 além do extremo.
+    const brokeUp = price > rangeTop || lastClose > rangeTop;
+    const brokeDown = price < rangeBottom || lastClose < rangeBottom;
+    if (brokeUp) hardBlock.push("faixa rompida para cima — sem operação de range");
+    if (brokeDown) hardBlock.push("faixa rompida para baixo — sem operação de range");
+    // Tendência forte descaracteriza a lateralidade.
+    const trendMax = Number((cfg as any).range_max_trend_strength ?? 60);
+    if (trend.direction !== "lateral" && trend.strength >= trendMax) {
+      hardBlock.push(`tendência forte (${trend.direction} ${trend.strength}) — faixa descaracterizada`);
+    }
+    details["max_trend_strength"] = trendMax;
+    // Lado correto: compra só na banda inferior, venda só na superior.
+    if (intendedSide === "buy" && posInRange > edgePct) {
+      hardBlock.push(`compra exige preço na banda inferior da faixa (posição ${(posInRange * 100).toFixed(0)}%)`);
+    }
+    if (intendedSide === "sell" && posInRange < 1 - edgePct) {
+      hardBlock.push(`venda exige preço na banda superior da faixa (posição ${(posInRange * 100).toFixed(0)}%)`);
+    }
+
+    // Evidências macias.
+    const soft: { label: string; pass: boolean }[] = [];
+    const roomToMid = Math.abs(mid - price);
+    soft.push({ label: intendedSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
+      pass: intendedSide === "buy" ? price >= open : price <= open });
+    soft.push({ label: `espaço até o meio da faixa insuficiente (${Math.round(roomToMid)} pts)`,
+      pass: roomToMid >= Math.max(stopPts * 0.5, 10) });
+    soft.push({ label: `R:R ${rr.toFixed(2)} < 1.2`, pass: rr >= 1.2 });
+    soft.push({ label: `alvo além do extremo oposto da faixa (${gainPts} pts)`,
+      pass: gainPts > 0 ? gainPts <= rangeSize : false });
+
+    const failedSoft = soft.filter((s) => !s.pass).map((s) => s.label);
+    const minHits = Number((cfg as any).setup_min_soft_hits_range ?? 3);
+    const hits = soft.length - failedSoft.length;
+    const softOk = hits >= minHits;
+    Object.assign(details, { soft_hits: hits, soft_total: soft.length, soft_min_hits: minHits, soft_failed: failedSoft });
+
+    if (hardBlock.length === 0 && softOk) {
+      return { name: "range_fade", ok: true, reasons: [], details };
+    }
+    return {
+      name: "no_valid_setup", ok: false,
+      reasons: [...hardBlock, ...(softOk ? [] : failedSoft)],
+      details,
+    };
+  }
+
+  // Mapa entry_style → classificador. Acrescentar modalidade nova = uma linha
+  // aqui, sem tocar no ponto de chamada dentro do laço de modos.
+  type SetupClassifierArgs = {
+    ctxLocal: any; derived: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
+  };
+  type SetupResult = { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> };
+  const SETUP_CLASSIFIERS: Record<string, (a: SetupClassifierArgs) => SetupResult> = {
+    indicador: ({ ctxLocal, derived, intendedSide, cfg }) => classifySetup({ ctxLocal, derived, intendedSide, cfg }),
+    price_action: ({ ctxLocal, intendedSide, cfg, m1Candles }) => classifySetupPriceAction({ ctxLocal, intendedSide, cfg, m1Candles }),
+    mean_reversion: ({ ctxLocal, intendedSide, cfg, m1Candles }) => classifySetupMeanReversion({ ctxLocal, intendedSide, cfg, m1Candles }),
+    range: ({ ctxLocal, intendedSide, cfg, m1Candles }) => classifySetupRange({ ctxLocal, intendedSide, cfg, m1Candles }),
+  };
+  function classifySetupFor(entryStyle: string | null | undefined, args: SetupClassifierArgs): SetupResult {
+    const style = String(entryStyle ?? "indicador");
+    const fn = SETUP_CLASSIFIERS[style];
+    if (!fn) {
+      // Falha fechada: modalidade não cadastrada não vira cópia do indicador.
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: [`modalidade de entrada não cadastrada no motor: ${style}`],
+        details: { entry_style: style, known_styles: Object.keys(SETUP_CLASSIFIERS) },
+      };
+    }
+    return fn(args);
+  }
+
+
+
   function buildDecisionContext(params: {
     ctxLocal: any; priceLocal: any; cfg: any; mode: string; intendedSide: string;
     decision: any | null; derived: any; firstStop?: any;
