@@ -1608,6 +1608,10 @@ async function runB3SimulationTickInner(
       any_position_open: anyOpenPre,
       threshold_s: 10,
     };
+    if (sigChanged("audit_quote_stall", String(quoteAgeS > 10))) {
+      markAuditEvent(`quote_stall:${quoteAgeS > 10 ? "ativo" : "normal"}`);
+    }
+
 
     // ───────── STOP PENDENTE NÃO EXECUTADO (somente observação) ─────────
     // Não fecha nada, não altera limiar, entrada, saída nem trailing: apenas
