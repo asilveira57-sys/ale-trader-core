@@ -1904,6 +1904,13 @@ async function runB3SimulationTickInner(
         daily_loss_limit_brl: Number(cfg.daily_loss_limit_brl),
         daily_gain_target_brl: Number(cfg.daily_gain_target_brl),
         max_volatility_pct: Number(cfg.max_volatility_pct),
+        // Trava de devolução de pico — independe de meta. O piso padrão é um
+        // stop do robô em reais (stop_pts × valor do ponto × contratos).
+        peak_giveback_pct: Number((cfg as any).peak_giveback_pct ?? 0.40),
+        peak_lock_min_profit_brl: Number(
+          (cfg as any).peak_lock_min_profit_brl
+          ?? (Number(cfg.stop_pts) * Number(asset?.tick_value_brl ?? POINT_VALUE_BRL) * Number(cfg.max_contracts ?? 1)),
+        ),
       };
 
       const protCur: B3ProtectionRuntime = {
@@ -1915,6 +1922,7 @@ async function runB3SimulationTickInner(
         profit_after_target_brl: Number(m.profit_after_target_brl ?? 0),
         trades_after_target: tradesAfterTarget,
         consecutive_losses_after_target: consecLosses,
+        day_peak_profit_brl: Number(m.day_peak_profit_brl ?? 0),
         protection_block_reason: m.protection_block_reason ?? null,
       };
 
@@ -1937,6 +1945,7 @@ async function runB3SimulationTickInner(
         profit_after_target_brl: protDec.next.profit_after_target_brl,
         trades_after_target: protDec.next.trades_after_target,
         consecutive_losses_after_target: protDec.next.consecutive_losses_after_target,
+        day_peak_profit_brl: protDec.next.day_peak_profit_brl,
         protection_block_reason: protDec.next.protection_block_reason,
         protection_day_key: todayKey,
       } as Record<string, any>;
