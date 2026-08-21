@@ -9,6 +9,7 @@ export type B3ProtectionState =
   | "blocked_drawdown"
   | "blocked_volatility"
   | "blocked_ops_failure"
+  | "blocked_peak_giveback"
   | "blocked_post_target_loss";
 
 export interface B3ProtectionSettings {
@@ -21,6 +22,10 @@ export interface B3ProtectionSettings {
   daily_loss_limit_brl: number;
   daily_gain_target_brl: number;
   max_volatility_pct: number;
+  /** Fração do PICO do dia que o robô pode devolver antes de travar (0,40 = 40%). */
+  peak_giveback_pct: number;
+  /** Piso de lucro para armar a trava de pico (evita disparo por ruído). */
+  peak_lock_min_profit_brl: number;
 }
 
 export interface B3ProtectionRuntime {
@@ -32,6 +37,8 @@ export interface B3ProtectionRuntime {
   profit_after_target_brl: number;
   trades_after_target: number;
   consecutive_losses_after_target: number;
+  /** Maior resultado acumulado do dia, independente de meta. */
+  day_peak_profit_brl: number;
   protection_block_reason: string | null;
 }
 
@@ -115,6 +122,34 @@ export function evaluateB3Protection(
         ? { from: prev, to: next.protection_state, reason: next.protection_block_reason }
         : undefined,
     };
+  }
+
+  // 5) Trava de devolução de pico — NÃO depende de meta.
+  // Motivação: em 21/08 os maiores estragos foram devolução de ganho, não perda
+  // direta (WIN pico +3.706 às 15:38 → fechou +1.813; BIT +1.839 → −1.410).
+  // A trava pós-meta só arma depois da meta diária, que a maioria dos robôs não
+  // alcança. Esta arma sozinha, a partir de um piso mínimo de lucro.
+  next.day_peak_profit_brl = Math.max(
+    Number(current.day_peak_profit_brl ?? 0),
+    input.realized_today_brl,
+  );
+  const dayPeak = Number(next.day_peak_profit_brl ?? 0);
+  const peakPct = Math.min(0.95, Math.max(0.05, Number(cfg.peak_giveback_pct ?? 0.4)));
+  const peakFloor = Math.abs(Number(cfg.peak_lock_min_profit_brl ?? 0));
+  if (dayPeak >= peakFloor && dayPeak > 0) {
+    const givenBackDay = dayPeak - input.realized_today_brl;
+    const allowed = dayPeak * peakPct;
+    if (givenBackDay > allowed) {
+      next.protection_state = "blocked_peak_giveback";
+      next.protection_block_reason =
+        `Devolveu ${givenBackDay.toFixed(2)} BRL do pico do dia (${dayPeak.toFixed(2)} BRL) — limite ${allowed.toFixed(2)} BRL (${(peakPct * 100).toFixed(0)}%).`;
+      return {
+        next, size_multiplier: 0, allow_new_entry: false,
+        transition: prev !== next.protection_state
+          ? { from: prev, to: next.protection_state, reason: next.protection_block_reason }
+          : undefined,
+      };
+    }
   }
 
   const target = Math.abs(cfg.daily_gain_target_brl);
@@ -212,6 +247,7 @@ export function resetB3ProtectionForNewDay(): Partial<B3ProtectionRuntime> {
     profit_after_target_brl: 0,
     trades_after_target: 0,
     consecutive_losses_after_target: 0,
+    day_peak_profit_brl: 0,
     protection_block_reason: null,
   };
 }
