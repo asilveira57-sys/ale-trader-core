@@ -1221,7 +1221,12 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder,
   const canResumeToday = baseStatus.canResumeToday;
   // Tick voltou válido → o modo volta sozinho ao estado operacional, mesmo que
   // o último status persistido ainda seja um erro técnico antigo.
-  const quoteOkNow = !auditStale && audit?.checks?.some?.((c: any) => c.key === "valid_quote" && c.ok);
+  // Em snapshots resumidos (audit_level "resumido") não existe o array de
+  // checks: a cotação é considerada válida quando nada bloqueou por ela.
+  const quoteOkNow = !auditStale && (
+    audit?.checks?.some?.((c: any) => c.key === "valid_quote" && c.ok)
+    || (audit?.resumido === true && audit?.first_stop?.key !== "valid_quote")
+  );
 
   let liveLabel = baseStatus.label;
   let liveCls = baseStatus.cls;
