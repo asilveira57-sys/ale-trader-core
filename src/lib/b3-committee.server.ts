@@ -284,10 +284,14 @@ function aRisco(c: B3Context, side: B3Side, r: B3RiskState, t?: B3AgentTuning): 
  *  o mesmo tick com constantes idênticas. */
 export interface B3AgentTuning {
   max_volatility_pct?: number;
+  /** Piso de volatilidade do modo — alimentado por `lateral_vol_min`. */
   min_volatility_pct?: number;
+  /** Força de tendência mínima do modo — apenas auditoria no voto hoje. */
+  lateral_strength_min?: number;
   stop_pts?: number;
   gain_pts?: number;
 }
+
 
 export function runB3Agents(c: B3Context, side: B3Side, risk: B3RiskState, tuning?: B3AgentTuning): B3AgentVote[] {
   return [
