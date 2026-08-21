@@ -2924,6 +2924,8 @@ export type Database = {
           minimum_trades_before_profit_lock: number
           mode: string
           notes: string | null
+          peak_giveback_pct: number
+          peak_lock_min_profit_brl: number | null
           post_target_allowed_retracement: number
           post_target_size_reduction: number
           profit_multiplier_before_lock: number
@@ -2958,6 +2960,8 @@ export type Database = {
           minimum_trades_before_profit_lock?: number
           mode: string
           notes?: string | null
+          peak_giveback_pct?: number
+          peak_lock_min_profit_brl?: number | null
           post_target_allowed_retracement?: number
           post_target_size_reduction?: number
           profit_multiplier_before_lock?: number
@@ -2992,6 +2996,8 @@ export type Database = {
           minimum_trades_before_profit_lock?: number
           mode?: string
           notes?: string | null
+          peak_giveback_pct?: number
+          peak_lock_min_profit_brl?: number | null
           post_target_allowed_retracement?: number
           post_target_size_reduction?: number
           profit_multiplier_before_lock?: number
@@ -3023,6 +3029,7 @@ export type Database = {
           created_at: string
           current_balance: number
           current_status: string
+          day_peak_profit_brl: number
           id: string
           initial_balance: number
           last_trigger: string | null
@@ -3062,6 +3069,7 @@ export type Database = {
           created_at?: string
           current_balance?: number
           current_status?: string
+          day_peak_profit_brl?: number
           id?: string
           initial_balance?: number
           last_trigger?: string | null
@@ -3101,6 +3109,7 @@ export type Database = {
           created_at?: string
           current_balance?: number
           current_status?: string
+          day_peak_profit_brl?: number
           id?: string
           initial_balance?: number
           last_trigger?: string | null

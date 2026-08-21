@@ -1904,6 +1904,13 @@ async function runB3SimulationTickInner(
         daily_loss_limit_brl: Number(cfg.daily_loss_limit_brl),
         daily_gain_target_brl: Number(cfg.daily_gain_target_brl),
         max_volatility_pct: Number(cfg.max_volatility_pct),
+        // Trava de devolução de pico — independe de meta. O piso padrão é um
+        // stop do robô em reais (stop_pts × valor do ponto × contratos).
+        peak_giveback_pct: Number((cfg as any).peak_giveback_pct ?? 0.40),
+        peak_lock_min_profit_brl: Number(
+          (cfg as any).peak_lock_min_profit_brl
+          ?? (Number(cfg.stop_pts) * Number(asset?.tick_value_brl ?? POINT_VALUE_BRL) * Number(cfg.max_contracts ?? 1)),
+        ),
       };
 
       const protCur: B3ProtectionRuntime = {
@@ -1915,6 +1922,7 @@ async function runB3SimulationTickInner(
         profit_after_target_brl: Number(m.profit_after_target_brl ?? 0),
         trades_after_target: tradesAfterTarget,
         consecutive_losses_after_target: consecLosses,
+        day_peak_profit_brl: Number(m.day_peak_profit_brl ?? 0),
         protection_block_reason: m.protection_block_reason ?? null,
       };
 
@@ -1937,6 +1945,7 @@ async function runB3SimulationTickInner(
         profit_after_target_brl: protDec.next.profit_after_target_brl,
         trades_after_target: protDec.next.trades_after_target,
         consecutive_losses_after_target: protDec.next.consecutive_losses_after_target,
+        day_peak_profit_brl: protDec.next.day_peak_profit_brl,
         protection_block_reason: protDec.next.protection_block_reason,
         protection_day_key: todayKey,
       } as Record<string, any>;
@@ -2486,9 +2495,11 @@ async function runB3SimulationTickInner(
 
       // Agentes recebem os limites REAIS do modo — sem isso os 5 modos
       // avaliavam o mesmo tick com constantes idênticas (3,5% / 150-300 pts).
+      // O piso de volatilidade vem de `lateral_vol_min` (portão de lateralidade).
       const votes = runB3Agents(localCtx, intendedSide, risk, {
         max_volatility_pct: Number(cfg.max_volatility_pct),
-        min_volatility_pct: Number((cfg as any).min_volatility_pct ?? 0.6),
+        min_volatility_pct: Number((cfg as any).lateral_vol_min ?? 0.3),
+        lateral_strength_min: Number((cfg as any).lateral_strength_min ?? 30),
         stop_pts: Number(cfg.stop_pts),
         gain_pts: Number(cfg.gain_pts),
       });
@@ -4136,6 +4147,9 @@ export const resetB3DailyStop = createServerFn({ method: "POST" })
         current_status: "operando",
         protection_state: "operating_normal",
         protection_block_reason: null,
+        // Reativação manual zera o pico do dia, senão a trava de devolução de
+        // pico volta a bloquear no tick seguinte.
+        day_peak_profit_brl: 0,
         status_changed_at: new Date().toISOString(),
         status_reason: "reset_stop_diario (painel)",
       })

@@ -48,6 +48,7 @@ const GROUPS: Array<{ title: string; fields: Array<{ k: string; step?: number }>
       { k: "daily_gain_target_brl", step: 10 }, { k: "minimum_trades_before_profit_lock" },
       { k: "profit_multiplier_before_lock", step: 0.1 }, { k: "post_target_allowed_retracement", step: 0.05 },
       { k: "consecutive_loss_after_target" }, { k: "post_target_size_reduction", step: 0.05 },
+      { k: "peak_giveback_pct", step: 0.05 }, { k: "peak_lock_min_profit_brl", step: 50 },
     ],
   },
 ];

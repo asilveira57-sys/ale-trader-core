@@ -89,7 +89,14 @@ export const runB3Committee = createServerFn({ method: "POST" })
       mode === "agressivo"   ? { min_approve_votes: 4, min_confidence: 55, min_score: 55 } :
                                { min_approve_votes: 5, min_confidence: 62, min_score: 65 };
 
-    const votes = runB3Agents(ctx, data.side, risk);
+    // Tuning obrigatório: sem ele aVolatilidade usa 3,5% fixos e aRisco 150/300.
+    const votes = runB3Agents(ctx, data.side, risk, {
+      max_volatility_pct: Number((settings as any).max_volatility_pct ?? 3.5),
+      min_volatility_pct: Number((settings as any).lateral_vol_min ?? 0.5),
+      lateral_strength_min: Number((settings as any).lateral_strength_min ?? 30),
+      stop_pts: Number((settings as any).stop_points ?? 150),
+      gain_pts: Number((settings as any).gain_points ?? 300),
+    });
     const decision = buildB3Decision(votes, data.side, committee);
 
     // persiste votos (sem order_id — entrada simulada do comitê)

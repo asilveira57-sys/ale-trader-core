@@ -97,6 +97,7 @@ const PROT_LABEL: Record<string, string> = {
   blocked_volatility: "Bloqueado · volatilidade",
   blocked_ops_failure: "Bloqueado · falha operacional",
   blocked_post_target_loss: "Bloqueado · perda pós-meta",
+  blocked_peak_giveback: "Bloqueado · devolveu o pico do dia",
 };
 const PROT_COLOR: Record<string, string> = {
   target_reached_observing: "bg-amber-500/15 text-amber-300 border-amber-500/30",
@@ -106,6 +107,7 @@ const PROT_COLOR: Record<string, string> = {
   blocked_volatility: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   blocked_ops_failure: "bg-rose-600/30 text-rose-100 border-rose-600/50",
   blocked_post_target_loss: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  blocked_peak_giveback: "bg-rose-500/20 text-rose-200 border-rose-500/40",
 };
 
 function sampleStatus(trades: number): { label: string; cls: string } | null {
