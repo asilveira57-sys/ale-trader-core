@@ -1585,17 +1585,13 @@ async function runB3SimulationTickInner(
       modes: [] as any[],
     };
 
-    // Quote-stall guard: se há qualquer posição aberta e o último tick tem >10s,
-    // marcamos o motor como "cotação interrompida com posição aberta" e bloqueamos
-    // qualquer ação (nova entrada OU fechamento) até a cotação retomar. Ao retomar
-    // (age <= 10s), o fluxo existente processa primeiro o if(open) → stop/gain/zeragem
-    // antes de avaliar novas entradas, satisfazendo a ordem exigida.
+    // Quote-stall é um gate de ENTRADA. A existência de posição é registrada por
+    // modo dentro do laço; nunca pode transformar este estado em gate global.
     const preOpenList = await getOpen();
     const quoteAgeS = Number(priceSrc.quote_age_s ?? 0);
     const anyOpenPre = (preOpenList ?? []).length > 0;
-    const quoteStalledOpen = anyOpenPre && quoteAgeS > 10;
     tickAudit.quote_stall = {
-      active: quoteStalledOpen,
+      active: quoteAgeS > 10,
       duration_s: quoteAgeS,
       any_position_open: anyOpenPre,
       threshold_s: 10,
@@ -1705,30 +1701,6 @@ async function runB3SimulationTickInner(
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
 
-      if (quoteStalledOpen) {
-        await recordStatusIfChanged(mode, m, "cotacao_interrompida_posicao_aberta", "quote_stall_open_position", {
-          pnl: realizedToday,
-          related_order_id: open?.id ?? null,
-          message: `Cotação interrompida há ${quoteAgeS.toFixed(0)}s com posição aberta — novas entradas bloqueadas até retomada.`,
-        });
-        await recordPendingStopIfCrossed(mode, m, open, cfg, `cotação parada há ${quoteAgeS.toFixed(0)}s (guard de tick)`);
-        log.push({ mode, action: "skip", reason: "quote_stall_open_position", stall_s: quoteAgeS, has_open: Boolean(open) });
-        // finalizeAudit ainda não está definida neste ponto (é declarada dentro do bloco abaixo),
-        // portanto empilhamos manualmente uma entrada mínima no tickAudit e continuamos.
-        tickAudit.modes.push({
-          mode,
-          timestamp: now.toISOString(),
-          last_tick: tickAudit.last_tick,
-          last_setup: open ? `Posição ${open.side.toUpperCase()} aberta — aguardando retomada` : "Sem posição — aguardando retomada",
-          last_refusal_reason: `Cotação interrompida há ${quoteAgeS.toFixed(0)}s — aguardando retomada antes de fechar/abrir.`,
-          quote_stall: tickAudit.quote_stall,
-          checks: [],
-          signals: { evaluated_side: open?.side ?? intendedSide, buy: false, sell: false },
-          committee: null,
-        });
-        continue;
-      }
-
       const loadedConfig = normalizeModeConfig(cfg);
       const cfgCompare = configComparison(cfg, loadedConfig);
       const checks: any[] = [];
@@ -1779,6 +1751,17 @@ async function runB3SimulationTickInner(
       addCheck("spread", "Spread", Number(ctx.spread_pts ?? priceSrc.raw?.spread ?? 0) > 0, `${Number(ctx.spread_pts ?? priceSrc.raw?.spread ?? 0)} pts`, false);
       addCheck("global_protection", "Proteção Global", !globalProtectionActive, globalProtectionReason);
 
+      const quoteStalledForMode = quoteAgeS > 10;
+      if (quoteStalledForMode) {
+        await recordStatusIfChanged(mode, m, open ? "cotacao_interrompida_posicao_aberta" : "erro_tecnico", "quote_stall_entry_block", {
+          pnl: realizedToday,
+          related_order_id: open?.id ?? null,
+          message: open
+            ? `Cotação interrompida há ${quoteAgeS.toFixed(0)}s com posição aberta — novas entradas bloqueadas; gestão da posição mantida pelo último bid/ask conhecido.`
+            : `Cotação interrompida há ${quoteAgeS.toFixed(0)}s — novas entradas bloqueadas até retomada.`,
+        });
+      }
+
       if (invalidMt5) {
         await recordStatusIfChanged(mode, m, "erro_tecnico", "price_source_guard", {
           pnl: realizedToday,
@@ -1801,9 +1784,15 @@ async function runB3SimulationTickInner(
             last: priceSrc.raw?.last ?? null,
           },
         });
-        log.push({ mode, action: "skip", reason: "mt5_quote_invalid", detail: invalidMt5 });
-        finalizeAudit(invalidMt5);
-        continue;
+        // Nenhuma condição pode pular a gestão de posição aberta. Bloqueio é
+        // sempre de entrada nova. A única razão para encerrar o ciclo de um
+        // modo é ele não ter posição aberta.
+        if (!open) {
+          log.push({ mode, action: "skip", reason: "mt5_quote_invalid", detail: invalidMt5 });
+          finalizeAudit(invalidMt5);
+          continue;
+        }
+        log.push({ mode, action: "manage_open_despite_quote_guard", reason: "mt5_quote_invalid", detail: invalidMt5 });
       }
 
       // ─────────── B3 Protection (Flexibilização Inteligente) ───────────
@@ -1964,7 +1953,25 @@ async function runB3SimulationTickInner(
         const dirSign = open.side === "buy" ? 1 : -1;
         let markAudit: B3QuoteExecutionAudit;
         try {
-          markAudit = getB3ExecutionAudit(priceSrc, open.side, "mark", "runB3SimulationTick.markToMarket");
+          // Gestão usa o último Bid/Ask conhecido mesmo quando o TTL expirou.
+          // Para fechar BUY usa Bid; para fechar SELL usa Ask. O preço permanece
+          // exatamente o preço auditado exigido por b3_enforce_mt5_execution_audit.
+          if (priceSrc.source === "mt5_xp_demo") {
+            const bid = Number(priceSrc.raw?.bid);
+            const ask = Number(priceSrc.raw?.ask);
+            if (!(bid > 0) || !(ask > 0)) {
+              throw new Error("Último bid/ask MT5 indisponível para gerir posição aberta.");
+            }
+            const marketExit = open.side === "buy" ? bid : ask;
+            markAudit = {
+              ...quoteAuditBase(priceSrc),
+              execution_price: Math.round(marketExit / Number(asset.tick_size)) * Number(asset.tick_size),
+              execution_price_origin: open.side === "buy" ? "mt5_last_known_bid_exit_mark" : "mt5_last_known_ask_exit_mark",
+              legacy_price_detected: false,
+            };
+          } else {
+            markAudit = getB3ExecutionAudit(priceSrc, open.side, "mark", "runB3SimulationTick.markToMarket");
+          }
           if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(markAudit, "runB3SimulationTick.markToMarket", asset.symbol);
           providerStats.last_price_function = markAudit.execution_price_origin;
         } catch (e) {
