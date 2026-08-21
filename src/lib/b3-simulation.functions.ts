@@ -2930,11 +2930,16 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
           allTradeEvents.push({ ...m.trade_event, at: s.market_time, mode: m.mode });
         }
 
-        const byKey: Record<string, any> = {};
-        for (const c of m.checks ?? []) byKey[c.key] = c;
-        bucket.last_pipeline = PIPELINE_STEP_ORDER
-          .filter((k) => byKey[k])
-          .map((k) => byKey[k]);
+        // Snapshots com audit_level "resumido" não carregam o array de checks;
+        // nesses casos mantém-se o último pipeline completo já conhecido.
+        if ((m.checks ?? []).length > 0) {
+          const byKey: Record<string, any> = {};
+          for (const c of m.checks) byKey[c.key] = c;
+          bucket.last_pipeline = PIPELINE_STEP_ORDER
+            .filter((k) => byKey[k])
+            .map((k) => byKey[k]);
+        }
+
 
         if (!opened && m.first_stop) {
           history.push({
