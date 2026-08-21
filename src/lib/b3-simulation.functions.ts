@@ -773,6 +773,7 @@ async function runB3SimulationTickInner(
   ) {
     const prev = m.current_status ?? "operando";
     if (prev === newStatus && !opts.forceLog) return;
+    markAuditEvent(prev !== newStatus ? `status:${mode}:${prev}->${newStatus}` : `block_event:${mode}:${trigger}`);
     await supabase.from("b3_simulation_block_events").insert({
       simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
       mode, prev_status: prev, new_status: newStatus, trigger,
