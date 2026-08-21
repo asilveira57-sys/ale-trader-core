@@ -962,7 +962,10 @@ async function runB3SimulationTickInner(
     | "breakout_retest"
     | "consolidation_breakout"
     | "support_resistance_rejection"
+    | "mean_reversion_snapback"
+    | "range_fade"
     | "no_valid_setup";
+
   function classifySetup(params: {
     ctxLocal: any; derived: any; intendedSide: "buy" | "sell"; cfg: any;
   }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
