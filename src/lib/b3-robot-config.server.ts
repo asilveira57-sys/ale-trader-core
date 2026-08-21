@@ -12,7 +12,7 @@ const NUMERIC_FIELDS = new Set<string>([
   "trailing_activation_pts", "trailing_giveback_pts", "daily_gain_target_brl",
   "minimum_trades_before_profit_lock", "profit_multiplier_before_lock",
   "post_target_allowed_retracement", "consecutive_loss_after_target",
-  "post_target_size_reduction",
+  "post_target_size_reduction", "peak_giveback_pct", "peak_lock_min_profit_brl",
 ]);
 
 export function sanitizeRobotPatch(raw: Record<string, any>): Record<string, any> {
