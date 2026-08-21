@@ -467,6 +467,35 @@ const SNAP_MEMO = new Map<string, SnapMemo>();
 const TICK_LOCKS = new Map<string, number>();
 const SNAP_PERSIST_MS = 10_000;
 
+// Versão enxuta de engine_audit para tiques sem evento. Preserva só o que a
+// tela de diagnóstico usa para explicar a decisão de cada robô; corta os
+// arrays de checks, config_loaded/config_saved e o objeto committee inteiro
+// (responsáveis por ~31 kB de TOAST por snapshot).
+function slimEngineAudit(tickAudit: any) {
+  return {
+    snapshot_id: tickAudit.snapshot_id ?? null,
+    tick_index: tickAudit.tick_index,
+    timestamp: tickAudit.timestamp,
+    source: tickAudit.source,
+    provider_name: tickAudit.provider_name,
+    last_tick: tickAudit.last_tick,
+    global_protection: tickAudit.global_protection,
+    quote_stall: tickAudit.quote_stall ?? null,
+    resumido: true,
+    modes: (tickAudit.modes ?? []).map((m: any) => ({
+      mode: m.mode,
+      timestamp: m.timestamp,
+      last_refusal_reason: m.last_refusal_reason ?? null,
+      first_stop: m.first_stop ?? null,
+      last_score: m.last_score ?? null,
+      last_confidence: m.last_confidence ?? null,
+      last_setup: m.last_setup ?? null,
+      protection_global: m.protection_global ?? null,
+      resumido: true,
+    })),
+  };
+}
+
 export async function runB3SimulationTick(
   supabase: any,
   userId: string,
@@ -1665,6 +1694,7 @@ async function runB3SimulationTickInner(
         // Agrupamento anti-enxurrada: no máximo 1 registro por minuto por ordem.
         if (lastMs && nowPendMs - lastMs < 60_000) return;
 
+        markAuditEvent(`stop_pendente:${mode}`);
         await (supabase as any).from("b3_simulation_block_events").insert({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId, mode,
           prev_status: m.current_status ?? null, new_status: m.current_status ?? null,
@@ -1723,6 +1753,13 @@ async function runB3SimulationTickInner(
       const addCheck = (key: string, label: string, ok: boolean, detail?: string, blocking = true) => checks.push(auditCheck(key, label, ok, detail, blocking));
       const finalizeAudit = (finalReason: string, extra: Record<string, any> = {}) => {
         const firstStop = checks.find((c) => c.blocking && !c.ok);
+        // Veredito do comitê diferente do tique anterior daquele modo → auditoria completa.
+        const verdict = extra.committee
+          ? String((extra.committee as any).final ?? "")
+          : `sem_comite:${firstStop?.key ?? "ok"}`;
+        if (sigChanged(`audit_verdict:${mode}`, verdict)) {
+          markAuditEvent(`veredito:${mode}:${verdict}`);
+        }
         const decisionContext = buildDecisionContext({
           ctxLocal: ctx, priceLocal: priceSrc, cfg, mode, intendedSide,
           decision: extra.committee ?? null, derived, firstStop,
@@ -1916,6 +1953,7 @@ async function runB3SimulationTickInner(
 
 
       if (protDec.transition) {
+        markAuditEvent(`protecao:${mode}:${protDec.transition.to}`);
         try {
           await supabase.from("b3_simulation_block_events").insert({
             simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
@@ -2183,6 +2221,7 @@ async function runB3SimulationTickInner(
             : markAudit;
           const exitPriceFinal = exitAuditFinal.execution_price;
           const tradeCtx = await closeOrder(supabase, userId, run, m, open, exitAuditFinal, reason, marketHistory, asset);
+          markAuditEvent(`fechamento:${mode}:${reason}`);
           providerStats.last_exit_price = exitPriceFinal;
           openOrdersCache = null;
           realizedTodayByMode = await getRealizedTodayByMode();
@@ -2243,6 +2282,7 @@ async function runB3SimulationTickInner(
               execution_price_origin: `${markAudit.execution_price_origin}+stop_safety_net`,
             };
             await closeOrder(supabase, userId, run, m, open, safetyAudit, "stop_safety_net", marketHistory, asset);
+            markAuditEvent(`fechamento:${mode}:stop_safety_net`);
             providerStats.last_exit_price = safetyAudit.execution_price;
             openOrdersCache = null;
             realizedTodayByMode = await getRealizedTodayByMode();
@@ -2587,6 +2627,7 @@ async function runB3SimulationTickInner(
           ...orderAuditPatch(entryAudit),
         }).select("id").single();
         if (oErr) throw oErr;
+        markAuditEvent(`abertura:${mode}:${intendedSide}`);
         await mirrorToReal(supabase, userId, runId, mode as Mode, "open", intendedSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant);
         providerStats.last_entry_price = entry;
         openOrdersCache = null;
@@ -2653,7 +2694,10 @@ async function runB3SimulationTickInner(
       total_ms: Date.now() - runT0,
       por_modo: modeTimings,
     };
-    snapshotExtra.engine_audit = tickAudit;
+    const auditCompleto = auditEvents.length > 0;
+    snapshotExtra.audit_level = auditCompleto ? "completo" : "resumido";
+    snapshotExtra.audit_events = auditCompleto ? auditEvents.slice(0, 20) : [];
+    snapshotExtra.engine_audit = auditCompleto ? tickAudit : slimEngineAudit(tickAudit);
     snapshotExtra.write_sigs = writeSigs;
     // Persistência única: 1 INSERT a cada 10s. Fora da janela, nada é gravado
     // (sem INSERT, UPDATE ou UPSERT) — o estado corrente vive só em memória.
@@ -2666,7 +2710,7 @@ async function runB3SimulationTickInner(
       memo.persisted_at = now.getTime();
       tickAudit.snapshot_id = snapIns.id;
     }
-    log.push({ action: "engine_audit", snapshot_id: memo.id, persisted: persistSnapshot, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+    log.push({ action: "engine_audit", audit_level: snapshotExtra.audit_level, audit_events: auditEvents, snapshot_id: memo.id, persisted: persistSnapshot, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
 
 
   }
