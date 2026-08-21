@@ -366,7 +366,16 @@ export async function runLegacyMt5Tick(
       open_contracts: 0, max_contracts: cfg.max_contracts, requested_qty: 1,
       inside_hours: insideHours, force_close_now: forceClose, strategy_mode: mode,
     };
-    const votes: B3AgentVote[] = runB3Agents(ctx, intendedSide, risk);
+    // Agentes recebem os limites REAIS do modo. Sem o tuning, aVolatilidade
+    // usava 3,5% fixos e aRisco 150/300 pts para os cinco modos — a correção
+    // existia no comitê e ficava desligada por falta deste parâmetro.
+    const votes: B3AgentVote[] = runB3Agents(ctx, intendedSide, risk, {
+      max_volatility_pct: Number(cfg.max_volatility_pct),
+      min_volatility_pct: Number(cfg.lateral_vol_min),
+      lateral_strength_min: Number(cfg.lateral_strength_min),
+      stop_pts: Number(cfg.stop_pts),
+      gain_pts: Number(cfg.gain_pts),
+    });
     const committee: B3CommitteeSettings = {
       min_approve_votes: cfg.min_approve_votes, min_confidence: cfg.min_confidence, min_score: cfg.min_score,
     };
