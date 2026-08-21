@@ -1571,6 +1571,7 @@ async function runB3SimulationTickInner(
 
 
     const intendedSide: B3Side = ctx.ema9 >= ctx.ema21 ? "buy" : "sell";
+    auditEvents = [];
     const tickAudit: any = {
       snapshot_id: snapId,
       tick_index: i + 1,
