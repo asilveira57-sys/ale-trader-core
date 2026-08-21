@@ -2451,9 +2451,10 @@ async function runB3SimulationTickInner(
       // podem operar (trend_pullback, breakout_retest, consolidation_breakout,
       // support_resistance_rejection), cada um com sua própria checagem de
       // evidência mínima dentro de classifySetup. no_valid_setup nunca opera.
-      const setupInfo = cfg.entry_style === "price_action"
-        ? classifySetupPriceAction({ ctxLocal: localCtx, intendedSide, cfg, m1Candles })
-        : classifySetup({ ctxLocal: localCtx, derived, intendedSide, cfg });
+      const setupInfo = classifySetupFor(cfg.entry_style, {
+        ctxLocal: localCtx, derived, intendedSide, cfg, m1Candles,
+      });
+
 
       const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
       addCheck(
