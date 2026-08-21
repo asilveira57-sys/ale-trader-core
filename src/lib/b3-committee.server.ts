@@ -175,20 +175,32 @@ function aVolatilidade(c: B3Context, t?: B3AgentTuning): B3AgentVote {
   // contraditórios com o gate do motor: um modo com limite 6% passava no gate
   // e mesmo assim recebia "reject" do agente pelo mesmo valor de volatilidade.
   const maxPct = Number(t?.max_volatility_pct ?? 3.5);
+  // Piso de volatilidade = portão de lateralidade. Antes votava "neutral", que
+  // não bloqueia nada: mercado parado passava. Os dois piores dias do WDO foram
+  // exatamente os de menor amplitude diária (23,0 pts → −7.470; 24,5 → −7.705),
+  // enquanto os dias com amplitude > 30 pts somaram +4.165. Abaixo do piso o
+  // voto é REJEIÇÃO.
   const minPct = Number(t?.min_volatility_pct ?? 0.6);
   const tooHigh = c.volatility_pct > maxPct;
   const tooLow = c.volatility_pct < minPct;
   return {
     agent_name: "Volatilidade",
-    vote: tooHigh ? "reject" : tooLow ? "neutral" : "approve",
-    confidence: 70,
+    vote: tooHigh ? "reject" : tooLow ? "reject" : "approve",
+    confidence: tooLow ? 80 : 70,
     reason: tooHigh ? `Volatilidade ${c.volatility_pct.toFixed(2)}% acima do limite do modo (${maxPct.toFixed(2)}%).` :
-            tooLow ? `Volatilidade ${c.volatility_pct.toFixed(2)}% abaixo de ${minPct.toFixed(2)}% — fluxo fraco (neutro).` :
+            tooLow ? `Volatilidade ${c.volatility_pct.toFixed(2)}% abaixo do piso de ${minPct.toFixed(2)}% — mercado lateral/parado.` :
             `Volatilidade ${c.volatility_pct.toFixed(2)}% dentro do limite do modo (${maxPct.toFixed(2)}%).`,
     has_veto: false,
-    data: { volatility_pct: c.volatility_pct, spread_pts: c.spread_pts, max_volatility_pct: maxPct, min_volatility_pct: minPct },
+    data: {
+      volatility_pct: c.volatility_pct, spread_pts: c.spread_pts,
+      max_volatility_pct: maxPct, min_volatility_pct: minPct,
+      lateral_strength_min: t?.lateral_strength_min ?? null,
+      trend_strength: (c as any).trend_strength ?? null,
+      rule: "min_vol_rejects",
+    },
   };
 }
+
 
 
 function aHorario(c: B3Context, risk: B3RiskState): B3AgentVote {
