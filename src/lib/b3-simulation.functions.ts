@@ -544,6 +544,16 @@ async function runB3SimulationTickInner(
     .gte("block_end", new Date(now0.getTime() - 24 * 3600 * 1000).toISOString());
 
   const log: any[] = [];
+  // ── Nível de auditoria do snapshot (controle de escrita/TOAST) ────────────
+  // O objeto engine_audit completo pesa ~31 kB. Ele só é gravado inteiro
+  // quando o tique tem algo a auditar (abertura, fechamento, mudança de
+  // status, bloqueio novo ou mudança de veredito do comitê). Nos demais
+  // tiques grava-se a versão enxuta (ver slimEngineAudit).
+  let auditEvents: string[] = [];
+  function markAuditEvent(reason: string) {
+    if (!auditEvents.includes(reason)) auditEvents.push(reason);
+  }
+
   let openOrdersCache: any[] | null = null;
   async function getOpen() {
     if (openOrdersCache) return openOrdersCache;
