@@ -858,6 +858,8 @@ export type Database = {
       b3_intervencoes: {
         Row: {
           acao: string
+          ambiente: string
+          anula_dia: boolean
           id: string
           limite_vigente: number | null
           mode: string
@@ -872,6 +874,8 @@ export type Database = {
         }
         Insert: {
           acao: string
+          ambiente?: string
+          anula_dia?: boolean
           id?: string
           limite_vigente?: number | null
           mode: string
@@ -886,6 +890,8 @@ export type Database = {
         }
         Update: {
           acao?: string
+          ambiente?: string
+          anula_dia?: boolean
           id?: string
           limite_vigente?: number | null
           mode?: string
@@ -2493,6 +2499,7 @@ export type Database = {
       b3_robot_curation: {
         Row: {
           best_streak: number
+          caiu_de_verde_em: string | null
           last_evaluated_date: string | null
           medal: boolean
           medal_at: string | null
@@ -2507,6 +2514,7 @@ export type Database = {
         }
         Insert: {
           best_streak?: number
+          caiu_de_verde_em?: string | null
           last_evaluated_date?: string | null
           medal?: boolean
           medal_at?: string | null
@@ -2521,6 +2529,7 @@ export type Database = {
         }
         Update: {
           best_streak?: number
+          caiu_de_verde_em?: string | null
           last_evaluated_date?: string | null
           medal?: boolean
           medal_at?: string | null
@@ -6627,6 +6636,16 @@ export type Database = {
         }[]
       }
       b3_calcular_score_dia: { Args: { p_date?: string }; Returns: number }
+      b3_cor_do_robo: {
+        Args: {
+          p_caiu_em: string
+          p_medal: boolean
+          p_neg: number
+          p_rank: number
+          p_streak: number
+        }
+        Returns: string
+      }
       b3_detectar_ordens_fantasma: {
         Args: never
         Returns: {
@@ -6663,6 +6682,33 @@ export type Database = {
         Returns: number
       }
       b3_materializar_m1: { Args: { p_date?: string }; Returns: number }
+      b3_ranking_medalhados: {
+        Args: { p_criterio?: string }
+        Returns: {
+          capital: number
+          mode: string
+          posicao: number
+          resultado: number
+          retorno_pct: number
+          symbol: string
+          variant: string
+        }[]
+      }
+      b3_retencao_diaria:
+        | {
+            Args: never
+            Returns: {
+              apagadas: number
+              tabela: string
+            }[]
+          }
+        | {
+            Args: { p_lote?: number; p_max_lotes?: number }
+            Returns: {
+              apagadas: number
+              tabela: string
+            }[]
+          }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
