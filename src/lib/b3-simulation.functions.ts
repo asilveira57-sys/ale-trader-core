@@ -4147,6 +4147,9 @@ export const resetB3DailyStop = createServerFn({ method: "POST" })
         current_status: "operando",
         protection_state: "operating_normal",
         protection_block_reason: null,
+        // Reativação manual zera o pico do dia, senão a trava de devolução de
+        // pico volta a bloquear no tick seguinte.
+        day_peak_profit_brl: 0,
         status_changed_at: new Date().toISOString(),
         status_reason: "reset_stop_diario (painel)",
       })
