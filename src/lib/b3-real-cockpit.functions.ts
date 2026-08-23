@@ -346,7 +346,6 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     // Falha de auditoria de execução gravada pelo motor/hook (última hora).
     const { data: logs } = await supabase.from("system_logs")
       .select("event_type, severity, message, created_at, source")
-      .eq("user_id", userId)
       .gte("created_at", new Date(hourAgo).toISOString())
       .in("severity", ["critical", "error", "warning"])
       .order("created_at", { ascending: false }).limit(30);
@@ -418,8 +417,7 @@ export const stopRealNewEntries = createServerFn({ method: "POST" })
 
     const disabled = (rows ?? []) as any[];
     try {
-      await supabase.from("system_logs").insert({
-        user_id: userId,
+      await (supabase as any).from("system_logs").insert({
         event_type: "parada_novas_entradas_reais",
         source: "cockpit_real",
         severity: "warning",
@@ -481,8 +479,7 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
       .select("symbol, variant, mode");
 
     try {
-      await supabase.from("system_logs").insert({
-        user_id: userId,
+      await (supabase as any).from("system_logs").insert({
         event_type: "zeragem_real_pelo_painel",
         source: "cockpit_real",
         severity: "critical",
