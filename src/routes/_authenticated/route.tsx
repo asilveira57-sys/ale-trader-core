@@ -1,9 +1,10 @@
 import { createFileRoute, Outlet, redirect, Link, useNavigate, useRouterState, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { LayoutDashboard, LayoutGrid, Coins, Bot, Bell, ScrollText, Settings, LogOut, Activity, Users, Wallet, Receipt, BookOpen, Trophy, Brain, FlaskConical, Radio, ListChecks, ShieldAlert, BarChart3, ShieldCheck, FileText, Gauge, PowerOff, Eye, AlertTriangle, FileBarChart, Lightbulb, Database, Radar, Calendar, BookMarked, Sparkles, FileSearch } from "lucide-react";
+import { LayoutDashboard, LayoutGrid, Coins, Bot, Bell, ScrollText, Settings, LogOut, Activity, Users, Wallet, Receipt, BookOpen, Trophy, Brain, FlaskConical, Radio, ListChecks, ShieldAlert, BarChart3, ShieldCheck, FileText, Gauge, PowerOff, Eye, AlertTriangle, FileBarChart, Lightbulb, Database, Radar, Calendar, BookMarked, Sparkles, FileSearch, Smartphone, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 const AUTH_RECOVERY_RETRY_MS = 1_500;
 const AUTH_RECOVERY_ATTEMPTS = 3;
