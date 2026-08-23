@@ -43,6 +43,7 @@ import { Route as AuthenticatedGovernanceRouteImport } from './routes/_authentic
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCouncilRouteImport } from './routes/_authenticated/council'
 import { Route as AuthenticatedCommitteeRouteImport } from './routes/_authenticated/committee'
+import { Route as AuthenticatedCockpitRealRouteImport } from './routes/_authenticated/cockpit-real'
 import { Route as AuthenticatedBinanceWalletHealthRouteImport } from './routes/_authenticated/binance-wallet-health'
 import { Route as AuthenticatedBinanceFeeAuditRouteImport } from './routes/_authenticated/binance-fee-audit'
 import { Route as AuthenticatedBinanceBrainRouteImport } from './routes/_authenticated/binance-brain'
@@ -261,6 +262,12 @@ const AuthenticatedCommitteeRoute = AuthenticatedCommitteeRouteImport.update({
   path: '/committee',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCockpitRealRoute =
+  AuthenticatedCockpitRealRouteImport.update({
+    id: '/cockpit-real',
+    path: '/cockpit-real',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedBinanceWalletHealthRoute =
   AuthenticatedBinanceWalletHealthRouteImport.update({
     id: '/binance-wallet-health',
@@ -517,6 +524,7 @@ export interface FileRoutesByFullPath {
   '/binance-brain': typeof AuthenticatedBinanceBrainRoute
   '/binance-fee-audit': typeof AuthenticatedBinanceFeeAuditRoute
   '/binance-wallet-health': typeof AuthenticatedBinanceWalletHealthRoute
+  '/cockpit-real': typeof AuthenticatedCockpitRealRoute
   '/committee': typeof AuthenticatedCommitteeRoute
   '/council': typeof AuthenticatedCouncilRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -593,6 +601,7 @@ export interface FileRoutesByTo {
   '/binance-brain': typeof AuthenticatedBinanceBrainRoute
   '/binance-fee-audit': typeof AuthenticatedBinanceFeeAuditRoute
   '/binance-wallet-health': typeof AuthenticatedBinanceWalletHealthRoute
+  '/cockpit-real': typeof AuthenticatedCockpitRealRoute
   '/committee': typeof AuthenticatedCommitteeRoute
   '/council': typeof AuthenticatedCouncilRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -671,6 +680,7 @@ export interface FileRoutesById {
   '/_authenticated/binance-brain': typeof AuthenticatedBinanceBrainRoute
   '/_authenticated/binance-fee-audit': typeof AuthenticatedBinanceFeeAuditRoute
   '/_authenticated/binance-wallet-health': typeof AuthenticatedBinanceWalletHealthRoute
+  '/_authenticated/cockpit-real': typeof AuthenticatedCockpitRealRoute
   '/_authenticated/committee': typeof AuthenticatedCommitteeRoute
   '/_authenticated/council': typeof AuthenticatedCouncilRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -749,6 +759,7 @@ export interface FileRouteTypes {
     | '/binance-brain'
     | '/binance-fee-audit'
     | '/binance-wallet-health'
+    | '/cockpit-real'
     | '/committee'
     | '/council'
     | '/dashboard'
@@ -825,6 +836,7 @@ export interface FileRouteTypes {
     | '/binance-brain'
     | '/binance-fee-audit'
     | '/binance-wallet-health'
+    | '/cockpit-real'
     | '/committee'
     | '/council'
     | '/dashboard'
@@ -902,6 +914,7 @@ export interface FileRouteTypes {
     | '/_authenticated/binance-brain'
     | '/_authenticated/binance-fee-audit'
     | '/_authenticated/binance-wallet-health'
+    | '/_authenticated/cockpit-real'
     | '/_authenticated/committee'
     | '/_authenticated/council'
     | '/_authenticated/dashboard'
@@ -1212,6 +1225,13 @@ declare module '@tanstack/react-router' {
       path: '/committee'
       fullPath: '/committee'
       preLoaderRoute: typeof AuthenticatedCommitteeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/cockpit-real': {
+      id: '/_authenticated/cockpit-real'
+      path: '/cockpit-real'
+      fullPath: '/cockpit-real'
+      preLoaderRoute: typeof AuthenticatedCockpitRealRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/binance-wallet-health': {
@@ -1557,6 +1577,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBinanceBrainRoute: typeof AuthenticatedBinanceBrainRoute
   AuthenticatedBinanceFeeAuditRoute: typeof AuthenticatedBinanceFeeAuditRoute
   AuthenticatedBinanceWalletHealthRoute: typeof AuthenticatedBinanceWalletHealthRoute
+  AuthenticatedCockpitRealRoute: typeof AuthenticatedCockpitRealRoute
   AuthenticatedCommitteeRoute: typeof AuthenticatedCommitteeRoute
   AuthenticatedCouncilRoute: typeof AuthenticatedCouncilRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -1618,6 +1639,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBinanceBrainRoute: AuthenticatedBinanceBrainRoute,
   AuthenticatedBinanceFeeAuditRoute: AuthenticatedBinanceFeeAuditRoute,
   AuthenticatedBinanceWalletHealthRoute: AuthenticatedBinanceWalletHealthRoute,
+  AuthenticatedCockpitRealRoute: AuthenticatedCockpitRealRoute,
   AuthenticatedCommitteeRoute: AuthenticatedCommitteeRoute,
   AuthenticatedCouncilRoute: AuthenticatedCouncilRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,

@@ -212,15 +212,16 @@ function CockpitPage() {
 
 
   return (
-    <div className="container mx-auto py-6 space-y-4">
-      <header className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h1 className="text-2xl font-bold">Cockpit — todos os robôs</h1>
+    <div className="container mx-auto px-3 py-4 space-y-4 sm:px-4 sm:py-6">
+      <header className="grid gap-2 sm:flex sm:items-center sm:justify-between sm:flex-wrap">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold sm:text-2xl">Cockpit — todos os robôs</h1>
           <p className="text-sm text-muted-foreground">
             Visão compacta de todas as simulações (demo) rodando agora. Clique num card pra ver os detalhes.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+
           <Button size="sm" variant="outline" onClick={() => q.refetch()}>
             <RefreshCw className="w-4 h-4 mr-1" />Atualizar
           </Button>
