@@ -125,6 +125,7 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 const NAV = [
+  { to: "/cockpit-real", label: "Cockpit Real (celular)", icon: Smartphone },
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/war-room", label: "Sala de Guerra", icon: Radio },
   { to: "/operations", label: "Operações", icon: ListChecks },
@@ -139,6 +140,7 @@ const NAV = [
   { to: "/binance-audit", label: "Binance — Auditoria Saídas", icon: FileSearch },
   { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
   { to: "/b3", label: "B3 Day Trade (WIN)", icon: BarChart3 },
+
   { to: "/b3-wdo", label: "B3 Day Trade (WDO)", icon: BarChart3 },
   { to: "/b3-petr4", label: "B3 Day Trade (PETR4)", icon: BarChart3 },
   { to: "/b3-vale3", label: "B3 Day Trade (VALE3)", icon: BarChart3 },
