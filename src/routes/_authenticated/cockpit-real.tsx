@@ -39,6 +39,18 @@ const sideLabel = (s: string) => (s === "buy" ? "COMPRA" : "VENDA");
 const hhmm = (iso: string | null | undefined) =>
   !iso ? "—" : new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const modeLabel = (m: string) => String(m ?? "").replace("_", "-");
+// Idade legível: minutos até 1h, depois horas, depois dias — "há 2730 min" não diz nada.
+const ageText = (s: number | null | undefined) => {
+  const sec = Math.max(0, Math.round(Number(s ?? 0)));
+  if (sec < 90) return `há ${sec}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h${String(min % 60).padStart(2, "0")}`;
+  const d = Math.floor(h / 24);
+  return `há ${d}d${h % 24}h`;
+};
+
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "indicador", price_action: "price action",
   mean_reversion: "reversão à média", range: "faixa",
