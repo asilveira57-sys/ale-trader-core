@@ -402,9 +402,15 @@ function CockpitPage() {
                   const tick = Number(c.tick_size ?? 5);
                   const pnlColor = c.unrealized_brl == null ? "" : c.unrealized_brl >= 0 ? "text-emerald-300" : "text-rose-300";
                   const riskBlocked = isRiskBlocked(c);
-                  const isRealEnv = c.environment && c.environment !== "simulation";
-                  return (
-                    <div key={key} className="relative rounded-lg border border-border/60 bg-card overflow-hidden">
+                   const isRealEnv = c.environment && c.environment !== "simulation";
+                   const cor = robotColor(c.cor);
+                   return (
+                     <div
+                       key={key}
+                       title={cor?.label}
+                       className={`relative rounded-lg border bg-card overflow-hidden ${cor ? cor.border : "border-border/60"}`}
+                     >
+                       {cor && <span aria-hidden className={`absolute left-0 top-0 h-full w-1 ${cor.bar}`} />}
                       {/* Configurar este robô — fora do <button> do card pra não aninhar botões */}
                       <div className="absolute top-1 right-7 z-10">
                         <RobotConfigDialog
