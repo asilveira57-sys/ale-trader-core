@@ -452,6 +452,13 @@ function CockpitPage() {
                                 {c.open.side === "buy" ? "COMPRA" : "VENDA"}
                               </Badge>
                               <span className="text-xs text-muted-foreground">{c.open.quantity}x</span>
+                              {/* Hora de entrada e tempo em posição: com robôs em lados
+                                  opostos, é o que diz quem entrou primeiro. */}
+                              {openSinceText(c.open.entry_time) && (
+                                <span className="text-[11px] text-muted-foreground/80">
+                                  {openSinceText(c.open.entry_time)}
+                                </span>
+                              )}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               Entrada {PX(c.open.entry_price, tick)} → agora {PX(c.live_price, tick)}
