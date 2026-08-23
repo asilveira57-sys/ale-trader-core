@@ -164,7 +164,7 @@ function CockpitRealPage() {
         </div>
         <p className="mt-1 text-[11px] leading-snug opacity-95">{st.sub}</p>
         <p className="mt-1 text-[11px] font-medium opacity-95">
-          Último comando: {d?.executor?.last_command_at ? `${hhmm(d.executor.last_command_at)} (há ${Math.max(0, Math.round((d.executor.last_command_age_s ?? 0) / 60))} min)` : "nenhum registrado"}
+          Último comando: {d?.executor?.last_command_at ? `${hhmm(d.executor.last_command_at)} (${ageText(d.executor.last_command_age_s)})` : "nenhum registrado"}
           {d?.executor?.last_command
             ? ` · ${d.executor.last_command.action === "open" ? "abertura" : "fechamento"} ${d.executor.last_command.symbol} · ${d.executor.last_command.status}`
             : ""}
@@ -250,7 +250,7 @@ function CockpitRealPage() {
           <div className="space-y-2">
             <Button
               size="lg"
-              className="h-14 w-full justify-start gap-3 bg-amber-500 text-black hover:bg-amber-400"
+              className="h-auto min-h-14 w-full whitespace-normal py-2 justify-start gap-3 bg-amber-500 text-black hover:bg-amber-400"
               onClick={() => mStop.mutate()}
               disabled={mStop.isPending}
             >
@@ -266,7 +266,7 @@ function CockpitRealPage() {
             <Button
               size="lg"
               variant="destructive"
-              className="h-14 w-full justify-start gap-3"
+              className="h-auto min-h-14 w-full whitespace-normal py-2 justify-start gap-3"
               onClick={() => setConfirmOpen(true)}
               disabled={!pos || mClose.isPending}
             >
