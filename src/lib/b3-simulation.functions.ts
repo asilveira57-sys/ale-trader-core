@@ -3552,7 +3552,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
-        (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, created_at")
+        (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, entry_time, created_at")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
         // `extra` inteiro tem ~6 KB por linha; aqui só o bloco de auditoria é
         // usado, então projetamos o caminho JSON para não puxar o payload todo.
@@ -3575,6 +3575,9 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       for (const o of openOrders ?? []) openByMode[o.mode] = o;
 
       // Stop pendente não executado (só leitura dos eventos gravados pelo motor).
+      // O alerta só continua de pé enquanto a condição que o gerou existir: se o
+      // preço voltou para dentro do nível de stop, o aviso é descartado aqui.
+      // Alerta que não se apaga sozinho ensina o operador a ignorar vermelho.
       const openIds = (openOrders ?? []).map((o: any) => o.id);
       const pendingByMode: Record<string, any> = {};
       if (openIds.length) {
@@ -3591,9 +3594,23 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           if (pendingByMode[ev.mode]) continue;
           const ageMs = Date.now() - new Date(ev.created_at).getTime();
           if (ageMs > 180_000) continue; // evento velho = já resolvido/sem sinal recente
+          const openOrd = (openOrders ?? []).find((o: any) => o.id === ev.related_order_id);
+          if (!openOrd) continue;
+          const dir = openOrd.side === "buy" ? 1 : -1;
+          const stopLevel = Number(
+            ev.diagnostic_payload?.stop_level
+              ?? (Number(openOrd.entry_price) - dir * Number(ev.limit_value ?? 0)),
+          );
+          // Ainda atravessado? compra: preço no nível ou abaixo; venda: no nível
+          // ou acima. Sem preço vivo ou sem nível, mantém o aviso (não inventa).
+          if (livePrice != null && Number.isFinite(stopLevel) && stopLevel > 0) {
+            const stillCrossed = dir === 1 ? livePrice <= stopLevel : livePrice >= stopLevel;
+            if (!stillCrossed) continue;
+          }
           pendingByMode[ev.mode] = {
             beyond_pts: Number(ev.observed_value ?? 0),
             stop_pts: Number(ev.limit_value ?? 0),
+            stop_level: Number.isFinite(stopLevel) ? stopLevel : null,
             elapsed_s: Number(ev.diagnostic_payload?.elapsed_s ?? 0),
             severidade: ev.diagnostic_payload?.severidade ?? "AVISO",
             block_reason: ev.diagnostic_payload?.block_reason ?? null,
@@ -3630,7 +3647,13 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           tick_size: Number(asset.tick_size),
           environment,
           enabled: enabledByMode[m] ?? true,
-          open: open ? { side: open.side, entry_price: Number(open.entry_price), quantity: Number(open.quantity) } : null,
+          // entry_time viaja para a tela poder mostrar "desde HH:MM (N min)":
+          // com dois robôs do mesmo ativo em lados opostos, a ordem de entrada
+          // é a única forma de saber quem entrou primeiro.
+          open: open ? {
+            side: open.side, entry_price: Number(open.entry_price), quantity: Number(open.quantity),
+            entry_time: open.entry_time ?? open.created_at ?? null,
+          } : null,
           live_price: livePrice,
           unrealized_pts: unrealizedPts, unrealized_brl: unrealizedBrl,
           balance: Number(mode?.current_balance ?? mode?.initial_balance ?? 0),
@@ -3661,10 +3684,21 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       const priceByRun: Record<string, number | null> = {};
       for (const c of cards) if (priceByRun[c.run_id] == null) priceByRun[c.run_id] = c.live_price ?? null;
 
-      const { data: dayOrders } = await (supabase as any).from("b3_simulation_orders")
-        .select("simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
-        .eq("user_id", userId).in("simulation_run_id", runIds).in("status", ["open", "closed"])
-        .gte("entry_time", dayStartUtc);
+      // A testeira tem que somar EXATAMENTE o que os cards somam. O card conta
+      // como realizado toda ordem FECHADA HOJE (exit_time no dia), então filtrar
+      // a testeira por entry_time deixava de fora ordem aberta antes da virada de
+      // sessão e fechada hoje — cabeçalho zerado com cards somando. São duas
+      // leituras: fechadas por exit_time (igual ao card) + todas as abertas.
+      const [{ data: closedDay }, { data: openAll }] = await Promise.all([
+        (supabase as any).from("b3_simulation_orders")
+          .select("simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
+          .eq("user_id", userId).in("simulation_run_id", runIds).eq("status", "closed")
+          .gte("exit_time", dayStartUtc),
+        (supabase as any).from("b3_simulation_orders")
+          .select("simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
+          .eq("user_id", userId).in("simulation_run_id", runIds).eq("status", "open"),
+      ]);
+      const dayOrders: any[] = [...(closedDay ?? []), ...(openAll ?? [])];
 
       const nowMs = Date.now();
       type Agg = {
@@ -3674,6 +3708,19 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       };
       const mkAgg = (): Agg => ({ realizado: 0, nao_realizado: 0, ops: 0, ganhos: 0, events: [], robots: new Map() });
       const byAsset = new Map<string, { contracts: Set<string>; agg: Agg; byVariant: Map<string, Agg> }>();
+      const ensureAsset = (root: string) => {
+        if (!byAsset.has(root)) byAsset.set(root, { contracts: new Set(), agg: mkAgg(), byVariant: new Map() });
+        return byAsset.get(root)!;
+      };
+      // Semeia toda run visível: ativo sem operação no dia tem testeira em zero
+      // de propósito, e não "sem testeira" (que a tela lia como R$ 0,00 sem ops).
+      for (const r of runList) {
+        const variant = (r.variant ?? "indicador") as string;
+        if (variantFilter && variant !== variantFilter) continue;
+        const entryAsset = ensureAsset(rootSymbol(r.symbol));
+        entryAsset.contracts.add(r.symbol);
+        if (!entryAsset.byVariant.has(variant)) entryAsset.byVariant.set(variant, mkAgg());
+      }
 
       for (const o of dayOrders ?? []) {
         const run = runById[o.simulation_run_id];
@@ -3684,8 +3731,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         // soma nem na linha do tempo de margem, então o pico também é do recorte.
         if (variantFilter && variant !== variantFilter) continue;
         const asset = assetBySymbol[run.symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
-        if (!byAsset.has(root)) byAsset.set(root, { contracts: new Set(), agg: mkAgg(), byVariant: new Map() });
-        const entryAsset = byAsset.get(root)!;
+        const entryAsset = ensureAsset(root);
         entryAsset.contracts.add(run.symbol);
         if (!entryAsset.byVariant.has(variant)) entryAsset.byVariant.set(variant, mkAgg());
         const aggs = [entryAsset.agg, entryAsset.byVariant.get(variant)!];
@@ -3756,6 +3802,33 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         });
       }
       porAtivo.sort((a, b) => b.resultado_brl - a.resultado_brl);
+    }
+
+    // Cor do robô: quem decide é o banco (b3_cor_do_robo, via
+    // b3_cores_dos_robos). A tela só pinta — nenhuma regra de cor é
+    // reimplementada aqui, para não divergir da curadoria.
+    try {
+      const { data: cores } = await (supabase as any).rpc("b3_cores_dos_robos");
+      const corByKey: Record<string, any> = {};
+      for (const c of cores ?? []) {
+        corByKey[`${rootSymbol(c.symbol)}|${c.variant ?? "indicador"}|${c.mode}`] = c;
+      }
+      for (const card of cards) {
+        const c = corByKey[`${rootSymbol(card.symbol)}|${card.variant}|${card.mode}`]
+          ?? corByKey[`${rootSymbol(card.quote_symbol)}|${card.variant}|${card.mode}`];
+        card.cor = c?.cor ?? "neutro";
+        card.curadoria = c
+          ? {
+              streak_days: Number(c.streak_days ?? 0),
+              neg_streak: Number(c.neg_streak ?? 0),
+              medal: Boolean(c.medal),
+              rank_day: c.rank_day == null ? null : Number(c.rank_day),
+              caiu_de_verde_em: c.caiu_de_verde_em ?? null,
+            }
+          : null;
+      }
+    } catch {
+      for (const card of cards) { card.cor = "neutro"; card.curadoria = null; }
     }
 
     return { session_date: sessionDate, variant: variantFilter ?? "all", cards, por_ativo: porAtivo };
@@ -3892,17 +3965,36 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
       timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit",
     }).format(new Date(picoT));
 
-    // Stops pendentes não executados: contagem de ordens abertas com evento
-    // recente (último 3 min) gravado pelo motor. Somente leitura.
-    const openIdsToday = (orders ?? []).filter((o: any) => o.status === "open").map((o: any) => o.id);
+    // Stops pendentes não executados: ordens abertas com evento recente (3 min)
+    // gravado pelo motor E que ainda estejam com o preço além do nível de stop.
+    // Se o preço voltou para dentro, a condição não existe mais e o placar não
+    // conta. Somente leitura.
+    const openToday = (orders ?? []).filter((o: any) => o.status === "open");
+    const openIdsToday = openToday.map((o: any) => o.id);
     let stopsPendentes = 0;
     if (openIdsToday.length) {
       const { data: pendEvents } = await (supabase as any).from("b3_simulation_block_events")
-        .select("related_order_id, created_at")
+        .select("related_order_id, created_at, limit_value, diagnostic_payload")
         .eq("user_id", userId).eq("trigger", "stop_pendente_nao_executado")
         .in("related_order_id", openIdsToday)
         .gte("created_at", new Date(Date.now() - 180_000).toISOString());
-      stopsPendentes = new Set((pendEvents ?? []).map((e: any) => e.related_order_id)).size;
+      const stillOpen = new Set<string>();
+      for (const ev of pendEvents ?? []) {
+        const o = openToday.find((x: any) => x.id === ev.related_order_id);
+        if (!o) continue;
+        const dir = o.side === "buy" ? 1 : -1;
+        const stopLevel = Number(
+          ev.diagnostic_payload?.stop_level
+            ?? (Number(o.entry_price) - dir * Number(ev.limit_value ?? 0)),
+        );
+        const live = priceByRun[o.simulation_run_id];
+        if (live != null && Number.isFinite(stopLevel) && stopLevel > 0) {
+          const stillCrossed = dir === 1 ? live <= stopLevel : live >= stopLevel;
+          if (!stillCrossed) continue;
+        }
+        stillOpen.add(ev.related_order_id);
+      }
+      stopsPendentes = stillOpen.size;
     }
 
     // Saúde da cotação: idade do último tick por ativo das runs ativas.

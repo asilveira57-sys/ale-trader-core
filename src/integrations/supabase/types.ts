@@ -6655,6 +6655,20 @@ export type Database = {
         }
         Returns: string
       }
+      b3_cores_dos_robos: {
+        Args: never
+        Returns: {
+          caiu_de_verde_em: string
+          cor: string
+          medal: boolean
+          mode: string
+          neg_streak: number
+          rank_day: number
+          streak_days: number
+          symbol: string
+          variant: string
+        }[]
+      }
       b3_detectar_ordens_fantasma: {
         Args: never
         Returns: {

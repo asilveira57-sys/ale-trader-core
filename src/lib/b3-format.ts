@@ -58,6 +58,22 @@ export const PX = (v: number | null | undefined, tick: number) =>
         maximumFractionDigits: decimalsForTick(tick),
       });
 
+// Hora de entrada (BRT) e tempo em posição: "desde 14:40 (35 min)".
+// Só apresentação — o tempo é medido contra o relógio local do navegador.
+export const openSinceText = (entryTime: string | null | undefined, now: Date = new Date()) => {
+  if (!entryTime) return "";
+  const t = new Date(entryTime).getTime();
+  if (!Number.isFinite(t)) return "";
+  const hhmm = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit",
+  }).format(new Date(t));
+  const mins = Math.max(0, Math.round((now.getTime() - t) / 60000));
+  const dur = mins >= 60
+    ? `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, "0")}`
+    : `${mins} min`;
+  return `desde ${hhmm} (${dur})`;
+};
+
 // Rótulo curto de escala: 3600 -> "3,6k"
 export const shortBRL = (v: number) => {
   const abs = Math.abs(v);

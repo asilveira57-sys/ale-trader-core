@@ -10,6 +10,7 @@ import {
   diffChanges,
   parseNotesHistory,
   sanitizeRobotPatch,
+  typicalVolatilityPct,
 } from "./b3-robot-config.server";
 
 type Scope = "this" | "all_modes" | "all_variants";
@@ -61,7 +62,10 @@ export const getB3RobotConfig = createServerFn({ method: "POST" })
         rr: Number(s.stop_pts) > 0 ? Number(s.gain_pts) / Number(s.stop_pts) : null,
       }));
 
-    const range = await averageDailyRangePts(db, userId, run.symbol, 5);
+    const [range, volStats] = await Promise.all([
+      averageDailyRangePts(db, userId, run.symbol, 5),
+      typicalVolatilityPct(db, userId, run.symbol),
+    ]);
 
     // Lista para "copiar de outro robô" e para os alvos da edição em lote.
     const robots = (runs ?? []).flatMap((r: any) =>
@@ -86,6 +90,7 @@ export const getB3RobotConfig = createServerFn({ method: "POST" })
       siblings,
       avg_range_pts: range.avg_range_pts,
       range_days: range.days,
+      vol_pct: volStats,
       notes_history: parseNotesHistory(settings.notes),
       robots,
     };

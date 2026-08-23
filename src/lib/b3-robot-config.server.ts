@@ -127,3 +127,39 @@ export async function averageDailyRangePts(
     : null;
   return { avg_range_pts: avg, days };
 }
+
+/**
+ * Volatilidade típica do ativo, na MESMA escala usada pelo motor
+ * (desvio padrão dos preços ÷ média × 100, em janelas de 20 minutos).
+ * Serve para a tela mostrar a faixa real do ativo ao lado dos campos
+ * `lateral_vol_min` e `max_volatility_pct` — sem isso o operador digita 1,0
+ * pensando em "1%" e desliga o robô, porque o ativo vive perto de 0,05.
+ */
+export async function typicalVolatilityPct(
+  supabase: any, userId: string, symbol: string,
+): Promise<{ p10: number | null; p50: number | null; p90: number | null; samples: number }> {
+  const since = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+  const { data } = await supabase.from("b3_m1_candles_hist")
+    .select("minute_ts, candle_close")
+    .eq("user_id", userId).eq("symbol", symbol)
+    .gte("minute_ts", since)
+    .order("minute_ts", { ascending: true })
+    .limit(4000);
+
+  const closes = (data ?? [])
+    .map((r: any) => Number(r.candle_close))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
+
+  const windows: number[] = [];
+  for (let i = 20; i <= closes.length; i += 5) {
+    const slice = closes.slice(i - 20, i);
+    const mean = slice.reduce((s: number, v: number) => s + v, 0) / slice.length;
+    if (!(mean > 0)) continue;
+    const variance = slice.reduce((s: number, v: number) => s + (v - mean) ** 2, 0) / slice.length;
+    windows.push((Math.sqrt(variance) / mean) * 100);
+  }
+  if (!windows.length) return { p10: null, p50: null, p90: null, samples: 0 };
+  windows.sort((a, b) => a - b);
+  const q = (p: number) => windows[Math.min(windows.length - 1, Math.floor(p * windows.length))]!;
+  return { p10: q(0.1), p50: q(0.5), p90: q(0.9), samples: windows.length };
+}

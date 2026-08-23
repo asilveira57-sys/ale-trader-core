@@ -1,7 +1,7 @@
 // Geração do texto de "copiar" do Cockpit. Somente apresentação:
 // nada aqui participa do motor de simulação, nem lê/escreve no banco.
 
-import { decimalsForTick, rootSymbol, PX } from "./b3-format";
+import { decimalsForTick, openSinceText, rootSymbol, PX } from "./b3-format";
 
 const BRL = (v: number | null | undefined) =>
   Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -52,8 +52,9 @@ function robotBlock(c: any): string {
     const side = c.open.side === "buy" ? "COMPRA" : "VENDA";
     const pts = Number(c.unrealized_pts ?? 0);
     const mov = c.unrealized_pts == null ? "—" : `${movementText(pts, tick)}, ${SIGNED_BRL(c.unrealized_brl)}`;
+    const since = openSinceText(c.open.entry_time);
     lines.push(
-      `  posição: ${side} ${c.open.quantity}x @ ${PX(c.open.entry_price, tick)} → ${PX(c.live_price, tick)} (${mov})`,
+      `  posição: ${side} ${c.open.quantity}x @ ${PX(c.open.entry_price, tick)}${since ? ` ${since}` : ""} → ${PX(c.live_price, tick)} (${mov})`,
     );
     const stop = c.open.stop_price ?? c.open.stop_loss ?? null;
     const alvo = c.open.take_profit ?? c.open.target_price ?? null;
