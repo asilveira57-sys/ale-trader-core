@@ -33,8 +33,10 @@ const GROUPS: Array<{ title: string; fields: Array<{ k: string; step?: number }>
     title: "Entrada",
     fields: [
       { k: "min_confidence" }, { k: "min_score" }, { k: "min_approve_votes" },
-      { k: "max_volatility_pct", step: 0.1 }, { k: "lateral_strength_min", step: 1 },
-      { k: "lateral_vol_min", step: 0.1 },
+      // Volatilidade é medida como desvio padrão ÷ média × 100 e os ativos da B3
+      // vivem entre ~0,03 e ~0,12. Passo de 0,1 não permitia digitar a faixa real.
+      { k: "max_volatility_pct", step: 0.01 }, { k: "lateral_strength_min", step: 1 },
+      { k: "lateral_vol_min", step: 0.005 },
     ],
   },
   { title: "Operação", fields: [{ k: "stop_pts" }, { k: "gain_pts" }, { k: "max_contracts" }] },
@@ -89,6 +91,11 @@ export function RobotConfigDialog({
   const rr = stop > 0 ? gain / stop : null;
   const breakeven = stop + gain > 0 ? (stop / (stop + gain)) * 100 : null;
   const avgRange = d?.avg_range_pts ?? null;
+  const volP10 = d?.vol_pct?.p10 ?? null;
+  const volP50 = d?.vol_pct?.p50 ?? null;
+  const volP90 = d?.vol_pct?.p90 ?? null;
+  const volFmt = (v: number | null) =>
+    v == null ? "—" : v.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   const targetPctRange = avgRange && avgRange > 0 ? (gain / avgRange) * 100 : null;
 
   const siblingRr = useMemo(
@@ -158,6 +165,14 @@ export function RobotConfigDialog({
       {k === "stop_pts" && (
         <p className="text-[11px] text-muted-foreground mt-1">
           → {BRL(stopBrl)} por operação ({qty} contrato{qty > 1 ? "s" : ""} × {BRL(pointValue)}/ponto)
+        </p>
+      )}
+      {(k === "lateral_vol_min" || k === "max_volatility_pct") && (
+        <p className="text-[11px] text-muted-foreground mt-1">
+          Escala do motor: desvio ÷ média × 100.{" "}
+          {volP50 != null
+            ? `Neste ativo, últimos 3 dias: ${volFmt(volP10)} a ${volFmt(volP90)} (mediana ${volFmt(volP50)}).`
+            : "Faixa típica dos ativos da B3: 0,03 a 0,12."}
         </p>
       )}
       {k === "gain_pts" && (
