@@ -389,8 +389,8 @@ function CockpitRealPage() {
               {mClose.isPending ? "Enviando…" : "Zerar agora"}
             </AlertDialogAction>
           </AlertDialogFooter>
-        </AlertDialogFooter>
         </AlertDialogContent>
+
       </AlertDialog>
     </div>
   );
