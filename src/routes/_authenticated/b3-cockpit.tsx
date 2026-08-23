@@ -59,6 +59,21 @@ const VARIANT_COLOR: Record<string, string> = {
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
 const isRiskBlocked = (c: any) => c.current_status === "blocked_stop" || !!c.protection_block_reason;
 
+// Cor da curadoria — quem calcula é o banco (b3_cor_do_robo); aqui só pintamos.
+// Borda + faixa lateral do card, para não competir com o P&L (verde/vermelho).
+const ROBOT_COLOR: Record<string, { border: string; bar: string; label: string }> = {
+  ouro: { border: "border-yellow-400/70", bar: "bg-yellow-400", label: "Ouro — 1º do ranking com medalha" },
+  prata: { border: "border-zinc-300/70", bar: "bg-zinc-300", label: "Prata — 2º do ranking com medalha" },
+  bronze: { border: "border-amber-600/70", bar: "bg-amber-600", label: "Bronze — 3º do ranking com medalha" },
+  verde: { border: "border-emerald-500/70", bar: "bg-emerald-500", label: "Verde — 3 dias bons ou mais" },
+  azul: { border: "border-sky-500/70", bar: "bg-sky-500", label: "Azul — 2 dias bons" },
+  branco: { border: "border-slate-200/70", bar: "bg-slate-200", label: "Branco — 1 dia bom" },
+  amarelo: { border: "border-yellow-500/70", bar: "bg-yellow-500", label: "Amarelo — caiu de verde, 1 dia negativo" },
+  laranja: { border: "border-orange-500/70", bar: "bg-orange-500", label: "Laranja — caiu de verde, 2 dias negativos" },
+  vermelho: { border: "border-rose-600/80", bar: "bg-rose-600", label: "Vermelho — 3 dias negativos ou mais" },
+};
+const robotColor = (cor: string | null | undefined) => ROBOT_COLOR[String(cor ?? "")] ?? null;
+
 // ── Testeira: formatação somente de apresentação ──
 const SIGNED_HDR = (v: number) => `${Number(v ?? 0) > 0 ? "+" : ""}${BRL(v)}`;
 const PCT = (v: number | null | undefined, digits = 0) =>
