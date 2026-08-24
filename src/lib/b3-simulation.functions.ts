@@ -1429,7 +1429,13 @@ async function runB3SimulationTickInner(
   type SetupClassifierArgs = {
     ctxLocal: any; derived: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
   };
-  type SetupResult = { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> };
+  // side_override: classificadores contrários à tendência (mean_reversion,
+  // range) escolhem o próprio lado; o motor usa esse lado no lugar do
+  // intendedSide (que é cruzamento de médias, ou seja, seguidor de tendência).
+  type SetupResult = {
+    name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>;
+    side_override?: "buy" | "sell";
+  };
   const SETUP_CLASSIFIERS: Record<string, (a: SetupClassifierArgs) => SetupResult> = {
     indicador: ({ ctxLocal, derived, intendedSide, cfg }) => classifySetup({ ctxLocal, derived, intendedSide, cfg }),
     price_action: ({ ctxLocal, intendedSide, cfg, m1Candles }) => classifySetupPriceAction({ ctxLocal, intendedSide, cfg, m1Candles }),
