@@ -5,6 +5,8 @@ import { LayoutDashboard, LayoutGrid, Coins, Bot, Bell, ScrollText, Settings, Lo
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { RouteErrorFallback } from "@/components/RouteErrorFallback";
+
 
 const AUTH_RECOVERY_RETRY_MS = 1_500;
 const AUTH_RECOVERY_ATTEMPTS = 3;
@@ -115,7 +117,10 @@ function AuthErrorBoundary({ error, reset }: { error: Error; reset: () => void }
       </div>
     );
   }
-  throw error;
+  // Erros não relacionados a sessão (ex.: chunk obsoleto após deploy) precisam
+  // cair no fallback padrão — relançar aqui produz tela branca.
+  return <RouteErrorFallback error={error} reset={reset} />;
+
 }
 
 export const Route = createFileRoute("/_authenticated")({
