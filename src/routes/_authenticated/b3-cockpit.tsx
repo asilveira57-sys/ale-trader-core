@@ -516,7 +516,15 @@ function CockpitPage() {
                             Reativado hoje após stop diário — resultado do dia não é limpo.
                           </p>
                         )}
+                        {c.grupo && (
+                          <p className={`text-[10px] font-semibold ${c.grupo.travado ? "text-rose-300" : "text-amber-300"}`}>
+                            {c.grupo.texto}
+                            {c.grupo.travado ? " · entradas travadas" : ""}
+                            {c.grupo.desde ? ` (${openSinceText(c.grupo.desde).replace(/\s\(.*\)$/, "")})` : ""}
+                          </p>
+                        )}
                       </button>
+
 
                       {/* ── Fechar posição: sempre visível quando há posição ── */}
                       {hasPosition && (
