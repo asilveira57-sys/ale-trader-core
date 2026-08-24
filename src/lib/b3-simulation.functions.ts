@@ -2600,20 +2600,20 @@ async function runB3SimulationTickInner(
           m.committee_rejections = (Number(m.committee_rejections) || 0) + 1;
         }
 
-        log.push({ mode, action: "reject", reason: "no_valid_setup", setup: setupInfo.name, side: intendedSide });
+        log.push({ mode, action: "reject", reason: "no_valid_setup", setup: setupInfo.name, side: effectiveSide });
         finalizeAudit(reason, {
           last_analysis: decision.justification,
           last_score: decision.score,
           last_confidence: decision.avg_confidence,
           last_setup: `Bloqueado: ${setupInfo.name}`,
-          signals: { evaluated_side: intendedSide, buy: false, sell: false },
+          signals: { evaluated_side: effectiveSide, buy: false, sell: false },
           committee: decision,
           setup: setupInfo,
         });
       } else if (decision.final === "approved") {
         let entryAudit: B3QuoteExecutionAudit;
         try {
-          entryAudit = getB3ExecutionAudit(priceSrc, intendedSide, "entry", "runB3SimulationTick.openOrder");
+          entryAudit = getB3ExecutionAudit(priceSrc, effectiveSide, "entry", "runB3SimulationTick.openOrder");
           if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(entryAudit, "runB3SimulationTick.openOrder", asset.symbol);
           providerStats.last_price_function = entryAudit.execution_price_origin;
         } catch (e) {
@@ -2632,8 +2632,8 @@ async function runB3SimulationTickInner(
             last_analysis: decision.justification,
             last_score: decision.score,
             last_confidence: decision.avg_confidence,
-            last_setup: `Setup ${intendedSide.toUpperCase()} aprovado, bloqueado no preço`,
-            signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
+            last_setup: `Setup ${effectiveSide.toUpperCase()} aprovado, bloqueado no preço`,
+            signals: { evaluated_side: effectiveSide, buy: effectiveSide === "buy", sell: effectiveSide === "sell" },
             committee: decision,
             setup: setupInfo,
           });
@@ -2643,7 +2643,7 @@ async function runB3SimulationTickInner(
           const slip = Number(run.simulated_slippage_pts) || 0;
           entryAudit = {
             ...entryAudit,
-            execution_price: Math.round((intendedSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip) / asset.tick_size) * asset.tick_size,
+            execution_price: Math.round((effectiveSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip) / asset.tick_size) * asset.tick_size,
             execution_price_origin: `${entryAudit.execution_price_origin}+legacy_slippage`,
           };
         }
@@ -2657,15 +2657,15 @@ async function runB3SimulationTickInner(
         const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
         const { data: insertedOrder, error: oErr } = await supabase.from("b3_simulation_orders").insert({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
-          mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: intendedSide,
+          mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: effectiveSide,
           entry_price: Math.round(entry / asset.tick_size) * asset.tick_size, quantity: qty,
           // taxa da ponta de entrada, derivada do perfil do ativo
           fees: computeB3Fees({ assetProfile: asset, quantity: qty, entryPrice: entry }), status: "open",
           ...orderAuditPatch(entryAudit),
         }).select("id").single();
         if (oErr) throw oErr;
-        markAuditEvent(`abertura:${mode}:${intendedSide}`);
-        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", intendedSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant);
+        markAuditEvent(`abertura:${mode}:${effectiveSide}`);
+        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant);
         providerStats.last_entry_price = entry;
         openOrdersCache = null;
         await supabase.from("b3_simulation_modes")
@@ -2675,13 +2675,13 @@ async function runB3SimulationTickInner(
           }).eq("id", m.id);
         m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
         m.contracts_traded = (Number(m.contracts_traded) || 0) + qty;
-        log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin, setup: setupInfo.name });
-        finalizeAudit(`Setup trend_pullback ${intendedSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
+        log.push({ mode, action: "open", side: effectiveSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin, setup: setupInfo.name });
+        finalizeAudit(`Setup trend_pullback ${effectiveSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
           last_analysis: decision.justification,
           last_score: decision.score,
           last_confidence: decision.avg_confidence,
-          last_setup: `trend_pullback ${intendedSide.toUpperCase()}`,
-          signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
+          last_setup: `trend_pullback ${effectiveSide.toUpperCase()}`,
+          signals: { evaluated_side: effectiveSide, buy: effectiveSide === "buy", sell: effectiveSide === "sell" },
           committee: decision,
           setup: setupInfo,
         });
