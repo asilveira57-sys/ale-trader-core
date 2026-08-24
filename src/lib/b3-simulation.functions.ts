@@ -3876,6 +3876,21 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           score: audit?.last_score ?? null, confidence: audit?.last_confidence ?? null,
           blocked_reason: open ? null : (audit?.first_stop?.label ?? audit?.last_refusal_reason ?? null),
           pending_stop: open ? (pendingByMode[m] ?? null) : null,
+          grupo: (() => {
+            const g = grupoByKey[`${run.symbol}|${variant}`];
+            const nivel = Number(g?.nivel_atual ?? 0);
+            if (!g || nivel <= 0) return null;
+            const mult = Number(g.multiplicador ?? 1);
+            return {
+              nivel,
+              multiplicador: mult,
+              travado: Array.isArray(g.robos_travados) && g.robos_travados.includes(m),
+              desde: g.ultima_mudanca_ts ?? null,
+              resultado_brl: Number(g.resultado_brl ?? 0),
+              texto: `grupo ${asset.quote_symbol}/${variant} — ${textoNivelGrupo(nivel, mult)}`,
+            };
+          })(),
+
         });
       }
     }
