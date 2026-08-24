@@ -3737,7 +3737,18 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       .select("symbol, variant, mode, acao")
       .eq("user_id", userId).eq("trade_date", sessionDate).eq("acao", "reset_stop_diario");
 
+    // Freio escalonado por grupo (somente leitura): o card precisa explicar por
+    // que o robô está operando com 2 contratos em vez de 5, ou por que não entra.
+    const { data: grupoEstados } = await (supabase as any).from("b3_grupo_estado_dia")
+      .select("symbol, variant, nivel_atual, multiplicador, ultima_mudanca_ts, robos_travados, resultado_brl")
+      .eq("user_id", userId).eq("trade_date", sessionDate);
+    const grupoByKey: Record<string, any> = {};
+    for (const g of (grupoEstados ?? []) as any[]) {
+      grupoByKey[`${g.symbol}|${g.variant}`] = g;
+    }
+
     const cards: any[] = [];
+
     const assetBySymbol: Record<string, any> = {};
     for (const run of runs ?? []) {
       const asset = await loadAssetProfile(supabase, run.symbol);
