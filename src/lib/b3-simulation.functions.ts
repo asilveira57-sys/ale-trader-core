@@ -2550,6 +2550,20 @@ async function runB3SimulationTickInner(
         continue;
       }
 
+      // Freio de grupo: nível >= 2 trava ENTRADA NOVA dos robôs listados.
+      // A gestão da posição aberta deste modo já rodou acima — nenhum nível
+      // pode pular stop, alvo, trailing ou zeragem.
+      if (grupoNivel >= 2 && grupoTravados.includes(mode)) {
+        const msg = `Freio de grupo ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; entrada nova bloqueada (resultado do grupo ${Number(grupo?.resultado_brl ?? 0).toFixed(2)} BRL).`;
+        await recordStatusIfChanged(mode, m, "bloqueado_grupo", `grupo_nivel_${grupoNivel}`,
+          { observed: Number(grupo?.resultado_brl ?? 0), pnl: realizedToday, message: msg });
+        log.push({ mode, action: "skip", reason: `grupo_nivel_${grupoNivel}` });
+        finalizeAudit(msg);
+        continue;
+      }
+
+
+
       // Bloqueio de proteção B3 substitui o antigo gate "meta atingida".
       if (!protDec.allow_new_entry) {
         await recordStatusIfChanged(mode, m, protDec.next.protection_state, `protection:${protDec.next.protection_state}`,
