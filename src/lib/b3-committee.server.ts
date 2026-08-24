@@ -156,19 +156,30 @@ function aTecnico(c: B3Context, side: B3Side): B3AgentVote {
   };
 }
 
-function aMomentum(c: B3Context, side: B3Side): B3AgentVote {
+function aMomentum(c: B3Context, side: B3Side, counterTrend = false): B3AgentVote {
   const aligned = (side === "buy" && c.momentum > 20) || (side === "sell" && c.momentum < -20);
   const exhausted = Math.abs(c.momentum) > 120;
+  // Modalidades contrárias à tendência (mean_reversion / range) operam POR
+  // definição contra o movimento: exaustão é o sinal de entrada, não o motivo
+  // de recusa. Movimento a favor do lado, nessas modalidades, é apenas neutro.
+  const vote: B3Vote = counterTrend
+    ? (exhausted ? "approve" : "neutral")
+    : (exhausted ? "reject" : aligned ? "approve" : "neutral");
   return {
     agent_name: "Momentum",
-    vote: exhausted ? "reject" : aligned ? "approve" : "neutral",
+    vote,
     confidence: clamp(40 + Math.abs(c.momentum) * 0.5, 30, 90),
-    reason: exhausted ? "Momentum em exaustão — risco de reversão." :
-            `Momentum ${c.momentum.toFixed(0)}.`,
+    reason: counterTrend
+      ? (exhausted
+          ? `Momentum ${c.momentum.toFixed(0)} em exaustão — janela de reversão à média.`
+          : `Momentum ${c.momentum.toFixed(0)} sem exaustão — sem gatilho de reversão.`)
+      : exhausted ? "Momentum em exaustão — risco de reversão." :
+        `Momentum ${c.momentum.toFixed(0)}.`,
     has_veto: false,
-    data: { momentum: c.momentum },
+    data: { momentum: c.momentum, counter_trend: counterTrend, exhausted, aligned },
   };
 }
+
 
 function aVolatilidade(c: B3Context, t?: B3AgentTuning): B3AgentVote {
   // Usa o MESMO limite do modo (cfg.max_volatility_pct). Antes eram 3,5% fixos,
@@ -225,7 +236,7 @@ function aHorario(c: B3Context, risk: B3RiskState): B3AgentVote {
   };
 }
 
-function aAntiTendencia(c: B3Context, side: B3Side): B3AgentVote {
+function aAntiTendencia(c: B3Context, side: B3Side, counterTrend = false): B3AgentVote {
   // Somente RSI extremo caracteriza euforia/pânico. As checagens antigas
   // `price > high*0.999` / `price < low*1.001` usavam c.high/c.low do próprio
   // buffer, que sempre inclui o preço atual como max/min quando ele faz um
@@ -235,7 +246,16 @@ function aAntiTendencia(c: B3Context, side: B3Side): B3AgentVote {
   const overbought = c.rsi > 78 && side === "buy";
   const oversold = c.rsi < 22 && side === "sell";
   const block = overbought || oversold;
-  const reason = overbought
+  // Em modalidades contrárias à tendência, comprar pânico e vender euforia É a
+  // tese: RSI extremo a favor do lado passa a ser APROVAÇÃO. Só continua
+  // rejeitando quando o extremo está contra o lado avaliado.
+  const counterAligned = counterTrend && ((c.rsi > 78 && side === "sell") || (c.rsi < 22 && side === "buy"));
+  const vote: B3Vote = counterTrend
+    ? (counterAligned ? "approve" : block ? "reject" : "neutral")
+    : (block ? "reject" : "neutral");
+  const reason = counterAligned
+    ? `RSI ${c.rsi.toFixed(0)} em extremo a favor da reversão — gatilho da modalidade.`
+    : overbought
     ? `RSI ${c.rsi.toFixed(0)} sobrecomprado — evitar FOMO em compra.`
     : oversold
     ? `RSI ${c.rsi.toFixed(0)} sobrevendido — evitar pânico em venda.`
@@ -245,12 +265,12 @@ function aAntiTendencia(c: B3Context, side: B3Side): B3AgentVote {
     // RSI extremo é EVIDÊNCIA de mercado, não falha operacional — não deve
     // cravar o score em 25 sozinho (era has_veto: block). Continua contando
     // como reject normal no placar de aprovação/confiança.
-    vote: block ? "reject" : "neutral",
-    confidence: block ? 85 : 50,
+    vote,
+    confidence: counterAligned ? 85 : block ? 85 : 50,
     reason,
     has_veto: false,
     veto_reason: undefined,
-    data: { rsi: c.rsi, high: c.high, low: c.low, rule: "rsi_only" },
+    data: { rsi: c.rsi, high: c.high, low: c.low, rule: "rsi_only", counter_trend: counterTrend, counter_aligned: counterAligned },
   };
 }
 
@@ -290,18 +310,29 @@ export interface B3AgentTuning {
   lateral_strength_min?: number;
   stop_pts?: number;
   gain_pts?: number;
+  /** Modalidade de entrada do modo (`indicador`, `price_action`,
+   *  `mean_reversion`, `range`). Agentes direcionais avaliam em relação à
+   *  intenção da estratégia, não à tendência absoluta. */
+  entry_style?: string | null;
 }
 
+/** Modalidades cuja tese é operar contra o movimento imediato. */
+export const B3_COUNTER_TREND_STYLES = new Set(["mean_reversion", "range"]);
+
+export function isCounterTrendStyle(style?: string | null): boolean {
+  return B3_COUNTER_TREND_STYLES.has(String(style ?? "indicador"));
+}
 
 export function runB3Agents(c: B3Context, side: B3Side, risk: B3RiskState, tuning?: B3AgentTuning): B3AgentVote[] {
+  const counterTrend = isCounterTrendStyle(tuning?.entry_style);
   return [
     aTendencia(c, side),
     aVolume(c, side),
     aTecnico(c, side),
-    aMomentum(c, side),
+    aMomentum(c, side, counterTrend),
     aVolatilidade(c, tuning),
     aHorario(c, risk),
-    aAntiTendencia(c, side),
+    aAntiTendencia(c, side, counterTrend),
     aRisco(c, side, risk, tuning),
   ];
 }

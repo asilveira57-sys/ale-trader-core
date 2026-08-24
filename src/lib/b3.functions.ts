@@ -96,6 +96,7 @@ export const runB3Committee = createServerFn({ method: "POST" })
       lateral_strength_min: Number((settings as any).lateral_strength_min ?? 30),
       stop_pts: Number((settings as any).stop_points ?? 150),
       gain_pts: Number((settings as any).gain_points ?? 300),
+      entry_style: String((settings as any).entry_style ?? "indicador"),
     });
     const decision = buildB3Decision(votes, data.side, committee);
 

@@ -375,6 +375,7 @@ export async function runLegacyMt5Tick(
       lateral_strength_min: Number(cfg.lateral_strength_min),
       stop_pts: Number(cfg.stop_pts),
       gain_pts: Number(cfg.gain_pts),
+      entry_style: String((cfg as any).entry_style ?? "indicador"),
     });
     const committee: B3CommitteeSettings = {
       min_approve_votes: cfg.min_approve_votes, min_confidence: cfg.min_confidence, min_score: cfg.min_score,

@@ -2540,6 +2540,7 @@ async function runB3SimulationTickInner(
         lateral_strength_min: Number((cfg as any).lateral_strength_min ?? 30),
         stop_pts: Number(cfg.stop_pts),
         gain_pts: Number(cfg.gain_pts),
+        entry_style: String((cfg as any).entry_style ?? "indicador"),
       });
 
       const committee: B3CommitteeSettings = {
