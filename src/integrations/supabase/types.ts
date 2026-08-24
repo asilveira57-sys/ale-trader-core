@@ -855,6 +855,96 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_grupo_estado_dia: {
+        Row: {
+          multiplicador: number
+          nivel_atual: number
+          pior_do_dia_brl: number
+          resultado_brl: number
+          robos_travados: string[]
+          symbol: string
+          trade_date: string
+          ultima_mudanca_ts: string | null
+          user_id: string
+          variant: string
+        }
+        Insert: {
+          multiplicador?: number
+          nivel_atual?: number
+          pior_do_dia_brl?: number
+          resultado_brl?: number
+          robos_travados?: string[]
+          symbol: string
+          trade_date: string
+          ultima_mudanca_ts?: string | null
+          user_id: string
+          variant: string
+        }
+        Update: {
+          multiplicador?: number
+          nivel_atual?: number
+          pior_do_dia_brl?: number
+          resultado_brl?: number
+          robos_travados?: string[]
+          symbol?: string
+          trade_date?: string
+          ultima_mudanca_ts?: string | null
+          user_id?: string
+          variant?: string
+        }
+        Relationships: []
+      }
+      b3_grupo_limites: {
+        Row: {
+          ativo: boolean
+          criado_em: string
+          dwell_minutos: number
+          fator_contratos: number
+          histerese_pct: number
+          nivel1_pct: number
+          nivel2_pct: number
+          nivel3_pct: number
+          nivel4_pct: number
+          notas: string | null
+          symbol: string
+          teto_brl: number
+          user_id: string
+          variant: string
+        }
+        Insert: {
+          ativo?: boolean
+          criado_em?: string
+          dwell_minutos?: number
+          fator_contratos?: number
+          histerese_pct?: number
+          nivel1_pct?: number
+          nivel2_pct?: number
+          nivel3_pct?: number
+          nivel4_pct?: number
+          notas?: string | null
+          symbol: string
+          teto_brl: number
+          user_id: string
+          variant: string
+        }
+        Update: {
+          ativo?: boolean
+          criado_em?: string
+          dwell_minutos?: number
+          fator_contratos?: number
+          histerese_pct?: number
+          nivel1_pct?: number
+          nivel2_pct?: number
+          nivel3_pct?: number
+          nivel4_pct?: number
+          notas?: string | null
+          symbol?: string
+          teto_brl?: number
+          user_id?: string
+          variant?: string
+        }
+        Relationships: []
+      }
       b3_intervencoes: {
         Row: {
           acao: string
@@ -2493,6 +2583,42 @@ export type Database = {
           trade_date?: string
           ultimo_tick?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      b3_regime_dia: {
+        Row: {
+          amplitude: number
+          amplitude_sobre_ruido: number
+          calculado_em: string
+          deslocamento: number
+          eficiencia: number
+          minutos: number
+          p90_minuto: number
+          symbol: string
+          trade_date: string
+        }
+        Insert: {
+          amplitude: number
+          amplitude_sobre_ruido: number
+          calculado_em?: string
+          deslocamento: number
+          eficiencia: number
+          minutos: number
+          p90_minuto: number
+          symbol: string
+          trade_date: string
+        }
+        Update: {
+          amplitude?: number
+          amplitude_sobre_ruido?: number
+          calculado_em?: string
+          deslocamento?: number
+          eficiencia?: number
+          minutos?: number
+          p90_minuto?: number
+          symbol?: string
+          trade_date?: string
         }
         Relationships: []
       }
@@ -6732,6 +6858,7 @@ export type Database = {
               tabela: string
             }[]
           }
+      b3_rotular_regime: { Args: { p_date?: string }; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
