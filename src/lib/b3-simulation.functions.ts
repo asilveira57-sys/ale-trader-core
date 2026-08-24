@@ -644,6 +644,120 @@ async function runB3SimulationTickInner(
   }
   let realizedTodayByMode = await getRealizedTodayByMode();
 
+  // ── Freio escalonado por GRUPO (symbol + variant) ─────────────────────────
+  // Configuração e estado do dia vivem em b3_grupo_limites / b3_grupo_estado_dia.
+  // O motor só lê e age. Travar = bloquear ENTRADA NOVA; gestão de posição
+  // aberta nunca é pulada por nenhum nível.
+  const grupoDia = b3DayKeyBRT(new Date());
+  let grupoLimites: B3GrupoLimites | null = null;
+  {
+    const { data: gl } = await supabase.from("b3_grupo_limites")
+      .select("*").eq("user_id", userId).eq("symbol", run.symbol).eq("variant", runVariant).maybeSingle();
+    if (gl) {
+      grupoLimites = {
+        teto_brl: Number(gl.teto_brl), nivel1_pct: Number(gl.nivel1_pct),
+        nivel2_pct: Number(gl.nivel2_pct), nivel3_pct: Number(gl.nivel3_pct),
+        nivel4_pct: Number(gl.nivel4_pct), fator_contratos: Number(gl.fator_contratos),
+        histerese_pct: Number(gl.histerese_pct), dwell_minutos: Number(gl.dwell_minutos),
+        ativo: gl.ativo !== false,
+      };
+    }
+  }
+  let grupoEstado: B3GrupoEstado = {
+    resultado_brl: 0, pior_do_dia_brl: 0, nivel_atual: 0, multiplicador: 1,
+    ultima_mudanca_ts: null, robos_travados: [],
+  };
+  if (grupoLimites) {
+    const { data: ge } = await supabase.from("b3_grupo_estado_dia")
+      .select("*").eq("user_id", userId).eq("symbol", run.symbol)
+      .eq("variant", runVariant).eq("trade_date", grupoDia).maybeSingle();
+    if (ge) {
+      grupoEstado = {
+        resultado_brl: Number(ge.resultado_brl ?? 0),
+        pior_do_dia_brl: Number(ge.pior_do_dia_brl ?? 0),
+        nivel_atual: Number(ge.nivel_atual ?? 0),
+        multiplicador: Number(ge.multiplicador ?? 1),
+        ultima_mudanca_ts: ge.ultima_mudanca_ts ?? null,
+        robos_travados: Array.isArray(ge.robos_travados) ? ge.robos_travados.map(String) : [],
+      };
+    }
+  }
+  let grupoDecision: B3GrupoDecision | null = null;
+
+  /**
+   * Reavalia a escada do grupo. `R` inclui posição aberta marcada a mercado —
+   * é isso que faz o nível subir DURANTE a operação ruim, e não só depois dela
+   * (a trava de devolução de pico só olha entre operações e por isso deixou
+   * passar o dobro do limite três vezes em 24/08).
+   */
+  async function evaluateGrupo(livePrice: number | null): Promise<B3GrupoDecision | null> {
+    if (!grupoLimites) return null;
+    const openList = (await getOpen()) ?? [];
+    const porModo: Record<string, number> = {};
+    for (const mode of MODES) {
+      let v = Number(realizedTodayByMode[mode] ?? 0);
+      if (livePrice && livePrice > 0) {
+        for (const o of openList) {
+          if (o.mode !== mode) continue;
+          const dir = o.side === "buy" ? 1 : -1;
+          v += (livePrice - Number(o.entry_price)) * dir
+            * Number(asset.tick_value_brl ?? POINT_VALUE_BRL) * Number(o.quantity ?? 1);
+        }
+      }
+      porModo[mode] = v;
+    }
+    const R = Object.values(porModo).reduce((s, v) => s + v, 0);
+    const nowIso = new Date().toISOString();
+    const dec = decideB3Grupo({ limites: grupoLimites, estado: grupoEstado, resultadoPorModo: porModo, R, nowIso });
+
+    await supabase.from("b3_grupo_estado_dia").upsert({
+      user_id: userId, symbol: run.symbol, variant: runVariant, trade_date: grupoDia,
+      resultado_brl: Number(dec.resultado_brl.toFixed(2)),
+      pior_do_dia_brl: Number(dec.pior_do_dia_brl.toFixed(2)),
+      nivel_atual: dec.nivel, multiplicador: dec.multiplicador,
+      ultima_mudanca_ts: dec.ultima_mudanca_ts,
+      robos_travados: dec.robos_travados,
+    }, { onConflict: "user_id,symbol,variant,trade_date" });
+
+    if (dec.changed) {
+      markAuditEvent(`grupo:${run.symbol}/${runVariant}:${dec.nivel_anterior}->${dec.nivel}`);
+      const detalhe = {
+        symbol: run.symbol, variant: runVariant, trade_date: grupoDia,
+        nivel_anterior: dec.nivel_anterior, nivel_novo: dec.nivel,
+        resultado_grupo_brl: Number(dec.resultado_brl.toFixed(2)),
+        teto_brl: grupoLimites.teto_brl, multiplicador: dec.multiplicador,
+        robos_travados: dec.robos_travados, travados_novos: dec.travados_novos,
+        resultado_por_modo: porModo, at: nowIso,
+      };
+      await supabase.from("b3_simulation_block_events").insert({
+        simulation_run_id: runId, user_id: userId, mode: null,
+        prev_status: `grupo_nivel_${dec.nivel_anterior}`, new_status: `grupo_nivel_${dec.nivel}`,
+        trigger: "grupo_freio_escalonado",
+        observed_value: Number(dec.resultado_brl.toFixed(2)),
+        limit_value: -grupoLimites.teto_brl,
+        pnl_at_moment: Number(dec.resultado_brl.toFixed(2)),
+        message: dec.motivo, diagnostic_payload: detalhe,
+      });
+      await supabase.from("system_logs").insert({
+        level: dec.nivel >= 2 ? "error" : "warn",
+        source: "b3_grupo_freio",
+        message: `[${run.symbol}/${runVariant}] nível ${dec.nivel_anterior} → ${dec.nivel}: ${dec.motivo}`,
+        metadata: detalhe,
+      });
+      log.push({ action: "grupo_nivel", symbol: run.symbol, variant: runVariant,
+        de: dec.nivel_anterior, para: dec.nivel, resultado: dec.resultado_brl, travados: dec.robos_travados });
+    }
+
+    grupoEstado = {
+      resultado_brl: dec.resultado_brl, pior_do_dia_brl: dec.pior_do_dia_brl,
+      nivel_atual: dec.nivel, multiplicador: dec.multiplicador,
+      ultima_mudanca_ts: dec.ultima_mudanca_ts, robos_travados: dec.robos_travados,
+    };
+    grupoDecision = dec;
+    return dec;
+  }
+
+
   const providerStats = {
     selected_source: "desconhecida" as string,
     provider_used: "B3QuoteProvider",
