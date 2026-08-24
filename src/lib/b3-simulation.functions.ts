@@ -2507,11 +2507,34 @@ async function runB3SimulationTickInner(
         continue;
       }
 
+      // Classificação de setup técnico ANTES do comitê: modalidades contrárias
+      // à tendência (mean_reversion, range) escolhem o próprio lado, e o comitê
+      // precisa julgar o lado que será realmente operado — antes ele votava no
+      // lado do cruzamento de médias e a ordem saía no lado oposto.
+      const setupInfo = classifySetupFor(cfg.entry_style, {
+        ctxLocal: localCtx, derived, intendedSide, cfg, m1Candles,
+      });
+      const effectiveSide: B3Side = setupInfo.side_override ?? intendedSide;
+      if (setupInfo.side_override && setupInfo.side_override !== intendedSide) {
+        snapshotExtra.side_overrides = {
+          ...(snapshotExtra.side_overrides ?? {}),
+          [mode]: { entry_style: String(cfg.entry_style ?? "indicador"), engine_side: intendedSide, classifier_side: setupInfo.side_override },
+        };
+      }
+      const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
+      addCheck(
+        "setup",
+        "Setup técnico",
+        setupAllowed,
+        setupAllowed
+          ? `${setupInfo.name} validado${setupInfo.side_override ? ` (lado ${setupInfo.side_override.toUpperCase()} escolhido pelo setup)` : ""}`
+          : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
+      );
 
       // Agentes recebem os limites REAIS do modo — sem isso os 5 modos
       // avaliavam o mesmo tick com constantes idênticas (3,5% / 150-300 pts).
       // O piso de volatilidade vem de `lateral_vol_min` (portão de lateralidade).
-      const votes = runB3Agents(localCtx, intendedSide, risk, {
+      const votes = runB3Agents(localCtx, effectiveSide, risk, {
         max_volatility_pct: Number(cfg.max_volatility_pct),
         min_volatility_pct: Number((cfg as any).lateral_vol_min ?? 0.3),
         lateral_strength_min: Number((cfg as any).lateral_strength_min ?? 30),
@@ -2524,12 +2547,12 @@ async function runB3SimulationTickInner(
         min_confidence: Number(cfg.min_confidence),
         min_score: Number(cfg.min_score),
       };
-      const decision = buildB3Decision(votes, intendedSide, committee);
+      const decision = buildB3Decision(votes, effectiveSide, committee);
       addCheck("score", "Score", Number(decision.score) >= Number(cfg.min_score), `${decision.score.toFixed(0)} / mínimo ${Number(cfg.min_score).toFixed(0)}`);
       addCheck("confidence", "Confiança", Number(decision.avg_confidence) >= Number(cfg.min_confidence), `${decision.avg_confidence.toFixed(0)} / mínimo ${Number(cfg.min_confidence).toFixed(0)}`);
       addCheck("committee", "Comitê", decision.final === "approved", decision.justification);
-      addCheck("signal_buy", "Sinal BUY", decision.final === "approved" && intendedSide === "buy", intendedSide === "buy" ? decision.final : "lado avaliado SELL", false);
-      addCheck("signal_sell", "Sinal SELL", decision.final === "approved" && intendedSide === "sell", intendedSide === "sell" ? decision.final : "lado avaliado BUY", false);
+      addCheck("signal_buy", "Sinal BUY", decision.final === "approved" && effectiveSide === "buy", effectiveSide === "buy" ? decision.final : "lado avaliado SELL", false);
+      addCheck("signal_sell", "Sinal SELL", decision.final === "approved" && effectiveSide === "sell", effectiveSide === "sell" ? decision.final : "lado avaliado BUY", false);
 
       // Telemetria por modo dos limiares de lateralidade efetivamente aplicados.
       {
@@ -2546,35 +2569,6 @@ async function runB3SimulationTickInner(
         };
       }
 
-      // Classificação de setup técnico — Fase 2: os 4 padrões classificados
-      // podem operar (trend_pullback, breakout_retest, consolidation_breakout,
-      // support_resistance_rejection), cada um com sua própria checagem de
-      // evidência mínima dentro de classifySetup. no_valid_setup nunca opera.
-      const setupInfo = classifySetupFor(cfg.entry_style, {
-        ctxLocal: localCtx, derived, intendedSide, cfg, m1Candles,
-      });
-
-      // Lado efetivo do modo: quando o classificador é contrário à tendência
-      // (mean_reversion, range), ele devolve side_override e manda no lado.
-      // indicador e price_action continuam com o lado do motor.
-      const effectiveSide: B3Side = setupInfo.side_override ?? intendedSide;
-      if (setupInfo.side_override && setupInfo.side_override !== intendedSide) {
-        snapshotExtra.side_overrides = {
-          ...(snapshotExtra.side_overrides ?? {}),
-          [mode]: { entry_style: String(cfg.entry_style ?? "indicador"), engine_side: intendedSide, classifier_side: setupInfo.side_override },
-        };
-      }
-
-      const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
-
-      addCheck(
-        "setup",
-        "Setup técnico",
-        setupAllowed,
-        setupAllowed
-          ? `${setupInfo.name} validado`
-          : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
-      );
 
       // Votos: gravados só quando o comitê muda (mesmo veredito em ticks
       // seguidos não gera novas linhas). Nenhuma regra de decisão é alterada.
