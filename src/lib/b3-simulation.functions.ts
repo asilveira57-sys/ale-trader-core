@@ -1346,6 +1346,9 @@ async function runB3SimulationTickInner(
     const rangeSize = rangeTop - rangeBottom;
     const mid = (rangeTop + rangeBottom) / 2;
     const posInRange = rangeSize > 0 ? (price - rangeBottom) / rangeSize : 0.5;
+    // Lado escolhido pelo próprio classificador: banda inferior compra,
+    // banda superior vende — independente do cruzamento de médias.
+    const rangeSide: "buy" | "sell" = posInRange <= 0.5 ? "buy" : "sell";
     // Zona de operação nos extremos: 25% da faixa por padrão.
     const edgePct = Math.min(0.45, Math.max(0.05, Number((cfg as any).range_edge_pct ?? 0.25)));
     // Faixa mínima: precisa caber o stop com folga, senão qualquer oscilação
