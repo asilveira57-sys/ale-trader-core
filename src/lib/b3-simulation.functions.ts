@@ -2821,7 +2821,11 @@ async function runB3SimulationTickInner(
         // reduzindo o tamanho quando o motor de risco pede cautela — ele
         // agora reduz a partir da base certa, em vez de reduzir 1 contrato.
         const baseQty = Number(cfg.max_contracts) || 1;
-        const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
+        const qtyProt = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
+        // Freio de grupo nível 1: corta contratos pela metade (arredonda para
+        // baixo, piso de 1). Vale só para ENTRADA NOVA.
+        const qty = grupoNivel >= 1 ? aplicarFatorContratos(qtyProt, grupoMultiplicador) : qtyProt;
+
         const { data: insertedOrder, error: oErr } = await supabase.from("b3_simulation_orders").insert({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: effectiveSide,
