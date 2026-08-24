@@ -1219,10 +1219,15 @@ async function runB3SimulationTickInner(
     const atrLike = ranges.length ? ranges.reduce((a, b) => a + b, 0) / ranges.length : 0;
     const stretchPts = Number.isFinite(ref) ? price - ref : 0;
     const stretchAbs = Math.abs(stretchPts);
-    // Esticão mínimo: configurável por modo; padrão 1,5x a amplitude média M1,
-    // com piso em 40% do stop pra não virar ruído em ativo parado.
+    // Esticão mínimo: configurável por modo. Base FIXA em fração do stop —
+    // não escala com a volatilidade do momento. Base dinâmica (atrLike * 1.5)
+    // subia a exigência exatamente no dia de chicote, que é o dia da
+    // modalidade: 347 pts exigidos contra 307 pts de esticão real.
     const minStretch = Number((cfg as any).mean_reversion_min_stretch_pts
-      ?? Math.max(atrLike * 1.5, stopPts * 0.4));
+      ?? stopPts * Number((cfg as any).mean_reversion_min_stretch_stop_ratio ?? 0.6));
+    // Lado escolhido pelo próprio classificador: reversão à média é contrária
+    // ao movimento por definição, então o lado vem do esticão, não das médias.
+    const mrSide: "buy" | "sell" = stretchPts > 0 ? "sell" : "buy";
 
     const last = sorted[sorted.length - 1];
     const prev = sorted[sorted.length - 2];
