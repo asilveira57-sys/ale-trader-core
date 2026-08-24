@@ -1312,8 +1312,8 @@ async function runB3SimulationTickInner(
   // fechamento M1 além do extremo) ou quando ela é fina/instável demais.
   function classifySetupRange(params: {
     ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
-  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
-    const { ctxLocal, intendedSide, cfg, m1Candles } = params;
+  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>; side_override?: "buy" | "sell" } {
+    const { ctxLocal, cfg, m1Candles } = params;
     const price = Number(ctxLocal.price);
     const open = Number(ctxLocal.open);
     const stopPts = Math.max(1, Number(cfg.stop_pts) || 0);
