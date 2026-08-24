@@ -115,7 +115,10 @@ function AuthErrorBoundary({ error, reset }: { error: Error; reset: () => void }
       </div>
     );
   }
-  throw error;
+  // Erros não relacionados a sessão (ex.: chunk obsoleto após deploy) precisam
+  // cair no fallback padrão — relançar aqui produz tela branca.
+  return <RouteErrorFallback error={error} reset={reset} />;
+
 }
 
 export const Route = createFileRoute("/_authenticated")({
