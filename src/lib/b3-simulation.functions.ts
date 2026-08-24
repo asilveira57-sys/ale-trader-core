@@ -2541,6 +2541,21 @@ async function runB3SimulationTickInner(
           : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
       );
 
+      // Modalidades contra-tendência não podem herdar intendedSide. Quando o
+      // classificador ainda não conseguiu derivar um lado (sem esticão/borda),
+      // o setup termina aqui; o comitê nunca é consultado com o lado das médias.
+      const counterTrendStyle = cfg.entry_style === "mean_reversion" || cfg.entry_style === "range";
+      if (counterTrendStyle && !setupInfo.side_override) {
+        const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "lado contra-tendência ainda não definido"}`;
+        log.push({ mode, action: "reject", reason: "no_counter_trend_side", setup: setupInfo.name });
+        finalizeAudit(reason, {
+          last_setup: `Bloqueado: ${setupInfo.name}`,
+          signals: { evaluated_side: null, buy: false, sell: false },
+          setup: setupInfo,
+        });
+        continue;
+      }
+
       // Agentes recebem os limites REAIS do modo — sem isso os 5 modos
       // avaliavam o mesmo tick com constantes idênticas (3,5% / 150-300 pts).
       // O piso de volatilidade vem de `lateral_vol_min` (portão de lateralidade).
