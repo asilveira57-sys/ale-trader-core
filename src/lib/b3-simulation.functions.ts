@@ -2670,11 +2670,11 @@ async function runB3SimulationTickInner(
         m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
         m.contracts_traded = (Number(m.contracts_traded) || 0) + qty;
         log.push({ mode, action: "open", side: effectiveSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin, setup: setupInfo.name });
-        finalizeAudit(`Setup trend_pullback ${effectiveSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
+        finalizeAudit(`Setup ${setupInfo.name} ${effectiveSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
           last_analysis: decision.justification,
           last_score: decision.score,
           last_confidence: decision.avg_confidence,
-          last_setup: `trend_pullback ${effectiveSide.toUpperCase()}`,
+          last_setup: `${setupInfo.name} ${effectiveSide.toUpperCase()}`,
           signals: { evaluated_side: effectiveSide, buy: effectiveSide === "buy", sell: effectiveSide === "sell" },
           committee: decision,
           setup: setupInfo,
