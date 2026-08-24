@@ -310,18 +310,29 @@ export interface B3AgentTuning {
   lateral_strength_min?: number;
   stop_pts?: number;
   gain_pts?: number;
+  /** Modalidade de entrada do modo (`indicador`, `price_action`,
+   *  `mean_reversion`, `range`). Agentes direcionais avaliam em relação à
+   *  intenção da estratégia, não à tendência absoluta. */
+  entry_style?: string | null;
 }
 
+/** Modalidades cuja tese é operar contra o movimento imediato. */
+export const B3_COUNTER_TREND_STYLES = new Set(["mean_reversion", "range"]);
+
+export function isCounterTrendStyle(style?: string | null): boolean {
+  return B3_COUNTER_TREND_STYLES.has(String(style ?? "indicador"));
+}
 
 export function runB3Agents(c: B3Context, side: B3Side, risk: B3RiskState, tuning?: B3AgentTuning): B3AgentVote[] {
+  const counterTrend = isCounterTrendStyle(tuning?.entry_style);
   return [
     aTendencia(c, side),
     aVolume(c, side),
     aTecnico(c, side),
-    aMomentum(c, side),
+    aMomentum(c, side, counterTrend),
     aVolatilidade(c, tuning),
     aHorario(c, risk),
-    aAntiTendencia(c, side),
+    aAntiTendencia(c, side, counterTrend),
     aRisco(c, side, risk, tuning),
   ];
 }
