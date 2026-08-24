@@ -236,7 +236,7 @@ function aHorario(c: B3Context, risk: B3RiskState): B3AgentVote {
   };
 }
 
-function aAntiTendencia(c: B3Context, side: B3Side): B3AgentVote {
+function aAntiTendencia(c: B3Context, side: B3Side, counterTrend = false): B3AgentVote {
   // Somente RSI extremo caracteriza euforia/pânico. As checagens antigas
   // `price > high*0.999` / `price < low*1.001` usavam c.high/c.low do próprio
   // buffer, que sempre inclui o preço atual como max/min quando ele faz um
@@ -246,7 +246,16 @@ function aAntiTendencia(c: B3Context, side: B3Side): B3AgentVote {
   const overbought = c.rsi > 78 && side === "buy";
   const oversold = c.rsi < 22 && side === "sell";
   const block = overbought || oversold;
-  const reason = overbought
+  // Em modalidades contrárias à tendência, comprar pânico e vender euforia É a
+  // tese: RSI extremo a favor do lado passa a ser APROVAÇÃO. Só continua
+  // rejeitando quando o extremo está contra o lado avaliado.
+  const counterAligned = counterTrend && ((c.rsi > 78 && side === "sell") || (c.rsi < 22 && side === "buy"));
+  const vote: B3Vote = counterTrend
+    ? (counterAligned ? "approve" : block ? "reject" : "neutral")
+    : (block ? "reject" : "neutral");
+  const reason = counterAligned
+    ? `RSI ${c.rsi.toFixed(0)} em extremo a favor da reversão — gatilho da modalidade.`
+    : overbought
     ? `RSI ${c.rsi.toFixed(0)} sobrecomprado — evitar FOMO em compra.`
     : oversold
     ? `RSI ${c.rsi.toFixed(0)} sobrevendido — evitar pânico em venda.`
@@ -256,12 +265,12 @@ function aAntiTendencia(c: B3Context, side: B3Side): B3AgentVote {
     // RSI extremo é EVIDÊNCIA de mercado, não falha operacional — não deve
     // cravar o score em 25 sozinho (era has_veto: block). Continua contando
     // como reject normal no placar de aprovação/confiança.
-    vote: block ? "reject" : "neutral",
-    confidence: block ? 85 : 50,
+    vote,
+    confidence: counterAligned ? 85 : block ? 85 : 50,
     reason,
     has_veto: false,
     veto_reason: undefined,
-    data: { rsi: c.rsi, high: c.high, low: c.low, rule: "rsi_only" },
+    data: { rsi: c.rsi, high: c.high, low: c.low, rule: "rsi_only", counter_trend: counterTrend, counter_aligned: counterAligned },
   };
 }
 
