@@ -23,6 +23,11 @@ import {
   type B3QuoteExecutionAudit,
 } from "./b3-price-source.server";
 import { b3WindowState } from "./b3-window.server";
+import {
+  decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
+  type B3GrupoLimites, type B3GrupoEstado, type B3GrupoDecision,
+} from "./b3-grupo.server";
+
 import { realMagicNumber, MagicNumberNotRegisteredError } from "./b3-magic";
 
 
