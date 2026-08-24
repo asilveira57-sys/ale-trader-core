@@ -1282,7 +1282,7 @@ async function runB3SimulationTickInner(
           ? (lastClose - lastLow) / (lastHigh - lastLow) >= 0.4 : false });
       soft.push({ label: "fundo ainda cedendo (fundo abaixo do fundo anterior)",
         pass: Number.isFinite(prevLow) && Number.isFinite(lastLow) ? lastLow >= prevLow : false });
-    } else {
+    } else if (mrSide === "sell") {
       soft.push({ label: "candle atual não reagiu para baixo (sem exaustão da alta)", pass: price < open });
       soft.push({ label: "sem rejeição do topo (fechamento na parte alta do candle)",
         pass: Number.isFinite(lastHigh) && Number.isFinite(lastLow) && lastHigh > lastLow
@@ -1409,8 +1409,10 @@ async function runB3SimulationTickInner(
     // Evidências macias.
     const soft: { label: string; pass: boolean }[] = [];
     const roomToMid = Math.abs(mid - price);
-    soft.push({ label: rangeSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
-      pass: rangeSide === "buy" ? price >= open : price <= open });
+    if (rangeSide) {
+      soft.push({ label: rangeSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
+        pass: rangeSide === "buy" ? price >= open : price <= open });
+    }
     soft.push({ label: `espaço até o meio da faixa insuficiente (${Math.round(roomToMid)} pts)`,
       pass: roomToMid >= Math.max(stopPts * 0.5, 10) });
     soft.push({ label: `R:R ${rr.toFixed(2)} < 1.2`, pass: rr >= 1.2 });
