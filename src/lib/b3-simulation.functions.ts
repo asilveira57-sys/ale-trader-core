@@ -2554,8 +2554,19 @@ async function runB3SimulationTickInner(
         ctxLocal: localCtx, derived, intendedSide, cfg, m1Candles,
       });
 
+      // Lado efetivo do modo: quando o classificador é contrário à tendência
+      // (mean_reversion, range), ele devolve side_override e manda no lado.
+      // indicador e price_action continuam com o lado do motor.
+      const effectiveSide: B3Side = setupInfo.side_override ?? intendedSide;
+      if (setupInfo.side_override && setupInfo.side_override !== intendedSide) {
+        snapshotExtra.side_overrides = {
+          ...(snapshotExtra.side_overrides ?? {}),
+          [mode]: { entry_style: String(cfg.entry_style ?? "indicador"), engine_side: intendedSide, classifier_side: setupInfo.side_override },
+        };
+      }
 
       const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
+
       addCheck(
         "setup",
         "Setup técnico",
