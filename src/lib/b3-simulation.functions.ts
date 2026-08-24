@@ -1187,7 +1187,7 @@ async function runB3SimulationTickInner(
   // forte na direção do esticão — brigar com tendência é o jeito mais rápido
   // de perder dinheiro nessa modalidade. Série de candles M1 reais.
   function classifySetupMeanReversion(params: {
-    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
+    ctxLocal: any; cfg: any; m1Candles: any[];
   }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>; side_override?: "buy" | "sell" } {
     const { ctxLocal, cfg, m1Candles } = params;
     const price = Number(ctxLocal.price);
@@ -1225,9 +1225,12 @@ async function runB3SimulationTickInner(
     // modalidade: 347 pts exigidos contra 307 pts de esticão real.
     const minStretch = Number((cfg as any).mean_reversion_min_stretch_pts
       ?? stopPts * Number((cfg as any).mean_reversion_min_stretch_stop_ratio ?? 0.6));
-    // Lado escolhido pelo próprio classificador: reversão à média é contrária
-    // ao movimento por definição, então o lado vem do esticão, não das médias.
-    const mrSide: "buy" | "sell" = stretchPts > 0 ? "sell" : "buy";
+    // Lado escolhido exclusivamente pelo esticão. Sem referência ou sem o
+    // esticão mínimo ainda não existe lado operável — nunca usamos o lado
+    // tendencial recebido pelo motor como fallback desta modalidade.
+    const mrSide: "buy" | "sell" | undefined = Number.isFinite(ref) && ref > 0 && stretchAbs >= minStretch
+      ? (stretchPts > 0 ? "sell" : stretchPts < 0 ? "buy" : undefined)
+      : undefined;
 
     const last = sorted[sorted.length - 1];
     const prev = sorted[sorted.length - 2];
@@ -1247,8 +1250,8 @@ async function runB3SimulationTickInner(
       trend_direction: trend.direction, trend_strength: trend.strength,
       risk_reward: Number(rr.toFixed(2)), min_risk_reward: 1.2,
       last_candle: { high: lastHigh, low: lastLow, close: lastClose },
-      chosen_side: mrSide,
-      side_source: "classifier_override",
+      chosen_side: mrSide ?? null,
+      side_source: mrSide ? "classifier_override" : null,
       min_stretch_base: (cfg as any).mean_reversion_min_stretch_pts != null ? "config" : "stop_ratio",
     };
 
@@ -1261,9 +1264,10 @@ async function runB3SimulationTickInner(
     }
     // Tendência forte na direção do esticão = não reverter.
     const trendStrongMin = Number((cfg as any).mean_reversion_trend_block_strength ?? 55);
-    const trendAgainst =
+    const trendAgainst = mrSide != null && (
       (mrSide === "buy" && trend.direction === "baixa" && trend.strength >= trendStrongMin) ||
-      (mrSide === "sell" && trend.direction === "alta" && trend.strength >= trendStrongMin);
+      (mrSide === "sell" && trend.direction === "alta" && trend.strength >= trendStrongMin)
+    );
     if (trendAgainst) {
       hardBlock.push(`tendência forte na direção do esticão (${trend.direction} ${trend.strength}) — reversão bloqueada`);
     }
@@ -1278,7 +1282,7 @@ async function runB3SimulationTickInner(
           ? (lastClose - lastLow) / (lastHigh - lastLow) >= 0.4 : false });
       soft.push({ label: "fundo ainda cedendo (fundo abaixo do fundo anterior)",
         pass: Number.isFinite(prevLow) && Number.isFinite(lastLow) ? lastLow >= prevLow : false });
-    } else {
+    } else if (mrSide === "sell") {
       soft.push({ label: "candle atual não reagiu para baixo (sem exaustão da alta)", pass: price < open });
       soft.push({ label: "sem rejeição do topo (fechamento na parte alta do candle)",
         pass: Number.isFinite(lastHigh) && Number.isFinite(lastLow) && lastHigh > lastLow
@@ -1303,6 +1307,7 @@ async function runB3SimulationTickInner(
       name: "no_valid_setup", ok: false,
       reasons: [...hardBlock, ...(softOk ? [] : failedSoft)],
       details,
+      side_override: mrSide,
     };
   }
 
@@ -1311,7 +1316,7 @@ async function runB3SimulationTickInner(
   // topo. Bloqueia quando a faixa está sendo rompida (preço fora dela ou
   // fechamento M1 além do extremo) ou quando ela é fina/instável demais.
   function classifySetupRange(params: {
-    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
+    ctxLocal: any; cfg: any; m1Candles: any[];
   }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>; side_override?: "buy" | "sell" } {
     const { ctxLocal, cfg, m1Candles } = params;
     const price = Number(ctxLocal.price);
@@ -1346,11 +1351,15 @@ async function runB3SimulationTickInner(
     const rangeSize = rangeTop - rangeBottom;
     const mid = (rangeTop + rangeBottom) / 2;
     const posInRange = rangeSize > 0 ? (price - rangeBottom) / rangeSize : 0.5;
-    // Lado escolhido pelo próprio classificador: banda inferior compra,
-    // banda superior vende — independente do cruzamento de médias.
-    const rangeSide: "buy" | "sell" = posInRange <= 0.5 ? "buy" : "sell";
     // Zona de operação nos extremos: 25% da faixa por padrão.
     const edgePct = Math.min(0.45, Math.max(0.05, Number((cfg as any).range_edge_pct ?? 0.25)));
+    // O lado só existe nas bordas operáveis e nasce da posição na faixa.
+    // O miolo não herda o lado tendencial do motor.
+    const rangeSide: "buy" | "sell" | undefined = posInRange <= edgePct
+      ? "buy"
+      : posInRange >= 1 - edgePct
+        ? "sell"
+        : undefined;
     // Faixa mínima: precisa caber o stop com folga, senão qualquer oscilação
     // estoura a operação antes de voltar ao meio.
     const minRangeSize = Number((cfg as any).range_min_size_pts ?? stopPts * 1.5);
@@ -1372,8 +1381,8 @@ async function runB3SimulationTickInner(
       risk_reward: Number(rr.toFixed(2)), min_risk_reward: 1.2,
       dist_to_top_pts: Math.round(rangeTop - price),
       dist_to_bottom_pts: Math.round(price - rangeBottom),
-      chosen_side: rangeSide,
-      side_source: "classifier_override",
+      chosen_side: rangeSide ?? null,
+      side_source: rangeSide ? "classifier_override" : null,
     };
 
     const hardBlock: string[] = [];
@@ -1393,15 +1402,17 @@ async function runB3SimulationTickInner(
     details["max_trend_strength"] = trendMax;
     // O lado é do classificador: compra na banda inferior, venda na superior.
     // Só o miolo da faixa não opera.
-    if (posInRange > edgePct && posInRange < 1 - edgePct) {
+    if (!rangeSide) {
       hardBlock.push(`preço no meio da faixa (posição ${(posInRange * 100).toFixed(0)}%) — sem borda para operar`);
     }
 
     // Evidências macias.
     const soft: { label: string; pass: boolean }[] = [];
     const roomToMid = Math.abs(mid - price);
-    soft.push({ label: rangeSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
-      pass: rangeSide === "buy" ? price >= open : price <= open });
+    if (rangeSide) {
+      soft.push({ label: rangeSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
+        pass: rangeSide === "buy" ? price >= open : price <= open });
+    }
     soft.push({ label: `espaço até o meio da faixa insuficiente (${Math.round(roomToMid)} pts)`,
       pass: roomToMid >= Math.max(stopPts * 0.5, 10) });
     soft.push({ label: `R:R ${rr.toFixed(2)} < 1.2`, pass: rr >= 1.2 });
@@ -1421,6 +1432,7 @@ async function runB3SimulationTickInner(
       name: "no_valid_setup", ok: false,
       reasons: [...hardBlock, ...(softOk ? [] : failedSoft)],
       details,
+      side_override: rangeSide,
     };
   }
 
@@ -1439,8 +1451,8 @@ async function runB3SimulationTickInner(
   const SETUP_CLASSIFIERS: Record<string, (a: SetupClassifierArgs) => SetupResult> = {
     indicador: ({ ctxLocal, derived, intendedSide, cfg }) => classifySetup({ ctxLocal, derived, intendedSide, cfg }),
     price_action: ({ ctxLocal, intendedSide, cfg, m1Candles }) => classifySetupPriceAction({ ctxLocal, intendedSide, cfg, m1Candles }),
-    mean_reversion: ({ ctxLocal, intendedSide, cfg, m1Candles }) => classifySetupMeanReversion({ ctxLocal, intendedSide, cfg, m1Candles }),
-    range: ({ ctxLocal, intendedSide, cfg, m1Candles }) => classifySetupRange({ ctxLocal, intendedSide, cfg, m1Candles }),
+    mean_reversion: ({ ctxLocal, cfg, m1Candles }) => classifySetupMeanReversion({ ctxLocal, cfg, m1Candles }),
+    range: ({ ctxLocal, cfg, m1Candles }) => classifySetupRange({ ctxLocal, cfg, m1Candles }),
   };
   function classifySetupFor(entryStyle: string | null | undefined, args: SetupClassifierArgs): SetupResult {
     const style = String(entryStyle ?? "indicador");
@@ -2530,6 +2542,21 @@ async function runB3SimulationTickInner(
           ? `${setupInfo.name} validado${setupInfo.side_override ? ` (lado ${setupInfo.side_override.toUpperCase()} escolhido pelo setup)` : ""}`
           : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
       );
+
+      // Modalidades contra-tendência não podem herdar intendedSide. Quando o
+      // classificador ainda não conseguiu derivar um lado (sem esticão/borda),
+      // o setup termina aqui; o comitê nunca é consultado com o lado das médias.
+      const counterTrendStyle = cfg.entry_style === "mean_reversion" || cfg.entry_style === "range";
+      if (counterTrendStyle && !setupInfo.side_override) {
+        const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "lado contra-tendência ainda não definido"}`;
+        log.push({ mode, action: "reject", reason: "no_counter_trend_side", setup: setupInfo.name });
+        finalizeAudit(reason, {
+          last_setup: `Bloqueado: ${setupInfo.name}`,
+          signals: { evaluated_side: null, buy: false, sell: false },
+          setup: setupInfo,
+        });
+        continue;
+      }
 
       // Agentes recebem os limites REAIS do modo — sem isso os 5 modos
       // avaliavam o mesmo tick com constantes idênticas (3,5% / 150-300 pts).
