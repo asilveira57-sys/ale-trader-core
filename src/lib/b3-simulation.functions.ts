@@ -1188,8 +1188,8 @@ async function runB3SimulationTickInner(
   // de perder dinheiro nessa modalidade. Série de candles M1 reais.
   function classifySetupMeanReversion(params: {
     ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
-  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
-    const { ctxLocal, intendedSide, cfg, m1Candles } = params;
+  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>; side_override?: "buy" | "sell" } {
+    const { ctxLocal, cfg, m1Candles } = params;
     const price = Number(ctxLocal.price);
     const open = Number(ctxLocal.open);
     const vwap = Number(ctxLocal.vwap);
