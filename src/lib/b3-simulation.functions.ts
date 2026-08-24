@@ -1247,22 +1247,23 @@ async function runB3SimulationTickInner(
       trend_direction: trend.direction, trend_strength: trend.strength,
       risk_reward: Number(rr.toFixed(2)), min_risk_reward: 1.2,
       last_candle: { high: lastHigh, low: lastLow, close: lastClose },
+      chosen_side: mrSide,
+      side_source: "classifier_override",
+      min_stretch_base: (cfg as any).mean_reversion_min_stretch_pts != null ? "config" : "stop_ratio",
     };
 
     const hardBlock: string[] = [];
     if (!Number.isFinite(ref) || ref <= 0) hardBlock.push("referência de média indisponível (VWAP/EMA21)");
-    // O lado tem que ser contra o esticão: compra só quando o preço está
-    // ABAIXO da média, venda só quando está ACIMA.
-    if (intendedSide === "buy" && stretchPts >= 0) hardBlock.push("compra exige preço abaixo da média de referência");
-    if (intendedSide === "sell" && stretchPts <= 0) hardBlock.push("venda exige preço acima da média de referência");
+    // O lado é do classificador (contra o esticão). Só resta exigir esticão real.
+    if (stretchPts === 0) hardBlock.push("preço exatamente na média de referência — sem esticão");
     if (stretchAbs < minStretch) {
       hardBlock.push(`esticão insuficiente (${Math.round(stretchAbs)} pts < ${Math.round(minStretch)} pts)`);
     }
     // Tendência forte na direção do esticão = não reverter.
     const trendStrongMin = Number((cfg as any).mean_reversion_trend_block_strength ?? 55);
     const trendAgainst =
-      (intendedSide === "buy" && trend.direction === "baixa" && trend.strength >= trendStrongMin) ||
-      (intendedSide === "sell" && trend.direction === "alta" && trend.strength >= trendStrongMin);
+      (mrSide === "buy" && trend.direction === "baixa" && trend.strength >= trendStrongMin) ||
+      (mrSide === "sell" && trend.direction === "alta" && trend.strength >= trendStrongMin);
     if (trendAgainst) {
       hardBlock.push(`tendência forte na direção do esticão (${trend.direction} ${trend.strength}) — reversão bloqueada`);
     }
@@ -1270,7 +1271,7 @@ async function runB3SimulationTickInner(
 
     // Evidências macias de exaustão.
     const soft: { label: string; pass: boolean }[] = [];
-    if (intendedSide === "buy") {
+    if (mrSide === "buy") {
       soft.push({ label: "candle atual não reagiu para cima (sem exaustão da queda)", pass: price > open });
       soft.push({ label: "sem rejeição do fundo (fechamento na parte baixa do candle)",
         pass: Number.isFinite(lastHigh) && Number.isFinite(lastLow) && lastHigh > lastLow
@@ -1296,7 +1297,7 @@ async function runB3SimulationTickInner(
     Object.assign(details, { soft_hits: hits, soft_total: soft.length, soft_min_hits: minHits, soft_failed: failedSoft });
 
     if (hardBlock.length === 0 && softOk) {
-      return { name: "mean_reversion_snapback", ok: true, reasons: [], details };
+      return { name: "mean_reversion_snapback", ok: true, reasons: [], details, side_override: mrSide };
     }
     return {
       name: "no_valid_setup", ok: false,
