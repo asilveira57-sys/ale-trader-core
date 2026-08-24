@@ -1369,6 +1369,8 @@ async function runB3SimulationTickInner(
       risk_reward: Number(rr.toFixed(2)), min_risk_reward: 1.2,
       dist_to_top_pts: Math.round(rangeTop - price),
       dist_to_bottom_pts: Math.round(price - rangeBottom),
+      chosen_side: rangeSide,
+      side_source: "classifier_override",
     };
 
     const hardBlock: string[] = [];
@@ -1386,19 +1388,17 @@ async function runB3SimulationTickInner(
       hardBlock.push(`tendência forte (${trend.direction} ${trend.strength}) — faixa descaracterizada`);
     }
     details["max_trend_strength"] = trendMax;
-    // Lado correto: compra só na banda inferior, venda só na superior.
-    if (intendedSide === "buy" && posInRange > edgePct) {
-      hardBlock.push(`compra exige preço na banda inferior da faixa (posição ${(posInRange * 100).toFixed(0)}%)`);
-    }
-    if (intendedSide === "sell" && posInRange < 1 - edgePct) {
-      hardBlock.push(`venda exige preço na banda superior da faixa (posição ${(posInRange * 100).toFixed(0)}%)`);
+    // O lado é do classificador: compra na banda inferior, venda na superior.
+    // Só o miolo da faixa não opera.
+    if (posInRange > edgePct && posInRange < 1 - edgePct) {
+      hardBlock.push(`preço no meio da faixa (posição ${(posInRange * 100).toFixed(0)}%) — sem borda para operar`);
     }
 
     // Evidências macias.
     const soft: { label: string; pass: boolean }[] = [];
     const roomToMid = Math.abs(mid - price);
-    soft.push({ label: intendedSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
-      pass: intendedSide === "buy" ? price >= open : price <= open });
+    soft.push({ label: rangeSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
+      pass: rangeSide === "buy" ? price >= open : price <= open });
     soft.push({ label: `espaço até o meio da faixa insuficiente (${Math.round(roomToMid)} pts)`,
       pass: roomToMid >= Math.max(stopPts * 0.5, 10) });
     soft.push({ label: `R:R ${rr.toFixed(2)} < 1.2`, pass: rr >= 1.2 });
@@ -1412,7 +1412,7 @@ async function runB3SimulationTickInner(
     Object.assign(details, { soft_hits: hits, soft_total: soft.length, soft_min_hits: minHits, soft_failed: failedSoft });
 
     if (hardBlock.length === 0 && softOk) {
-      return { name: "range_fade", ok: true, reasons: [], details };
+      return { name: "range_fade", ok: true, reasons: [], details, side_override: rangeSide };
     }
     return {
       name: "no_valid_setup", ok: false,
