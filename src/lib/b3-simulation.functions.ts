@@ -2572,14 +2572,14 @@ async function runB3SimulationTickInner(
 
       // Votos: gravados só quando o comitê muda (mesmo veredito em ticks
       // seguidos não gera novas linhas). Nenhuma regra de decisão é alterada.
-      const voteSig = `${decision.final}|${intendedSide}|${votes.map(v => `${v.agent_name}:${v.vote}:${Math.round(Number(v.confidence) || 0)}`).join(",")}`;
+      const voteSig = `${decision.final}|${effectiveSide}|${votes.map(v => `${v.agent_name}:${v.vote}:${Math.round(Number(v.confidence) || 0)}`).join(",")}`;
       if (sigChanged(`votes:${mode}`, voteSig)) {
         const voteRows = votes.map(v => ({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
           market_data_snapshot: {
             snapshot_id: snapId, decision: decision.final, score: decision.score,
-            price: ctx.price, side: intendedSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
+            price: ctx.price, side: effectiveSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
           } as any,
         }));
         await supabase.from("b3_simulation_agent_votes").insert(voteRows);
