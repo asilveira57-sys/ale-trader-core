@@ -735,7 +735,7 @@ async function runB3SimulationTickInner(
         resultado_por_modo: porModo, at: nowIso,
       };
       await supabase.from("b3_simulation_block_events").insert({
-        simulation_run_id: runId, user_id: userId, mode: null,
+        simulation_run_id: runId, user_id: userId, mode: "grupo",
         prev_status: `grupo_nivel_${dec.nivel_anterior}`, new_status: `grupo_nivel_${dec.nivel}`,
         trigger: "grupo_freio_escalonado",
         observed_value: Number(dec.resultado_brl.toFixed(2)),
@@ -744,11 +744,13 @@ async function runB3SimulationTickInner(
         message: dec.motivo, diagnostic_payload: detalhe,
       });
       await supabase.from("system_logs").insert({
-        level: dec.nivel >= 2 ? "error" : "warn",
+        event_type: "b3_grupo_nivel",
+        severity: dec.nivel >= 2 ? "error" : "warning",
         source: "b3_grupo_freio",
         message: `[${run.symbol}/${runVariant}] nível ${dec.nivel_anterior} → ${dec.nivel}: ${dec.motivo}`,
-        metadata: detalhe,
+        technical_data: detalhe,
       });
+
       log.push({ action: "grupo_nivel", symbol: run.symbol, variant: runVariant,
         de: dec.nivel_anterior, para: dec.nivel, resultado: dec.resultado_brl, travados: dec.robos_travados });
     }
