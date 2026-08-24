@@ -1869,11 +1869,23 @@ async function runB3SimulationTickInner(
       } catch { /* observação nunca derruba o motor */ }
     }
 
+    // Freio de grupo reavaliado ANTES do laço de modos: o nível vale para o
+    // tique inteiro e inclui a posição aberta marcada a mercado.
+    let grupo: B3GrupoDecision | null = null;
+    try {
+      grupo = await evaluateGrupo(Number(ctx.price) || null);
+    } catch (e: any) {
+      log.push({ action: "grupo_erro", error: String(e?.message ?? e) });
+    }
+    const grupoNivel = grupo?.nivel ?? 0;
+    const grupoMultiplicador = grupo?.multiplicador ?? 1;
+    const grupoTravados: string[] = grupo?.robos_travados ?? [];
 
     // Timings por modo + isolamento de falha: um modo que estoura não pode
     // derrubar os modos seguintes nem impedir a gravação do snapshot.
     const modeTimings: Record<string, number> = {};
     const runT0 = Date.now();
+
     for (const mode of MODES) {
       const modeT0 = Date.now();
       try {
