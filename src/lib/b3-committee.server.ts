@@ -156,19 +156,30 @@ function aTecnico(c: B3Context, side: B3Side): B3AgentVote {
   };
 }
 
-function aMomentum(c: B3Context, side: B3Side): B3AgentVote {
+function aMomentum(c: B3Context, side: B3Side, counterTrend = false): B3AgentVote {
   const aligned = (side === "buy" && c.momentum > 20) || (side === "sell" && c.momentum < -20);
   const exhausted = Math.abs(c.momentum) > 120;
+  // Modalidades contrárias à tendência (mean_reversion / range) operam POR
+  // definição contra o movimento: exaustão é o sinal de entrada, não o motivo
+  // de recusa. Movimento a favor do lado, nessas modalidades, é apenas neutro.
+  const vote: B3Vote = counterTrend
+    ? (exhausted ? "approve" : "neutral")
+    : (exhausted ? "reject" : aligned ? "approve" : "neutral");
   return {
     agent_name: "Momentum",
-    vote: exhausted ? "reject" : aligned ? "approve" : "neutral",
+    vote,
     confidence: clamp(40 + Math.abs(c.momentum) * 0.5, 30, 90),
-    reason: exhausted ? "Momentum em exaustão — risco de reversão." :
-            `Momentum ${c.momentum.toFixed(0)}.`,
+    reason: counterTrend
+      ? (exhausted
+          ? `Momentum ${c.momentum.toFixed(0)} em exaustão — janela de reversão à média.`
+          : `Momentum ${c.momentum.toFixed(0)} sem exaustão — sem gatilho de reversão.`)
+      : exhausted ? "Momentum em exaustão — risco de reversão." :
+        `Momentum ${c.momentum.toFixed(0)}.`,
     has_veto: false,
-    data: { momentum: c.momentum },
+    data: { momentum: c.momentum, counter_trend: counterTrend, exhausted, aligned },
   };
 }
+
 
 function aVolatilidade(c: B3Context, t?: B3AgentTuning): B3AgentVote {
   // Usa o MESMO limite do modo (cfg.max_volatility_pct). Antes eram 3,5% fixos,
