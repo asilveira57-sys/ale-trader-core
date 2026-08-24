@@ -1188,8 +1188,8 @@ async function runB3SimulationTickInner(
   // de perder dinheiro nessa modalidade. Série de candles M1 reais.
   function classifySetupMeanReversion(params: {
     ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
-  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
-    const { ctxLocal, intendedSide, cfg, m1Candles } = params;
+  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>; side_override?: "buy" | "sell" } {
+    const { ctxLocal, cfg, m1Candles } = params;
     const price = Number(ctxLocal.price);
     const open = Number(ctxLocal.open);
     const vwap = Number(ctxLocal.vwap);
@@ -1219,10 +1219,15 @@ async function runB3SimulationTickInner(
     const atrLike = ranges.length ? ranges.reduce((a, b) => a + b, 0) / ranges.length : 0;
     const stretchPts = Number.isFinite(ref) ? price - ref : 0;
     const stretchAbs = Math.abs(stretchPts);
-    // Esticão mínimo: configurável por modo; padrão 1,5x a amplitude média M1,
-    // com piso em 40% do stop pra não virar ruído em ativo parado.
+    // Esticão mínimo: configurável por modo. Base FIXA em fração do stop —
+    // não escala com a volatilidade do momento. Base dinâmica (atrLike * 1.5)
+    // subia a exigência exatamente no dia de chicote, que é o dia da
+    // modalidade: 347 pts exigidos contra 307 pts de esticão real.
     const minStretch = Number((cfg as any).mean_reversion_min_stretch_pts
-      ?? Math.max(atrLike * 1.5, stopPts * 0.4));
+      ?? stopPts * Number((cfg as any).mean_reversion_min_stretch_stop_ratio ?? 0.6));
+    // Lado escolhido pelo próprio classificador: reversão à média é contrária
+    // ao movimento por definição, então o lado vem do esticão, não das médias.
+    const mrSide: "buy" | "sell" = stretchPts > 0 ? "sell" : "buy";
 
     const last = sorted[sorted.length - 1];
     const prev = sorted[sorted.length - 2];
@@ -1242,22 +1247,23 @@ async function runB3SimulationTickInner(
       trend_direction: trend.direction, trend_strength: trend.strength,
       risk_reward: Number(rr.toFixed(2)), min_risk_reward: 1.2,
       last_candle: { high: lastHigh, low: lastLow, close: lastClose },
+      chosen_side: mrSide,
+      side_source: "classifier_override",
+      min_stretch_base: (cfg as any).mean_reversion_min_stretch_pts != null ? "config" : "stop_ratio",
     };
 
     const hardBlock: string[] = [];
     if (!Number.isFinite(ref) || ref <= 0) hardBlock.push("referência de média indisponível (VWAP/EMA21)");
-    // O lado tem que ser contra o esticão: compra só quando o preço está
-    // ABAIXO da média, venda só quando está ACIMA.
-    if (intendedSide === "buy" && stretchPts >= 0) hardBlock.push("compra exige preço abaixo da média de referência");
-    if (intendedSide === "sell" && stretchPts <= 0) hardBlock.push("venda exige preço acima da média de referência");
+    // O lado é do classificador (contra o esticão). Só resta exigir esticão real.
+    if (stretchPts === 0) hardBlock.push("preço exatamente na média de referência — sem esticão");
     if (stretchAbs < minStretch) {
       hardBlock.push(`esticão insuficiente (${Math.round(stretchAbs)} pts < ${Math.round(minStretch)} pts)`);
     }
     // Tendência forte na direção do esticão = não reverter.
     const trendStrongMin = Number((cfg as any).mean_reversion_trend_block_strength ?? 55);
     const trendAgainst =
-      (intendedSide === "buy" && trend.direction === "baixa" && trend.strength >= trendStrongMin) ||
-      (intendedSide === "sell" && trend.direction === "alta" && trend.strength >= trendStrongMin);
+      (mrSide === "buy" && trend.direction === "baixa" && trend.strength >= trendStrongMin) ||
+      (mrSide === "sell" && trend.direction === "alta" && trend.strength >= trendStrongMin);
     if (trendAgainst) {
       hardBlock.push(`tendência forte na direção do esticão (${trend.direction} ${trend.strength}) — reversão bloqueada`);
     }
@@ -1265,7 +1271,7 @@ async function runB3SimulationTickInner(
 
     // Evidências macias de exaustão.
     const soft: { label: string; pass: boolean }[] = [];
-    if (intendedSide === "buy") {
+    if (mrSide === "buy") {
       soft.push({ label: "candle atual não reagiu para cima (sem exaustão da queda)", pass: price > open });
       soft.push({ label: "sem rejeição do fundo (fechamento na parte baixa do candle)",
         pass: Number.isFinite(lastHigh) && Number.isFinite(lastLow) && lastHigh > lastLow
@@ -1291,7 +1297,7 @@ async function runB3SimulationTickInner(
     Object.assign(details, { soft_hits: hits, soft_total: soft.length, soft_min_hits: minHits, soft_failed: failedSoft });
 
     if (hardBlock.length === 0 && softOk) {
-      return { name: "mean_reversion_snapback", ok: true, reasons: [], details };
+      return { name: "mean_reversion_snapback", ok: true, reasons: [], details, side_override: mrSide };
     }
     return {
       name: "no_valid_setup", ok: false,
@@ -1306,8 +1312,8 @@ async function runB3SimulationTickInner(
   // fechamento M1 além do extremo) ou quando ela é fina/instável demais.
   function classifySetupRange(params: {
     ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
-  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
-    const { ctxLocal, intendedSide, cfg, m1Candles } = params;
+  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>; side_override?: "buy" | "sell" } {
+    const { ctxLocal, cfg, m1Candles } = params;
     const price = Number(ctxLocal.price);
     const open = Number(ctxLocal.open);
     const stopPts = Math.max(1, Number(cfg.stop_pts) || 0);
@@ -1340,6 +1346,9 @@ async function runB3SimulationTickInner(
     const rangeSize = rangeTop - rangeBottom;
     const mid = (rangeTop + rangeBottom) / 2;
     const posInRange = rangeSize > 0 ? (price - rangeBottom) / rangeSize : 0.5;
+    // Lado escolhido pelo próprio classificador: banda inferior compra,
+    // banda superior vende — independente do cruzamento de médias.
+    const rangeSide: "buy" | "sell" = posInRange <= 0.5 ? "buy" : "sell";
     // Zona de operação nos extremos: 25% da faixa por padrão.
     const edgePct = Math.min(0.45, Math.max(0.05, Number((cfg as any).range_edge_pct ?? 0.25)));
     // Faixa mínima: precisa caber o stop com folga, senão qualquer oscilação
@@ -1363,6 +1372,8 @@ async function runB3SimulationTickInner(
       risk_reward: Number(rr.toFixed(2)), min_risk_reward: 1.2,
       dist_to_top_pts: Math.round(rangeTop - price),
       dist_to_bottom_pts: Math.round(price - rangeBottom),
+      chosen_side: rangeSide,
+      side_source: "classifier_override",
     };
 
     const hardBlock: string[] = [];
@@ -1380,19 +1391,17 @@ async function runB3SimulationTickInner(
       hardBlock.push(`tendência forte (${trend.direction} ${trend.strength}) — faixa descaracterizada`);
     }
     details["max_trend_strength"] = trendMax;
-    // Lado correto: compra só na banda inferior, venda só na superior.
-    if (intendedSide === "buy" && posInRange > edgePct) {
-      hardBlock.push(`compra exige preço na banda inferior da faixa (posição ${(posInRange * 100).toFixed(0)}%)`);
-    }
-    if (intendedSide === "sell" && posInRange < 1 - edgePct) {
-      hardBlock.push(`venda exige preço na banda superior da faixa (posição ${(posInRange * 100).toFixed(0)}%)`);
+    // O lado é do classificador: compra na banda inferior, venda na superior.
+    // Só o miolo da faixa não opera.
+    if (posInRange > edgePct && posInRange < 1 - edgePct) {
+      hardBlock.push(`preço no meio da faixa (posição ${(posInRange * 100).toFixed(0)}%) — sem borda para operar`);
     }
 
     // Evidências macias.
     const soft: { label: string; pass: boolean }[] = [];
     const roomToMid = Math.abs(mid - price);
-    soft.push({ label: intendedSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
-      pass: intendedSide === "buy" ? price >= open : price <= open });
+    soft.push({ label: rangeSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
+      pass: rangeSide === "buy" ? price >= open : price <= open });
     soft.push({ label: `espaço até o meio da faixa insuficiente (${Math.round(roomToMid)} pts)`,
       pass: roomToMid >= Math.max(stopPts * 0.5, 10) });
     soft.push({ label: `R:R ${rr.toFixed(2)} < 1.2`, pass: rr >= 1.2 });
@@ -1406,7 +1415,7 @@ async function runB3SimulationTickInner(
     Object.assign(details, { soft_hits: hits, soft_total: soft.length, soft_min_hits: minHits, soft_failed: failedSoft });
 
     if (hardBlock.length === 0 && softOk) {
-      return { name: "range_fade", ok: true, reasons: [], details };
+      return { name: "range_fade", ok: true, reasons: [], details, side_override: rangeSide };
     }
     return {
       name: "no_valid_setup", ok: false,
@@ -1420,7 +1429,13 @@ async function runB3SimulationTickInner(
   type SetupClassifierArgs = {
     ctxLocal: any; derived: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
   };
-  type SetupResult = { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> };
+  // side_override: classificadores contrários à tendência (mean_reversion,
+  // range) escolhem o próprio lado; o motor usa esse lado no lugar do
+  // intendedSide (que é cruzamento de médias, ou seja, seguidor de tendência).
+  type SetupResult = {
+    name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>;
+    side_override?: "buy" | "sell";
+  };
   const SETUP_CLASSIFIERS: Record<string, (a: SetupClassifierArgs) => SetupResult> = {
     indicador: ({ ctxLocal, derived, intendedSide, cfg }) => classifySetup({ ctxLocal, derived, intendedSide, cfg }),
     price_action: ({ ctxLocal, intendedSide, cfg, m1Candles }) => classifySetupPriceAction({ ctxLocal, intendedSide, cfg, m1Candles }),
@@ -2492,11 +2507,34 @@ async function runB3SimulationTickInner(
         continue;
       }
 
+      // Classificação de setup técnico ANTES do comitê: modalidades contrárias
+      // à tendência (mean_reversion, range) escolhem o próprio lado, e o comitê
+      // precisa julgar o lado que será realmente operado — antes ele votava no
+      // lado do cruzamento de médias e a ordem saía no lado oposto.
+      const setupInfo = classifySetupFor(cfg.entry_style, {
+        ctxLocal: localCtx, derived, intendedSide, cfg, m1Candles,
+      });
+      const effectiveSide: B3Side = setupInfo.side_override ?? intendedSide;
+      if (setupInfo.side_override && setupInfo.side_override !== intendedSide) {
+        snapshotExtra.side_overrides = {
+          ...(snapshotExtra.side_overrides ?? {}),
+          [mode]: { entry_style: String(cfg.entry_style ?? "indicador"), engine_side: intendedSide, classifier_side: setupInfo.side_override },
+        };
+      }
+      const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
+      addCheck(
+        "setup",
+        "Setup técnico",
+        setupAllowed,
+        setupAllowed
+          ? `${setupInfo.name} validado${setupInfo.side_override ? ` (lado ${setupInfo.side_override.toUpperCase()} escolhido pelo setup)` : ""}`
+          : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
+      );
 
       // Agentes recebem os limites REAIS do modo — sem isso os 5 modos
       // avaliavam o mesmo tick com constantes idênticas (3,5% / 150-300 pts).
       // O piso de volatilidade vem de `lateral_vol_min` (portão de lateralidade).
-      const votes = runB3Agents(localCtx, intendedSide, risk, {
+      const votes = runB3Agents(localCtx, effectiveSide, risk, {
         max_volatility_pct: Number(cfg.max_volatility_pct),
         min_volatility_pct: Number((cfg as any).lateral_vol_min ?? 0.3),
         lateral_strength_min: Number((cfg as any).lateral_strength_min ?? 30),
@@ -2509,12 +2547,12 @@ async function runB3SimulationTickInner(
         min_confidence: Number(cfg.min_confidence),
         min_score: Number(cfg.min_score),
       };
-      const decision = buildB3Decision(votes, intendedSide, committee);
+      const decision = buildB3Decision(votes, effectiveSide, committee);
       addCheck("score", "Score", Number(decision.score) >= Number(cfg.min_score), `${decision.score.toFixed(0)} / mínimo ${Number(cfg.min_score).toFixed(0)}`);
       addCheck("confidence", "Confiança", Number(decision.avg_confidence) >= Number(cfg.min_confidence), `${decision.avg_confidence.toFixed(0)} / mínimo ${Number(cfg.min_confidence).toFixed(0)}`);
       addCheck("committee", "Comitê", decision.final === "approved", decision.justification);
-      addCheck("signal_buy", "Sinal BUY", decision.final === "approved" && intendedSide === "buy", intendedSide === "buy" ? decision.final : "lado avaliado SELL", false);
-      addCheck("signal_sell", "Sinal SELL", decision.final === "approved" && intendedSide === "sell", intendedSide === "sell" ? decision.final : "lado avaliado BUY", false);
+      addCheck("signal_buy", "Sinal BUY", decision.final === "approved" && effectiveSide === "buy", effectiveSide === "buy" ? decision.final : "lado avaliado SELL", false);
+      addCheck("signal_sell", "Sinal SELL", decision.final === "approved" && effectiveSide === "sell", effectiveSide === "sell" ? decision.final : "lado avaliado BUY", false);
 
       // Telemetria por modo dos limiares de lateralidade efetivamente aplicados.
       {
@@ -2531,35 +2569,17 @@ async function runB3SimulationTickInner(
         };
       }
 
-      // Classificação de setup técnico — Fase 2: os 4 padrões classificados
-      // podem operar (trend_pullback, breakout_retest, consolidation_breakout,
-      // support_resistance_rejection), cada um com sua própria checagem de
-      // evidência mínima dentro de classifySetup. no_valid_setup nunca opera.
-      const setupInfo = classifySetupFor(cfg.entry_style, {
-        ctxLocal: localCtx, derived, intendedSide, cfg, m1Candles,
-      });
-
-
-      const setupAllowed = setupInfo.name !== "no_valid_setup" && setupInfo.ok;
-      addCheck(
-        "setup",
-        "Setup técnico",
-        setupAllowed,
-        setupAllowed
-          ? `${setupInfo.name} validado`
-          : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
-      );
 
       // Votos: gravados só quando o comitê muda (mesmo veredito em ticks
       // seguidos não gera novas linhas). Nenhuma regra de decisão é alterada.
-      const voteSig = `${decision.final}|${intendedSide}|${votes.map(v => `${v.agent_name}:${v.vote}:${Math.round(Number(v.confidence) || 0)}`).join(",")}`;
+      const voteSig = `${decision.final}|${effectiveSide}|${votes.map(v => `${v.agent_name}:${v.vote}:${Math.round(Number(v.confidence) || 0)}`).join(",")}`;
       if (sigChanged(`votes:${mode}`, voteSig)) {
         const voteRows = votes.map(v => ({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
           market_data_snapshot: {
             snapshot_id: snapId, decision: decision.final, score: decision.score,
-            price: ctx.price, side: intendedSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
+            price: ctx.price, side: effectiveSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
           } as any,
         }));
         await supabase.from("b3_simulation_agent_votes").insert(voteRows);
@@ -2574,20 +2594,20 @@ async function runB3SimulationTickInner(
           m.committee_rejections = (Number(m.committee_rejections) || 0) + 1;
         }
 
-        log.push({ mode, action: "reject", reason: "no_valid_setup", setup: setupInfo.name, side: intendedSide });
+        log.push({ mode, action: "reject", reason: "no_valid_setup", setup: setupInfo.name, side: effectiveSide });
         finalizeAudit(reason, {
           last_analysis: decision.justification,
           last_score: decision.score,
           last_confidence: decision.avg_confidence,
           last_setup: `Bloqueado: ${setupInfo.name}`,
-          signals: { evaluated_side: intendedSide, buy: false, sell: false },
+          signals: { evaluated_side: effectiveSide, buy: false, sell: false },
           committee: decision,
           setup: setupInfo,
         });
       } else if (decision.final === "approved") {
         let entryAudit: B3QuoteExecutionAudit;
         try {
-          entryAudit = getB3ExecutionAudit(priceSrc, intendedSide, "entry", "runB3SimulationTick.openOrder");
+          entryAudit = getB3ExecutionAudit(priceSrc, effectiveSide, "entry", "runB3SimulationTick.openOrder");
           if (priceSrc.source === "mt5_xp_demo") assertB3StrictMt5ExecutionAudit(entryAudit, "runB3SimulationTick.openOrder", asset.symbol);
           providerStats.last_price_function = entryAudit.execution_price_origin;
         } catch (e) {
@@ -2606,8 +2626,8 @@ async function runB3SimulationTickInner(
             last_analysis: decision.justification,
             last_score: decision.score,
             last_confidence: decision.avg_confidence,
-            last_setup: `Setup ${intendedSide.toUpperCase()} aprovado, bloqueado no preço`,
-            signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
+            last_setup: `Setup ${effectiveSide.toUpperCase()} aprovado, bloqueado no preço`,
+            signals: { evaluated_side: effectiveSide, buy: effectiveSide === "buy", sell: effectiveSide === "sell" },
             committee: decision,
             setup: setupInfo,
           });
@@ -2617,7 +2637,7 @@ async function runB3SimulationTickInner(
           const slip = Number(run.simulated_slippage_pts) || 0;
           entryAudit = {
             ...entryAudit,
-            execution_price: Math.round((intendedSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip) / asset.tick_size) * asset.tick_size,
+            execution_price: Math.round((effectiveSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip) / asset.tick_size) * asset.tick_size,
             execution_price_origin: `${entryAudit.execution_price_origin}+legacy_slippage`,
           };
         }
@@ -2631,15 +2651,15 @@ async function runB3SimulationTickInner(
         const qty = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
         const { data: insertedOrder, error: oErr } = await supabase.from("b3_simulation_orders").insert({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
-          mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: intendedSide,
+          mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: effectiveSide,
           entry_price: Math.round(entry / asset.tick_size) * asset.tick_size, quantity: qty,
           // taxa da ponta de entrada, derivada do perfil do ativo
           fees: computeB3Fees({ assetProfile: asset, quantity: qty, entryPrice: entry }), status: "open",
           ...orderAuditPatch(entryAudit),
         }).select("id").single();
         if (oErr) throw oErr;
-        markAuditEvent(`abertura:${mode}:${intendedSide}`);
-        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", intendedSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant);
+        markAuditEvent(`abertura:${mode}:${effectiveSide}`);
+        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant);
         providerStats.last_entry_price = entry;
         openOrdersCache = null;
         await supabase.from("b3_simulation_modes")
@@ -2649,13 +2669,13 @@ async function runB3SimulationTickInner(
           }).eq("id", m.id);
         m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
         m.contracts_traded = (Number(m.contracts_traded) || 0) + qty;
-        log.push({ mode, action: "open", side: intendedSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin, setup: setupInfo.name });
-        finalizeAudit(`Setup trend_pullback ${intendedSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
+        log.push({ mode, action: "open", side: effectiveSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin, setup: setupInfo.name });
+        finalizeAudit(`Setup ${setupInfo.name} ${effectiveSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
           last_analysis: decision.justification,
           last_score: decision.score,
           last_confidence: decision.avg_confidence,
-          last_setup: `trend_pullback ${intendedSide.toUpperCase()}`,
-          signals: { evaluated_side: intendedSide, buy: intendedSide === "buy", sell: intendedSide === "sell" },
+          last_setup: `${setupInfo.name} ${effectiveSide.toUpperCase()}`,
+          signals: { evaluated_side: effectiveSide, buy: effectiveSide === "buy", sell: effectiveSide === "sell" },
           committee: decision,
           setup: setupInfo,
         });
