@@ -649,6 +649,25 @@ async function runB3SimulationTickInner(
   }
   let realizedTodayByMode = await getRealizedTodayByMode();
 
+  function markOpenOrderBrl(order: any, markPrice: number | null): number | null {
+    if (!order || markPrice == null || !(markPrice > 0)) return null;
+    const dir = order.side === "buy" ? 1 : -1;
+    return (markPrice - Number(order.entry_price)) * dir
+      * Number(asset.tick_value_brl ?? POINT_VALUE_BRL) * Number(order.quantity ?? 1);
+  }
+
+  function liveExitMarkPrice(order: any): number | null {
+    if (!order) return null;
+    if (priceSrc.source === "mt5_xp_demo") {
+      const bid = Number(priceSrc.raw?.bid);
+      const ask = Number(priceSrc.raw?.ask);
+      const p = order.side === "buy" ? bid : ask;
+      return p > 0 ? Math.round(p / Number(asset.tick_size)) * Number(asset.tick_size) : null;
+    }
+    const p = Number(ctx.price);
+    return p > 0 ? Math.round(p / Number(asset.tick_size)) * Number(asset.tick_size) : null;
+  }
+
   // ── Freio escalonado por GRUPO (symbol + variant) ─────────────────────────
   // Configuração e estado do dia vivem em b3_grupo_limites / b3_grupo_estado_dia.
   // O motor só lê e age. Travar = bloquear ENTRADA NOVA; gestão de posição
@@ -1910,6 +1929,9 @@ async function runB3SimulationTickInner(
 
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
+      const openMarkPriceForProtection = liveExitMarkPrice(open);
+      const openMtmBrlForProtection = markOpenOrderBrl(open, openMarkPriceForProtection);
+      const markedTodayForProtection = realizedToday + (openMtmBrlForProtection ?? 0);
 
       const loadedConfig = normalizeModeConfig(cfg);
       const cfgCompare = configComparison(cfg, loadedConfig);
@@ -2092,6 +2114,7 @@ async function runB3SimulationTickInner(
 
       const protDec = evaluateB3Protection(protCur, protCfg, {
         realized_today_brl: realizedToday,
+        marked_today_brl: markedTodayForProtection,
         total_trades_today: Number(m.total_trades ?? 0),
         operating_minutes_today: opMinutes,
         volatility_pct: ctx.volatility_pct,
@@ -2134,10 +2157,22 @@ async function runB3SimulationTickInner(
             prev_status: protDec.transition.from,
             new_status: protDec.transition.to,
             trigger: `protection:${protDec.transition.to}`,
-            observed_value: realizedToday,
-            limit_value: protCfg.daily_gain_target_brl,
-            pnl_at_moment: realizedToday,
+            observed_value: protDec.transition.to === "blocked_peak_giveback" ? markedTodayForProtection : realizedToday,
+            limit_value: protDec.transition.to === "blocked_peak_giveback"
+              ? Number(protDec.next.day_peak_profit_brl ?? 0) * Number(protCfg.peak_giveback_pct ?? 0.4)
+              : protCfg.daily_gain_target_brl,
+            pnl_at_moment: protDec.transition.to === "blocked_peak_giveback" ? markedTodayForProtection : realizedToday,
             message: protDec.transition.reason,
+            related_order_id: open?.id ?? null,
+            diagnostic_payload: {
+              realized_today_brl: realizedToday,
+              open_mtm_brl: openMtmBrlForProtection,
+              marked_today_brl: markedTodayForProtection,
+              day_peak_profit_brl: protDec.next.day_peak_profit_brl,
+              peak_giveback_pct: protCfg.peak_giveback_pct,
+              peak_lock_min_profit_brl: protCfg.peak_lock_min_profit_brl,
+              mark_price: openMarkPriceForProtection,
+            } as any,
           });
         } catch { /* best-effort */ }
       }
@@ -2221,6 +2256,88 @@ async function runB3SimulationTickInner(
         }
         const markPrice = markAudit.execution_price;
         const movePts = (markPrice - Number(open.entry_price)) * dirSign;
+        const openMtmBrlAtMark = markOpenOrderBrl(open, markPrice);
+        const markedTodayAtMark = realizedToday + (openMtmBrlAtMark ?? 0);
+
+        // Freio de devolução de pico: a proteção já foi reavaliada neste tique
+        // com o resultado da posição aberta marcado a mercado. Se o limite foi
+        // atingido, fecha a posição a mercado agora; a trava continua sendo só
+        // de entrada nova quando não há posição aberta.
+        if (protDec.next.protection_state === "blocked_peak_giveback") {
+          const peak = Number(protDec.next.day_peak_profit_brl ?? 0);
+          const allowed = peak * Number(protCfg.peak_giveback_pct ?? 0.4);
+          const givenBack = Math.max(0, peak - markedTodayAtMark);
+          const exitAuditFinal: B3QuoteExecutionAudit = {
+            ...markAudit,
+            execution_price_origin: `${markAudit.execution_price_origin}+peak_giveback_lock`,
+          };
+          const tradeCtx = await closeOrder(supabase, userId, run, m, open, exitAuditFinal, "peak_giveback_lock", marketHistory, asset);
+          markAuditEvent(`fechamento:${mode}:peak_giveback_lock`);
+          providerStats.last_exit_price = exitAuditFinal.execution_price;
+          openOrdersCache = null;
+          realizedTodayByMode = await getRealizedTodayByMode();
+          try {
+            await supabase.from("b3_simulation_orders").update({
+              diagnostic_payload: {
+                exit_evaluation: "peak_giveback_mark_to_market",
+                close_reason: "peak_giveback_lock",
+                realized_today_before_close_brl: realizedToday,
+                open_mtm_brl: openMtmBrlAtMark,
+                marked_today_brl: markedTodayAtMark,
+                day_peak_profit_brl: peak,
+                given_back_brl: givenBack,
+                limit_brl: allowed,
+                peak_giveback_pct: protCfg.peak_giveback_pct,
+                peak_lock_min_profit_brl: protCfg.peak_lock_min_profit_brl,
+                executed_price: exitAuditFinal.execution_price,
+                quote_age_s: Number(priceSrc.quote_age_s ?? 0),
+              },
+            }).eq("id", open.id).eq("user_id", userId);
+          } catch { /* diagnóstico nunca derruba o fechamento */ }
+          try {
+            await supabase.from("b3_simulation_block_events").insert({
+              simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
+              mode,
+              prev_status: m.current_status ?? "operando",
+              new_status: "blocked_peak_giveback",
+              trigger: "protection_peak_giveback_close",
+              related_order_id: open.id,
+              observed_value: givenBack,
+              limit_value: allowed,
+              pnl_at_moment: markedTodayAtMark,
+              message: `Freio de devolução de pico fechou posição aberta: devolução ${givenBack.toFixed(2)} BRL / limite ${allowed.toFixed(2)} BRL.`,
+              diagnostic_payload: {
+                realized_today_brl: realizedToday,
+                open_mtm_brl: openMtmBrlAtMark,
+                marked_today_brl: markedTodayAtMark,
+                day_peak_profit_brl: peak,
+                mark_price: markPrice,
+                close_reason: "peak_giveback_lock",
+              } as any,
+            });
+          } catch { /* auditoria best-effort */ }
+          try {
+            await supabase.from("system_logs").insert({
+              event_type: "peak_giveback_lock_close",
+              source: `b3:${asset.symbol}:${mode}`,
+              severity: "warning",
+              message: `Freio de devolução de pico encerrou posição ${open.side}: devolução ${givenBack.toFixed(2)} BRL / limite ${allowed.toFixed(2)} BRL.`,
+              technical_data: {
+                order_id: open.id, run_id: runId, mode, symbol: asset.symbol,
+                realized_today_brl: realizedToday, open_mtm_brl: openMtmBrlAtMark,
+                marked_today_brl: markedTodayAtMark, day_peak_profit_brl: peak,
+                limit_brl: allowed, executed_price: exitAuditFinal.execution_price,
+              } as any,
+            });
+          } catch { /* log best-effort */ }
+          log.push({ mode, action: "close", reason: "peak_giveback_lock", price: exitAuditFinal.execution_price, given_back_brl: givenBack, limit_brl: allowed });
+          finalizeAudit(`Freio de devolução de pico: ${givenBack.toFixed(2)} BRL devolvidos de ${peak.toFixed(2)} BRL — posição encerrada.`, {
+            last_setup: `Posição ${open.side.toUpperCase()} em gestão`,
+            signals: { evaluated_side: open.side, buy: false, sell: false },
+            trade_event: tradeCtx,
+          });
+          continue;
+        }
         let hitStop = movePts <= -Number(cfg.stop_pts);
         let hitGain = movePts >= Number(cfg.gain_pts);
 
