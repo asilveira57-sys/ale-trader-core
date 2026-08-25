@@ -1144,6 +1144,7 @@ async function runB3SimulationTickInner(
     | "support_resistance_rejection"
     | "mean_reversion_snapback"
     | "range_fade"
+    | "channel_breakout"
     | "no_valid_setup";
 
   function classifySetup(params: {
@@ -1576,23 +1577,168 @@ async function runB3SimulationTickInner(
     };
   }
 
+  // Modalidade rompimento: reaproveita o MESMO detector de faixa da modalidade
+  // `range` (máximas/mínimas dos candles M1 da janela), mas opera a saída da
+  // faixa em vez do retorno ao meio — são posições opostas na mesma borda.
+  //
+  // O canal é medido SEM o candle do rompimento: incluí-lo esticaria a borda
+  // junto com o preço e nenhum rompimento seria detectado. O rompimento é o
+  // FECHAMENTO do minuto além da borda + uma folga mínima, pra não entrar em
+  // pavio. O lado é derivado pela borda rompida (superior = compra, inferior =
+  // venda), nunca pelo lado tendencial do motor.
+  //
+  // Níveis dinâmicos, devolvidos pelo classificador e não fixos em pontos:
+  // alvo = 1,0 × altura do canal; stop = 0,45 × altura, medido a partir da
+  // entrada — se o preço volta para dentro do canal, o rompimento falhou.
+  function classifySetupBreakout(params: {
+    ctxLocal: any; cfg: any; m1Candles: any[];
+  }): {
+    name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>;
+    side_override?: "buy" | "sell";
+    stop_pts_override?: number | null; gain_pts_override?: number | null;
+  } {
+    const { ctxLocal, cfg, m1Candles } = params;
+    const price = Number(ctxLocal.price);
+    const stopPtsCfg = Math.max(1, Number(cfg.stop_pts) || 0);
+    const vol = Number(ctxLocal.volatility_pct ?? 0);
+    const trend = classifyTrend(ctxLocal, Number(asset?.trend_strength_factor ?? 5));
+
+    const sorted = (m1Candles ?? []).slice()
+      .sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
+    const lookback = Math.max(8, Math.min(60, Number((cfg as any).range_lookback_candles ?? 20)));
+    if (sorted.length < 9) {
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: ["aguardando candles de 1 minuto (mínimo 9)"],
+        details: { m1_candles: sorted.length, entry_style: "rompimento" },
+      };
+    }
+
+    // Janela do canal EXCLUI o último candle fechado — ele é o candidato a rompimento.
+    const windowAll = sorted.slice(-(lookback + 1));
+    const channelCandles = windowAll.slice(0, -1);
+    const last: any = windowAll[windowAll.length - 1];
+    const highs = channelCandles.map((c: any) => Number(c.candle_high)).filter(Number.isFinite);
+    const lows = channelCandles.map((c: any) => Number(c.candle_low)).filter(Number.isFinite);
+    if (highs.length < 5 || lows.length < 5) {
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: ["janela de canal sem candles suficientes"],
+        details: { channel_candles: channelCandles.length, entry_style: "rompimento" },
+      };
+    }
+
+    const rangeTop = Math.max(...highs);
+    const rangeBottom = Math.min(...lows);
+    const rangeSize = rangeTop - rangeBottom;
+    const minRangeSize = Number((cfg as any).range_min_size_pts ?? stopPtsCfg * 1.5);
+    // Folga mínima além da borda no FECHAMENTO do minuto, pra não entrar em pavio.
+    const minClear = Number((cfg as any).breakout_min_clearance_pts ?? Math.max(stopPtsCfg * 0.1, Number(asset?.tick_size ?? 0)));
+    const lastClose = Number(last?.candle_close ?? price);
+    const lastOpen = Number(last?.candle_open ?? lastClose);
+
+    const clearanceUp = lastClose - rangeTop;
+    const clearanceDown = rangeBottom - lastClose;
+    const brokeUp = clearanceUp >= minClear;
+    const brokeDown = clearanceDown >= minClear;
+    const breakoutSide: "buy" | "sell" | undefined = brokeUp ? "buy" : brokeDown ? "sell" : undefined;
+
+    // Níveis dinâmicos a partir da altura do canal rompido.
+    const stopDyn = Math.max(Number(asset?.tick_size ?? 1) * 2, Math.round(rangeSize * 0.45));
+    const gainDyn = Math.round(rangeSize * 1.0);
+    const rr = stopDyn > 0 ? gainDyn / stopDyn : 0;
+
+    // PASSO 3 da especificação: o rompimento inverte a relação com a
+    // lateralidade — exige-se apenas que o mercado ESTAVA lateral antes,
+    // reaproveitando os mesmos dois parâmetros (lateral_strength_min e
+    // lateral_vol_min). O rompimento em si é detectado pelo preço ultrapassar
+    // a borda, não por filtro de tendência.
+    const latStrengthMin = Number((cfg as any).lateral_strength_min ?? 0);
+    const latVolMin = Number((cfg as any).lateral_vol_min ?? 0);
+    const wasLateral = trend.direction === "lateral" || trend.strength < latStrengthMin || vol < latVolMin;
+
+    const priceBeyondBorder = breakoutSide === "buy" ? price > rangeTop : breakoutSide === "sell" ? price < rangeBottom : false;
+    const clearance = breakoutSide === "buy" ? clearanceUp : breakoutSide === "sell" ? clearanceDown : Math.max(clearanceUp, clearanceDown);
+
+    const details: Record<string, any> = {
+      entry_style: "rompimento",
+      lookback_candles: lookback,
+      channel_candles: channelCandles.length,
+      range_top: rangeTop, range_bottom: rangeBottom, range_size_pts: rangeSize,
+      min_range_size_pts: minRangeSize, min_clearance_pts: minClear,
+      last_minute_open: lastOpen, last_minute_close: lastClose,
+      breakout_clearance_pts: clearance,
+      price_vs_border: price > rangeTop ? "acima_da_borda" : price < rangeBottom ? "abaixo_da_borda" : "dentro_do_canal",
+      lateralidade_previa: wasLateral,
+      lateral_strength_min: latStrengthMin, lateral_vol_min: latVolMin,
+      trend_strength: trend.strength, volatility_pct: vol,
+      stop_dinamico_pts: stopDyn, alvo_dinamico_pts: gainDyn,
+      "r:r": Number(rr.toFixed(2)),
+    };
+
+    // Bloqueios duros — um só já descarta.
+    const hardBlock: string[] = [];
+    if (rangeSize < minRangeSize) hardBlock.push(`canal estreito demais pra rompimento operável (${rangeSize.toFixed(0)} pts < mínimo ${minRangeSize.toFixed(0)} pts)`);
+    if (!wasLateral) hardBlock.push(`mercado não estava lateral antes do rompimento (força ${trend.strength.toFixed(1)}, vol ${(vol * 100).toFixed(1)}%)`);
+    if (!breakoutSide) hardBlock.push(`sem fechamento além da borda do canal (fechamento ${lastClose.toFixed(1)}, bordas ${rangeBottom.toFixed(1)}–${rangeTop.toFixed(1)}, folga mínima ${minClear.toFixed(1)} pts)`);
+
+    // Evidências de qualidade do rompimento (placar, não certezas).
+    const soft: { label: string; pass: boolean }[] = [
+      { label: `preço atual voltou para dentro do canal (${price.toFixed(1)})`, pass: priceBeyondBorder },
+      { label: `candle do rompimento sem corpo na direção (${lastOpen.toFixed(1)}→${lastClose.toFixed(1)})`,
+        pass: breakoutSide === "buy" ? lastClose > lastOpen : breakoutSide === "sell" ? lastClose < lastOpen : false },
+      { label: `folga além da borda sem convicção (< ${(minClear * 2).toFixed(1)} pts)`,
+        pass: breakoutSide != null && clearance >= minClear * 2 },
+    ];
+    const failedSoft = soft.filter((s) => !s.pass).map((s) => s.label);
+    const minHits = Number((cfg as any).breakout_min_soft_hits ?? 2);
+    const hits = soft.length - failedSoft.length;
+    const softOk = hits >= minHits;
+    Object.assign(details, { soft_hits: hits, soft_total: soft.length, soft_min_hits: minHits, soft_failed: failedSoft });
+
+    if (hardBlock.length === 0 && softOk) {
+      return {
+        name: "channel_breakout", ok: true, reasons: [], details,
+        side_override: breakoutSide,
+        stop_pts_override: stopDyn,
+        gain_pts_override: gainDyn,
+      };
+    }
+    return {
+      name: "no_valid_setup", ok: false,
+      reasons: [...hardBlock, ...(softOk ? [] : failedSoft)],
+      details,
+      side_override: breakoutSide,
+      stop_pts_override: hardBlock.length === 0 ? stopDyn : null,
+      gain_pts_override: hardBlock.length === 0 ? gainDyn : null,
+    };
+  }
+
+
   // Mapa entry_style → classificador. Acrescentar modalidade nova = uma linha
   // aqui, sem tocar no ponto de chamada dentro do laço de modos.
   type SetupClassifierArgs = {
     ctxLocal: any; derived: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
   };
-  // side_override: classificadores contrários à tendência (mean_reversion,
-  // range) escolhem o próprio lado; o motor usa esse lado no lugar do
-  // intendedSide (que é cruzamento de médias, ou seja, seguidor de tendência).
+  // side_override: classificadores que derivam o próprio lado (mean_reversion,
+  // range, rompimento) escolhem o lado a partir do esticão/borda/rompimento; o
+  // motor usa esse lado no lugar do intendedSide (que é cruzamento de médias,
+  // ou seja, seguidor de tendência).
+  // stop_pts_override/gain_pts_override: níveis dinâmicos devolvidos pelo
+  // classificador (rompimento = frações da altura do canal). Quando presentes,
+  // são gravados na ordem e a gestão de posição os usa no lugar dos fixos.
   type SetupResult = {
     name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>;
     side_override?: "buy" | "sell";
+    stop_pts_override?: number | null;
+    gain_pts_override?: number | null;
   };
   const SETUP_CLASSIFIERS: Record<string, (a: SetupClassifierArgs) => SetupResult> = {
     indicador: ({ ctxLocal, derived, intendedSide, cfg }) => classifySetup({ ctxLocal, derived, intendedSide, cfg }),
     price_action: ({ ctxLocal, intendedSide, cfg, m1Candles }) => classifySetupPriceAction({ ctxLocal, intendedSide, cfg, m1Candles }),
     mean_reversion: ({ ctxLocal, cfg, m1Candles }) => classifySetupMeanReversion({ ctxLocal, cfg, m1Candles }),
     range: ({ ctxLocal, cfg, m1Candles }) => classifySetupRange({ ctxLocal, cfg, m1Candles }),
+    rompimento: ({ ctxLocal, cfg, m1Candles }) => classifySetupBreakout({ ctxLocal, cfg, m1Candles }),
   };
   function classifySetupFor(entryStyle: string | null | undefined, args: SetupClassifierArgs): SetupResult {
     const style = String(entryStyle ?? "indicador");
@@ -1821,7 +1967,9 @@ async function runB3SimulationTickInner(
         if (!open || !cfg || pendingStopSeen.has(open.id)) return;
         pendingStopSeen.add(open.id);
         const dir = open.side === "buy" ? 1 : -1;
-        const stopPts = Number(cfg.stop_pts ?? 0);
+        // Níveis por ordem: rompimento grava stop_pts próprio na ordem; as
+        // demais modalidades caem na configuração do modo.
+        const stopPts = Number(open.stop_pts ?? cfg.stop_pts ?? 0);
         if (!(stopPts > 0)) return;
         const entryPrice = Number(open.entry_price);
         if (!Number.isFinite(entryPrice)) return;
@@ -2338,8 +2486,12 @@ async function runB3SimulationTickInner(
           });
           continue;
         }
-        let hitStop = movePts <= -Number(cfg.stop_pts);
-        let hitGain = movePts >= Number(cfg.gain_pts);
+        // Níveis por ordem: modalidades com níveis dinâmicos (rompimento)
+        // gravam stop_pts/gain_pts na ordem; as demais caem na configuração.
+        const orderStopPts = Number(open.stop_pts ?? cfg.stop_pts);
+        const orderGainPts = Number(open.gain_pts ?? cfg.gain_pts);
+        let hitStop = movePts <= -orderStopPts;
+        let hitGain = movePts >= orderGainPts;
 
         // ────────── avaliação INTRA-CANDLE de stop/alvo (fidelidade) ──────────
         // O cron roda 1x/min, mas o mercado anda dentro do minuto (mediana de
@@ -2350,8 +2502,8 @@ async function runB3SimulationTickInner(
         // toque. A execução é sempre no Bid/Ask corrente auditado: o candle
         // prova que o nível foi tocado, mas não prova liquidez naquele preço.
         // Convenção conservadora de backtest: stop e alvo no mesmo candle → stop.
-        const stopLevel = Number(open.entry_price) - dirSign * Number(cfg.stop_pts);
-        const gainLevel = Number(open.entry_price) + dirSign * Number(cfg.gain_pts);
+        const stopLevel = Number(open.entry_price) - dirSign * orderStopPts;
+        const gainLevel = Number(open.entry_price) + dirSign * orderGainPts;
         const entryMsOpen = open.entry_time ? new Date(open.entry_time).getTime() : null;
         const lastEvalMs = open.last_eval_minute_ts ? new Date(open.last_eval_minute_ts).getTime() : null;
         const evalFromMs = lastEvalMs ?? entryMsOpen;
