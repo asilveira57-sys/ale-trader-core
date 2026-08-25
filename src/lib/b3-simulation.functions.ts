@@ -2841,15 +2841,47 @@ async function runB3SimulationTickInner(
         // baixo, piso de 1). Vale só para ENTRADA NOVA.
         const qty = grupoNivel >= 1 ? aplicarFatorContratos(qtyProt, grupoMultiplicador) : qtyProt;
 
-        const { data: insertedOrder, error: oErr } = await supabase.from("b3_simulation_orders").insert({
+        const orderPayload: any = {
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: effectiveSide,
           entry_price: Math.round(entry / asset.tick_size) * asset.tick_size, quantity: qty,
           // taxa da ponta de entrada, derivada do perfil do ativo
           fees: computeB3Fees({ assetProfile: asset, quantity: qty, entryPrice: entry }), status: "open",
           ...orderAuditPatch(entryAudit),
-        }).select("id").single();
-        if (oErr) throw oErr;
+        };
+        // Instrumentação permanente do veredito do comitê na própria ordem.
+        // b3_simulation_orders está fora da retenção — o histórico não se perde.
+        const instrumentation: any = {
+          entry_score: Number(decision.score ?? 0),
+          entry_confidence: Number(decision.avg_confidence ?? 0),
+          entry_approve_votes: Number((decision as any).approve_votes ?? 0),
+          entry_setup: setupInfo?.name ?? null,
+        };
+        let insertedOrder: { id: string } | null = null;
+        {
+          const res = await (supabase as any).from("b3_simulation_orders")
+            .insert({ ...orderPayload, ...instrumentation }).select("id").single();
+          if (res.error) {
+            // A instrumentação nunca pode impedir a abertura da ordem.
+            const retry = await (supabase as any).from("b3_simulation_orders")
+              .insert(orderPayload).select("id").single();
+            if (retry.error) throw retry.error;
+            insertedOrder = retry.data;
+          } else {
+            insertedOrder = res.data;
+          }
+        }
+        // Vincula os votos deste tique/modo à ordem criada (order_id).
+        try {
+          const ids = lastVoteIdsByMode[mode] ?? [];
+          if (ids.length && insertedOrder?.id) {
+            await (supabase as any).from("b3_simulation_agent_votes")
+              .update({ order_id: insertedOrder.id })
+              .in("id", ids).is("order_id", null).eq("user_id", userId);
+          }
+        } catch { /* instrumentação nunca derruba o motor */ }
+        if (!insertedOrder) throw new Error("Falha ao criar ordem simulada");
+
         markAuditEvent(`abertura:${mode}:${effectiveSide}`);
         await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant);
         providerStats.last_entry_price = entry;
