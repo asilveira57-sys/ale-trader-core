@@ -19,7 +19,7 @@ import { BRL, rootSymbol } from "@/lib/b3-format";
 
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "indicador", price_action: "price action",
-  mean_reversion: "reversão à média", range: "range",
+  mean_reversion: "reversão à média", range: "range", rompimento: "rompimento",
 };
 const MODE_LABEL: Record<string, string> = {
   conservador: "conservador", moderado: "moderado", equilibrado: "equilibrado",

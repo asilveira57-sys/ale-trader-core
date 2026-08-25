@@ -38,6 +38,7 @@ const VARIANT_LABEL: Record<string, string> = {
   price_action: "Price action",
   mean_reversion: "Reversão à média",
   range: "Faixa",
+  rompimento: "Rompimento",
 };
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
 const modeLabel = (m: string) => m.replace("_", " ");

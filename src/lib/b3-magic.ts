@@ -31,6 +31,49 @@ export const REAL_MAGIC_MODE_INDEX: Record<string, number> = {
   conservador: 1, moderado: 2, equilibrado: 3, semi_agressivo: 4, agressivo: 5,
 };
 
+// ────────────────────────────────────────────────────────────────────────────
+// QUINTA MODALIDADE EM DIANTE — BLOCO ALTO SEPARADO (25/08/2026)
+//
+// Por que a fórmula muda aqui: o esquema acima não comporta uma quinta
+// modalidade. Com modalidades em +0/+500/+1000/+1500, uma quinta em +2000
+// colide com o bloco do próximo ativo: WIN (2000) + rompimento (2000) =
+// 4000 = ITUB4 (4000) + indicador (0). Os cinco modos do rompimento do WIN
+// cairiam exatamente em cima dos cinco do indicador do ITUB4. Magic é como o
+// executor identifica o dono de uma posição na corretora — colisão significa
+// fechar a posição do robô errado, e existe dinheiro real autorizado no
+// magic 2504.
+//
+// Decisão: NENHUM magic existente muda (sem migração) e, a partir da quinta
+// modalidade, a fórmula passa a ser:
+//
+//   magic = bloco_alto_da_modalidade + (índice_do_ativo × 100) + índice_do_modo
+//
+// com índice do modo começando em 0 (conservador=0 … agressivo=4) e índice do
+// ativo na MESMA ordem dos blocos acima (WIN=0, WDO=1, PETR4=2, VALE3=3,
+// ITUB4=4, BBDC4=5, BBAS3=6, BIT=7, ETR=8, SOL=9).
+//
+//   rompimento: WIN 20000-20004, WDO 20100-20104, …, SOL 20900-20904.
+//
+// O padrão se estende: sexta modalidade em 21000, sétima em 22000. NÃO
+// "unificar" as duas fórmulas depois — a inconsistência é deliberada e é o
+// que preserva os magics já em uso na corretora. O teste b3-magic.test.ts
+// gera TODAS as combinações ativo × modalidade × modo e falha se houver
+// qualquer repetição.
+// ────────────────────────────────────────────────────────────────────────────
+export const REAL_MAGIC_VARIANT_HIGH_BLOCK: Record<string, number> = {
+  rompimento: 20000,
+  // sexta modalidade: 21000, sétima: 22000, …
+};
+
+export const REAL_MAGIC_ASSET_INDEX: Record<string, number> = {
+  WIN: 0, WDO: 1, PETR4: 2, VALE3: 3, ITUB4: 4,
+  BBDC4: 5, BBAS3: 6, BIT: 7, ETR: 8, SOL: 9,
+};
+
+export const REAL_MAGIC_MODE_INDEX_V2: Record<string, number> = {
+  conservador: 0, moderado: 1, equilibrado: 2, semi_agressivo: 3, agressivo: 4,
+};
+
 export class MagicNumberNotRegisteredError extends Error {}
 
 // Contratos futuros chegam com vencimento (WINQ26, BITQ26): reduz à raiz.
@@ -42,6 +85,23 @@ const rootOfSymbol = (s: string) => {
 
 export function realMagicNumber(quoteSymbol: string, variant: string, mode: string): number {
   const root = rootOfSymbol(quoteSymbol);
+
+  // Quinta modalidade em diante: bloco alto separado (ver comentário acima).
+  const highBlock = REAL_MAGIC_VARIANT_HIGH_BLOCK[variant ?? "indicador"];
+  if (highBlock != null) {
+    const assetIndex = REAL_MAGIC_ASSET_INDEX[root];
+    const modeIdx = REAL_MAGIC_MODE_INDEX_V2[mode];
+    if (assetIndex == null) {
+      throw new MagicNumberNotRegisteredError(
+        `ativo sem índice de magic number cadastrado: ${root} (símbolo ${quoteSymbol})`,
+      );
+    }
+    if (modeIdx == null) {
+      throw new MagicNumberNotRegisteredError(`modo sem índice de magic number cadastrado: ${mode}`);
+    }
+    return highBlock + assetIndex * 100 + modeIdx;
+  }
+
   const block = REAL_MAGIC_ASSET_BLOCK[root];
   const variantBlock = REAL_MAGIC_VARIANT_BLOCK[variant ?? "indicador"];
   const modeIndex = REAL_MAGIC_MODE_INDEX[mode];
