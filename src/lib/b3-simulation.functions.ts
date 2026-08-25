@@ -2757,8 +2757,17 @@ async function runB3SimulationTickInner(
             price: ctx.price, side: effectiveSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
           } as any,
         }));
-        await supabase.from("b3_simulation_agent_votes").insert(voteRows);
+        // Instrumentação: guardamos os ids inseridos para vincular à ordem
+        // criada neste mesmo tique/modo (order_id só existe depois do insert).
+        try {
+          const { data: insertedVotes } = await supabase
+            .from("b3_simulation_agent_votes").insert(voteRows).select("id");
+          lastVoteIdsByMode[mode] = (insertedVotes ?? []).map((r: any) => r.id);
+        } catch {
+          await supabase.from("b3_simulation_agent_votes").insert(voteRows);
+        }
       }
+
 
       if (decision.final === "approved" && !setupAllowed) {
         // Comitê aprovou, mas o setup técnico não é operável (Fase 1: só trend_pullback).
