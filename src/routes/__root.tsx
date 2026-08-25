@@ -14,6 +14,36 @@ import appCss from "../styles.css?url";
 import { supabase } from "@/integrations/supabase/client";
 import { Toaster } from "@/components/ui/sonner";
 
+// Rede de segurança global: quando um import dinâmico falha ANTES dos error
+// boundaries montarem (ex.: Vite re-otimizando deps no meio da sessão ou chunk
+// obsoleto após deploy), o React desmonta a árvore inteira e nenhum
+// errorComponent roda — resultado: tela branca com "Uncaught undefined".
+// Aqui recarregamos no máximo 1x a cada 60s para buscar o bundle novo.
+const GLOBAL_RELOAD_KEY = "aletrader:global-reload-at";
+if (typeof window !== "undefined") {
+  const maybeReload = (value: unknown) => {
+    try {
+      const msg = String((value as any)?.message ?? value ?? "");
+      const isModuleFail =
+        value == null ||
+        /dynamically imported module|Importing a module script failed|Loading chunk|ChunkLoadError|Failed to fetch dynamically|error loading/i.test(msg);
+      if (!isModuleFail) return;
+      const last = Number(sessionStorage.getItem(GLOBAL_RELOAD_KEY) ?? 0);
+      if (Date.now() - last < 60_000) return;
+      sessionStorage.setItem(GLOBAL_RELOAD_KEY, String(Date.now()));
+      window.location.reload();
+    } catch {
+      /* nunca derrubar a página por causa da rede de segurança */
+    }
+  };
+  window.addEventListener("error", (e) =>
+    maybeReload((e as ErrorEvent).error ?? (e as ErrorEvent).message),
+  );
+  window.addEventListener("unhandledrejection", (e) =>
+    maybeReload((e as PromiseRejectionEvent).reason),
+  );
+}
+
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
