@@ -3357,6 +3357,7 @@ export type Database = {
           exit_price: number | null
           exit_time: string | null
           fees: number
+          gain_pts: number | null
           gross_result_brl: number
           gross_result_points: number
           id: string
@@ -3377,6 +3378,7 @@ export type Database = {
           simulation_mode_id: string
           simulation_run_id: string
           status: string
+          stop_pts: number | null
           symbol: string
           updated_at: string
           user_id: string
@@ -3397,6 +3399,7 @@ export type Database = {
           exit_price?: number | null
           exit_time?: string | null
           fees?: number
+          gain_pts?: number | null
           gross_result_brl?: number
           gross_result_points?: number
           id?: string
@@ -3417,6 +3420,7 @@ export type Database = {
           simulation_mode_id: string
           simulation_run_id: string
           status?: string
+          stop_pts?: number | null
           symbol?: string
           updated_at?: string
           user_id: string
@@ -3437,6 +3441,7 @@ export type Database = {
           exit_price?: number | null
           exit_time?: string | null
           fees?: number
+          gain_pts?: number | null
           gross_result_brl?: number
           gross_result_points?: number
           id?: string
@@ -3457,6 +3462,7 @@ export type Database = {
           simulation_mode_id?: string
           simulation_run_id?: string
           status?: string
+          stop_pts?: number | null
           symbol?: string
           updated_at?: string
           user_id?: string
