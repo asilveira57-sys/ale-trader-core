@@ -2688,7 +2688,7 @@ async function runB3SimulationTickInner(
           if (reason === "stop") {
             const realPts = (exitPriceFinal - Number(open.entry_price)) * dirSign;
             await recordStatusIfChanged(mode, m, "stop_operacao", "stop_trade",
-              { observed: realPts, limit: -Number(cfg.stop_pts), pnl: realizedTodayByMode[mode] ?? 0,
+              { observed: realPts, limit: -orderStopPts, pnl: realizedTodayByMode[mode] ?? 0,
                 related_order_id: open.id, message: `Stop da operação atingido (${realPts.toFixed(0)} pts).` });
           }
           log.push({ mode, action: "close", reason, price: exitPriceFinal, source: exitAuditFinal.quote_source, origin: exitAuditFinal.execution_price_origin });
@@ -2963,13 +2963,14 @@ async function runB3SimulationTickInner(
           : `${setupInfo.name}${setupInfo.reasons.length ? ` — ${setupInfo.reasons.join("; ")}` : ""}`,
       );
 
-      // Modalidades contra-tendência não podem herdar intendedSide. Quando o
-      // classificador ainda não conseguiu derivar um lado (sem esticão/borda),
-      // o setup termina aqui; o comitê nunca é consultado com o lado das médias.
-      const counterTrendStyle = cfg.entry_style === "mean_reversion" || cfg.entry_style === "range";
-      if (counterTrendStyle && !setupInfo.side_override) {
-        const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "lado contra-tendência ainda não definido"}`;
-        log.push({ mode, action: "reject", reason: "no_counter_trend_side", setup: setupInfo.name });
+      // Modalidades que derivam o próprio lado não podem herdar intendedSide
+      // (contra-tendência: esticão/borda; rompimento: borda rompida). Quando o
+      // classificador ainda não conseguiu derivar um lado, o setup termina
+      // aqui; o comitê nunca é consultado com o lado das médias.
+      const classifierSideStyle = cfg.entry_style === "mean_reversion" || cfg.entry_style === "range" || cfg.entry_style === "rompimento";
+      if (classifierSideStyle && !setupInfo.side_override) {
+        const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "lado ainda não derivado pelo classificador"}`;
+        log.push({ mode, action: "reject", reason: "no_classifier_side", setup: setupInfo.name });
         finalizeAudit(reason, {
           last_setup: `Bloqueado: ${setupInfo.name}`,
           signals: { evaluated_side: null, buy: false, sell: false },
