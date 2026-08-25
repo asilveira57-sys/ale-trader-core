@@ -1886,6 +1886,10 @@ async function runB3SimulationTickInner(
     // Timings por modo + isolamento de falha: um modo que estoura não pode
     // derrubar os modos seguintes nem impedir a gravação do snapshot.
     const modeTimings: Record<string, number> = {};
+    // Instrumentação: ids dos últimos votos gravados por modo, para vincular
+    // a ordem criada no mesmo tique (order_id). Não afeta decisões.
+    const lastVoteIdsByMode: Record<string, string[]> = {};
+
     const runT0 = Date.now();
 
     for (const mode of MODES) {
