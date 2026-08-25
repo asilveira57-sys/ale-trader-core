@@ -12,4 +12,20 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    optimizeDeps: {
+      // Pré-empacota as dependências descobertas tardiamente pelo dev server.
+      // Sem isso, o Vite re-otimiza no meio da sessão ("optimized dependencies
+      // changed. reloading") e a página que estiver carregando módulos naquele
+      // instante quebra com "Uncaught undefined" + tela branca.
+      include: [
+        "@tanstack/router-core",
+        "@tanstack/router-core/ssr/client",
+        "@tanstack/router-core/ssr/server",
+        "@tanstack/history",
+        "seroval",
+        "h3-v2",
+      ],
+    },
+  },
 });
