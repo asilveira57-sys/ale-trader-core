@@ -44,6 +44,9 @@ export interface B3ProtectionRuntime {
 
 export interface B3ProtectionInput {
   realized_today_brl: number;
+  /** Resultado do dia incluindo posição aberta marcada a mercado. Quando ausente,
+   * a proteção mantém a semântica anterior e usa apenas o realizado. */
+  marked_today_brl?: number | null;
   total_trades_today: number;
   operating_minutes_today: number;
   volatility_pct: number;
@@ -75,11 +78,14 @@ export function evaluateB3Protection(
 ): B3ProtectionDecision {
   const prev = current.protection_state;
   const next: B3ProtectionRuntime = { ...current };
+  const realizedToday = Number(input.realized_today_brl ?? 0);
+  const markedTodayRaw = input.marked_today_brl == null ? realizedToday : Number(input.marked_today_brl);
+  const markedToday = Number.isFinite(markedTodayRaw) ? markedTodayRaw : realizedToday;
 
   // 1) Stop diário — soberano.
-  if (input.realized_today_brl <= -Math.abs(cfg.daily_loss_limit_brl)) {
+  if (realizedToday <= -Math.abs(cfg.daily_loss_limit_brl)) {
     next.protection_state = "blocked_stop";
-    next.protection_block_reason = `Stop diário atingido (${input.realized_today_brl.toFixed(2)} BRL).`;
+    next.protection_block_reason = `Stop diário atingido (${realizedToday.toFixed(2)} BRL).`;
     return {
       next, size_multiplier: 0, allow_new_entry: false,
       transition: prev !== next.protection_state
@@ -131,18 +137,18 @@ export function evaluateB3Protection(
   // alcança. Esta arma sozinha, a partir de um piso mínimo de lucro.
   next.day_peak_profit_brl = Math.max(
     Number(current.day_peak_profit_brl ?? 0),
-    input.realized_today_brl,
+    markedToday,
   );
   const dayPeak = Number(next.day_peak_profit_brl ?? 0);
   const peakPct = Math.min(0.95, Math.max(0.05, Number(cfg.peak_giveback_pct ?? 0.4)));
   const peakFloor = Math.abs(Number(cfg.peak_lock_min_profit_brl ?? 0));
   if (dayPeak >= peakFloor && dayPeak > 0) {
-    const givenBackDay = dayPeak - input.realized_today_brl;
+    const givenBackDay = dayPeak - markedToday;
     const allowed = dayPeak * peakPct;
     if (givenBackDay > allowed) {
       next.protection_state = "blocked_peak_giveback";
       next.protection_block_reason =
-        `Devolveu ${givenBackDay.toFixed(2)} BRL do pico do dia (${dayPeak.toFixed(2)} BRL) — limite ${allowed.toFixed(2)} BRL (${(peakPct * 100).toFixed(0)}%).`;
+        `Devolveu ${givenBackDay.toFixed(2)} BRL do pico do dia marcado a mercado (${dayPeak.toFixed(2)} BRL) — limite ${allowed.toFixed(2)} BRL (${(peakPct * 100).toFixed(0)}%).`;
       return {
         next, size_multiplier: 0, allow_new_entry: false,
         transition: prev !== next.protection_state
@@ -153,7 +159,7 @@ export function evaluateB3Protection(
   }
 
   const target = Math.abs(cfg.daily_gain_target_brl);
-  const targetReached = target > 0 && input.realized_today_brl >= target;
+  const targetReached = target > 0 && realizedToday >= target;
   const enoughTrades = input.total_trades_today >= cfg.minimum_trades_before_profit_lock;
   const enoughTime = input.operating_minutes_today >= cfg.minimum_operating_minutes;
 
@@ -172,20 +178,20 @@ export function evaluateB3Protection(
   // Meta batida — inicia proteção se ainda não tinha marcado.
   if (!next.target_reached_at) {
     next.target_reached_at = input.now_iso;
-    next.profit_at_target_brl = input.realized_today_brl;
+    next.profit_at_target_brl = realizedToday;
     next.trades_at_target = input.total_trades_today;
-    next.peak_profit_after_target_brl = input.realized_today_brl;
+    next.peak_profit_after_target_brl = realizedToday;
     next.profit_after_target_brl = 0;
     next.trades_after_target = 0;
     next.consecutive_losses_after_target = 0;
   }
 
   // Atualiza métricas pós-meta.
-  const extra = input.realized_today_brl - Number(next.profit_at_target_brl ?? 0);
+  const extra = realizedToday - Number(next.profit_at_target_brl ?? 0);
   next.profit_after_target_brl = extra;
   next.peak_profit_after_target_brl = Math.max(
     Number(next.peak_profit_after_target_brl ?? 0),
-    input.realized_today_brl,
+    realizedToday,
   );
 
   const peakExtra = Number(next.peak_profit_after_target_brl ?? 0) - Number(next.profit_at_target_brl ?? 0);
@@ -217,7 +223,7 @@ export function evaluateB3Protection(
   }
 
   // Continua operando com risco reduzido.
-  const protectedProfit = input.realized_today_brl >= target * Math.max(1, cfg.profit_multiplier_before_lock);
+  const protectedProfit = realizedToday >= target * Math.max(1, cfg.profit_multiplier_before_lock);
   next.protection_state = protectedProfit ? "profit_protected" : "target_reached_observing";
   next.protection_block_reason = null;
 
