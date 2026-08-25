@@ -124,6 +124,7 @@ const VARIANT_LABELS: Record<string, string> = {
   price_action: "Price action",
   mean_reversion: "Reversão à média",
   range: "Faixa",
+  rompimento: "Rompimento",
 };
 function variantLabel(v?: string | null): string {
   const key = String(v ?? "indicador");

@@ -53,7 +53,7 @@ const ageText = (s: number | null | undefined) => {
 
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "indicador", price_action: "price action",
-  mean_reversion: "reversão à média", range: "faixa",
+  mean_reversion: "reversão à média", range: "faixa", rompimento: "rompimento",
 };
 
 const STATE_UI: Record<string, { label: string; sub: string; cls: string; Icon: typeof CheckCircle2 }> = {
