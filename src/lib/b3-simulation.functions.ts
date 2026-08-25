@@ -2851,10 +2851,12 @@ async function runB3SimulationTickInner(
         };
         // Instrumentação permanente do veredito do comitê na própria ordem.
         // b3_simulation_orders está fora da retenção — o histórico não se perde.
+        // Regra: valor ausente vira NULL (nulo é informação, zero é mentira).
+        const numOrNull = (v: any) => (v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));
         const instrumentation: any = {
-          entry_score: Number(decision.score ?? 0),
-          entry_confidence: Number(decision.avg_confidence ?? 0),
-          entry_approve_votes: Number((decision as any).approve_votes ?? 0),
+          entry_score: numOrNull(decision.score),
+          entry_confidence: numOrNull(decision.avg_confidence),
+          entry_approve_votes: numOrNull((decision as any).approve_votes),
           entry_setup: setupInfo?.name ?? null,
         };
         let insertedOrder: { id: string } | null = null;
@@ -2862,7 +2864,21 @@ async function runB3SimulationTickInner(
           const res = await (supabase as any).from("b3_simulation_orders")
             .insert({ ...orderPayload, ...instrumentation }).select("id").single();
           if (res.error) {
-            // A instrumentação nunca pode impedir a abertura da ordem.
+            // A instrumentação nunca pode impedir a abertura da ordem — mas a
+            // falha precisa ficar visível para diagnóstico (ex.: schema cache).
+            try {
+              await supabase.from("system_logs").insert({
+                event_type: "entry_instrumentation_insert_failed",
+                source: `b3:${asset.symbol}:${mode}`,
+                severity: "error",
+                message: `Ordem aberta SEM instrumentação de entrada: ${res.error.message}`,
+                technical_data: {
+                  run_id: runId, mode, symbol: asset.quote_symbol,
+                  pg_code: (res.error as any).code ?? null,
+                  instrumentation,
+                } as any,
+              });
+            } catch { /* log nunca derruba o motor */ }
             const retry = await (supabase as any).from("b3_simulation_orders")
               .insert(orderPayload).select("id").single();
             if (retry.error) throw retry.error;
