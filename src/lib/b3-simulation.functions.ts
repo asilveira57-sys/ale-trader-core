@@ -2878,8 +2878,10 @@ async function runB3SimulationTickInner(
             await (supabase as any).from("b3_simulation_agent_votes")
               .update({ order_id: insertedOrder.id })
               .in("id", ids).is("order_id", null).eq("user_id", userId);
+            delete lastVoteIdsByMode[mode];
           }
         } catch { /* instrumentação nunca derruba o motor */ }
+
         if (!insertedOrder) throw new Error("Falha ao criar ordem simulada");
 
         markAuditEvent(`abertura:${mode}:${effectiveSide}`);
