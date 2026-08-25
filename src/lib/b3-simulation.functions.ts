@@ -656,15 +656,15 @@ async function runB3SimulationTickInner(
       * Number(asset.tick_value_brl ?? POINT_VALUE_BRL) * Number(order.quantity ?? 1);
   }
 
-  function liveExitMarkPrice(order: any): number | null {
+  function liveExitMarkPrice(order: any, info: B3PriceContextResult, fallbackCtx: any): number | null {
     if (!order) return null;
-    if (priceSrc.source === "mt5_xp_demo") {
-      const bid = Number(priceSrc.raw?.bid);
-      const ask = Number(priceSrc.raw?.ask);
+    if (info.source === "mt5_xp_demo") {
+      const bid = Number(info.raw?.bid);
+      const ask = Number(info.raw?.ask);
       const p = order.side === "buy" ? bid : ask;
       return p > 0 ? Math.round(p / Number(asset.tick_size)) * Number(asset.tick_size) : null;
     }
-    const p = Number(ctx.price);
+    const p = Number(fallbackCtx?.price);
     return p > 0 ? Math.round(p / Number(asset.tick_size)) * Number(asset.tick_size) : null;
   }
 
@@ -1929,7 +1929,7 @@ async function runB3SimulationTickInner(
 
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
-      const openMarkPriceForProtection = liveExitMarkPrice(open);
+      const openMarkPriceForProtection = liveExitMarkPrice(open, priceSrc, ctx);
       const openMtmBrlForProtection = markOpenOrderBrl(open, openMarkPriceForProtection);
       const markedTodayForProtection = realizedToday + (openMtmBrlForProtection ?? 0);
 
