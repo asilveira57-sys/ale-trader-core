@@ -855,6 +855,69 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_diagnostico_dia: {
+        Row: {
+          acertos: number | null
+          diagnostico: string[] | null
+          estouro_stop_medio: number | null
+          gerado_em: string
+          minutos_ate_ultima_op: number | null
+          mode: string
+          ops: number | null
+          primeira_hora_brl: number | null
+          resto_do_dia_brl: number | null
+          resultado_brl: number | null
+          robos_no_sinal_medio: number | null
+          saidas: Json | null
+          score_medio: number | null
+          stop_brl_config: number | null
+          stop_pts_config: number | null
+          symbol: string
+          trade_date: string
+          variant: string
+        }
+        Insert: {
+          acertos?: number | null
+          diagnostico?: string[] | null
+          estouro_stop_medio?: number | null
+          gerado_em?: string
+          minutos_ate_ultima_op?: number | null
+          mode: string
+          ops?: number | null
+          primeira_hora_brl?: number | null
+          resto_do_dia_brl?: number | null
+          resultado_brl?: number | null
+          robos_no_sinal_medio?: number | null
+          saidas?: Json | null
+          score_medio?: number | null
+          stop_brl_config?: number | null
+          stop_pts_config?: number | null
+          symbol: string
+          trade_date: string
+          variant: string
+        }
+        Update: {
+          acertos?: number | null
+          diagnostico?: string[] | null
+          estouro_stop_medio?: number | null
+          gerado_em?: string
+          minutos_ate_ultima_op?: number | null
+          mode?: string
+          ops?: number | null
+          primeira_hora_brl?: number | null
+          resto_do_dia_brl?: number | null
+          resultado_brl?: number | null
+          robos_no_sinal_medio?: number | null
+          saidas?: Json | null
+          score_medio?: number | null
+          stop_brl_config?: number | null
+          stop_pts_config?: number | null
+          symbol?: string
+          trade_date?: string
+          variant?: string
+        }
+        Relationships: []
+      }
       b3_grupo_estado_dia: {
         Row: {
           multiplicador: number
@@ -6821,6 +6884,7 @@ export type Database = {
           variant: string
         }[]
       }
+      b3_diagnosticar_dia: { Args: { p_date: string }; Returns: number }
       b3_m1_candles: {
         Args: { p_limit?: number; p_symbol: string; p_user_id: string }
         Returns: {
