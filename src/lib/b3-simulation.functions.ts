@@ -2986,8 +2986,10 @@ async function runB3SimulationTickInner(
         max_volatility_pct: Number(cfg.max_volatility_pct),
         min_volatility_pct: Number((cfg as any).lateral_vol_min ?? 0.3),
         lateral_strength_min: Number((cfg as any).lateral_strength_min ?? 30),
-        stop_pts: Number(cfg.stop_pts),
-        gain_pts: Number(cfg.gain_pts),
+        // Modalidades com níveis dinâmicos (rompimento) apresentam ao comitê os
+        // níveis que a ordem vai carregar, não os fixos da configuração.
+        stop_pts: Number(setupInfo.stop_pts_override ?? cfg.stop_pts),
+        gain_pts: Number(setupInfo.gain_pts_override ?? cfg.gain_pts),
         entry_style: String((cfg as any).entry_style ?? "indicador"),
       });
 
@@ -3117,6 +3119,11 @@ async function runB3SimulationTickInner(
           entry_price: Math.round(entry / asset.tick_size) * asset.tick_size, quantity: qty,
           // taxa da ponta de entrada, derivada do perfil do ativo
           fees: computeB3Fees({ assetProfile: asset, quantity: qty, entryPrice: entry }), status: "open",
+          // Níveis dinâmicos por ordem (rompimento = frações da altura do
+          // canal). NULL = a gestão de posição usa stop_pts/gain_pts da
+          // configuração do modo, como sempre foi nas outras modalidades.
+          stop_pts: setupInfo.stop_pts_override ?? null,
+          gain_pts: setupInfo.gain_pts_override ?? null,
           ...orderAuditPatch(entryAudit),
         };
         // Instrumentação permanente do veredito do comitê na própria ordem.
