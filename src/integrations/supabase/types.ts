@@ -3283,7 +3283,11 @@ export type Database = {
           contract_code: string
           created_at: string
           diagnostic_payload: Json
+          entry_approve_votes: number | null
+          entry_confidence: number | null
           entry_price: number
+          entry_score: number | null
+          entry_setup: string | null
           entry_time: string
           execution_price: number | null
           execution_price_origin: string | null
@@ -3319,7 +3323,11 @@ export type Database = {
           contract_code?: string
           created_at?: string
           diagnostic_payload?: Json
+          entry_approve_votes?: number | null
+          entry_confidence?: number | null
           entry_price: number
+          entry_score?: number | null
+          entry_setup?: string | null
           entry_time?: string
           execution_price?: number | null
           execution_price_origin?: string | null
@@ -3355,7 +3363,11 @@ export type Database = {
           contract_code?: string
           created_at?: string
           diagnostic_payload?: Json
+          entry_approve_votes?: number | null
+          entry_confidence?: number | null
           entry_price?: number
+          entry_score?: number | null
+          entry_setup?: string | null
           entry_time?: string
           execution_price?: number | null
           execution_price_origin?: string | null
