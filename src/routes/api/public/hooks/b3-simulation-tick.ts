@@ -67,9 +67,32 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
               .in("id", staleIds);
           }
 
+          // PARALELIZAÇÃO DO LAÇO DO TIQUE (26/08/2026)
+          //
+          // Antes: uma execução por vez. Com 250 robôs a fila levava mais de um
+          // minuto e as últimas execuções recebiam cotação já envelhecida (57s,
+          // 86s no VALE3), caindo em price_source_guard — 85 robôs em sete
+          // ativos ficaram sem avaliação num pregão.
+          //
+          // O custo é latência de banco em série, não CPU. Então processamos
+          // várias execuções ao mesmo tempo, com teto de concorrência.
+          //
+          // SEGURANÇA DE EXECUÇÃO ÚNICA: a unidade paralelizada é a EXECUÇÃO
+          // (chave user_id + symbol + variant, já deduplicada acima), e cada
+          // execução aparece uma única vez na fila. Dentro dela o laço de modos
+          // continua sequencial, então a gestão de posição de cada robô segue
+          // com uma única passagem por tique. Nenhuma execução compartilha
+          // robô, ordem ou magic com outra — incluindo o magic 2504 (WIN
+          // price_action semi_agressivo), que vive numa execução só.
           const results: any[] = [];
           const summary: any[] = [];
-          for (const r of latestByUserAsset.values()) {
+          const fila = Array.from(latestByUserAsset.values());
+          const limite = Math.min(
+            Math.max(1, Number(url.searchParams.get("concurrency") ?? 8)),
+            16,
+          );
+
+          const processar = async (r: any) => {
             const t0 = Date.now();
             try {
               const res = await runB3SimulationTick(supabaseAdmin, r.user_id, r.id, ticks);
@@ -94,7 +117,23 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
                 });
               } catch { /* log nunca deve derrubar o cron */ }
             }
-          }
+          };
+
+          const inicio = Date.now();
+          let proximo = 0;
+          const trabalhadores = Array.from({ length: Math.min(limite, fila.length) }, async () => {
+            // Cada trabalhador puxa o próximo índice da fila. Um índice nunca é
+            // entregue duas vezes porque o incremento é síncrono, sem await
+            // entre a leitura e a escrita.
+            for (;;) {
+              const i = proximo++;
+              if (i >= fila.length) return;
+              await processar(fila[i]);
+            }
+          });
+          await Promise.all(trabalhadores);
+          const janela_ms = Date.now() - inicio;
+
 
           // Resumo do tick inteiro: custo por run ao longo do dia.
           try {
@@ -102,8 +141,15 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
               event_type: "b3_tick_summary",
               source: "b3-simulation-tick",
               severity: "info",
-              message: `Tick processou ${summary.length} run(s)`,
-              technical_data: { runs: summary, stale_runs_stopped: staleIds.length },
+              message: `Tick processou ${summary.length} run(s) em ${janela_ms} ms (concorrência ${limite})`,
+              technical_data: {
+                runs: summary,
+                stale_runs_stopped: staleIds.length,
+                // Métrica de conferência: a janela do tique inteiro. É o número
+                // que precisa cair bem abaixo dos 25 s medidos em série.
+                janela_ms,
+                concorrencia: limite,
+              },
             });
           } catch { /* log nunca deve derrubar o cron */ }
 
@@ -111,6 +157,8 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
             ok: true,
             runs: results.length,
             stale_runs_stopped: staleIds.length,
+            janela_ms,
+            concorrencia: limite,
             at: new Date().toISOString(),
             results,
           });

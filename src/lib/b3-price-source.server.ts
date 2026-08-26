@@ -445,7 +445,7 @@ function buildFreshWindow(rowsDesc: any[]): B3SampleWindow {
  * Se MT5 estiver selecionado mas não houver tick válido, NÃO cai para CSV.
  * Retorna live=false e ctx zerado para o chamador bloquear execução.
  */
-export async function getB3PriceContext(
+export async function getB3PriceContextUncached(
   supabase: any,
   userId: string,
   opts: {
@@ -691,6 +691,61 @@ export async function getB3PriceContext(
     indicator_timeframe: useM1 ? "m1" : "tick",
     indicator_samples: useM1 ? m1Rows.length : prices.length,
   };
+}
+
+// ---------------------------------------------------------------------------
+// CACHE CURTO DE COTAÇÃO (26/08/2026)
+//
+// O motor buscava a cotação uma vez POR EXECUÇÃO. Com 250 robôs em 11 ativos,
+// as execuções do fim da fila recebiam um tick que já tinha envelhecido
+// dezenas de segundos (medido: 57s, 86s no VALE3) e caíam no
+// price_source_guard — dado fresco no banco, velho no robô.
+//
+// Aqui a leitura passa a ser compartilhada por (usuário + ativo + timeframe)
+// durante uma janela muito curta. Duas execuções do mesmo ativo com variantes
+// diferentes leem A MESMA foto, em vez de duas fotos separadas de 180 ticks.
+//
+// A idade é CORRIGIDA no acerto de cache (quote_age_s + tempo decorrido), para
+// que a trava de cotação parada nunca receba um número otimista. Nada do
+// comportamento de guarda ou de gestão de posição muda.
+const PRICE_CTX_TTL_MS = 1500;
+const priceCtxCache = new Map<string, { at: number; value: B3PriceContextResult }>();
+
+export function getB3PriceContext(
+  supabase: any,
+  userId: string,
+  opts: {
+    symbol?: string; contract?: string; base?: number;
+    expectedSymbol?: string; tickSize?: number;
+    spreadMaxPoints?: number; priceDeviationLimit?: number;
+    indicatorTimeframe?: "tick" | "m1";
+  } = {},
+): Promise<B3PriceContextResult> {
+  const key = [
+    userId, opts.expectedSymbol ?? B3_MT5_SYMBOL, opts.symbol ?? "WIN", opts.contract ?? "WINFUT",
+    opts.base ?? 130000, opts.tickSize ?? TICK, opts.spreadMaxPoints ?? "", opts.priceDeviationLimit ?? "",
+    opts.indicatorTimeframe ?? "tick",
+  ].join("|");
+
+  const now = Date.now();
+  const hit = priceCtxCache.get(key);
+  if (hit && now - hit.at < PRICE_CTX_TTL_MS) {
+    const aged = (now - hit.at) / 1000;
+    return Promise.resolve({
+      ...hit.value,
+      quote_age_s: hit.value.quote_age_s == null ? hit.value.quote_age_s : hit.value.quote_age_s + aged,
+    });
+  }
+
+  // Limpeza preguiçosa: o cache nunca deve crescer entre pregões.
+  if (priceCtxCache.size > 200) {
+    for (const [k, v] of priceCtxCache) if (now - v.at > PRICE_CTX_TTL_MS) priceCtxCache.delete(k);
+  }
+
+  return getB3PriceContextUncached(supabase, userId, opts).then((value) => {
+    priceCtxCache.set(key, { at: Date.now(), value });
+    return value;
+  });
 }
 
 export async function B3QuoteProvider(
