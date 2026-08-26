@@ -799,11 +799,14 @@ function RobotLine({ label, robot }: { label: string; robot: any }) {
   );
 }
 
-function Scoreboard({ variantFilter = "all" }: { variantFilter?: string }) {
+function Scoreboard({ filterArgs, filterKey }: {
+  filterArgs: { symbols: string[] | null; variants: string[] | null; modes: string[] | null };
+  filterKey: string;
+}) {
   const getScoreboard = useServerFn(getB3CockpitScoreboard);
   const q = useQuery({
-    queryKey: ["b3-cockpit-scoreboard", variantFilter],
-    queryFn: () => getScoreboard({ data: { variant: variantFilter } }),
+    queryKey: ["b3-cockpit-scoreboard", filterKey],
+    queryFn: () => getScoreboard({ data: filterArgs as any }),
     refetchInterval: useVisibleRefetchInterval(10000),
     refetchIntervalInBackground: false,
   });
