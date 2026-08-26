@@ -4364,6 +4364,8 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       const variant = (run.variant ?? "indicador") as string;
 
       for (const m of MODES) {
+        if (f.modes && !f.modes.has(m)) continue; // recorte de modo
+
         const mode = (modes ?? []).find((x: any) => x.mode === m);
         const open = openByMode[m];
         const audit = auditByMode[m];
