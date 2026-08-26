@@ -4427,7 +4427,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
     // Mesmo método de linha do tempo de eventos do placar: +margem na entrada,
     // −margem na saída (ou agora), ordenado com entradas antes de saídas, e o
     // máximo acumulado × 1,30. Somar picos individuais superestima.
-    const runList: any[] = runs ?? [];
+    const runList: any[] = runsVisiveis;
     const runIds = runList.map((r) => r.id);
     const porAtivo: any[] = [];
     if (runIds.length) {
