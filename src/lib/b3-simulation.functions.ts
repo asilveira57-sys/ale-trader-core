@@ -4602,12 +4602,20 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
 // histórico de exposição gravado.
 export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  // Mesmo filtro de modalidade da tela: o placar tem que descrever o recorte
-  // que o usuário está vendo, inclusive no pico de exposição.
-  .inputValidator((d?: { variant?: string | null }) => d ?? {})
+  // Mesmos filtros da tela (ativo, modalidade e modo): o placar tem que
+  // descrever o recorte que o usuário está vendo — saldo do dia, exposição,
+  // contagem de posicionados e pico de capital. Placar que não acompanha o
+  // filtro induz a erro de leitura.
+  .inputValidator((d?: {
+    variant?: string | null;
+    variants?: string[] | null;
+    symbols?: string[] | null;
+    modes?: string[] | null;
+  }) => d ?? {})
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
     const variantFilter = data?.variant && data.variant !== "all" ? String(data.variant) : null;
+    const f = buildCockpitFilter(data);
     const sessionDate = currentB3SessionDate();
     const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3
 
@@ -4620,13 +4628,15 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     const capitalDisponivelBrl = Number(tset?.capital_disponivel_brl ?? 0) || 0;
 
     const runList: any[] = ((runs ?? []) as any[])
-      .filter((r) => !variantFilter || (r.variant ?? "indicador") === variantFilter);
+      .filter((r) => cockpitKeep(f, r.symbol, r.variant));
+    const modesVisiveis = MODES.filter((m) => !f.modes || f.modes.has(m));
     const runIds = runList.map((r) => r.id);
     const empty = {
       session_date: sessionDate,
+      filtro_ativo: f.active,
       capital_disponivel_brl: capitalDisponivelBrl,
       saldo_dia_brl: 0, se_fechasse_agora_brl: 0,
-      exposicao_atual_brl: 0, robots_posicionados: 0, robots_total: runList.length * MODES.length,
+      exposicao_atual_brl: 0, robots_posicionados: 0, robots_total: runList.length * modesVisiveis.length,
       lucro_bruto_brl: 0, prejuizo_bruto_brl: 0, aberto_positivo_brl: 0, aberto_negativo_brl: 0,
       melhor_robo: null as any, pior_robo: null as any,
       pico_exposicao_brl: 0, pico_exposicao_hora: null as string | null, pico_posicoes: 0,
