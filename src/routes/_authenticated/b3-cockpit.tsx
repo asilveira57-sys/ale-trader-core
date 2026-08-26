@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, AlertTriangle, Copy } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
-import { openSinceText, rootSymbol, PX } from "@/lib/b3-format";
+import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel } from "@/lib/b3-format";
 import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
@@ -95,7 +95,43 @@ const roboShort = (r: any) =>
 
 
 type Filter = "all" | "open" | "blocked";
-type VariantFilter = "all" | string;
+type Sort = "none" | "desc" | "asc";
+
+const MODE_LIST = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
+const MODE_LABEL: Record<string, string> = {
+  conservador: "Conservador", moderado: "Moderado", equilibrado: "Equilibrado",
+  semi_agressivo: "Semi agressivo", agressivo: "Agressivo",
+};
+const VARIANT_LIST = Object.keys(VARIANT_LABEL);
+
+// PERSISTÊNCIA DO RECORTE (26/08/2026)
+// São 250 robôs; quem está acompanhando um ativo não quer remarcar tudo a cada
+// visita. Guardado no navegador, sem tocar em banco — é preferência de tela.
+const FILTER_STORAGE_KEY = "b3-cockpit-filtros-v2";
+type SavedFilters = {
+  symbols: string[]; variants: string[]; modes: string[]; filter: Filter; sort: Sort;
+};
+const DEFAULT_FILTERS: SavedFilters = {
+  symbols: [...B3_ASSETS], variants: [...VARIANT_LIST], modes: [...MODE_LIST],
+  filter: "all", sort: "none",
+};
+function loadFilters(): SavedFilters {
+  if (typeof window === "undefined") return DEFAULT_FILTERS;
+  try {
+    const raw = window.localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return DEFAULT_FILTERS;
+    const p = JSON.parse(raw);
+    return {
+      symbols: Array.isArray(p.symbols) ? p.symbols : DEFAULT_FILTERS.symbols,
+      variants: Array.isArray(p.variants) ? p.variants : DEFAULT_FILTERS.variants,
+      modes: Array.isArray(p.modes) ? p.modes : DEFAULT_FILTERS.modes,
+      filter: (["all", "open", "blocked"].includes(p.filter) ? p.filter : "all") as Filter,
+      sort: (["none", "desc", "asc"].includes(p.sort) ? p.sort : "none") as Sort,
+    };
+  } catch {
+    return DEFAULT_FILTERS;
+  }
+}
 
 function CockpitPage() {
   const qc = useQueryClient();
@@ -106,8 +142,31 @@ function CockpitPage() {
   const resetStop = useServerFn(resetB3DailyStop);
   const updEnabled = useServerFn(updateB3ModeSettings);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [filter, setFilter] = useState<Filter>("all");
-  const [variantFilter, setVariantFilter] = useState<VariantFilter>("all");
+  const [saved, setSaved] = useState<SavedFilters>(DEFAULT_FILTERS);
+  const [hydrated, setHydrated] = useState(false);
+  // Leitura do navegador só depois da hidratação: ler no initializer do useState
+  // dá divergência entre servidor e cliente.
+  useEffect(() => { setSaved(loadFilters()); setHydrated(true); }, []);
+  useEffect(() => {
+    if (!hydrated) return;
+    try { window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(saved)); } catch { /* modo privado */ }
+  }, [saved, hydrated]);
+
+  const { symbols: symbolsSel, variants: variantsSel, modes: modesSel, filter, sort } = saved;
+  const patch = (p: Partial<SavedFilters>) => setSaved((s) => ({ ...s, ...p }));
+  const setFilter = (v: Filter) => patch({ filter: v });
+
+  // Alterna um item da lista; "marcar/desmarcar todos" são atalhos separados.
+  const toggleIn = (key: "symbols" | "variants" | "modes", value: string) =>
+    setSaved((s) => {
+      const cur = s[key];
+      return { ...s, [key]: cur.includes(value) ? cur.filter((x) => x !== value) : [...cur, value] };
+    });
+
+  const allSymbols = symbolsSel.length === B3_ASSETS.length;
+  const allVariants = variantsSel.length === VARIANT_LIST.length;
+  const allModes = modesSel.length === MODE_LIST.length;
+  const filtroAtivo = !allSymbols || !allVariants || !allModes || filter !== "all";
   const [motivo, setMotivo] = useState("");
   // Faixas de ativo recolhidas — preferência só enquanto a página está aberta.
   const [collapsedAssets, setCollapsedAssets] = useState<Set<string>>(new Set());
@@ -117,12 +176,20 @@ function CockpitPage() {
     return next;
   });
 
+  // Recorte enviado ao servidor: lista completa vira `null` para não pagar
+  // filtro nenhum, e a chave da consulta carrega o recorte para que cards,
+  // testeira por ativo e PLACAR descrevam sempre o mesmo subconjunto.
+  const orNull = (list: string[], full: boolean) => (full ? null : list);
+  const filterArgs = {
+    symbols: orNull(symbolsSel, allSymbols),
+    variants: orNull(variantsSel, allVariants),
+    modes: orNull(modesSel, allModes),
+  };
+  const filterKey = JSON.stringify(filterArgs);
 
-  // O filtro de modalidade entra na chave e na chamada: as faixas por ativo,
-  // a ordenação e o placar passam a descrever o mesmo recorte dos cards.
   const q = useQuery({
-    queryKey: ["b3-cockpit", variantFilter],
-    queryFn: () => getOverview({ data: { variant: variantFilter } }),
+    queryKey: ["b3-cockpit", filterKey],
+    queryFn: () => getOverview({ data: filterArgs as any }),
     refetchInterval: useVisibleRefetchInterval(10000),
     refetchIntervalInBackground: false,
   });
@@ -130,6 +197,7 @@ function CockpitPage() {
   const all: any[] = q.data?.cards ?? [];
   const porAtivo: any[] = q.data?.por_ativo ?? [];
   const runIds = Array.from(new Set(all.map((c) => c.run_id)));
+
 
 
   const closeModeM = useMutation({
@@ -170,7 +238,7 @@ function CockpitPage() {
     if (!cards.length) { toast.error("Nada para copiar"); return; }
     const text = buildCockpitCopyText(cards, {
       scope,
-      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-scoreboard", variantFilter]) : undefined,
+      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-scoreboard", filterKey]) : undefined,
       includeScoreboard,
     });
     try {
@@ -186,11 +254,11 @@ function CockpitPage() {
   const withOpen = all.filter((c) => !!c.open).length;
   const blocked = all.filter(isRiskBlocked).length;
   const waiting = all.filter((c) => !c.open && !isRiskBlocked(c)).length;
-  const variantsPresent = Array.from(new Set(all.map((c) => c.variant ?? "indicador")));
 
+  // Ativo/modalidade/modo já vêm recortados do servidor; aqui só ficam os
+  // atalhos de pregão (posicionado / bloqueado) e a ordenação.
   const visible = all
-    .filter((c) => filter === "all" ? true : filter === "open" ? !!c.open : isRiskBlocked(c))
-    .filter((c) => variantFilter === "all" ? true : (c.variant ?? "indicador") === variantFilter);
+    .filter((c) => filter === "all" ? true : filter === "open" ? !!c.open : isRiskBlocked(c));
 
   // Agrupa pela RAIZ do ativo (WIN, WDO, PETR4) — o contrato rola de vencimento —
   // e, dentro do ativo, por modalidade (variant).
@@ -205,11 +273,23 @@ function CockpitPage() {
     group.byVariant.get(v)!.push(c);
   }
 
+  // Ordenação opcional por resultado do dia (realizado + aberto a mercado),
+  // aplicada dentro de cada modalidade e também na ordem dos ativos.
+  const cardResult = (c: any) => Number(c.realized_today ?? 0) + Number(c.unrealized_brl ?? 0);
+  if (sort !== "none") {
+    const dir = sort === "desc" ? -1 : 1;
+    for (const group of bySymbol.values()) {
+      for (const list of group.byVariant.values()) list.sort((a, b) => dir * (cardResult(a) - cardResult(b)));
+    }
+  }
+
   // Testeira por ativo/modalidade vem do servidor (linha do tempo de margem).
   const headerByAsset = new Map<string, any>(porAtivo.map((a) => [a.symbol, a]));
-  // Ordena os ativos por resultado do dia, decrescente — o que drena fica embaixo.
+  // Ordena os ativos por resultado do dia — o que drena fica embaixo (ou no topo
+  // quando o usuário pede "menor resultado").
+  const assetDir = sort === "asc" ? 1 : -1;
   const orderedAssets = Array.from(bySymbol.entries()).sort(
-    (a, b) => Number(headerByAsset.get(b[0])?.resultado_brl ?? 0) - Number(headerByAsset.get(a[0])?.resultado_brl ?? 0),
+    (a, b) => assetDir * (Number(headerByAsset.get(a[0])?.resultado_brl ?? 0) - Number(headerByAsset.get(b[0])?.resultado_brl ?? 0)),
   );
   const allCollapsed = orderedAssets.length > 0 && orderedAssets.every(([root]) => collapsedAssets.has(root));
 
@@ -279,33 +359,41 @@ function CockpitPage() {
         </div>
       </header>
 
-      {/* ── Placar do dia — mesmo recorte do filtro de modalidade ── */}
-      <Scoreboard variantFilter={variantFilter} />
+      {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
+      <Scoreboard filterArgs={filterArgs} filterKey={filterKey} />
 
-      {/* ── Resumo + filtro ── */}
+      {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
-        <p className="text-sm">
-          <strong>{totalRobots}</strong> robôs · <strong>{withOpen}</strong> com posição aberta ·{" "}
-          <strong>{waiting}</strong> aguardando · <strong>{blocked}</strong> bloqueados
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm">
+            <strong>{totalRobots}</strong> robôs · <strong>{withOpen}</strong> com posição aberta ·{" "}
+            <strong>{waiting}</strong> aguardando · <strong>{blocked}</strong> bloqueados
+          </p>
+          {filtroAtivo && (
+            <>
+              <Badge className="bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[10px]">
+                filtro ativo — os números acima e o placar são só deste recorte
+              </Badge>
+              <Button size="sm" variant="outline" className="h-6 text-[10px]"
+                onClick={() => patch(DEFAULT_FILTERS)}>
+                Limpar filtros
+              </Button>
+            </>
+          )}
+        </div>
+
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {([["all", "Todos"], ["open", "Só com posição aberta"], ["blocked", "Só bloqueados"]] as [Filter, string][]).map(([v, label]) => (
+          {([["all", "Todos"], ["open", "Só posicionado"], ["blocked", "Só bloqueado"]] as [Filter, string][]).map(([v, label]) => (
             <Button key={v} size="sm" variant={filter === v ? "default" : "outline"} className="h-7 text-[11px]"
               onClick={() => setFilter(v)}>
               {label}
             </Button>
           ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">Modalidade:</span>
-          <Button size="sm" variant={variantFilter === "all" ? "default" : "outline"} className="h-7 text-[11px]"
-            onClick={() => setVariantFilter("all")}>
-            Todas
-          </Button>
-          {variantsPresent.map((v: string) => (
-            <Button key={v} size="sm" variant={variantFilter === v ? "default" : "outline"} className="h-7 text-[11px]"
-              onClick={() => setVariantFilter(v)}>
-              {variantLabel(v)}
+          <span className="text-[11px] text-muted-foreground ml-2">Ordenar:</span>
+          {([["none", "Padrão"], ["desc", "Maior resultado"], ["asc", "Menor resultado"]] as [Sort, string][]).map(([v, label]) => (
+            <Button key={v} size="sm" variant={sort === v ? "default" : "outline"} className="h-7 text-[11px]"
+              onClick={() => patch({ sort: v })}>
+              {label}
             </Button>
           ))}
           <Button size="sm" variant="outline" className="h-7 text-[11px] ml-auto"
@@ -315,7 +403,46 @@ function CockpitPage() {
           </Button>
         </div>
 
+        {/* Ativo (raiz do contrato: WIN, WDO...) */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-muted-foreground w-20">Ativo:</span>
+          <Button size="sm" variant={allSymbols ? "default" : "outline"} className="h-7 text-[11px]"
+            onClick={() => patch({ symbols: [...B3_ASSETS] })}>Todos</Button>
+          {B3_ASSETS.map((s) => (
+            <Button key={s} size="sm" variant={symbolsSel.includes(s) ? "default" : "outline"}
+              className="h-7 text-[11px]" title={assetLabel(s)} onClick={() => toggleIn("symbols", s)}>
+              {s}
+            </Button>
+          ))}
+        </div>
+
+        {/* Modalidade */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-muted-foreground w-20">Modalidade:</span>
+          <Button size="sm" variant={allVariants ? "default" : "outline"} className="h-7 text-[11px]"
+            onClick={() => patch({ variants: [...VARIANT_LIST] })}>Todas</Button>
+          {VARIANT_LIST.map((v) => (
+            <Button key={v} size="sm" variant={variantsSel.includes(v) ? "default" : "outline"}
+              className="h-7 text-[11px]" onClick={() => toggleIn("variants", v)}>
+              {variantLabel(v)}
+            </Button>
+          ))}
+        </div>
+
+        {/* Modo de risco */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-muted-foreground w-20">Modo:</span>
+          <Button size="sm" variant={allModes ? "default" : "outline"} className="h-7 text-[11px]"
+            onClick={() => patch({ modes: [...MODE_LIST] })}>Todos</Button>
+          {MODE_LIST.map((m) => (
+            <Button key={m} size="sm" variant={modesSel.includes(m) ? "default" : "outline"}
+              className="h-7 text-[11px]" onClick={() => toggleIn("modes", m)}>
+              {MODE_LABEL[m]}
+            </Button>
+          ))}
+        </div>
       </section>
+
 
       {q.isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
       {!q.isLoading && !visible.length && (
@@ -377,9 +504,9 @@ function CockpitPage() {
               <h3 className="text-xs font-semibold flex items-center gap-2 flex-wrap">
                 <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
                 <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
-                {/* Com o filtro numa modalidade, a testeira do ativo já mostra
+                {/* Com uma única modalidade visível, a testeira do ativo já mostra
                     exatamente estes números — o subtotal viraria repetição. */}
-                {variantFilter === "all" && (
+                {variantsSel.length > 1 && (
                   <>
                     <span className={`font-mono ${moneyColor(sub?.resultado_brl ?? 0)}`}>
                       {SIGNED_HDR(sub?.resultado_brl ?? 0)}
@@ -672,11 +799,14 @@ function RobotLine({ label, robot }: { label: string; robot: any }) {
   );
 }
 
-function Scoreboard({ variantFilter = "all" }: { variantFilter?: string }) {
+function Scoreboard({ filterArgs, filterKey }: {
+  filterArgs: { symbols: string[] | null; variants: string[] | null; modes: string[] | null };
+  filterKey: string;
+}) {
   const getScoreboard = useServerFn(getB3CockpitScoreboard);
   const q = useQuery({
-    queryKey: ["b3-cockpit-scoreboard", variantFilter],
-    queryFn: () => getScoreboard({ data: { variant: variantFilter } }),
+    queryKey: ["b3-cockpit-scoreboard", filterKey],
+    queryFn: () => getScoreboard({ data: filterArgs as any }),
     refetchInterval: useVisibleRefetchInterval(10000),
     refetchIntervalInBackground: false,
   });

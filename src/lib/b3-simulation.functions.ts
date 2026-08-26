@@ -1,6 +1,7 @@
 // B3 Day Trade — Fase 2.5: simulação comparativa dos 3 modos
 import { createServerFn } from "@tanstack/react-start";
 import { rootSymbol } from "./b3-format";
+import { buildCockpitFilter, cockpitKeep } from "./b3-cockpit-filter";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 import {
@@ -4221,15 +4222,30 @@ export const deleteModeUserDefault = createServerFn({ method: "POST" })
 // resultado de hoje, não do histórico completo.
 export const getB3CockpitOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  // Filtro de modalidade da tela (somente leitura): quando vem preenchido, a
-  // agregação por ativo/modalidade descreve exatamente o recorte visível.
-  .inputValidator((d?: { variant?: string | null }) => d ?? {})
+  // FILTROS DA TELA (somente leitura, 26/08/2026)
+  //
+  // São 250 robôs: 10 ativos × 5 modalidades × 5 modos. A tela precisa recortar
+  // por ativo, modalidade e modo, e o recorte tem que valer para TODA soma —
+  // cards, testeira por ativo e placar. Um total que não acompanha o filtro
+  // induz a erro de leitura, que é pior do que não filtrar.
+  //
+  // `variant` (singular) continua aceito para não quebrar chamada antiga.
+  // `symbols` recebe a RAIZ do ativo (WIN, WDO, PETR4) — o contrato rola de
+  // vencimento e ninguém filtra por "WINV26".
+  .inputValidator((d?: {
+    variant?: string | null;
+    variants?: string[] | null;
+    symbols?: string[] | null;
+    modes?: string[] | null;
+  }) => d ?? {})
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
     const variantFilter = data?.variant && data.variant !== "all" ? String(data.variant) : null;
+    const f = buildCockpitFilter(data);
     const { data: runs, error: runsErr } = await (supabase as any)
       .from("b3_simulation_runs").select("id, symbol, variant").eq("user_id", userId).eq("status", "running");
     if (runsErr) throw runsErr;
+
 
     const sessionDate = currentB3SessionDate();
     const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3 (sem horário de verão)
@@ -4258,7 +4274,10 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
     const cards: any[] = [];
 
     const assetBySymbol: Record<string, any> = {};
-    for (const run of runs ?? []) {
+    // Execução fora do recorte de ativo/modalidade não é nem lida: economiza as
+    // consultas por execução (modos, ordens, snapshot) além de sumir da tela.
+    const runsVisiveis = ((runs ?? []) as any[]).filter((r) => cockpitKeep(f, r.symbol, r.variant));
+    for (const run of runsVisiveis) {
       const asset = await loadAssetProfile(supabase, run.symbol);
       assetBySymbol[run.symbol] = asset;
 
@@ -4345,6 +4364,8 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       const variant = (run.variant ?? "indicador") as string;
 
       for (const m of MODES) {
+        if (f.modes && !f.modes.has(m)) continue; // recorte de modo
+
         const mode = (modes ?? []).find((x: any) => x.mode === m);
         const open = openByMode[m];
         const audit = auditByMode[m];
@@ -4406,7 +4427,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
     // Mesmo método de linha do tempo de eventos do placar: +margem na entrada,
     // −margem na saída (ou agora), ordenado com entradas antes de saídas, e o
     // máximo acumulado × 1,30. Somar picos individuais superestima.
-    const runList: any[] = runs ?? [];
+    const runList: any[] = runsVisiveis;
     const runIds = runList.map((r) => r.id);
     const porAtivo: any[] = [];
     if (runIds.length) {
@@ -4447,7 +4468,6 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       // de propósito, e não "sem testeira" (que a tela lia como R$ 0,00 sem ops).
       for (const r of runList) {
         const variant = (r.variant ?? "indicador") as string;
-        if (variantFilter && variant !== variantFilter) continue;
         const entryAsset = ensureAsset(rootSymbol(r.symbol));
         entryAsset.contracts.add(r.symbol);
         if (!entryAsset.byVariant.has(variant)) entryAsset.byVariant.set(variant, mkAgg());
@@ -4458,14 +4478,16 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         if (!run) continue;
         const root = rootSymbol(run.symbol);
         const variant = (run.variant ?? "indicador") as string;
-        // Recorte da modalidade: a ordem descartada aqui não entra em nenhuma
-        // soma nem na linha do tempo de margem, então o pico também é do recorte.
-        if (variantFilter && variant !== variantFilter) continue;
+        // Recorte completo (ativo, modalidade e modo): a ordem descartada aqui
+        // não entra em nenhuma soma nem na linha do tempo de margem, então o
+        // pico de capital também é do recorte, não do sistema inteiro.
+        if (!cockpitKeep(f, run.symbol, variant, o.mode)) continue;
         const asset = assetBySymbol[run.symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
         const entryAsset = ensureAsset(root);
         entryAsset.contracts.add(run.symbol);
         if (!entryAsset.byVariant.has(variant)) entryAsset.byVariant.set(variant, mkAgg());
         const aggs = [entryAsset.agg, entryAsset.byVariant.get(variant)!];
+
 
         const qty = Number(o.quantity ?? 0);
         const entry = Number(o.entry_price ?? 0);
@@ -4562,7 +4584,12 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       for (const card of cards) { card.cor = "neutro"; card.curadoria = null; }
     }
 
-    return { session_date: sessionDate, variant: variantFilter ?? "all", cards, por_ativo: porAtivo };
+    return {
+      session_date: sessionDate,
+      variant: variantFilter ?? "all",
+      filtro_ativo: f.active,
+      cards, por_ativo: porAtivo,
+    };
 
   });
 
@@ -4575,12 +4602,20 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
 // histórico de exposição gravado.
 export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  // Mesmo filtro de modalidade da tela: o placar tem que descrever o recorte
-  // que o usuário está vendo, inclusive no pico de exposição.
-  .inputValidator((d?: { variant?: string | null }) => d ?? {})
+  // Mesmos filtros da tela (ativo, modalidade e modo): o placar tem que
+  // descrever o recorte que o usuário está vendo — saldo do dia, exposição,
+  // contagem de posicionados e pico de capital. Placar que não acompanha o
+  // filtro induz a erro de leitura.
+  .inputValidator((d?: {
+    variant?: string | null;
+    variants?: string[] | null;
+    symbols?: string[] | null;
+    modes?: string[] | null;
+  }) => d ?? {})
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
     const variantFilter = data?.variant && data.variant !== "all" ? String(data.variant) : null;
+    const f = buildCockpitFilter(data);
     const sessionDate = currentB3SessionDate();
     const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3
 
@@ -4593,13 +4628,15 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     const capitalDisponivelBrl = Number(tset?.capital_disponivel_brl ?? 0) || 0;
 
     const runList: any[] = ((runs ?? []) as any[])
-      .filter((r) => !variantFilter || (r.variant ?? "indicador") === variantFilter);
+      .filter((r) => cockpitKeep(f, r.symbol, r.variant));
+    const modesVisiveis = MODES.filter((m) => !f.modes || f.modes.has(m));
     const runIds = runList.map((r) => r.id);
     const empty = {
       session_date: sessionDate,
+      filtro_ativo: f.active,
       capital_disponivel_brl: capitalDisponivelBrl,
       saldo_dia_brl: 0, se_fechasse_agora_brl: 0,
-      exposicao_atual_brl: 0, robots_posicionados: 0, robots_total: runList.length * MODES.length,
+      exposicao_atual_brl: 0, robots_posicionados: 0, robots_total: runList.length * modesVisiveis.length,
       lucro_bruto_brl: 0, prejuizo_bruto_brl: 0, aberto_positivo_brl: 0, aberto_negativo_brl: 0,
       melhor_robo: null as any, pior_robo: null as any,
       pico_exposicao_brl: 0, pico_exposicao_hora: null as string | null, pico_posicoes: 0,
@@ -4645,6 +4682,9 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     for (const o of orders ?? []) {
       const run = runById[o.simulation_run_id];
       if (!run) continue;
+      // Recorte de modo: a ordem de um modo desmarcado não soma no saldo, na
+      // exposição, no melhor/pior robô nem na linha do tempo do pico.
+      if (f.modes && !f.modes.has(String(o.mode))) continue;
       const asset = profiles[run.symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
       const qty = Number(o.quantity ?? 0);
       const entry = Number(o.entry_price ?? 0);
