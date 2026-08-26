@@ -95,7 +95,43 @@ const roboShort = (r: any) =>
 
 
 type Filter = "all" | "open" | "blocked";
-type VariantFilter = "all" | string;
+type Sort = "none" | "desc" | "asc";
+
+const MODE_LIST = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
+const MODE_LABEL: Record<string, string> = {
+  conservador: "Conservador", moderado: "Moderado", equilibrado: "Equilibrado",
+  semi_agressivo: "Semi agressivo", agressivo: "Agressivo",
+};
+const VARIANT_LIST = Object.keys(VARIANT_LABEL);
+
+// PERSISTÊNCIA DO RECORTE (26/08/2026)
+// São 250 robôs; quem está acompanhando um ativo não quer remarcar tudo a cada
+// visita. Guardado no navegador, sem tocar em banco — é preferência de tela.
+const FILTER_STORAGE_KEY = "b3-cockpit-filtros-v2";
+type SavedFilters = {
+  symbols: string[]; variants: string[]; modes: string[]; filter: Filter; sort: Sort;
+};
+const DEFAULT_FILTERS: SavedFilters = {
+  symbols: [...B3_ASSETS], variants: [...VARIANT_LIST], modes: [...MODE_LIST],
+  filter: "all", sort: "none",
+};
+function loadFilters(): SavedFilters {
+  if (typeof window === "undefined") return DEFAULT_FILTERS;
+  try {
+    const raw = window.localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return DEFAULT_FILTERS;
+    const p = JSON.parse(raw);
+    return {
+      symbols: Array.isArray(p.symbols) ? p.symbols : DEFAULT_FILTERS.symbols,
+      variants: Array.isArray(p.variants) ? p.variants : DEFAULT_FILTERS.variants,
+      modes: Array.isArray(p.modes) ? p.modes : DEFAULT_FILTERS.modes,
+      filter: (["all", "open", "blocked"].includes(p.filter) ? p.filter : "all") as Filter,
+      sort: (["none", "desc", "asc"].includes(p.sort) ? p.sort : "none") as Sort,
+    };
+  } catch {
+    return DEFAULT_FILTERS;
+  }
+}
 
 function CockpitPage() {
   const qc = useQueryClient();
@@ -106,8 +142,31 @@ function CockpitPage() {
   const resetStop = useServerFn(resetB3DailyStop);
   const updEnabled = useServerFn(updateB3ModeSettings);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [filter, setFilter] = useState<Filter>("all");
-  const [variantFilter, setVariantFilter] = useState<VariantFilter>("all");
+  const [saved, setSaved] = useState<SavedFilters>(DEFAULT_FILTERS);
+  const [hydrated, setHydrated] = useState(false);
+  // Leitura do navegador só depois da hidratação: ler no initializer do useState
+  // dá divergência entre servidor e cliente.
+  useEffect(() => { setSaved(loadFilters()); setHydrated(true); }, []);
+  useEffect(() => {
+    if (!hydrated) return;
+    try { window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(saved)); } catch { /* modo privado */ }
+  }, [saved, hydrated]);
+
+  const { symbols: symbolsSel, variants: variantsSel, modes: modesSel, filter, sort } = saved;
+  const patch = (p: Partial<SavedFilters>) => setSaved((s) => ({ ...s, ...p }));
+  const setFilter = (v: Filter) => patch({ filter: v });
+
+  // Alterna um item da lista; "marcar/desmarcar todos" são atalhos separados.
+  const toggleIn = (key: "symbols" | "variants" | "modes", value: string) =>
+    setSaved((s) => {
+      const cur = s[key];
+      return { ...s, [key]: cur.includes(value) ? cur.filter((x) => x !== value) : [...cur, value] };
+    });
+
+  const allSymbols = symbolsSel.length === B3_ASSETS.length;
+  const allVariants = variantsSel.length === VARIANT_LIST.length;
+  const allModes = modesSel.length === MODE_LIST.length;
+  const filtroAtivo = !allSymbols || !allVariants || !allModes || filter !== "all";
   const [motivo, setMotivo] = useState("");
   // Faixas de ativo recolhidas — preferência só enquanto a página está aberta.
   const [collapsedAssets, setCollapsedAssets] = useState<Set<string>>(new Set());
@@ -117,12 +176,20 @@ function CockpitPage() {
     return next;
   });
 
+  // Recorte enviado ao servidor: lista completa vira `null` para não pagar
+  // filtro nenhum, e a chave da consulta carrega o recorte para que cards,
+  // testeira por ativo e PLACAR descrevam sempre o mesmo subconjunto.
+  const orNull = (list: string[], full: boolean) => (full ? null : list);
+  const filterArgs = {
+    symbols: orNull(symbolsSel, allSymbols),
+    variants: orNull(variantsSel, allVariants),
+    modes: orNull(modesSel, allModes),
+  };
+  const filterKey = JSON.stringify(filterArgs);
 
-  // O filtro de modalidade entra na chave e na chamada: as faixas por ativo,
-  // a ordenação e o placar passam a descrever o mesmo recorte dos cards.
   const q = useQuery({
-    queryKey: ["b3-cockpit", variantFilter],
-    queryFn: () => getOverview({ data: { variant: variantFilter } }),
+    queryKey: ["b3-cockpit", filterKey],
+    queryFn: () => getOverview({ data: filterArgs as any }),
     refetchInterval: useVisibleRefetchInterval(10000),
     refetchIntervalInBackground: false,
   });
@@ -130,6 +197,7 @@ function CockpitPage() {
   const all: any[] = q.data?.cards ?? [];
   const porAtivo: any[] = q.data?.por_ativo ?? [];
   const runIds = Array.from(new Set(all.map((c) => c.run_id)));
+
 
 
   const closeModeM = useMutation({
