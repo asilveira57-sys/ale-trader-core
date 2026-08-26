@@ -492,9 +492,9 @@ function CockpitPage() {
               <h3 className="text-xs font-semibold flex items-center gap-2 flex-wrap">
                 <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
                 <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
-                {/* Com o filtro numa modalidade, a testeira do ativo já mostra
+                {/* Com uma única modalidade visível, a testeira do ativo já mostra
                     exatamente estes números — o subtotal viraria repetição. */}
-                {variantFilter === "all" && (
+                {variantsSel.length > 1 && (
                   <>
                     <span className={`font-mono ${moneyColor(sub?.resultado_brl ?? 0)}`}>
                       {SIGNED_HDR(sub?.resultado_brl ?? 0)}
