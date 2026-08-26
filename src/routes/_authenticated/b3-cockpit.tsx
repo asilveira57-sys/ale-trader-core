@@ -238,7 +238,7 @@ function CockpitPage() {
     if (!cards.length) { toast.error("Nada para copiar"); return; }
     const text = buildCockpitCopyText(cards, {
       scope,
-      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-scoreboard", variantFilter]) : undefined,
+      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-scoreboard", filterKey]) : undefined,
       includeScoreboard,
     });
     try {
@@ -254,11 +254,11 @@ function CockpitPage() {
   const withOpen = all.filter((c) => !!c.open).length;
   const blocked = all.filter(isRiskBlocked).length;
   const waiting = all.filter((c) => !c.open && !isRiskBlocked(c)).length;
-  const variantsPresent = Array.from(new Set(all.map((c) => c.variant ?? "indicador")));
 
+  // Ativo/modalidade/modo já vêm recortados do servidor; aqui só ficam os
+  // atalhos de pregão (posicionado / bloqueado) e a ordenação.
   const visible = all
-    .filter((c) => filter === "all" ? true : filter === "open" ? !!c.open : isRiskBlocked(c))
-    .filter((c) => variantFilter === "all" ? true : (c.variant ?? "indicador") === variantFilter);
+    .filter((c) => filter === "all" ? true : filter === "open" ? !!c.open : isRiskBlocked(c));
 
   // Agrupa pela RAIZ do ativo (WIN, WDO, PETR4) — o contrato rola de vencimento —
   // e, dentro do ativo, por modalidade (variant).
