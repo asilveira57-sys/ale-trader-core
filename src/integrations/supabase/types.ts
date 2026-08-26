@@ -918,6 +918,60 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_entry_decision_log: {
+        Row: {
+          approve_votes: number | null
+          confidence: number | null
+          created_at: string
+          detalhe: Json | null
+          entry_style: string | null
+          estagio: string
+          id: string
+          mode: string
+          motivo: string | null
+          score: number | null
+          simulation_mode_id: string | null
+          simulation_run_id: string | null
+          symbol: string
+          trade_date: string
+          user_id: string
+        }
+        Insert: {
+          approve_votes?: number | null
+          confidence?: number | null
+          created_at?: string
+          detalhe?: Json | null
+          entry_style?: string | null
+          estagio: string
+          id?: string
+          mode: string
+          motivo?: string | null
+          score?: number | null
+          simulation_mode_id?: string | null
+          simulation_run_id?: string | null
+          symbol: string
+          trade_date?: string
+          user_id: string
+        }
+        Update: {
+          approve_votes?: number | null
+          confidence?: number | null
+          created_at?: string
+          detalhe?: Json | null
+          entry_style?: string | null
+          estagio?: string
+          id?: string
+          mode?: string
+          motivo?: string | null
+          score?: number | null
+          simulation_mode_id?: string | null
+          simulation_run_id?: string | null
+          symbol?: string
+          trade_date?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_grupo_estado_dia: {
         Row: {
           multiplicador: number
