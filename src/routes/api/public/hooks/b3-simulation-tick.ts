@@ -141,8 +141,15 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
               event_type: "b3_tick_summary",
               source: "b3-simulation-tick",
               severity: "info",
-              message: `Tick processou ${summary.length} run(s)`,
-              technical_data: { runs: summary, stale_runs_stopped: staleIds.length },
+              message: `Tick processou ${summary.length} run(s) em ${janela_ms} ms (concorrência ${limite})`,
+              technical_data: {
+                runs: summary,
+                stale_runs_stopped: staleIds.length,
+                // Métrica de conferência: a janela do tique inteiro. É o número
+                // que precisa cair bem abaixo dos 25 s medidos em série.
+                janela_ms,
+                concorrencia: limite,
+              },
             });
           } catch { /* log nunca deve derrubar o cron */ }
 
@@ -150,6 +157,8 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
             ok: true,
             runs: results.length,
             stale_runs_stopped: staleIds.length,
+            janela_ms,
+            concorrencia: limite,
             at: new Date().toISOString(),
             results,
           });
