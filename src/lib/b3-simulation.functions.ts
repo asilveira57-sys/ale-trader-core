@@ -3395,6 +3395,17 @@ async function runB3SimulationTickInner(
         modeTimings[mode] = Date.now() - modeT0;
       }
     }
+
+    // Um único INSERT por tique com os robôs cujo motivo de recusa MUDOU.
+    // Falha em silêncio: diagnóstico nunca derruba nem atrasa o motor.
+    if (entryStageRows.length) {
+      try {
+        await supabase.from("b3_entry_decision_log").insert(entryStageRows);
+        log.push({ action: "entry_stage_log", rows: entryStageRows.length });
+      } catch (e: any) {
+        log.push({ action: "entry_stage_log_erro", error: String(e?.message ?? e) });
+      }
+    }
     snapshotExtra.timings = {
       total_ms: Date.now() - runT0,
       por_modo: modeTimings,
