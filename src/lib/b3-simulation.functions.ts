@@ -2046,7 +2046,7 @@ async function runB3SimulationTickInner(
     // tique inteiro e inclui a posição aberta marcada a mercado.
     let grupo: B3GrupoDecision | null = null;
     try {
-      grupo = await evaluateGrupo(Number(ctx.price) || null);
+      grupo = await evaluateGrupo(Number(ctx.price) || null, priceSrc, ctx);
     } catch (e: any) {
       log.push({ action: "grupo_erro", error: String(e?.message ?? e) });
     }
