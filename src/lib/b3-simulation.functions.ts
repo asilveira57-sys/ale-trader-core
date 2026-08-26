@@ -2061,6 +2061,12 @@ async function runB3SimulationTickInner(
     // a ordem criada no mesmo tique (order_id). Não afeta decisões.
     const lastVoteIdsByMode: Record<string, string[]> = {};
 
+    // Diagnóstico de recusa de entrada, por robô (gravação, não decisão).
+    // Uma linha só quando o MOTIVO MUDA em relação à última avaliação daquele
+    // robô — 250 robôs por minuto tornariam a gravação por avaliação (≈100 mil
+    // linhas/pregão) mais caro que o próprio tique.
+    const entryStageRows: any[] = [];
+
     const runT0 = Date.now();
 
     for (const mode of MODES) {
