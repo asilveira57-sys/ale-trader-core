@@ -445,7 +445,7 @@ function buildFreshWindow(rowsDesc: any[]): B3SampleWindow {
  * Se MT5 estiver selecionado mas não houver tick válido, NÃO cai para CSV.
  * Retorna live=false e ctx zerado para o chamador bloquear execução.
  */
-export async function getB3PriceContext(
+export async function getB3PriceContextUncached(
   supabase: any,
   userId: string,
   opts: {
