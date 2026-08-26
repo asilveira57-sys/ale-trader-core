@@ -2490,6 +2490,87 @@ async function runB3SimulationTickInner(
           });
           continue;
         }
+
+        // Freio escalonado de GRUPO com posição aberta: o nível já foi
+        // reavaliado neste tique com todas as posições do grupo marcadas a
+        // mercado. Quando o nível manda travar este robô (nível 2/3 = robôs
+        // negativos; nível 4 = grupo inteiro), a posição é encerrada agora —
+        // esperar o fechamento natural foi exatamente o que deixou o
+        // WDOU26/mean_reversion atravessar os quatro níveis num único evento
+        // de stops simultâneos (26/08, R$ 1.835 de uma vez).
+        if (grupoNivel >= 2 && grupoTravados.includes(mode)) {
+          const exitAuditGrupo: B3QuoteExecutionAudit = {
+            ...markAudit,
+            execution_price_origin: `${markAudit.execution_price_origin}+grupo_freio_lock`,
+          };
+          const Rgrupo = Number(grupo?.resultado_brl ?? 0);
+          const tetoGrupo = Number(grupoLimites?.teto_brl ?? 0);
+          const tradeCtx = await closeOrder(supabase, userId, run, m, open, exitAuditGrupo, "grupo_freio_lock", marketHistory, asset);
+          markAuditEvent(`fechamento:${mode}:grupo_freio_lock`);
+          providerStats.last_exit_price = exitAuditGrupo.execution_price;
+          openOrdersCache = null;
+          realizedTodayByMode = await getRealizedTodayByMode();
+          try {
+            await supabase.from("b3_simulation_orders").update({
+              diagnostic_payload: {
+                exit_evaluation: "grupo_freio_mark_to_market",
+                close_reason: "grupo_freio_lock",
+                grupo_symbol: run.symbol, grupo_variant: runVariant,
+                grupo_nivel: grupoNivel,
+                grupo_resultado_brl: Rgrupo,
+                grupo_teto_brl: tetoGrupo,
+                grupo_robos_travados: grupoTravados,
+                realized_today_before_close_brl: realizedToday,
+                open_mtm_brl: openMtmBrlAtMark,
+                marked_today_brl: markedTodayAtMark,
+                executed_price: exitAuditGrupo.execution_price,
+                quote_age_s: Number(priceSrc.quote_age_s ?? 0),
+              },
+            }).eq("id", open.id).eq("user_id", userId);
+          } catch { /* diagnóstico nunca derruba o fechamento */ }
+          try {
+            await supabase.from("b3_simulation_block_events").insert({
+              simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
+              mode,
+              prev_status: m.current_status ?? "operando",
+              new_status: `grupo_nivel_${grupoNivel}`,
+              trigger: "grupo_freio_close",
+              related_order_id: open.id,
+              observed_value: Rgrupo,
+              limit_value: -tetoGrupo,
+              pnl_at_moment: markedTodayAtMark,
+              message: `Freio de grupo ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; posição aberta encerrada (resultado do grupo ${Rgrupo.toFixed(2)} BRL).`,
+              diagnostic_payload: {
+                grupo_nivel: grupoNivel, grupo_resultado_brl: Rgrupo, grupo_teto_brl: tetoGrupo,
+                realized_today_brl: realizedToday, open_mtm_brl: openMtmBrlAtMark,
+                marked_today_brl: markedTodayAtMark, mark_price: markPrice,
+                close_reason: "grupo_freio_lock",
+              } as any,
+            });
+          } catch { /* auditoria best-effort */ }
+          try {
+            await supabase.from("system_logs").insert({
+              event_type: "grupo_freio_lock_close",
+              source: `b3:${asset.symbol}:${mode}`,
+              severity: "error",
+              message: `Freio de grupo nível ${grupoNivel} encerrou posição ${open.side} de ${run.symbol}/${runVariant} (grupo ${Rgrupo.toFixed(2)} BRL, teto ${tetoGrupo.toFixed(2)} BRL).`,
+              technical_data: {
+                order_id: open.id, run_id: runId, mode, symbol: asset.symbol,
+                variant: runVariant, grupo_nivel: grupoNivel, grupo_resultado_brl: Rgrupo,
+                grupo_teto_brl: tetoGrupo, marked_today_brl: markedTodayAtMark,
+                executed_price: exitAuditGrupo.execution_price,
+              } as any,
+            });
+          } catch { /* log best-effort */ }
+          log.push({ mode, action: "close", reason: "grupo_freio_lock", nivel: grupoNivel, price: exitAuditGrupo.execution_price, grupo_resultado_brl: Rgrupo });
+          finalizeAudit(`Freio de grupo nível ${grupoNivel}: posição encerrada (grupo ${Rgrupo.toFixed(2)} BRL).`, {
+            last_setup: `Posição ${open.side.toUpperCase()} em gestão`,
+            signals: { evaluated_side: open.side, buy: false, sell: false },
+            trade_event: tradeCtx,
+          });
+          continue;
+        }
+
         // Níveis por ordem: modalidades com níveis dinâmicos (rompimento)
         // gravam stop_pts/gain_pts na ordem; as demais caem na configuração.
         const orderStopPts = Number(open.stop_pts ?? cfg.stop_pts);
