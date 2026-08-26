@@ -1,0 +1,1 @@
+ALTER FUNCTION public.b3_retencao_diaria(integer, integer) SET search_path TO 'public';
