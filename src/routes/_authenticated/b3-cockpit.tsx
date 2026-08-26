@@ -347,33 +347,41 @@ function CockpitPage() {
         </div>
       </header>
 
-      {/* ── Placar do dia — mesmo recorte do filtro de modalidade ── */}
-      <Scoreboard variantFilter={variantFilter} />
+      {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
+      <Scoreboard filterArgs={filterArgs} filterKey={filterKey} />
 
-      {/* ── Resumo + filtro ── */}
+      {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
-        <p className="text-sm">
-          <strong>{totalRobots}</strong> robôs · <strong>{withOpen}</strong> com posição aberta ·{" "}
-          <strong>{waiting}</strong> aguardando · <strong>{blocked}</strong> bloqueados
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm">
+            <strong>{totalRobots}</strong> robôs · <strong>{withOpen}</strong> com posição aberta ·{" "}
+            <strong>{waiting}</strong> aguardando · <strong>{blocked}</strong> bloqueados
+          </p>
+          {filtroAtivo && (
+            <>
+              <Badge className="bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[10px]">
+                filtro ativo — os números acima e o placar são só deste recorte
+              </Badge>
+              <Button size="sm" variant="outline" className="h-6 text-[10px]"
+                onClick={() => patch(DEFAULT_FILTERS)}>
+                Limpar filtros
+              </Button>
+            </>
+          )}
+        </div>
+
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {([["all", "Todos"], ["open", "Só com posição aberta"], ["blocked", "Só bloqueados"]] as [Filter, string][]).map(([v, label]) => (
+          {([["all", "Todos"], ["open", "Só posicionado"], ["blocked", "Só bloqueado"]] as [Filter, string][]).map(([v, label]) => (
             <Button key={v} size="sm" variant={filter === v ? "default" : "outline"} className="h-7 text-[11px]"
               onClick={() => setFilter(v)}>
               {label}
             </Button>
           ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">Modalidade:</span>
-          <Button size="sm" variant={variantFilter === "all" ? "default" : "outline"} className="h-7 text-[11px]"
-            onClick={() => setVariantFilter("all")}>
-            Todas
-          </Button>
-          {variantsPresent.map((v: string) => (
-            <Button key={v} size="sm" variant={variantFilter === v ? "default" : "outline"} className="h-7 text-[11px]"
-              onClick={() => setVariantFilter(v)}>
-              {variantLabel(v)}
+          <span className="text-[11px] text-muted-foreground ml-2">Ordenar:</span>
+          {([["none", "Padrão"], ["desc", "Maior resultado"], ["asc", "Menor resultado"]] as [Sort, string][]).map(([v, label]) => (
+            <Button key={v} size="sm" variant={sort === v ? "default" : "outline"} className="h-7 text-[11px]"
+              onClick={() => patch({ sort: v })}>
+              {label}
             </Button>
           ))}
           <Button size="sm" variant="outline" className="h-7 text-[11px] ml-auto"
@@ -383,7 +391,46 @@ function CockpitPage() {
           </Button>
         </div>
 
+        {/* Ativo (raiz do contrato: WIN, WDO...) */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-muted-foreground w-20">Ativo:</span>
+          <Button size="sm" variant={allSymbols ? "default" : "outline"} className="h-7 text-[11px]"
+            onClick={() => patch({ symbols: [...B3_ASSETS] })}>Todos</Button>
+          {B3_ASSETS.map((s) => (
+            <Button key={s} size="sm" variant={symbolsSel.includes(s) ? "default" : "outline"}
+              className="h-7 text-[11px]" title={assetLabel(s)} onClick={() => toggleIn("symbols", s)}>
+              {s}
+            </Button>
+          ))}
+        </div>
+
+        {/* Modalidade */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-muted-foreground w-20">Modalidade:</span>
+          <Button size="sm" variant={allVariants ? "default" : "outline"} className="h-7 text-[11px]"
+            onClick={() => patch({ variants: [...VARIANT_LIST] })}>Todas</Button>
+          {VARIANT_LIST.map((v) => (
+            <Button key={v} size="sm" variant={variantsSel.includes(v) ? "default" : "outline"}
+              className="h-7 text-[11px]" onClick={() => toggleIn("variants", v)}>
+              {variantLabel(v)}
+            </Button>
+          ))}
+        </div>
+
+        {/* Modo de risco */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-muted-foreground w-20">Modo:</span>
+          <Button size="sm" variant={allModes ? "default" : "outline"} className="h-7 text-[11px]"
+            onClick={() => patch({ modes: [...MODE_LIST] })}>Todos</Button>
+          {MODE_LIST.map((m) => (
+            <Button key={m} size="sm" variant={modesSel.includes(m) ? "default" : "outline"}
+              className="h-7 text-[11px]" onClick={() => toggleIn("modes", m)}>
+              {MODE_LABEL[m]}
+            </Button>
+          ))}
+        </div>
       </section>
+
 
       {q.isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
       {!q.isLoading && !visible.length && (
