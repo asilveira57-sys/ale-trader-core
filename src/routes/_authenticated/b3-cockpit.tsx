@@ -273,11 +273,23 @@ function CockpitPage() {
     group.byVariant.get(v)!.push(c);
   }
 
+  // Ordenação opcional por resultado do dia (realizado + aberto a mercado),
+  // aplicada dentro de cada modalidade e também na ordem dos ativos.
+  const cardResult = (c: any) => Number(c.realized_today ?? 0) + Number(c.unrealized_brl ?? 0);
+  if (sort !== "none") {
+    const dir = sort === "desc" ? -1 : 1;
+    for (const group of bySymbol.values()) {
+      for (const list of group.byVariant.values()) list.sort((a, b) => dir * (cardResult(a) - cardResult(b)));
+    }
+  }
+
   // Testeira por ativo/modalidade vem do servidor (linha do tempo de margem).
   const headerByAsset = new Map<string, any>(porAtivo.map((a) => [a.symbol, a]));
-  // Ordena os ativos por resultado do dia, decrescente — o que drena fica embaixo.
+  // Ordena os ativos por resultado do dia — o que drena fica embaixo (ou no topo
+  // quando o usuário pede "menor resultado").
+  const assetDir = sort === "asc" ? 1 : -1;
   const orderedAssets = Array.from(bySymbol.entries()).sort(
-    (a, b) => Number(headerByAsset.get(b[0])?.resultado_brl ?? 0) - Number(headerByAsset.get(a[0])?.resultado_brl ?? 0),
+    (a, b) => assetDir * (Number(headerByAsset.get(a[0])?.resultado_brl ?? 0) - Number(headerByAsset.get(b[0])?.resultado_brl ?? 0)),
   );
   const allCollapsed = orderedAssets.length > 0 && orderedAssets.every(([root]) => collapsedAssets.has(root));
 
