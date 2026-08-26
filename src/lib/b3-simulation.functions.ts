@@ -4221,15 +4221,30 @@ export const deleteModeUserDefault = createServerFn({ method: "POST" })
 // resultado de hoje, não do histórico completo.
 export const getB3CockpitOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  // Filtro de modalidade da tela (somente leitura): quando vem preenchido, a
-  // agregação por ativo/modalidade descreve exatamente o recorte visível.
-  .inputValidator((d?: { variant?: string | null }) => d ?? {})
+  // FILTROS DA TELA (somente leitura, 26/08/2026)
+  //
+  // São 250 robôs: 10 ativos × 5 modalidades × 5 modos. A tela precisa recortar
+  // por ativo, modalidade e modo, e o recorte tem que valer para TODA soma —
+  // cards, testeira por ativo e placar. Um total que não acompanha o filtro
+  // induz a erro de leitura, que é pior do que não filtrar.
+  //
+  // `variant` (singular) continua aceito para não quebrar chamada antiga.
+  // `symbols` recebe a RAIZ do ativo (WIN, WDO, PETR4) — o contrato rola de
+  // vencimento e ninguém filtra por "WINV26".
+  .inputValidator((d?: {
+    variant?: string | null;
+    variants?: string[] | null;
+    symbols?: string[] | null;
+    modes?: string[] | null;
+  }) => d ?? {})
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
     const variantFilter = data?.variant && data.variant !== "all" ? String(data.variant) : null;
+    const f = buildCockpitFilter(data);
     const { data: runs, error: runsErr } = await (supabase as any)
       .from("b3_simulation_runs").select("id, symbol, variant").eq("user_id", userId).eq("status", "running");
     if (runsErr) throw runsErr;
+
 
     const sessionDate = currentB3SessionDate();
     const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3 (sem horário de verão)
