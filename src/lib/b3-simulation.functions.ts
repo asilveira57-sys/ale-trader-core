@@ -4468,7 +4468,6 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       // de propósito, e não "sem testeira" (que a tela lia como R$ 0,00 sem ops).
       for (const r of runList) {
         const variant = (r.variant ?? "indicador") as string;
-        if (variantFilter && variant !== variantFilter) continue;
         const entryAsset = ensureAsset(rootSymbol(r.symbol));
         entryAsset.contracts.add(r.symbol);
         if (!entryAsset.byVariant.has(variant)) entryAsset.byVariant.set(variant, mkAgg());
@@ -4479,14 +4478,16 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         if (!run) continue;
         const root = rootSymbol(run.symbol);
         const variant = (run.variant ?? "indicador") as string;
-        // Recorte da modalidade: a ordem descartada aqui não entra em nenhuma
-        // soma nem na linha do tempo de margem, então o pico também é do recorte.
-        if (variantFilter && variant !== variantFilter) continue;
+        // Recorte completo (ativo, modalidade e modo): a ordem descartada aqui
+        // não entra em nenhuma soma nem na linha do tempo de margem, então o
+        // pico de capital também é do recorte, não do sistema inteiro.
+        if (!cockpitKeep(f, run.symbol, variant, o.mode)) continue;
         const asset = assetBySymbol[run.symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
         const entryAsset = ensureAsset(root);
         entryAsset.contracts.add(run.symbol);
         if (!entryAsset.byVariant.has(variant)) entryAsset.byVariant.set(variant, mkAgg());
         const aggs = [entryAsset.agg, entryAsset.byVariant.get(variant)!];
+
 
         const qty = Number(o.quantity ?? 0);
         const entry = Number(o.entry_price ?? 0);
