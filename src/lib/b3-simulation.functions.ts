@@ -4584,7 +4584,12 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       for (const card of cards) { card.cor = "neutro"; card.curadoria = null; }
     }
 
-    return { session_date: sessionDate, variant: variantFilter ?? "all", cards, por_ativo: porAtivo };
+    return {
+      session_date: sessionDate,
+      variant: variantFilter ?? "all",
+      filtro_ativo: f.active,
+      cards, por_ativo: porAtivo,
+    };
 
   });
 
