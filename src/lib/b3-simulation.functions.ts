@@ -714,19 +714,23 @@ async function runB3SimulationTickInner(
    * (a trava de devolução de pico só olha entre operações e por isso deixou
    * passar o dobro do limite três vezes em 24/08).
    */
-  async function evaluateGrupo(livePrice: number | null): Promise<B3GrupoDecision | null> {
+  async function evaluateGrupo(
+    livePrice: number | null,
+    info?: B3PriceContextResult | null,
+    fallbackCtx?: any,
+  ): Promise<B3GrupoDecision | null> {
     if (!grupoLimites) return null;
     const openList = (await getOpen()) ?? [];
     const porModo: Record<string, number> = {};
     for (const mode of MODES) {
       let v = Number(realizedTodayByMode[mode] ?? 0);
-      if (livePrice && livePrice > 0) {
-        for (const o of openList) {
-          if (o.mode !== mode) continue;
-          const dir = o.side === "buy" ? 1 : -1;
-          v += (livePrice - Number(o.entry_price)) * dir
-            * Number(asset.tick_value_brl ?? POINT_VALUE_BRL) * Number(o.quantity ?? 1);
-        }
+      for (const o of openList) {
+        if (o.mode !== mode) continue;
+        // Marcação a mercado lado a lado (bid para compra, ask para venda)
+        // quando há contexto de cotação; senão o último preço conhecido.
+        const mark = info ? liveExitMarkPrice(o, info, fallbackCtx) : (livePrice && livePrice > 0 ? livePrice : null);
+        const mtm = markOpenOrderBrl(o, mark);
+        if (mtm != null) v += mtm;
       }
       porModo[mode] = v;
     }
