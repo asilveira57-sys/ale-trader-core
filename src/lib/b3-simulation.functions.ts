@@ -4682,6 +4682,9 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     for (const o of orders ?? []) {
       const run = runById[o.simulation_run_id];
       if (!run) continue;
+      // Recorte de modo: a ordem de um modo desmarcado não soma no saldo, na
+      // exposição, no melhor/pior robô nem na linha do tempo do pico.
+      if (f.modes && !f.modes.has(String(o.mode))) continue;
       const asset = profiles[run.symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
       const qty = Number(o.quantity ?? 0);
       const entry = Number(o.entry_price ?? 0);
