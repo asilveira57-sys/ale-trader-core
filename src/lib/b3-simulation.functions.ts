@@ -4274,7 +4274,10 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
     const cards: any[] = [];
 
     const assetBySymbol: Record<string, any> = {};
-    for (const run of runs ?? []) {
+    // Execução fora do recorte de ativo/modalidade não é nem lida: economiza as
+    // consultas por execução (modos, ordens, snapshot) além de sumir da tela.
+    const runsVisiveis = ((runs ?? []) as any[]).filter((r) => cockpitKeep(f, r.symbol, r.variant));
+    for (const run of runsVisiveis) {
       const asset = await loadAssetProfile(supabase, run.symbol);
       assetBySymbol[run.symbol] = asset;
 
