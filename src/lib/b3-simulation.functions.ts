@@ -2134,6 +2134,70 @@ async function runB3SimulationTickInner(
           series_health: (priceSrc as any).series_health ?? null,
           volatility_limit_pct: Number(cfg.max_volatility_pct),
         });
+
+        // ── Diagnóstico: em que estágio este robô parou e por quê ──────────
+        // Puro registro. Envolvido em try/catch e sem await: as linhas são
+        // enfileiradas e gravadas em UM insert no fim do tique.
+        try {
+          const KEY_STAGE: Record<string, string> = {
+            tick_received: "cotacao", mt5_server: "cotacao", mt5_symbol: "cotacao",
+            valid_quote: "cotacao", spread: "cotacao",
+            market_open: "horario", time_allowed: "horario",
+            operation_window: "horario", force_close_window: "horario",
+            global_protection: "protecao", protection_engine: "protecao",
+            daily_loss: "protecao", daily_loss_aggregate: "protecao",
+            daily_target: "protecao", volatility: "protecao",
+            mode_enabled: "protecao", max_trades: "protecao", position_open: "protecao",
+            setup: "classificador",
+            score: "comite", confidence: "comite", committee: "comite",
+          };
+          const setupObj = (extra.setup ?? null) as any;
+          const committeeObj = (extra.committee ?? null) as any;
+          const r = String(finalReason ?? "");
+          let estagio = firstStop ? (KEY_STAGE[firstStop.key] ?? "outro") : null;
+          if (!estagio) {
+            if (extra.trade_event && /aprovad/i.test(r)) estagio = "aprovado";
+            else if (/grupo/i.test(r)) estagio = "freio_grupo";
+            else if (/setup/i.test(r)) estagio = "classificador";
+            else if (/cota[çc]|tick|pre[çc]o/i.test(r)) estagio = "cotacao";
+            else if (/prote[çc]|pico|meta|perda|loss|drawdown/i.test(r)) estagio = "protecao";
+            else if (/hor[áa]rio|janela|zeragem|abertura/i.test(r)) estagio = "horario";
+            else if (committeeObj) estagio = "comite";
+            else estagio = "outro";
+          }
+          // Assinatura sem números: "score 62 / mínimo 75" muda a cada tique e
+          // não é mudança de estado.
+          const sigValue = `${estagio}|${firstStop?.key ?? ""}|${setupObj?.name ?? ""}|${r.replace(/[\d.,+-]+/g, "#").slice(0, 140)}`;
+          if (sigChanged(`entry_stage:${mode}`, sigValue)) {
+            entryStageRows.push({
+              user_id: userId,
+              simulation_run_id: runId,
+              simulation_mode_id: m.id,
+              mode,
+              symbol: asset.symbol,
+              entry_style: String((cfg as any).entry_style ?? "indicador"),
+              estagio,
+              motivo: r.slice(0, 500),
+              detalhe: setupObj
+                ? {
+                    setup: setupObj.name ?? null,
+                    ok: setupObj.ok ?? null,
+                    reasons: setupObj.reasons ?? null,
+                    details: setupObj.details ?? null,
+                    side_override: setupObj.side_override ?? null,
+                    stop_pts_override: setupObj.stop_pts_override ?? null,
+                    gain_pts_override: setupObj.gain_pts_override ?? null,
+                    first_stop: firstStop ? { key: firstStop.key, label: firstStop.label, detail: firstStop.detail } : null,
+                  }
+                : firstStop
+                  ? { first_stop: { key: firstStop.key, label: firstStop.label, detail: firstStop.detail } }
+                  : null,
+              score: committeeObj?.score != null ? Number(committeeObj.score) : null,
+              confidence: committeeObj?.avg_confidence != null ? Number(committeeObj.avg_confidence) : null,
+              approve_votes: committeeObj?.approve_votes != null ? Number(committeeObj.approve_votes) : null,
+            });
+          }
+        } catch { /* diagnóstico nunca atrasa nem impede a avaliação */ }
       };
 
 
