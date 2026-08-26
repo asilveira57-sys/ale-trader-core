@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -3092,6 +3092,7 @@ export type Database = {
       }
       b3_simulation_mode_settings: {
         Row: {
+          breakout_min_clearance_pts: number | null
           consecutive_loss_after_target: number
           created_at: string
           daily_gain_target_brl: number
@@ -3118,6 +3119,7 @@ export type Database = {
           post_target_allowed_retracement: number
           post_target_size_reduction: number
           profit_multiplier_before_lock: number
+          range_min_size_pts: number | null
           simulation_run_id: string
           stop_pts: number
           trading_start_time: string
@@ -3128,6 +3130,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          breakout_min_clearance_pts?: number | null
           consecutive_loss_after_target?: number
           created_at?: string
           daily_gain_target_brl?: number
@@ -3154,6 +3157,7 @@ export type Database = {
           post_target_allowed_retracement?: number
           post_target_size_reduction?: number
           profit_multiplier_before_lock?: number
+          range_min_size_pts?: number | null
           simulation_run_id: string
           stop_pts?: number
           trading_start_time?: string
@@ -3164,6 +3168,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          breakout_min_clearance_pts?: number | null
           consecutive_loss_after_target?: number
           created_at?: string
           daily_gain_target_brl?: number
@@ -3190,6 +3195,7 @@ export type Database = {
           post_target_allowed_retracement?: number
           post_target_size_reduction?: number
           profit_multiplier_before_lock?: number
+          range_min_size_pts?: number | null
           simulation_run_id?: string
           stop_pts?: number
           trading_start_time?: string
