@@ -173,10 +173,13 @@ const AUTO_NAV = [
 ] as const;
 
 const REAL_NAV = [
+  { to: "/cockpit-real", label: "Cockpit Real (celular)", icon: Smartphone },
+  { to: "/prd-autorizacoes", label: "B3 — Autorizações Reais", icon: ShieldAlert },
   { to: "/real-dashboard", label: "Painel Real", icon: Gauge },
   { to: "/approval-desk", label: "Mesa de Aprovação", icon: ShieldCheck },
   { to: "/audit", label: "Auditoria", icon: FileText },
   { to: "/real-risk", label: "Limites Reais", icon: ShieldAlert },
+
 ] as const;
 
 const INTEL_NAV = [
