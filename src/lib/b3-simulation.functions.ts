@@ -1706,7 +1706,7 @@ async function runB3SimulationTickInner(
     // Bloqueios duros — um só já descarta.
     const hardBlock: string[] = [];
     if (rangeSize < minRangeSize) hardBlock.push(`canal estreito demais pra rompimento operável (${rangeSize.toFixed(0)} pts < mínimo ${minRangeSize.toFixed(0)} pts)`);
-    if (!wasLateral) hardBlock.push(`mercado não estava lateral antes do rompimento (força ${trend.strength.toFixed(1)}, vol ${(vol * 100).toFixed(1)}%)`);
+    if (!wasLateral) hardBlock.push(`sem consolidação prévia no canal (sobreposição ${(overlapRatio * 100).toFixed(0)}% < mínimo ${(minOverlapRatio * 100).toFixed(0)}% da altura do canal)`);
     if (!breakoutSide) hardBlock.push(`sem fechamento além da borda do canal (fechamento ${lastClose.toFixed(1)}, bordas ${rangeBottom.toFixed(1)}–${rangeTop.toFixed(1)}, folga mínima ${minClear.toFixed(1)} pts)`);
 
     // Evidências de qualidade do rompimento (placar, não certezas).
