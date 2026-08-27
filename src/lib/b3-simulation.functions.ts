@@ -1653,14 +1653,31 @@ async function runB3SimulationTickInner(
     const gainDyn = Math.round(rangeSize * 1.0);
     const rr = stopDyn > 0 ? gainDyn / stopDyn : 0;
 
-    // PASSO 3 da especificação: o rompimento inverte a relação com a
-    // lateralidade — exige-se apenas que o mercado ESTAVA lateral antes,
-    // reaproveitando os mesmos dois parâmetros (lateral_strength_min e
-    // lateral_vol_min). O rompimento em si é detectado pelo preço ultrapassar
-    // a borda, não por filtro de tendência.
+    // PASSO 3 da especificação: o rompimento exige que o mercado ESTIVESSE
+    // lateral ANTES do rompimento. Antes isso era medido pelo `trend` corrente
+    // (ctxLocal) — o instante do rompimento, que por definição é o minuto em
+    // que o mercado deixou de ser lateral: exigência autocontraditória, zero
+    // entradas em dois pregões. Agora a consolidação prévia é derivada dos
+    // PRÓPRIOS candles do canal (já excluído o candle do rompimento), pela
+    // sobreposição das faixas das duas metades da janela.
     const latStrengthMin = Number((cfg as any).lateral_strength_min ?? 0);
     const latVolMin = Number((cfg as any).lateral_vol_min ?? 0);
-    const wasLateral = trend.direction === "lateral" || trend.strength < latStrengthMin || vol < latVolMin;
+    const halfIdx = Math.floor(channelCandles.length / 2);
+    const firstHalf = channelCandles.slice(0, halfIdx);
+    const secondHalf = channelCandles.slice(halfIdx);
+    const hiOf = (arr: any[]) => Math.max(...arr.map((c: any) => Number(c.candle_high)).filter(Number.isFinite));
+    const loOf = (arr: any[]) => Math.min(...arr.map((c: any) => Number(c.candle_low)).filter(Number.isFinite));
+    const h1 = firstHalf.length ? hiOf(firstHalf) : rangeTop;
+    const l1 = firstHalf.length ? loOf(firstHalf) : rangeBottom;
+    const h2 = secondHalf.length ? hiOf(secondHalf) : rangeTop;
+    const l2 = secondHalf.length ? loOf(secondHalf) : rangeBottom;
+    const overlap = Math.min(h1, h2) - Math.max(l1, l2);
+    const overlapRatio = rangeSize > 0 ? overlap / rangeSize : 0;
+    // Faixas das duas metades sobrepostas em pelo menos 30% da altura do canal
+    // = preço contido numa faixa durante a janela = consolidação.
+    const minOverlapRatio = Number((cfg as any).breakout_min_overlap_ratio ?? 0.3);
+    const wasLateral = overlapRatio >= minOverlapRatio;
+
 
     const priceBeyondBorder = breakoutSide === "buy" ? price > rangeTop : breakoutSide === "sell" ? price < rangeBottom : false;
     const clearance = breakoutSide === "buy" ? clearanceUp : breakoutSide === "sell" ? clearanceDown : Math.max(clearanceUp, clearanceDown);
@@ -1675,8 +1692,13 @@ async function runB3SimulationTickInner(
       breakout_clearance_pts: clearance,
       price_vs_border: price > rangeTop ? "acima_da_borda" : price < rangeBottom ? "abaixo_da_borda" : "dentro_do_canal",
       lateralidade_previa: wasLateral,
+      consolidacao_overlap_pts: Number(overlap.toFixed(1)),
+      consolidacao_overlap_ratio: Number(overlapRatio.toFixed(3)),
+      consolidacao_min_overlap_ratio: minOverlapRatio,
+      metade_1: { high: h1, low: l1 }, metade_2: { high: h2, low: l2 },
       lateral_strength_min: latStrengthMin, lateral_vol_min: latVolMin,
       trend_strength: trend.strength, volatility_pct: vol,
+
       stop_dinamico_pts: stopDyn, alvo_dinamico_pts: gainDyn,
       "r:r": Number(rr.toFixed(2)),
     };
@@ -1684,7 +1706,7 @@ async function runB3SimulationTickInner(
     // Bloqueios duros — um só já descarta.
     const hardBlock: string[] = [];
     if (rangeSize < minRangeSize) hardBlock.push(`canal estreito demais pra rompimento operável (${rangeSize.toFixed(0)} pts < mínimo ${minRangeSize.toFixed(0)} pts)`);
-    if (!wasLateral) hardBlock.push(`mercado não estava lateral antes do rompimento (força ${trend.strength.toFixed(1)}, vol ${(vol * 100).toFixed(1)}%)`);
+    if (!wasLateral) hardBlock.push(`sem consolidação prévia no canal (sobreposição ${(overlapRatio * 100).toFixed(0)}% < mínimo ${(minOverlapRatio * 100).toFixed(0)}% da altura do canal)`);
     if (!breakoutSide) hardBlock.push(`sem fechamento além da borda do canal (fechamento ${lastClose.toFixed(1)}, bordas ${rangeBottom.toFixed(1)}–${rangeTop.toFixed(1)}, folga mínima ${minClear.toFixed(1)} pts)`);
 
     // Evidências de qualidade do rompimento (placar, não certezas).
