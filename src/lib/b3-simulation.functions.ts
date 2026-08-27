@@ -1692,8 +1692,13 @@ async function runB3SimulationTickInner(
       breakout_clearance_pts: clearance,
       price_vs_border: price > rangeTop ? "acima_da_borda" : price < rangeBottom ? "abaixo_da_borda" : "dentro_do_canal",
       lateralidade_previa: wasLateral,
+      consolidacao_overlap_pts: Number(overlap.toFixed(1)),
+      consolidacao_overlap_ratio: Number(overlapRatio.toFixed(3)),
+      consolidacao_min_overlap_ratio: minOverlapRatio,
+      metade_1: { high: h1, low: l1 }, metade_2: { high: h2, low: l2 },
       lateral_strength_min: latStrengthMin, lateral_vol_min: latVolMin,
       trend_strength: trend.strength, volatility_pct: vol,
+
       stop_dinamico_pts: stopDyn, alvo_dinamico_pts: gainDyn,
       "r:r": Number(rr.toFixed(2)),
     };
