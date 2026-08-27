@@ -156,12 +156,30 @@ function CockpitPage() {
   const patch = (p: Partial<SavedFilters>) => setSaved((s) => ({ ...s, ...p }));
   const setFilter = (v: Filter) => patch({ filter: v });
 
-  // Alterna um item da lista; "marcar/desmarcar todos" são atalhos separados.
-  const toggleIn = (key: "symbols" | "variants" | "modes", value: string) =>
+  // Clique num item ISOLA aquele item (clico em WIN, vejo WIN). Ctrl/Shift/⌘
+  // no clique soma ou remove da seleção — é o que se espera de uma lista.
+  const FULL: Record<"symbols" | "variants" | "modes", string[]> = {
+    symbols: [...B3_ASSETS], variants: [...VARIANT_LIST], modes: [...MODE_LIST],
+  };
+  const clickItem = (
+    key: "symbols" | "variants" | "modes",
+    value: string,
+    e?: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean },
+  ) =>
     setSaved((s) => {
       const cur = s[key];
+      const additive = !!(e?.ctrlKey || e?.metaKey || e?.shiftKey);
+      if (!additive) {
+        // Já isolado? segundo clique volta para tudo marcado.
+        const isolated = cur.length === 1 && cur[0] === value;
+        return { ...s, [key]: isolated ? FULL[key] : [value] };
+      }
       return { ...s, [key]: cur.includes(value) ? cur.filter((x) => x !== value) : [...cur, value] };
     });
+  // "Todos" é alternador: tudo marcado -> desmarca tudo.
+  const toggleAll = (key: "symbols" | "variants" | "modes", isAll: boolean) =>
+    patch({ [key]: isAll ? [] : FULL[key] } as Partial<SavedFilters>);
+
 
   const allSymbols = symbolsSel.length === B3_ASSETS.length;
   const allVariants = variantsSel.length === VARIANT_LIST.length;
@@ -403,14 +421,16 @@ function CockpitPage() {
           </Button>
         </div>
 
-        {/* Ativo (raiz do contrato: WIN, WDO...) */}
+        {/* Ativo (raiz do contrato: WIN, WDO...) — clique isola, Ctrl/Shift soma */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-muted-foreground w-20">Ativo:</span>
           <Button size="sm" variant={allSymbols ? "default" : "outline"} className="h-7 text-[11px]"
-            onClick={() => patch({ symbols: [...B3_ASSETS] })}>Todos</Button>
+            title={allSymbols ? "Desmarcar todos" : "Marcar todos"}
+            onClick={() => toggleAll("symbols", allSymbols)}>Todos</Button>
           {B3_ASSETS.map((s) => (
             <Button key={s} size="sm" variant={symbolsSel.includes(s) ? "default" : "outline"}
-              className="h-7 text-[11px]" title={assetLabel(s)} onClick={() => toggleIn("symbols", s)}>
+              className="h-7 text-[11px]" title={`${assetLabel(s)} — clique isola; Ctrl/Shift soma`}
+              onClick={(e) => clickItem("symbols", s, e)}>
               {s}
             </Button>
           ))}
@@ -420,10 +440,12 @@ function CockpitPage() {
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-muted-foreground w-20">Modalidade:</span>
           <Button size="sm" variant={allVariants ? "default" : "outline"} className="h-7 text-[11px]"
-            onClick={() => patch({ variants: [...VARIANT_LIST] })}>Todas</Button>
+            title={allVariants ? "Desmarcar todas" : "Marcar todas"}
+            onClick={() => toggleAll("variants", allVariants)}>Todas</Button>
           {VARIANT_LIST.map((v) => (
             <Button key={v} size="sm" variant={variantsSel.includes(v) ? "default" : "outline"}
-              className="h-7 text-[11px]" onClick={() => toggleIn("variants", v)}>
+              className="h-7 text-[11px]" title="Clique isola; Ctrl/Shift soma"
+              onClick={(e) => clickItem("variants", v, e)}>
               {variantLabel(v)}
             </Button>
           ))}
@@ -433,14 +455,17 @@ function CockpitPage() {
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-muted-foreground w-20">Modo:</span>
           <Button size="sm" variant={allModes ? "default" : "outline"} className="h-7 text-[11px]"
-            onClick={() => patch({ modes: [...MODE_LIST] })}>Todos</Button>
+            title={allModes ? "Desmarcar todos" : "Marcar todos"}
+            onClick={() => toggleAll("modes", allModes)}>Todos</Button>
           {MODE_LIST.map((m) => (
             <Button key={m} size="sm" variant={modesSel.includes(m) ? "default" : "outline"}
-              className="h-7 text-[11px]" onClick={() => toggleIn("modes", m)}>
+              className="h-7 text-[11px]" title="Clique isola; Ctrl/Shift soma"
+              onClick={(e) => clickItem("modes", m, e)}>
               {MODE_LABEL[m]}
             </Button>
           ))}
         </div>
+
       </section>
 
 
