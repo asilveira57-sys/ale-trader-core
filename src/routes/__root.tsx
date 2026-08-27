@@ -21,28 +21,49 @@ import { Toaster } from "@/components/ui/sonner";
 // Aqui recarregamos no máximo 1x a cada 60s para buscar o bundle novo.
 const GLOBAL_RELOAD_KEY = "aletrader:global-reload-at";
 if (typeof window !== "undefined") {
+  const hardReload = () => {
+    // Recarrega com cache-bust: sem isso o browser pode reentregar o mesmo
+    // index.html antigo apontando para chunks que já não existem no CDN.
+    const url = new URL(window.location.href);
+    url.searchParams.set("_r", String(Date.now()));
+    window.location.replace(url.toString());
+  };
   const maybeReload = (value: unknown) => {
     try {
       const msg = String((value as any)?.message ?? value ?? "");
       const isModuleFail =
         value == null ||
-        /dynamically imported module|Importing a module script failed|Loading chunk|ChunkLoadError|Failed to fetch dynamically|error loading/i.test(msg);
+        /dynamically imported module|Importing a module script failed|Loading chunk|ChunkLoadError|Failed to fetch dynamically|error loading|Unexpected token '<'|MIME type/i.test(msg);
       if (!isModuleFail) return;
       const last = Number(sessionStorage.getItem(GLOBAL_RELOAD_KEY) ?? 0);
       if (Date.now() - last < 60_000) return;
       sessionStorage.setItem(GLOBAL_RELOAD_KEY, String(Date.now()));
-      window.location.reload();
+      hardReload();
     } catch {
       /* nunca derrubar a página por causa da rede de segurança */
     }
   };
-  window.addEventListener("error", (e) =>
-    maybeReload((e as ErrorEvent).error ?? (e as ErrorEvent).message),
-  );
+  // Caminho oficial do Vite para falha de preload de chunk — não passa por
+  // window.onerror em todos os browsers.
+  window.addEventListener("vite:preloadError", (e) => {
+    e.preventDefault();
+    maybeReload((e as any).payload ?? "Failed to fetch dynamically imported module");
+  });
+  window.addEventListener("error", (e) => {
+    const ev = e as ErrorEvent;
+    // Falha ao carregar <script>/<link> gera um error event no elemento, sem message.
+    const target = ev.target as HTMLElement | null;
+    if (target && (target.tagName === "SCRIPT" || target.tagName === "LINK")) {
+      maybeReload("Loading chunk failed");
+      return;
+    }
+    maybeReload(ev.error ?? ev.message);
+  }, true);
   window.addEventListener("unhandledrejection", (e) =>
     maybeReload((e as PromiseRejectionEvent).reason),
   );
 }
+
 
 function NotFoundComponent() {
   return (
