@@ -130,8 +130,14 @@ export const Route = createFileRoute("/_authenticated")({
   errorComponent: AuthErrorBoundary,
 });
 
-const NAV = [
+const PRINCIPAL_NAV = [
   { to: "/cockpit-real", label: "Cockpit Real (celular)", icon: Smartphone },
+  { to: "/prd-autorizacoes", label: "B3 — Autorizações Reais", icon: ShieldAlert },
+  { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
+  { to: "/b3-diagnostico", label: "Diagnóstico diário", icon: Stethoscope },
+] as const;
+
+const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/war-room", label: "Sala de Guerra", icon: Radio },
   { to: "/operations", label: "Operações", icon: ListChecks },
@@ -144,16 +150,11 @@ const NAV = [
   { to: "/wallet", label: "Binance — Carteira", icon: Wallet },
   { to: "/orders", label: "Binance — Ordens", icon: Receipt },
   { to: "/binance-audit", label: "Binance — Auditoria Saídas", icon: FileSearch },
-  { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
-  { to: "/b3-diagnostico", label: "Diagnóstico Diário", icon: Stethoscope },
   { to: "/b3", label: "B3 Day Trade (WIN)", icon: BarChart3 },
-
-
   { to: "/b3-wdo", label: "B3 Day Trade (WDO)", icon: BarChart3 },
   { to: "/b3-petr4", label: "B3 Day Trade (PETR4)", icon: BarChart3 },
   { to: "/b3-vale3", label: "B3 Day Trade (VALE3)", icon: BarChart3 },
   { to: "/b3-mt5sim", label: "Simulação MT5 XP", icon: Activity },
-
   { to: "/backtest", label: "Laboratório", icon: FlaskConical },
   { to: "/assets", label: "Ativos", icon: Coins },
   { to: "/agents", label: "Agentes", icon: Bot },
@@ -173,13 +174,10 @@ const AUTO_NAV = [
 ] as const;
 
 const REAL_NAV = [
-  { to: "/cockpit-real", label: "Cockpit Real (celular)", icon: Smartphone },
-  { to: "/prd-autorizacoes", label: "B3 — Autorizações Reais", icon: ShieldAlert },
   { to: "/real-dashboard", label: "Painel Real", icon: Gauge },
   { to: "/approval-desk", label: "Mesa de Aprovação", icon: ShieldCheck },
   { to: "/audit", label: "Auditoria", icon: FileText },
   { to: "/real-risk", label: "Limites Reais", icon: ShieldAlert },
-
 ] as const;
 
 const INTEL_NAV = [
