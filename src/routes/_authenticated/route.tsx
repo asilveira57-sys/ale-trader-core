@@ -49,20 +49,33 @@ async function recoverSession() {
 }
 
 
+// Guarda a rota onde a pessoa estava para que o login volte para lá, e não para
+// o Dashboard. Perder a tela no meio do pregão é problema operacional.
+export const RETURN_TO_KEY = "aletrader:return-to";
+function rememberCurrentRoute() {
+  try {
+    if (typeof window === "undefined") return;
+    const path = window.location.pathname + window.location.search;
+    if (path.startsWith("/auth")) return;
+    window.sessionStorage.setItem(RETURN_TO_KEY, path);
+  } catch { /* modo privado */ }
+}
+
 async function getUserWithTransientTolerance() {
   const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) throw redirect({ to: "/auth" });
+  if (!sessionData.session) { rememberCurrentRoute(); throw redirect({ to: "/auth" }); }
 
   const { data, error } = await supabase.auth.getUser();
   if (data.user) return { user: data.user };
 
   const message = error?.message ?? "";
-  if (isDefinitiveSessionError(message)) throw redirect({ to: "/auth" });
+  if (isDefinitiveSessionError(message)) { rememberCurrentRoute(); throw redirect({ to: "/auth" }); }
 
   // If Lovable Cloud auth has a transient /user timeout, keep the protected
   // route mounted. ServerFns still validate the bearer token on each call.
   return { user: sessionData.session.user };
 }
+
 
 function AuthErrorBoundary({ error, reset }: { error: Error; reset: () => void }) {
   const navigate = useNavigate();
