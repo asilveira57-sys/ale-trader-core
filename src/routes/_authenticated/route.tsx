@@ -232,6 +232,8 @@ function NavContent({ pathname, onNavigate, onSignOut }: {
         </div>
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {group(PRINCIPAL_NAV, "bg-primary/15 text-primary", "text-foreground hover:bg-primary/10 hover:text-primary")}
+        <div className="pt-4 pb-1 px-3 text-[10px] uppercase tracking-wider text-muted-foreground">Principal</div>
         {group(NAV, "bg-accent text-accent-foreground", "text-muted-foreground hover:bg-accent/50 hover:text-foreground")}
         <div className="pt-4 pb-1 px-3 text-[10px] uppercase tracking-wider text-emerald-400/80">Automação</div>
         {group(AUTO_NAV, "bg-emerald-500/15 text-emerald-200", "text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-200")}
