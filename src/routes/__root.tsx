@@ -31,10 +31,13 @@ if (typeof window !== "undefined") {
   const maybeReload = (value: unknown) => {
     try {
       const msg = String((value as any)?.message ?? value ?? "");
+      // Só recarrega diante de falha REAL de carregamento de módulo. Erro sem
+      // mensagem ("Uncaught undefined") não é motivo: recarregar por isso
+      // derrubava o painel no meio do pregão e fazia perder a rota.
       const isModuleFail =
-        value == null ||
         /dynamically imported module|Importing a module script failed|Loading chunk|ChunkLoadError|Failed to fetch dynamically|error loading|Unexpected token '<'|MIME type/i.test(msg);
       if (!isModuleFail) return;
+
       const last = Number(sessionStorage.getItem(GLOBAL_RELOAD_KEY) ?? 0);
       if (Date.now() - last < 60_000) return;
       sessionStorage.setItem(GLOBAL_RELOAD_KEY, String(Date.now()));
