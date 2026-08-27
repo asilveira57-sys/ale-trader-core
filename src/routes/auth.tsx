@@ -51,6 +51,16 @@ async function signInWithRetry(email: string, password: string) {
   throw lastError instanceof Error ? lastError : new Error("Falha de autenticação");
 }
 
+// Volta para a tela onde a pessoa estava antes da revalidação de sessão.
+const RETURN_TO_KEY = "aletrader:return-to";
+function takeReturnTo(): string | null {
+  try {
+    const v = window.sessionStorage.getItem(RETURN_TO_KEY);
+    window.sessionStorage.removeItem(RETURN_TO_KEY);
+    return v && v.startsWith("/") && !v.startsWith("/auth") ? v : null;
+  } catch { return null; }
+}
+
 function AuthPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -66,7 +76,7 @@ function AuthPage() {
       if (cancelled) return;
       const email = data.user?.email?.toLowerCase() ?? sessionData.session.user?.email?.toLowerCase();
       if (email === ALLOWED_EMAIL) {
-        navigate({ to: "/dashboard", replace: true });
+        navigate({ to: (takeReturnTo() ?? "/dashboard") as any, replace: true });
         return;
       }
       if (error && isDefinitiveSessionError(error)) supabase.auth.signOut({ scope: "local" });
@@ -88,7 +98,7 @@ function AuthPage() {
         await supabase.auth.signOut({ scope: "local" });
         throw new Error("Não foi possível validar a sessão. Tente novamente.");
       }
-      navigate({ to: "/dashboard", replace: true });
+      navigate({ to: (takeReturnTo() ?? "/dashboard") as any, replace: true });
     } catch (err: any) {
       const status = getAuthStatus(err);
       if (status === 504 || isRetryableAuthError(err)) {
