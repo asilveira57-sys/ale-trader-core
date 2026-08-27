@@ -28,24 +28,49 @@ if (typeof window !== "undefined") {
     url.searchParams.set("_r", String(Date.now()));
     window.location.replace(url.toString());
   };
+  const canReloadNow = () => {
+    const last = Number(sessionStorage.getItem(GLOBAL_RELOAD_KEY) ?? 0);
+    if (Date.now() - last < 60_000) return false;
+    sessionStorage.setItem(GLOBAL_RELOAD_KEY, String(Date.now()));
+    return true;
+  };
+  // Erro sem mensagem ("Uncaught undefined") com tela branca costuma ser chunk
+  // obsoleto após deploy. Em vez de recarregar às cegas (o que derrubava o
+  // painel no meio do pregão), confirmamos se o asset em uso ainda existe.
+  const reloadIfStaleDeploy = async () => {
+    try {
+      const srcs = Array.from(document.querySelectorAll<HTMLScriptElement>("script[src]"))
+        .map((s) => s.getAttribute("src") ?? "")
+        .filter((s) => s.includes("/assets/"));
+      if (!srcs.length) return;
+      const alive = await Promise.all(
+        srcs.map((src) =>
+          fetch(src, { method: "HEAD", cache: "no-store" })
+            .then((r) => r.ok)
+            .catch(() => false),
+        ),
+      );
+      if (alive.every(Boolean)) return;
+      if (canReloadNow()) hardReload();
+    } catch {
+      /* silencioso */
+    }
+  };
   const maybeReload = (value: unknown) => {
     try {
       const msg = String((value as any)?.message ?? value ?? "");
-      // Só recarrega diante de falha REAL de carregamento de módulo. Erro sem
-      // mensagem ("Uncaught undefined") não é motivo: recarregar por isso
-      // derrubava o painel no meio do pregão e fazia perder a rota.
       const isModuleFail =
         /dynamically imported module|Importing a module script failed|Loading chunk|ChunkLoadError|Failed to fetch dynamically|error loading|Unexpected token '<'|MIME type/i.test(msg);
-      if (!isModuleFail) return;
-
-      const last = Number(sessionStorage.getItem(GLOBAL_RELOAD_KEY) ?? 0);
-      if (Date.now() - last < 60_000) return;
-      sessionStorage.setItem(GLOBAL_RELOAD_KEY, String(Date.now()));
-      hardReload();
+      if (!isModuleFail) {
+        if (!msg || msg === "undefined") void reloadIfStaleDeploy();
+        return;
+      }
+      if (canReloadNow()) hardReload();
     } catch {
       /* nunca derrubar a página por causa da rede de segurança */
     }
   };
+
   // Caminho oficial do Vite para falha de preload de chunk — não passa por
   // window.onerror em todos os browsers.
   window.addEventListener("vite:preloadError", (e) => {
