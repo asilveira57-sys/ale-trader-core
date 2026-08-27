@@ -421,14 +421,16 @@ function CockpitPage() {
           </Button>
         </div>
 
-        {/* Ativo (raiz do contrato: WIN, WDO...) */}
+        {/* Ativo (raiz do contrato: WIN, WDO...) — clique isola, Ctrl/Shift soma */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-muted-foreground w-20">Ativo:</span>
           <Button size="sm" variant={allSymbols ? "default" : "outline"} className="h-7 text-[11px]"
-            onClick={() => patch({ symbols: [...B3_ASSETS] })}>Todos</Button>
+            title={allSymbols ? "Desmarcar todos" : "Marcar todos"}
+            onClick={() => toggleAll("symbols", allSymbols)}>Todos</Button>
           {B3_ASSETS.map((s) => (
             <Button key={s} size="sm" variant={symbolsSel.includes(s) ? "default" : "outline"}
-              className="h-7 text-[11px]" title={assetLabel(s)} onClick={() => toggleIn("symbols", s)}>
+              className="h-7 text-[11px]" title={`${assetLabel(s)} — clique isola; Ctrl/Shift soma`}
+              onClick={(e) => clickItem("symbols", s, e)}>
               {s}
             </Button>
           ))}
@@ -438,10 +440,12 @@ function CockpitPage() {
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-muted-foreground w-20">Modalidade:</span>
           <Button size="sm" variant={allVariants ? "default" : "outline"} className="h-7 text-[11px]"
-            onClick={() => patch({ variants: [...VARIANT_LIST] })}>Todas</Button>
+            title={allVariants ? "Desmarcar todas" : "Marcar todas"}
+            onClick={() => toggleAll("variants", allVariants)}>Todas</Button>
           {VARIANT_LIST.map((v) => (
             <Button key={v} size="sm" variant={variantsSel.includes(v) ? "default" : "outline"}
-              className="h-7 text-[11px]" onClick={() => toggleIn("variants", v)}>
+              className="h-7 text-[11px]" title="Clique isola; Ctrl/Shift soma"
+              onClick={(e) => clickItem("variants", v, e)}>
               {variantLabel(v)}
             </Button>
           ))}
@@ -451,14 +455,17 @@ function CockpitPage() {
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-muted-foreground w-20">Modo:</span>
           <Button size="sm" variant={allModes ? "default" : "outline"} className="h-7 text-[11px]"
-            onClick={() => patch({ modes: [...MODE_LIST] })}>Todos</Button>
+            title={allModes ? "Desmarcar todos" : "Marcar todos"}
+            onClick={() => toggleAll("modes", allModes)}>Todos</Button>
           {MODE_LIST.map((m) => (
             <Button key={m} size="sm" variant={modesSel.includes(m) ? "default" : "outline"}
-              className="h-7 text-[11px]" onClick={() => toggleIn("modes", m)}>
+              className="h-7 text-[11px]" title="Clique isola; Ctrl/Shift soma"
+              onClick={(e) => clickItem("modes", m, e)}>
               {MODE_LABEL[m]}
             </Button>
           ))}
         </div>
+
       </section>
 
 
