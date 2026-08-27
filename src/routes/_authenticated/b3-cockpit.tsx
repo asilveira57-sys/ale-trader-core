@@ -156,12 +156,30 @@ function CockpitPage() {
   const patch = (p: Partial<SavedFilters>) => setSaved((s) => ({ ...s, ...p }));
   const setFilter = (v: Filter) => patch({ filter: v });
 
-  // Alterna um item da lista; "marcar/desmarcar todos" são atalhos separados.
-  const toggleIn = (key: "symbols" | "variants" | "modes", value: string) =>
+  // Clique num item ISOLA aquele item (clico em WIN, vejo WIN). Ctrl/Shift/⌘
+  // no clique soma ou remove da seleção — é o que se espera de uma lista.
+  const FULL: Record<"symbols" | "variants" | "modes", string[]> = {
+    symbols: [...B3_ASSETS], variants: [...VARIANT_LIST], modes: [...MODE_LIST],
+  };
+  const clickItem = (
+    key: "symbols" | "variants" | "modes",
+    value: string,
+    e?: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean },
+  ) =>
     setSaved((s) => {
       const cur = s[key];
+      const additive = !!(e?.ctrlKey || e?.metaKey || e?.shiftKey);
+      if (!additive) {
+        // Já isolado? segundo clique volta para tudo marcado.
+        const isolated = cur.length === 1 && cur[0] === value;
+        return { ...s, [key]: isolated ? FULL[key] : [value] };
+      }
       return { ...s, [key]: cur.includes(value) ? cur.filter((x) => x !== value) : [...cur, value] };
     });
+  // "Todos" é alternador: tudo marcado -> desmarca tudo.
+  const toggleAll = (key: "symbols" | "variants" | "modes", isAll: boolean) =>
+    patch({ [key]: isAll ? [] : FULL[key] } as Partial<SavedFilters>);
+
 
   const allSymbols = symbolsSel.length === B3_ASSETS.length;
   const allVariants = variantsSel.length === VARIANT_LIST.length;
