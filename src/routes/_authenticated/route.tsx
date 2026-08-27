@@ -145,7 +145,9 @@ const NAV = [
   { to: "/orders", label: "Binance — Ordens", icon: Receipt },
   { to: "/binance-audit", label: "Binance — Auditoria Saídas", icon: FileSearch },
   { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
+  { to: "/b3-diagnostico", label: "Diagnóstico Diário", icon: Stethoscope },
   { to: "/b3", label: "B3 Day Trade (WIN)", icon: BarChart3 },
+
 
   { to: "/b3-wdo", label: "B3 Day Trade (WDO)", icon: BarChart3 },
   { to: "/b3-petr4", label: "B3 Day Trade (PETR4)", icon: BarChart3 },
