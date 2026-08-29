@@ -97,6 +97,8 @@ export interface RealTrade {
   entry_time: string | null; exit_time: string | null;
   result_pts: number | null; result_brl: number | null;
   broker_ticket: string | null;
+  // quem pediu o FECHAMENTO desta operação (engine_auto / user_manual_close)
+  closed_by?: string | null;
 }
 
 interface Lot {
