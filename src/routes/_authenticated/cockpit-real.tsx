@@ -9,7 +9,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   AlertTriangle, CheckCircle2, CircleSlash, Clock, Hand, KeyRound, LayoutDashboard,
-  Play, RefreshCw, ShieldOff, XOctagon,
+  Play, RefreshCw, ShieldOff, XOctagon, Radio, GitCompareArrows,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval"
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
   getB3RealCockpit, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
+  closeRealPositionByBroker, getRealCommandStatus,
 } from "@/lib/b3-real-cockpit.functions";
 
 export const Route = createFileRoute("/_authenticated/cockpit-real")({
@@ -128,12 +129,17 @@ function CockpitRealPage() {
   const stopEntries = useServerFn(stopRealNewEntries);
   const resumeReal = useServerFn(resumeRealExecution);
   const closeNow = useServerFn(closeRealPositionNow);
+  const closeOne = useServerFn(closeRealPositionByBroker);
+  const commandStatus = useServerFn(getRealCommandStatus);
 
   const [confirmClose, setConfirmClose] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [showAllRobots, setShowAllRobots] = useState(false);
+  // Fechamento pontual de UMA posição reportada pela corretora.
+  const [closeTarget, setCloseTarget] = useState<any | null>(null);
+  const [lastCommandId, setLastCommandId] = useState<string | null>(null);
 
   // Ao vivo: sem cache de posição nem de cotação.
   const refetchInterval = useVisibleRefetchInterval(15_000);
@@ -179,6 +185,41 @@ function CockpitRealPage() {
     onError: (e: any) => toast.error(e?.message ?? "Falha ao enfileirar a zeragem."),
   });
 
+  // Acompanha o veredito do comando manual até ele sair de 'pending'/'claimed'.
+  const cmdQ = useQuery({
+    queryKey: ["cockpit-real-cmd", lastCommandId],
+    enabled: !!lastCommandId,
+    queryFn: () => commandStatus({ data: { command_id: lastCommandId as string } }),
+    refetchInterval: (q) => {
+      const st = (q.state.data as any)?.status;
+      return st && st !== "pending" && st !== "claimed" ? false : 2000;
+    },
+    gcTime: 0,
+    staleTime: 0,
+  });
+
+  const mCloseOne = useMutation({
+    mutationFn: (p: any) =>
+      closeOne({
+        data: {
+          symbol: p.symbol || p.root,
+          side: p.side,
+          quantity: p.quantity,
+          magic_number: p.magic_number ?? null,
+          confirm: true as const,
+        },
+      }),
+    onSuccess: (r: any) => {
+      invalidate();
+      setCloseTarget(null);
+      setLastCommandId(r?.command_id ?? null);
+      toast.success(`Comando de fechamento criado (${r?.detalhe ?? ""}). O executor tem até 2 min para executar.`);
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao enfileirar o fechamento."),
+  });
+
+  const broker = (d?.broker ?? {}) as any;
+  const brokerPositions = (broker.positions ?? []) as any[];
   const positions = (d?.positions ?? []) as any[];
   const orders = (d?.day_orders ?? []) as any[];
   const allRobots = (d?.robots ?? []) as any[];
