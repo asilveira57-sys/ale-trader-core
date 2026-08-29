@@ -514,3 +514,81 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
       detalhe: commands.map((c) => `${String(c.side).toUpperCase()} ${c.quantity}x ${c.symbol}`),
     };
   });
+
+// ─────────── botão: FECHAR ESTA POSIÇÃO (dentro do card) ───────────
+// Fecha UMA posição específica reportada pela corretora. Quem executa continua
+// sendo o executor: aqui só entra um comando 'close' na fila, com
+// requested_by='user_manual_close'. Não desliga autorizações e não pausa nada:
+// é um fechamento pontual, não uma parada de emergência.
+export const closeRealPositionByBroker = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      symbol: z.string().min(1).max(20),
+      side: z.enum(["buy", "sell"]),
+      quantity: z.number().positive().max(1000),
+      magic_number: z.number().int().nullable().optional(),
+      confirm: z.literal(true),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const stamp = Date.now();
+    const magic = data.magic_number ?? 0;
+
+    const command = {
+      user_id: userId,
+      env: "real",
+      simulation_run_id: null,
+      mode: "manual",
+      variant: "manual",
+      action: "close",
+      // Fechar é a ponta contrária do que está aberto.
+      side: data.side === "buy" ? "sell" : "buy",
+      symbol: data.symbol,
+      quantity: data.quantity,
+      magic_number: magic,
+      idempotency_key: `manual_close:${data.symbol}:${magic}:${stamp}`,
+      requested_by: "user_manual_close",
+      expires_at: new Date(stamp + 120_000).toISOString(),
+    };
+
+    const { data: inserted, error } = await (supabase as any)
+      .from("b3_mt5_commands")
+      .insert(command)
+      .select("id, status, created_at, expires_at")
+      .single();
+    if (error) throw error;
+
+    try {
+      await (supabase as any).from("system_logs").insert({
+        event_type: "fechamento_manual_real",
+        source: "cockpit_real",
+        severity: "warning",
+        message: `Fechamento manual solicitado pelo painel: ${command.side.toUpperCase()} ${data.quantity}x ${data.symbol} (magic ${magic}).`,
+        technical_data: { command_id: inserted?.id ?? null, magic_number: magic } as any,
+      });
+    } catch { /* best-effort */ }
+
+    return {
+      ok: true as const,
+      command_id: (inserted as any)?.id ?? null,
+      status: (inserted as any)?.status ?? "pending",
+      expires_at: (inserted as any)?.expires_at ?? command.expires_at,
+      detalhe: `${command.side.toUpperCase()} ${data.quantity}x ${data.symbol}`,
+    };
+  });
+
+// Acompanhamento do comando manual: a tela precisa mostrar o veredito quando o
+// executor voltar — inclusive recusa.
+export const getRealCommandStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ command_id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: row, error } = await supabase.from("b3_mt5_commands")
+      .select("id, action, side, symbol, quantity, status, error_message, filled_price, broker_ticket, filled_at, created_at, expires_at")
+      .eq("user_id", userId).eq("id", data.command_id).maybeSingle();
+    if (error) throw error;
+    return row ?? null;
+  });
