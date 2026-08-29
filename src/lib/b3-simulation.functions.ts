@@ -3429,7 +3429,7 @@ async function runB3SimulationTickInner(
       // (contra-tendência: esticão/borda; rompimento: borda rompida). Quando o
       // classificador ainda não conseguiu derivar um lado, o setup termina
       // aqui; o comitê nunca é consultado com o lado das médias.
-      const classifierSideStyle = cfg.entry_style === "mean_reversion" || cfg.entry_style === "range" || cfg.entry_style === "rompimento";
+      const classifierSideStyle = cfg.entry_style === "mean_reversion" || cfg.entry_style === "range" || cfg.entry_style === "rompimento" || cfg.entry_style === "pullback" || cfg.entry_style === "vwap";
       if (classifierSideStyle && !setupInfo.side_override) {
         const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "lado ainda não derivado pelo classificador"}`;
         log.push({ mode, action: "reject", reason: "no_classifier_side", setup: setupInfo.name });
