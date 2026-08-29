@@ -1,11 +1,11 @@
 // Magic number do espelhamento real (MT5). Módulo puro — nenhuma regra de
 // motor aqui, apenas a numeração que separa robôs na conta real.
 //
-// magic = bloco do ativo + bloco da modalidade (500 em 500) + índice do modo (1..5).
+// magic = bloco do ativo + bloco da modalidade (500 em 500) + índice do modo (1..7).
 // Ex.: WIN price_action semi_agressivo = 2000 + 500 + 4 = 2504.
 //
-// ATENÇÃO à espessura do bloco: cada ativo ocupa 1505 números (4 modalidades ×
-// 500 + 5 modos), então blocos de ativo espaçados de 100 em 100 COLIDEM — WIN
+// ATENÇÃO à espessura do bloco: cada ativo ocupa 1507 números (4 modalidades ×
+// 500 + 7 modos), então blocos de ativo espaçados de 100 em 100 COLIDEM — WIN
 // price_action (2500) cairia sobre BBDC4 indicador. Os quatro ativos originais
 // mantêm os números que já estão em uso (2000..2300, teto 3805) e os seis novos
 // entram acima disso, espaçados de 2000 em 2000. Dois robôs com o mesmo magic
