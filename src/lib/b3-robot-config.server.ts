@@ -9,7 +9,8 @@ import {
 const NUMERIC_FIELDS = new Set<string>([
   "min_confidence", "min_score", "min_approve_votes", "max_volatility_pct",
   "lateral_strength_min", "lateral_vol_min", "stop_pts", "gain_pts", "max_contracts",
-  "trailing_activation_pts", "trailing_giveback_pts", "daily_gain_target_brl",
+  "trailing_activation_pts", "trailing_giveback_pts",
+  "breakeven_ativa_pts", "breakeven_folga_pts", "daily_gain_target_brl",
   "minimum_trades_before_profit_lock", "profit_multiplier_before_lock",
   "post_target_allowed_retracement", "consecutive_loss_after_target",
   "post_target_size_reduction", "peak_giveback_pct", "peak_lock_min_profit_brl",
