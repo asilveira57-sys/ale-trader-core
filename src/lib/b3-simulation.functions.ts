@@ -3069,7 +3069,9 @@ async function runB3SimulationTickInner(
             const move = (p - Number(open.entry_price)) * dirSign;
             if (move > peakPts) peakPts = move;
           }
-          const armed = peakPts >= Number(cfg.trailing_activation_pts);
+          // `trailingOn` no armed: com o zero a zero ligado e o trailing
+          // desligado (ativação 0), sem esta guarda o trailing armaria sozinho.
+          const armed = trailingOn && peakPts >= Number(cfg.trailing_activation_pts);
 
           if (armed && cfg.trailing_mode === "structural") {
             // Fractal N=1 sobre candles M1 REAIS (b3_m1_candles): candle i é
