@@ -1,10 +1,11 @@
-// Relatório de estado REAL vindo do executor MT5 — a única fonte de verdade
-// sobre posição e saldo da corretora.
+// Estado REAL da conta, reportado pelo executor MT5 — a única fonte de verdade
+// sobre posição e saldo na corretora.
 //
 // Por que existe: comando não é verdade, é intenção. Derivar posição de
 // "aberturas menos fechamentos" desvia toda vez que um comando expira, erra ou
-// fecha quantidade diferente da pedida (netting da B3 fecha pos.volume inteiro),
-// e o desvio é acumulativo. Quem fala com o MT5 é o executor; ele reporta.
+// fecha quantidade diferente da pedida (o netting da B3 fecha pos.volume
+// inteiro), e o desvio é acumulativo. Quem fala com o MT5 é o executor; ele
+// reporta e a tela mostra o reportado.
 //
 // Autenticação: mesma do b3-mt5-commands-pending — HMAC-SHA256 do corpo cru com
 // B3_MT5_COMMANDS_SECRET no header x-mt5-signature.
@@ -27,15 +28,15 @@ interface ReportedPosition {
   symbol: string;
   side: "buy" | "sell" | null;
   volume: number | null;
-  price_open: number | null;
-  price_current: number | null;
-  profit: number | null;
-  magic_number: number | null;
+  preco_abertura: number | null;
+  preco_atual: number | null;
+  resultado: number | null;
+  magic: number | null;
   ticket: string | null;
-  opened_at: string | null;
+  aberta_em: string | null;
 }
 
-// Aceita os nomes em português (contrato do pedido) e os do MetaTrader, para o
+// Aceita os nomes em português (contrato do executor) e os do MetaTrader, para o
 // Python poder repassar o dicionário da posição quase cru.
 function normalizePosition(raw: any): ReportedPosition | null {
   if (!raw || typeof raw !== "object") return null;
@@ -52,7 +53,7 @@ function normalizePosition(raw: any): ReportedPosition | null {
   }
 
   const volume = num(raw.volume ?? raw.quantity ?? raw.quantidade ?? raw.qty);
-  const openedRaw = raw.opened_at ?? raw.aberta_em ?? raw.time ?? null;
+  const openedRaw = raw.aberta_em ?? raw.opened_at ?? raw.time ?? null;
   let openedAt: string | null = null;
   if (openedRaw != null) {
     // O MT5 manda epoch em segundos; ISO também é aceito.
@@ -66,25 +67,26 @@ function normalizePosition(raw: any): ReportedPosition | null {
     symbol,
     side,
     volume: volume == null ? null : Math.abs(volume),
-    price_open: num(raw.price_open ?? raw.preco_medio ?? raw.preco_abertura ?? raw.entry_price),
-    price_current: num(raw.price_current ?? raw.preco_atual ?? raw.current_price),
-    profit: num(raw.profit ?? raw.resultado ?? raw.resultado_corrente),
-    magic_number: num(raw.magic_number ?? raw.magic) ?? null,
+    preco_abertura: num(raw.preco_abertura ?? raw.price_open ?? raw.preco_medio ?? raw.entry_price),
+    preco_atual: num(raw.preco_atual ?? raw.price_current ?? raw.current_price),
+    resultado: num(raw.resultado ?? raw.profit ?? raw.resultado_corrente),
+    magic: num(raw.magic ?? raw.magic_number) ?? null,
     ticket: raw.ticket == null ? null : String(raw.ticket),
-    opened_at: openedAt,
+    aberta_em: openedAt,
   };
 }
 
-export const Route = createFileRoute("/api/public/hooks/b3-mt5-account-report")({
+export const Route = createFileRoute("/api/public/hooks/b3-mt5-estado-real")({
   server: {
     handlers: {
       GET: async () =>
         json({
           ok: true,
-          endpoint: "b3-mt5-account-report",
+          endpoint: "b3-mt5-estado-real",
           method: "POST",
           hint:
-            "POST JSON {user_id, ts, saldo, capital_liquido, margem_livre, posicoes:[{symbol, lado, volume, preco_medio, resultado, magic}]} " +
+            "POST JSON {user_id, env, ts, saldo, capital_liquido, margem_livre, negociacao_permitida, " +
+            "posicoes:[{symbol, side, volume, preco_abertura, preco_atual, resultado, magic, ticket}]} " +
             "com header x-mt5-signature (HMAC-SHA256 do corpo cru usando B3_MT5_COMMANDS_SECRET).",
         }),
       OPTIONS: async () =>
@@ -122,25 +124,29 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-account-report")(
           ? (payload.posicoes ?? payload.positions).map(normalizePosition).filter(Boolean)
           : [];
 
-        const tsRaw = payload.ts ?? payload.reported_at ?? null;
-        let reportedAt = new Date().toISOString();
+        const tsRaw = payload.ts ?? payload.reportado_em ?? null;
+        let reportadoEm = new Date().toISOString();
         if (tsRaw != null) {
           const d = typeof tsRaw === "number"
             ? new Date(tsRaw < 1e12 ? tsRaw * 1000 : tsRaw)
             : new Date(String(tsRaw));
-          if (!Number.isNaN(d.getTime())) reportedAt = d.toISOString();
+          if (!Number.isNaN(d.getTime())) reportadoEm = d.toISOString();
         }
+
+        const permitida = payload.negociacao_permitida ?? payload.trade_allowed ?? null;
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { error } = await (supabaseAdmin as any)
           .from("b3_mt5_account_state")
           .upsert({
             user_id: payload.user_id,
-            reported_at: reportedAt,
-            balance: num(payload.saldo ?? payload.balance),
-            equity: num(payload.capital_liquido ?? payload.equity),
-            free_margin: num(payload.margem_livre ?? payload.free_margin ?? payload.margin_free),
-            positions,
+            env: payload.env === "demo" || payload.env === "real" ? payload.env : null,
+            reportado_em: reportadoEm,
+            saldo: num(payload.saldo ?? payload.balance),
+            capital_liquido: num(payload.capital_liquido ?? payload.equity),
+            margem_livre: num(payload.margem_livre ?? payload.free_margin ?? payload.margin_free),
+            negociacao_permitida: permitida == null ? null : Boolean(permitida),
+            posicoes: positions,
             account_login: payload.conta == null && payload.account_login == null
               ? null
               : String(payload.conta ?? payload.account_login),
@@ -155,7 +161,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-account-report")(
         return json({
           ok: true,
           stored_positions: positions.length,
-          reported_at: reportedAt,
+          reportado_em: reportadoEm,
           server_time: new Date().toISOString(),
         });
       },

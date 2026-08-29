@@ -84,9 +84,9 @@ import { Route as ApiPublicHooksConfidenceRecomputeRouteImport } from './routes/
 import { Route as ApiPublicHooksB3SimulationTickRouteImport } from './routes/api/public/hooks/b3-simulation-tick'
 import { Route as ApiPublicHooksB3Mt5simTickIngestRouteImport } from './routes/api/public/hooks/b3-mt5sim-tick-ingest'
 import { Route as ApiPublicHooksB3Mt5simTickRouteImport } from './routes/api/public/hooks/b3-mt5sim-tick'
+import { Route as ApiPublicHooksB3Mt5EstadoRealRouteImport } from './routes/api/public/hooks/b3-mt5-estado-real'
 import { Route as ApiPublicHooksB3Mt5CommandsPendingRouteImport } from './routes/api/public/hooks/b3-mt5-commands-pending'
 import { Route as ApiPublicHooksB3Mt5CommandsAckRouteImport } from './routes/api/public/hooks/b3-mt5-commands-ack'
-import { Route as ApiPublicHooksB3Mt5AccountReportRouteImport } from './routes/api/public/hooks/b3-mt5-account-report'
 import { Route as ApiPublicHooksAutoTickRouteImport } from './routes/api/public/hooks/auto-tick'
 import { Route as AuthenticatedB3AtivoSymbolRouteImport } from './routes/_authenticated/b3_.ativo.$symbol'
 
@@ -499,6 +499,12 @@ const ApiPublicHooksB3Mt5simTickRoute =
     path: '/api/public/hooks/b3-mt5sim-tick',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksB3Mt5EstadoRealRoute =
+  ApiPublicHooksB3Mt5EstadoRealRouteImport.update({
+    id: '/api/public/hooks/b3-mt5-estado-real',
+    path: '/api/public/hooks/b3-mt5-estado-real',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksB3Mt5CommandsPendingRoute =
   ApiPublicHooksB3Mt5CommandsPendingRouteImport.update({
     id: '/api/public/hooks/b3-mt5-commands-pending',
@@ -509,12 +515,6 @@ const ApiPublicHooksB3Mt5CommandsAckRoute =
   ApiPublicHooksB3Mt5CommandsAckRouteImport.update({
     id: '/api/public/hooks/b3-mt5-commands-ack',
     path: '/api/public/hooks/b3-mt5-commands-ack',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicHooksB3Mt5AccountReportRoute =
-  ApiPublicHooksB3Mt5AccountReportRouteImport.update({
-    id: '/api/public/hooks/b3-mt5-account-report',
-    path: '/api/public/hooks/b3-mt5-account-report',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicHooksAutoTickRoute = ApiPublicHooksAutoTickRouteImport.update({
@@ -598,9 +598,9 @@ export interface FileRoutesByFullPath {
   '/backtest/': typeof AuthenticatedBacktestIndexRoute
   '/b3/ativo/$symbol': typeof AuthenticatedB3AtivoSymbolRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
-  '/api/public/hooks/b3-mt5-account-report': typeof ApiPublicHooksB3Mt5AccountReportRoute
   '/api/public/hooks/b3-mt5-commands-ack': typeof ApiPublicHooksB3Mt5CommandsAckRoute
   '/api/public/hooks/b3-mt5-commands-pending': typeof ApiPublicHooksB3Mt5CommandsPendingRoute
+  '/api/public/hooks/b3-mt5-estado-real': typeof ApiPublicHooksB3Mt5EstadoRealRoute
   '/api/public/hooks/b3-mt5sim-tick': typeof ApiPublicHooksB3Mt5simTickRoute
   '/api/public/hooks/b3-mt5sim-tick-ingest': typeof ApiPublicHooksB3Mt5simTickIngestRoute
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
@@ -679,9 +679,9 @@ export interface FileRoutesByTo {
   '/backtest': typeof AuthenticatedBacktestIndexRoute
   '/b3/ativo/$symbol': typeof AuthenticatedB3AtivoSymbolRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
-  '/api/public/hooks/b3-mt5-account-report': typeof ApiPublicHooksB3Mt5AccountReportRoute
   '/api/public/hooks/b3-mt5-commands-ack': typeof ApiPublicHooksB3Mt5CommandsAckRoute
   '/api/public/hooks/b3-mt5-commands-pending': typeof ApiPublicHooksB3Mt5CommandsPendingRoute
+  '/api/public/hooks/b3-mt5-estado-real': typeof ApiPublicHooksB3Mt5EstadoRealRoute
   '/api/public/hooks/b3-mt5sim-tick': typeof ApiPublicHooksB3Mt5simTickRoute
   '/api/public/hooks/b3-mt5sim-tick-ingest': typeof ApiPublicHooksB3Mt5simTickIngestRoute
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
@@ -762,9 +762,9 @@ export interface FileRoutesById {
   '/_authenticated/backtest/': typeof AuthenticatedBacktestIndexRoute
   '/_authenticated/b3_/ativo/$symbol': typeof AuthenticatedB3AtivoSymbolRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
-  '/api/public/hooks/b3-mt5-account-report': typeof ApiPublicHooksB3Mt5AccountReportRoute
   '/api/public/hooks/b3-mt5-commands-ack': typeof ApiPublicHooksB3Mt5CommandsAckRoute
   '/api/public/hooks/b3-mt5-commands-pending': typeof ApiPublicHooksB3Mt5CommandsPendingRoute
+  '/api/public/hooks/b3-mt5-estado-real': typeof ApiPublicHooksB3Mt5EstadoRealRoute
   '/api/public/hooks/b3-mt5sim-tick': typeof ApiPublicHooksB3Mt5simTickRoute
   '/api/public/hooks/b3-mt5sim-tick-ingest': typeof ApiPublicHooksB3Mt5simTickIngestRoute
   '/api/public/hooks/b3-simulation-tick': typeof ApiPublicHooksB3SimulationTickRoute
@@ -845,9 +845,9 @@ export interface FileRouteTypes {
     | '/backtest/'
     | '/b3/ativo/$symbol'
     | '/api/public/hooks/auto-tick'
-    | '/api/public/hooks/b3-mt5-account-report'
     | '/api/public/hooks/b3-mt5-commands-ack'
     | '/api/public/hooks/b3-mt5-commands-pending'
+    | '/api/public/hooks/b3-mt5-estado-real'
     | '/api/public/hooks/b3-mt5sim-tick'
     | '/api/public/hooks/b3-mt5sim-tick-ingest'
     | '/api/public/hooks/b3-simulation-tick'
@@ -926,9 +926,9 @@ export interface FileRouteTypes {
     | '/backtest'
     | '/b3/ativo/$symbol'
     | '/api/public/hooks/auto-tick'
-    | '/api/public/hooks/b3-mt5-account-report'
     | '/api/public/hooks/b3-mt5-commands-ack'
     | '/api/public/hooks/b3-mt5-commands-pending'
+    | '/api/public/hooks/b3-mt5-estado-real'
     | '/api/public/hooks/b3-mt5sim-tick'
     | '/api/public/hooks/b3-mt5sim-tick-ingest'
     | '/api/public/hooks/b3-simulation-tick'
@@ -1008,9 +1008,9 @@ export interface FileRouteTypes {
     | '/_authenticated/backtest/'
     | '/_authenticated/b3_/ativo/$symbol'
     | '/api/public/hooks/auto-tick'
-    | '/api/public/hooks/b3-mt5-account-report'
     | '/api/public/hooks/b3-mt5-commands-ack'
     | '/api/public/hooks/b3-mt5-commands-pending'
+    | '/api/public/hooks/b3-mt5-estado-real'
     | '/api/public/hooks/b3-mt5sim-tick'
     | '/api/public/hooks/b3-mt5sim-tick-ingest'
     | '/api/public/hooks/b3-simulation-tick'
@@ -1026,9 +1026,9 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   ApiPublicHooksAutoTickRoute: typeof ApiPublicHooksAutoTickRoute
-  ApiPublicHooksB3Mt5AccountReportRoute: typeof ApiPublicHooksB3Mt5AccountReportRoute
   ApiPublicHooksB3Mt5CommandsAckRoute: typeof ApiPublicHooksB3Mt5CommandsAckRoute
   ApiPublicHooksB3Mt5CommandsPendingRoute: typeof ApiPublicHooksB3Mt5CommandsPendingRoute
+  ApiPublicHooksB3Mt5EstadoRealRoute: typeof ApiPublicHooksB3Mt5EstadoRealRoute
   ApiPublicHooksB3Mt5simTickRoute: typeof ApiPublicHooksB3Mt5simTickRoute
   ApiPublicHooksB3Mt5simTickIngestRoute: typeof ApiPublicHooksB3Mt5simTickIngestRoute
   ApiPublicHooksB3SimulationTickRoute: typeof ApiPublicHooksB3SimulationTickRoute
@@ -1566,6 +1566,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksB3Mt5simTickRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/b3-mt5-estado-real': {
+      id: '/api/public/hooks/b3-mt5-estado-real'
+      path: '/api/public/hooks/b3-mt5-estado-real'
+      fullPath: '/api/public/hooks/b3-mt5-estado-real'
+      preLoaderRoute: typeof ApiPublicHooksB3Mt5EstadoRealRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/b3-mt5-commands-pending': {
       id: '/api/public/hooks/b3-mt5-commands-pending'
       path: '/api/public/hooks/b3-mt5-commands-pending'
@@ -1578,13 +1585,6 @@ declare module '@tanstack/react-router' {
       path: '/api/public/hooks/b3-mt5-commands-ack'
       fullPath: '/api/public/hooks/b3-mt5-commands-ack'
       preLoaderRoute: typeof ApiPublicHooksB3Mt5CommandsAckRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/hooks/b3-mt5-account-report': {
-      id: '/api/public/hooks/b3-mt5-account-report'
-      path: '/api/public/hooks/b3-mt5-account-report'
-      fullPath: '/api/public/hooks/b3-mt5-account-report'
-      preLoaderRoute: typeof ApiPublicHooksB3Mt5AccountReportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/hooks/auto-tick': {
@@ -1775,10 +1775,10 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   ApiPublicHooksAutoTickRoute: ApiPublicHooksAutoTickRoute,
-  ApiPublicHooksB3Mt5AccountReportRoute: ApiPublicHooksB3Mt5AccountReportRoute,
   ApiPublicHooksB3Mt5CommandsAckRoute: ApiPublicHooksB3Mt5CommandsAckRoute,
   ApiPublicHooksB3Mt5CommandsPendingRoute:
     ApiPublicHooksB3Mt5CommandsPendingRoute,
+  ApiPublicHooksB3Mt5EstadoRealRoute: ApiPublicHooksB3Mt5EstadoRealRoute,
   ApiPublicHooksB3Mt5simTickRoute: ApiPublicHooksB3Mt5simTickRoute,
   ApiPublicHooksB3Mt5simTickIngestRoute: ApiPublicHooksB3Mt5simTickIngestRoute,
   ApiPublicHooksB3SimulationTickRoute: ApiPublicHooksB3SimulationTickRoute,

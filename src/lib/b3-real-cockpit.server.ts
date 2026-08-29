@@ -206,8 +206,8 @@ export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileL
 // mostrar divergência quando um comando expirou ou executou fora do previsto.
 export interface BrokerPositionRow {
   symbol?: string | null; side?: string | null; volume?: number | null;
-  price_open?: number | null; price_current?: number | null; profit?: number | null;
-  magic_number?: number | null; ticket?: string | null; opened_at?: string | null;
+  preco_abertura?: number | null; preco_atual?: number | null; resultado?: number | null;
+  magic?: number | null; ticket?: string | null; aberta_em?: string | null;
 }
 
 export interface BrokerPosition {
@@ -232,10 +232,10 @@ export function buildBrokerState(
   profileFor: ProfileLookup,
   nowMs: number,
 ) {
-  const reportedAt: string | null = row?.reported_at ?? null;
+  const reportedAt: string | null = row?.reportado_em ?? null;
   const ageS = reportedAt ? Math.round((nowMs - new Date(reportedAt).getTime()) / 1000) : null;
 
-  const positions: BrokerPosition[] = ((row?.positions ?? []) as BrokerPositionRow[])
+  const positions: BrokerPosition[] = ((row?.posicoes ?? []) as BrokerPositionRow[])
     .filter((p) => Math.abs(Number(p?.volume ?? 0)) > 0)
     .map((p) => {
       const symbol = String(p.symbol ?? "").toUpperCase();
@@ -245,12 +245,12 @@ export function buildBrokerState(
         root, symbol,
         side: p.side === "buy" || p.side === "sell" ? p.side : null,
         quantity: Math.abs(Number(p.volume ?? 0)),
-        entry_price: p.price_open == null ? null : Number(p.price_open),
-        price_current: p.price_current == null ? null : Number(p.price_current),
-        profit_brl: p.profit == null ? null : Number(p.profit),
-        magic_number: p.magic_number == null ? null : Number(p.magic_number),
+        entry_price: p.preco_abertura == null ? null : Number(p.preco_abertura),
+        price_current: p.preco_atual == null ? null : Number(p.preco_atual),
+        profit_brl: p.resultado == null ? null : Number(p.resultado),
+        magic_number: p.magic == null ? null : Number(p.magic),
         ticket: p.ticket ?? null,
-        opened_at: p.opened_at ?? null,
+        opened_at: p.aberta_em ?? null,
         tick_size: profile.tick_size,
         point_value_brl: profile.point_value_brl,
       };
@@ -282,9 +282,10 @@ export function buildBrokerState(
     reported_at: reportedAt,
     report_age_s: ageS,
     stale: ageS == null ? true : ageS > STALE_REPORT_S,
-    balance_brl: row?.balance == null ? null : Number(row.balance),
-    equity_brl: row?.equity == null ? null : Number(row.equity),
-    free_margin_brl: row?.free_margin == null ? null : Number(row.free_margin),
+    balance_brl: row?.saldo == null ? null : Number(row.saldo),
+    equity_brl: row?.capital_liquido == null ? null : Number(row.capital_liquido),
+    free_margin_brl: row?.margem_livre == null ? null : Number(row.margem_livre),
+    trading_allowed: row?.negociacao_permitida ?? null,
     account_login: row?.account_login ?? null,
     server_name: row?.server_name ?? null,
     positions,
