@@ -1569,33 +1569,39 @@ export type Database = {
       b3_mt5_account_state: {
         Row: {
           account_login: string | null
-          balance: number | null
-          equity: number | null
-          free_margin: number | null
-          positions: Json
-          reported_at: string
+          capital_liquido: number | null
+          env: string | null
+          margem_livre: number | null
+          negociacao_permitida: boolean | null
+          posicoes: Json
+          reportado_em: string
+          saldo: number | null
           server_name: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           account_login?: string | null
-          balance?: number | null
-          equity?: number | null
-          free_margin?: number | null
-          positions?: Json
-          reported_at?: string
+          capital_liquido?: number | null
+          env?: string | null
+          margem_livre?: number | null
+          negociacao_permitida?: boolean | null
+          posicoes?: Json
+          reportado_em?: string
+          saldo?: number | null
           server_name?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           account_login?: string | null
-          balance?: number | null
-          equity?: number | null
-          free_margin?: number | null
-          positions?: Json
-          reported_at?: string
+          capital_liquido?: number | null
+          env?: string | null
+          margem_livre?: number | null
+          negociacao_permitida?: boolean | null
+          posicoes?: Json
+          reportado_em?: string
+          saldo?: number | null
           server_name?: string | null
           updated_at?: string
           user_id?: string
