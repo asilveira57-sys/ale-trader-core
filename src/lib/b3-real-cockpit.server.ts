@@ -24,6 +24,9 @@ export interface RealCommandRow {
 export interface AssetProfile {
   root: string;
   quote_symbol: string;
+  // Contratos conhecidos da raiz (WINQ26, WINV26...). As cotações chegam
+  // gravadas no contrato, não na raiz — a busca de preço vivo usa esta lista.
+  quote_symbols: string[];
   tick_size: number;
   point_value_brl: number;
 }
@@ -31,7 +34,8 @@ export interface AssetProfile {
 export type ProfileLookup = (root: string) => AssetProfile;
 
 const DEFAULT_PROFILE = (root: string): AssetProfile => ({
-  root, quote_symbol: root, tick_size: root === "WIN" ? 5 : 0.01,
+  root, quote_symbol: root, quote_symbols: [root],
+  tick_size: root === "WIN" ? 5 : 0.01,
   point_value_brl: root === "WIN" ? 0.2 : root === "WDO" ? 10 : 1,
 });
 
@@ -44,19 +48,24 @@ export async function loadAssetProfiles(supabase: SupabaseClient): Promise<Profi
   const rows = (data ?? []) as any[];
   return (root: string) => {
     const r = String(root ?? "").toUpperCase();
-    const hit = rows.find((x) => rootSymbol(String(x.quote_symbol ?? x.symbol)) === r)
-      ?? rows.find((x) => rootSymbol(String(x.symbol)) === r);
+    const matches = rows.filter(
+      (x) => rootSymbol(String(x.quote_symbol ?? x.symbol)) === r || rootSymbol(String(x.symbol)) === r,
+    );
+    const hit = matches[0];
     if (!hit) return DEFAULT_PROFILE(r);
     const tick = Number(hit.tick_size);
+    const contracts = Array.from(new Set(matches.map((x) => String(x.symbol)).concat(r)));
     return {
       root: r,
       quote_symbol: String(hit.quote_symbol ?? hit.symbol),
+      quote_symbols: contracts,
       tick_size: Number.isFinite(tick) && tick > 0 ? tick : DEFAULT_PROFILE(r).tick_size,
       // Convenção do motor: tick_value_brl é o valor de 1 PONTO em reais.
       point_value_brl: Number(hit.tick_value_brl ?? DEFAULT_PROFILE(r).point_value_brl),
     };
   };
 }
+
 
 export const saoPauloDate = (d: Date) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -92,7 +101,10 @@ interface Lot {
 }
 
 // Livro FIFO por (raiz do ativo + magic): comandos 'filled' entram em ordem
-// cronológica, compra soma e venda subtrai. O que sobra é posição aberta.
+// cronológica. Quem soma é a AÇÃO, não o campo `side`: 'open' abre no lado do
+// comando e 'close' abate a posição existente qualquer que seja o `side`
+// gravado — o executor manda fechamento com o mesmo `side` da posição, e usar
+// o `side` aqui inventaria posição em dobro.
 // Quando o executor não gravou filled_price, a operação fica sem resultado
 // (null) em vez de virar zero — zero mentiria na soma do dia.
 export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileLookup) {
@@ -123,20 +135,22 @@ export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileL
       const time = c.filled_at ?? c.created_at;
       let qty = Math.abs(Number(c.quantity ?? 0));
       if (!qty) continue;
-      const isBuy = c.side === "buy";
-      const opposite = isBuy ? shorts : longs;
+      const isClose = String(c.action) === "close";
+      // Fechamento abate a ponta que está aberta; abertura abate a contrária
+      // (virada de mão) e abre o resto.
+      const closingLongs = isClose ? longs.length > 0 : c.side === "sell";
+      const target = closingLongs ? longs : shorts;
 
-      // Primeiro abate a ponta contrária (fechamento), depois abre o resto.
-      while (qty > 0 && opposite.length) {
-        const lot = opposite[0]!;
+      while (qty > 0 && target.length) {
+        const lot = target[0]!;
         const used = Math.min(qty, lot.qty);
         const entry = lot.price;
-        const dir = isBuy ? -1 : 1; // abatendo short: lucro quando preço cai
+        const dir = closingLongs ? 1 : -1; // long: lucro quando o preço sobe
         const pts = entry != null && price != null ? (price - entry) * dir : null;
         trades.push({
           root, symbol: c.symbol, mode: c.mode, variant: c.variant ?? "indicador",
           magic_number: Number(c.magic_number ?? 0),
-          side: isBuy ? "sell" : "buy", quantity: used,
+          side: closingLongs ? "buy" : "sell", quantity: used,
           entry_price: entry, exit_price: price,
           entry_time: lot.time, exit_time: time,
           result_pts: pts, result_brl: pts == null ? null : pts * profile.point_value_brl * used,
@@ -144,15 +158,18 @@ export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileL
         });
         lot.qty -= used;
         qty -= used;
-        if (lot.qty <= 0) opposite.shift();
+        if (lot.qty <= 0) target.shift();
       }
 
-      if (qty > 0) {
+      // Sobra só abre posição quando o comando é de ABERTURA. Fechamento
+      // sobrando significa desencontro com a corretora — não inventa posição.
+      if (qty > 0 && !isClose) {
         const lot: Lot = { qty, price, time, ticket: c.broker_ticket ?? null };
-        if (isBuy) longs.push(lot); else shorts.push(lot);
+        if (c.side === "buy") longs.push(lot); else shorts.push(lot);
       }
       last = c;
     }
+
 
     const openSide: "buy" | "sell" | null = longs.length ? "buy" : shorts.length ? "sell" : null;
     if (openSide) {

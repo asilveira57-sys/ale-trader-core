@@ -114,9 +114,11 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     const quoteByRoot: Record<string, { price: number | null; tick_ts: string | null; age_s: number | null }> = {};
     for (const root of symbols) {
       const p = profileFor(root);
+      // As cotações chegam no contrato (WINV26), não na raiz: aceita qualquer
+      // contrato conhecido da raiz e usa o tick mais recente.
       const { data: q } = await supabase.from("b3_mt5sim_quotes")
         .select("bid, ask, last, tick_ts")
-        .eq("user_id", userId).eq("symbol", p.quote_symbol)
+        .eq("user_id", userId).in("symbol", p.quote_symbols)
         .order("tick_ts", { ascending: false }).limit(1);
       const row = (q ?? [])[0] as any;
       const price = row ? Number(row.last ?? row.bid ?? row.ask) : null;
@@ -126,6 +128,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         age_s: row?.tick_ts ? Math.round((nowMs - new Date(row.tick_ts).getTime()) / 1000) : null,
       };
     }
+
 
     const positions = ledger.positions.map((p) => {
       const quote = quoteByRoot[p.root] ?? { price: null, tick_ts: null, age_s: null };
