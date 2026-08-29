@@ -185,10 +185,11 @@ export const getB3ExtratoReal = createServerFn({ method: "POST" })
         exit_time: t.exit_time,
         result_brl: t.result_brl,
         broker_ticket: t.broker_ticket,
-        fechada_por:
-          t.closed_by === "user_manual_close" ? "manual"
-          : t.closed_by === "engine_auto" ? "sistema"
-          : t.closed_by ? "sistema" : "desconhecido",
+        fechada_por: (t.closed_by === "user_manual_close"
+          ? "manual"
+          : t.closed_by
+            ? "sistema"
+            : "desconhecido") as ExtratoRealRow["fechada_por"],
       }))
       .sort((a, b) => new Date(b.exit_time ?? 0).getTime() - new Date(a.exit_time ?? 0).getTime());
 
