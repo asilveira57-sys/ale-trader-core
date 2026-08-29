@@ -84,9 +84,13 @@ export const REAL_MAGIC_ASSET_INDEX: Record<string, number> = {
   BBDC4: 5, BBAS3: 6, BIT: 7, ETR: 8, SOL: 9,
 };
 
+// Mesma razão do bloco clássico: `cauteloso` e `arrojado` entram DEPOIS dos
+// cinco atuais (índices 5 e 6), nunca na posição lógica de agressividade.
 export const REAL_MAGIC_MODE_INDEX_V2: Record<string, number> = {
   conservador: 0, moderado: 1, equilibrado: 2, semi_agressivo: 3, agressivo: 4,
+  cauteloso: 5, arrojado: 6,
 };
+
 
 export class MagicNumberNotRegisteredError extends Error {}
 
