@@ -6,8 +6,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
-  buildRealLedger, loadAssetProfiles, rootSymbol, saoPauloDate, type RealCommandRow,
+  buildRealLedger, loadAssetProfiles, saoPauloDate, type RealCommandRow,
 } from "@/lib/b3-real-cockpit.server";
+import { rootSymbol } from "@/lib/b3-format";
 
 export type CombGroup = "ativo" | "par" | "trio" | "modalidade" | "modo";
 
