@@ -55,9 +55,11 @@ function exportExtratoCSV(symbol: string, period: string, modes: any[]) {
   URL.revokeObjectURL(url);
 }
 
-const MODES = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo"] as const;
+// Esta tela compara a execução de simulação antiga, que roda os cinco modos
+// originais; cauteloso/arrojado só aparecem no rótulo/cor quando vierem do banco.
+const MODES = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
 type Mode = typeof MODES[number];
-const MODE_COLOR: Record<Mode, string> = {
+const MODE_COLOR: Record<string, string> = {
   conservador: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
   cauteloso: "bg-teal-500/15 text-teal-300 border-teal-500/30",
   moderado: "bg-sky-500/15 text-sky-300 border-sky-500/30",
