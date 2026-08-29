@@ -77,6 +77,19 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-pending"
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const nowIso = new Date().toISOString();
 
+        // 0) Estado do real, gravado pela tela (b3_real_execution_state).
+        //    Ausência de linha = ligado (comportamento histórico preservado).
+        //    Parado: comandos de ABERTURA não são entregues — só fechamento,
+        //    para que a zeragem e a gestão da posição aberta continuem valendo.
+        //    O estado vai junto na resposta: nenhuma requisição nova no executor.
+        const { data: stateRow } = await (supabaseAdmin as any)
+          .from("b3_real_execution_state")
+          .select("real_enabled, stopped_at, stopped_reason")
+          .eq("user_id", payload.user_id)
+          .maybeSingle();
+        const realEnabled = stateRow ? stateRow.real_enabled !== false : true;
+        const blockOpen = payload.env === "real" && !realEnabled;
+
         // 1) Expira qualquer comando vencido antes de reivindicar qualquer coisa nova.
         //    Um comando 'claimed' que nunca foi confirmado (conector caiu no meio)
         //    também expira aqui — vira 'expired', nunca 'filled' por suposição.
@@ -89,24 +102,30 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-pending"
           .lt("expires_at", nowIso);
 
         // 2) Reivindica atomicamente os pendentes restantes.
-        const { data: claimed, error } = await (supabaseAdmin as any)
+        let claimQuery = (supabaseAdmin as any)
           .from("b3_mt5_commands")
           .update({ status: "claimed", claimed_at: nowIso, claimed_by: payload.claimed_by })
           .eq("user_id", payload.user_id)
           .eq("env", payload.env)
           .eq("status", "pending")
-          .gte("expires_at", nowIso)
-          .select("*");
+          .gte("expires_at", nowIso);
+        if (blockOpen) claimQuery = claimQuery.neq("action", "open");
+        const { data: claimed, error } = await claimQuery.select("*");
 
         if (error) return json({ ok: false, error: error.message }, 500);
 
         return json({
           ok: true,
           env: payload.env,
+          real_enabled: realEnabled,
+          real_stopped_at: stateRow?.stopped_at ?? null,
+          real_stopped_reason: stateRow?.stopped_reason ?? null,
+          open_commands_blocked: blockOpen,
           commands: claimed ?? [],
           count: (claimed ?? []).length,
           server_time: nowIso,
         });
+
       },
     },
   },
