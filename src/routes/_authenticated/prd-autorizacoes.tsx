@@ -130,7 +130,7 @@ function PrdAuthorizationsPage() {
         </div>
         <div className="flex items-center gap-3">
           <div className={`panel px-4 py-2 text-sm ${enabledCount > 0 ? "border-orange-500/50 bg-orange-500/10 text-orange-300" : "text-muted-foreground"}`}>
-            <span className="font-mono text-lg font-semibold">{enabledCount}</span> / {rows.length} pares ligados
+            <span className="font-mono text-lg font-semibold">{enabledCount}</span> / {allRows.length} pares ligados
           </div>
           <Button variant="destructive" onClick={() => setKillStep(1)}>
             <AlertTriangle className="size-4 mr-1" /> Desligar tudo
