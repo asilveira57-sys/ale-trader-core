@@ -19,7 +19,7 @@ describe("realMagicNumber", () => {
     const assets = Object.keys(REAL_MAGIC_ASSET_BLOCK);
     const modes = Object.keys(REAL_MAGIC_MODE_INDEX);
     expect(assets.length).toBe(10);
-    expect(ALL_VARIANTS.length).toBe(5);
+    expect(ALL_VARIANTS.length).toBe(7);
     expect(modes.length).toBe(7);
 
     const seen = new Map<number, string>();
@@ -33,8 +33,8 @@ describe("realMagicNumber", () => {
       }
     }
     expect(seen.size).toBe(assets.length * ALL_VARIANTS.length * modes.length);
-    expect(seen.size).toBe(350);
-    expect(Math.max(...seen.keys())).toBe(20906);
+    expect(seen.size).toBe(490);
+    expect(Math.max(...seen.keys())).toBe(22906);
     // Os quatro ativos originais precisam manter a numeração já em uso.
     expect(realMagicNumber("WIN", "indicador", "conservador")).toBe(2001);
     expect(realMagicNumber("VALE3", "range", "agressivo")).toBe(3805);
@@ -45,6 +45,17 @@ describe("realMagicNumber", () => {
     expect(realMagicNumber("WIN", "indicador", "arrojado")).toBe(2007);
     expect(realMagicNumber("WIN", "rompimento", "cauteloso")).toBe(20005);
     expect(realMagicNumber("WIN", "rompimento", "arrojado")).toBe(20006);
+  });
+
+  it("sexta e setima modalidades (pullback, vwap) seguem o mesmo bloco alto", () => {
+    expect(realMagicNumber("WIN", "pullback", "conservador")).toBe(21000);
+    expect(realMagicNumber("WIN", "pullback", "arrojado")).toBe(21006);
+    expect(realMagicNumber("WDO", "pullback", "moderado")).toBe(21101);
+    expect(realMagicNumber("SOL", "pullback", "agressivo")).toBe(21904);
+    expect(realMagicNumber("WIN", "vwap", "conservador")).toBe(22000);
+    expect(realMagicNumber("SOL", "vwap", "arrojado")).toBe(22906);
+    expect(() => realMagicNumber("WIN", "pullback", "turbo")).toThrow(MagicNumberNotRegisteredError);
+    expect(() => realMagicNumber("XPTO9", "vwap", "conservador")).toThrow(MagicNumberNotRegisteredError);
   });
 
   it("quinta modalidade (rompimento) usa bloco alto separado, sem colidir com ITUB4", () => {

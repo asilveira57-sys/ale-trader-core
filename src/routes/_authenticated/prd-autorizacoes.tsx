@@ -40,6 +40,7 @@ const MODE_LABEL: Record<string, string> = {
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "Indicador", price_action: "Price Action",
   mean_reversion: "Reversão à média", range: "Range", rompimento: "Rompimento",
+  pullback: "Repique", vwap: "VWAP",
 };
 
 function PrdAuthorizationsPage() {

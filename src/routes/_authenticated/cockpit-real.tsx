@@ -61,6 +61,7 @@ const ageText = (s: number | null | undefined) => {
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "indicador", price_action: "price action",
   mean_reversion: "reversão à média", range: "faixa", rompimento: "rompimento",
+  pullback: "repique", vwap: "VWAP",
 };
 
 const STATUS_LABEL: Record<string, string> = {

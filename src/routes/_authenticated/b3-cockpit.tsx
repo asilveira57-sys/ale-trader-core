@@ -52,6 +52,8 @@ const VARIANT_LABEL: Record<string, string> = {
   mean_reversion: "Reversão à média",
   range: "Faixa",
   rompimento: "Rompimento",
+  pullback: "Repique",
+  vwap: "VWAP",
 };
 const VARIANT_COLOR: Record<string, string> = {
   indicador: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
@@ -59,6 +61,8 @@ const VARIANT_COLOR: Record<string, string> = {
   mean_reversion: "bg-lime-500/15 text-lime-300 border-lime-500/30",
   range: "bg-orange-500/15 text-orange-300 border-orange-500/30",
   rompimento: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  pullback: "bg-teal-500/15 text-teal-300 border-teal-500/30",
+  vwap: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30",
 };
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
 const isRiskBlocked = (c: any) => c.current_status === "blocked_stop" || !!c.protection_block_reason;
@@ -90,6 +94,7 @@ const moneyColor = (v: number) => (Number(v ?? 0) >= 0 ? "text-emerald-300" : "t
 const VARIANT_SHORT: Record<string, string> = {
   indicador: "ind", price_action: "PA", mean_reversion: "rev", range: "faixa",
   rompimento: "romp",
+  pullback: "rep", vwap: "vwap",
 };
 const roboShort = (r: any) =>
   !r ? "—" : `${VARIANT_SHORT[r.variant] ?? r.variant} ${String(r.mode).replace("_", "-")} ${SIGNED_HDR(r.brl)}`;

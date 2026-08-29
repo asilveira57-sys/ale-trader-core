@@ -79,6 +79,11 @@ const PRESETS: { key: Preset; label: string }[] = [
 const VARIANTS = [
   { key: "indicador", label: "indicador" },
   { key: "price_action", label: "price action" },
+  { key: "mean_reversion", label: "reversão à média" },
+  { key: "range", label: "faixa" },
+  { key: "rompimento", label: "rompimento" },
+  { key: "pullback", label: "repique" },
+  { key: "vwap", label: "VWAP" },
 ] as const;
 const MODES = [
   { key: "conservador", label: "conservador" },

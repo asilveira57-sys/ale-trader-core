@@ -5,7 +5,7 @@ import { B3_ASSETS } from "@/lib/b3-format";
 
 const MODES = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo"] as const;
 const SYMBOLS = B3_ASSETS;
-const VARIANTS = ["indicador", "price_action", "mean_reversion", "range"] as const;
+const VARIANTS = ["indicador", "price_action", "mean_reversion", "range", "rompimento", "pullback", "vwap"] as const;
 
 // Valida a senha mestra contra o hash guardado em B3_PRD_MASTER_PASSWORD_HASH.
 // Formato: scrypt$<salt_hex>$<derivado_hex>. Falha FECHADA: sem env var, erro.

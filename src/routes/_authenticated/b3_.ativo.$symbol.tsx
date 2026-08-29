@@ -39,6 +39,8 @@ const VARIANT_LABEL: Record<string, string> = {
   mean_reversion: "Reversão à média",
   range: "Faixa",
   rompimento: "Rompimento",
+  pullback: "Repique",
+  vwap: "VWAP",
 };
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
 const modeLabel = (m: string) => m.replace("_", " ");
