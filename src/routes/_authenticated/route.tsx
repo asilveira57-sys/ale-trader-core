@@ -148,6 +148,8 @@ const PRINCIPAL_NAV = [
   { to: "/prd-autorizacoes", label: "B3 — Autorizações Reais", icon: ShieldAlert },
   { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
   { to: "/b3-diagnostico", label: "Diagnóstico diário", icon: Stethoscope },
+  { to: "/b3-listas", label: "Resultado por combinação", icon: Table2 },
+  { to: "/b3-extrato-real", label: "Extrato do dinheiro real", icon: Receipt },
 ] as const;
 
 const NAV = [
