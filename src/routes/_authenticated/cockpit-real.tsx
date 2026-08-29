@@ -662,6 +662,39 @@ function CockpitRealPage() {
         </div>
       </div>
 
+      {/* Confirmação: fechar UMA posição reportada pela corretora */}
+      <AlertDialog open={!!closeTarget} onOpenChange={(o) => { if (!o) setCloseTarget(null); }}>
+        <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fechar esta posição real a mercado?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left">
+                <dl className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/30 p-2 text-sm">
+                  <div><dt className="text-[10px] uppercase text-muted-foreground">Ativo</dt><dd className="font-black">{closeTarget?.symbol ?? "—"}</dd></div>
+                  <div><dt className="text-[10px] uppercase text-muted-foreground">Lado aberto</dt><dd className="font-black">{sideLabel(closeTarget?.side)}</dd></div>
+                  <div><dt className="text-[10px] uppercase text-muted-foreground">Quantidade</dt><dd className="font-black">{closeTarget?.quantity ?? "—"}</dd></div>
+                  <div><dt className="text-[10px] uppercase text-muted-foreground">Preço corrente</dt><dd className="font-black">{PX(closeTarget?.price_current, closeTarget?.tick_size ?? 5)}</dd></div>
+                </dl>
+                <p className="text-xs text-muted-foreground">
+                  Entra um comando <b>close</b> a mercado na fila (validade 2 min). Quem executa é o executor,
+                  que fala com o MT5. Isto NÃO desliga autorizações e NÃO pausa a simulação.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-rose-600 text-white hover:bg-rose-500"
+              onClick={(e) => { e.preventDefault(); if (closeTarget) mCloseOne.mutate(closeTarget); }}
+              disabled={mCloseOne.isPending}
+            >
+              {mCloseOne.isPending ? "Enfileirando…" : "Fechar agora"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Confirmação: parar */}
       <AlertDialog open={confirmStop} onOpenChange={setConfirmStop}>
         <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
