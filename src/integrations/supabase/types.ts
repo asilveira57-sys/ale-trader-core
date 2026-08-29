@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -2699,6 +2699,36 @@ export type Database = {
           stops_pendentes?: number
           trade_date?: string
           ultimo_tick?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      b3_real_execution_state: {
+        Row: {
+          real_enabled: boolean
+          resumed_at: string | null
+          stopped_at: string | null
+          stopped_by: string | null
+          stopped_reason: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          real_enabled?: boolean
+          resumed_at?: string | null
+          stopped_at?: string | null
+          stopped_by?: string | null
+          stopped_reason?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          real_enabled?: boolean
+          resumed_at?: string | null
+          stopped_at?: string | null
+          stopped_by?: string | null
+          stopped_reason?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
