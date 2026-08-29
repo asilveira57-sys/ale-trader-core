@@ -129,6 +129,8 @@ const VARIANT_LABELS: Record<string, string> = {
   mean_reversion: "Reversão à média",
   range: "Faixa",
   rompimento: "Rompimento",
+  pullback: "Repique",
+  vwap: "VWAP",
 };
 function variantLabel(v?: string | null): string {
   const key = String(v ?? "indicador");
