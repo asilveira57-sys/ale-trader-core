@@ -19,6 +19,9 @@ export interface RealCommandRow {
   filled_price: number | null;
   broker_ticket: string | null;
   magic_number: number | null;
+  // 'engine_auto' | 'user_manual_close' | ... — distingue fechamento do sistema
+  // do fechamento na mão pelo usuário. Opcional: consultas antigas não pedem.
+  requested_by?: string | null;
 }
 
 export interface AssetProfile {
