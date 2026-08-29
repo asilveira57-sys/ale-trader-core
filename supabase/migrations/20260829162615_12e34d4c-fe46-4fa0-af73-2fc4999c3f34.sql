@@ -1,0 +1,1 @@
+ALTER FUNCTION public.b3_resultado_combinacao(date, date, text) SECURITY INVOKER;
