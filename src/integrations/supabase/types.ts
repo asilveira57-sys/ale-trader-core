@@ -1566,6 +1566,42 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_mt5_account_state: {
+        Row: {
+          account_login: string | null
+          balance: number | null
+          equity: number | null
+          free_margin: number | null
+          positions: Json
+          reported_at: string
+          server_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_login?: string | null
+          balance?: number | null
+          equity?: number | null
+          free_margin?: number | null
+          positions?: Json
+          reported_at?: string
+          server_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_login?: string | null
+          balance?: number | null
+          equity?: number | null
+          free_margin?: number | null
+          positions?: Json
+          reported_at?: string
+          server_name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_mt5_commands: {
         Row: {
           action: string

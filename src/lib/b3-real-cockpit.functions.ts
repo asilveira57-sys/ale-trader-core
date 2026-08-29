@@ -14,8 +14,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { assertMasterPassword } from "@/lib/prd-master-password.server";
 import {
-  buildRealLedger, isPregaoOpen, loadAssetProfiles, rootSymbol, saoPauloDate,
-  type RealCommandRow,
+  buildBrokerState, buildRealLedger, isPregaoOpen, loadAssetProfiles, rootSymbol, saoPauloDate,
+  STALE_REPORT_S, type RealCommandRow,
 } from "@/lib/b3-real-cockpit.server";
 
 const MINUTE = 60_000;
@@ -32,7 +32,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     const ledgerStartUtc = new Date(nowMs - 5 * 24 * 60 * MINUTE).toISOString();
     const pregaoOpen = isPregaoOpen(now);
 
-    const [{ data: cmds }, { data: tset }, { data: auths }, { data: stateRow }] = await Promise.all([
+    const [{ data: cmds }, { data: tset }, { data: auths }, { data: stateRow }, { data: brokerRow }] = await Promise.all([
       supabase.from("b3_mt5_commands")
         .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number")
         .eq("user_id", userId).eq("env", "real")
@@ -45,6 +45,10 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         .eq("user_id", userId).order("symbol").order("variant").order("mode"),
       supabase.from("b3_real_execution_state")
         .select("real_enabled, stopped_at, stopped_reason, resumed_at, updated_at")
+        .eq("user_id", userId).maybeSingle(),
+      // Verdade da corretora, reportada pelo executor a cada 2s. Sem cache.
+      supabase.from("b3_mt5_account_state")
+        .select("reported_at, balance, equity, free_margin, positions, account_login, server_name")
         .eq("user_id", userId).maybeSingle(),
     ]);
 
@@ -143,6 +147,9 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       };
     });
 
+    // ── 3b. Verdade da corretora + divergência contra o livro por comandos ──
+    const broker = buildBrokerState(brokerRow as any, ledger.positions, profileFor, nowMs);
+
     // ── 4. Ordens reais de hoje (o que a corretora executou) ──
     const dayOrders = commands
       .filter((c) => c.created_at >= dayStartUtc)
@@ -179,6 +186,11 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       unrealized_pct: pct(unrealizedBrl),
       total_pct: pct(realizedBrl + unrealizedBrl),
       capital_brl: capital,
+      // Saldo de verdade vem do relatório do executor. O estimado (capital
+      // cadastrado + resultado) fica só como referência quando não há relatório.
+      saldo_conta_brl: broker.balance_brl,
+      capital_liquido_brl: broker.equity_brl,
+      margem_livre_brl: broker.free_margin_brl,
       saldo_estimado_brl: capital == null ? null : capital + realizedBrl + unrealizedBrl,
       closed_count: tradesToday.length,
       wins: tradesToday.filter((t) => (t.result_brl ?? 0) > 0).length,
@@ -308,6 +320,30 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       }
     }
 
+    if (!broker.reported) {
+      alerts.push({
+        kind: "sem_relatorio_executor", severity: "warning",
+        title: "Executor nunca reportou o estado da conta",
+        detail: "A posição mostrada vem do cálculo por comandos, que pode divergir da corretora. Atualize o executor para enviar o relatório.",
+        at: null,
+      });
+    } else if (broker.stale) {
+      alerts.push({
+        kind: "relatorio_executor_velho", severity: "critical",
+        title: `Executor pode estar parado — último relatório há ${broker.report_age_s ?? "?"}s`,
+        detail: `O relatório da corretora tem mais de ${STALE_REPORT_S}s. Posição e saldo exibidos podem não ser os atuais.`,
+        at: broker.reported_at,
+      });
+    }
+    for (const dv of broker.divergences) {
+      alerts.push({
+        kind: "divergencia_posicao", severity: "warning",
+        title: `Divergência em ${dv.root}: corretora ${dv.broker_net} x comandos ${dv.ledger_net}`,
+        detail: "Algum comando expirou ou executou fora do previsto. A corretora é a verdade; o cálculo por comandos é segunda opinião.",
+        at: broker.reported_at,
+      });
+    }
+
     alerts.sort((a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime());
 
     return {
@@ -315,6 +351,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       session_date: sessionDate,
       real_state: realState,
       executor,
+      broker,
       positions,
       day_orders: dayOrders,
       trades_today: tradesToday.slice().reverse(),
@@ -476,4 +513,82 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
       disabled: (rows ?? []).length,
       detalhe: commands.map((c) => `${String(c.side).toUpperCase()} ${c.quantity}x ${c.symbol}`),
     };
+  });
+
+// ─────────── botão: FECHAR ESTA POSIÇÃO (dentro do card) ───────────
+// Fecha UMA posição específica reportada pela corretora. Quem executa continua
+// sendo o executor: aqui só entra um comando 'close' na fila, com
+// requested_by='user_manual_close'. Não desliga autorizações e não pausa nada:
+// é um fechamento pontual, não uma parada de emergência.
+export const closeRealPositionByBroker = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      symbol: z.string().min(1).max(20),
+      side: z.enum(["buy", "sell"]),
+      quantity: z.number().positive().max(1000),
+      magic_number: z.number().int().nullable().optional(),
+      confirm: z.literal(true),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const stamp = Date.now();
+    const magic = data.magic_number ?? 0;
+
+    const command = {
+      user_id: userId,
+      env: "real",
+      simulation_run_id: null,
+      mode: "manual",
+      variant: "manual",
+      action: "close",
+      // Fechar é a ponta contrária do que está aberto.
+      side: data.side === "buy" ? "sell" : "buy",
+      symbol: data.symbol,
+      quantity: data.quantity,
+      magic_number: magic,
+      idempotency_key: `manual_close:${data.symbol}:${magic}:${stamp}`,
+      requested_by: "user_manual_close",
+      expires_at: new Date(stamp + 120_000).toISOString(),
+    };
+
+    const { data: inserted, error } = await (supabase as any)
+      .from("b3_mt5_commands")
+      .insert(command)
+      .select("id, status, created_at, expires_at")
+      .single();
+    if (error) throw error;
+
+    try {
+      await (supabase as any).from("system_logs").insert({
+        event_type: "fechamento_manual_real",
+        source: "cockpit_real",
+        severity: "warning",
+        message: `Fechamento manual solicitado pelo painel: ${command.side.toUpperCase()} ${data.quantity}x ${data.symbol} (magic ${magic}).`,
+        technical_data: { command_id: inserted?.id ?? null, magic_number: magic } as any,
+      });
+    } catch { /* best-effort */ }
+
+    return {
+      ok: true as const,
+      command_id: (inserted as any)?.id ?? null,
+      status: (inserted as any)?.status ?? "pending",
+      expires_at: (inserted as any)?.expires_at ?? command.expires_at,
+      detalhe: `${command.side.toUpperCase()} ${data.quantity}x ${data.symbol}`,
+    };
+  });
+
+// Acompanhamento do comando manual: a tela precisa mostrar o veredito quando o
+// executor voltar — inclusive recusa.
+export const getRealCommandStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ command_id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: row, error } = await supabase.from("b3_mt5_commands")
+      .select("id, action, side, symbol, quantity, status, error_message, filled_price, broker_ticket, filled_at, created_at, expires_at")
+      .eq("user_id", userId).eq("id", data.command_id).maybeSingle();
+    if (error) throw error;
+    return row ?? null;
   });

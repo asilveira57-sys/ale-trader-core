@@ -193,3 +193,99 @@ export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileL
   trades.sort((a, b) => new Date(a.exit_time ?? 0).getTime() - new Date(b.exit_time ?? 0).getTime());
   return { positions, trades };
 }
+
+// ─────────── Estado reportado pelo executor (verdade da corretora) ───────────
+// O executor é o único que fala com o MT5. O que ele reporta é a posição real;
+// o livro por comandos (buildRealLedger) fica como SEGUNDA OPINIÃO, útil para
+// mostrar divergência quando um comando expirou ou executou fora do previsto.
+export interface BrokerPositionRow {
+  symbol?: string | null; side?: string | null; volume?: number | null;
+  price_open?: number | null; price_current?: number | null; profit?: number | null;
+  magic_number?: number | null; ticket?: string | null; opened_at?: string | null;
+}
+
+export interface BrokerPosition {
+  root: string; symbol: string;
+  side: "buy" | "sell" | null;
+  quantity: number;
+  entry_price: number | null;
+  price_current: number | null;
+  profit_brl: number | null;
+  magic_number: number | null;
+  ticket: string | null;
+  opened_at: string | null;
+  tick_size: number;
+  point_value_brl: number;
+}
+
+export const STALE_REPORT_S = 60;
+
+export function buildBrokerState(
+  row: any | null | undefined,
+  ledgerPositions: { root: string; side: "buy" | "sell"; quantity: number; magic_number: number }[],
+  profileFor: ProfileLookup,
+  nowMs: number,
+) {
+  const reportedAt: string | null = row?.reported_at ?? null;
+  const ageS = reportedAt ? Math.round((nowMs - new Date(reportedAt).getTime()) / 1000) : null;
+
+  const positions: BrokerPosition[] = ((row?.positions ?? []) as BrokerPositionRow[])
+    .filter((p) => Math.abs(Number(p?.volume ?? 0)) > 0)
+    .map((p) => {
+      const symbol = String(p.symbol ?? "").toUpperCase();
+      const root = rootSymbol(symbol);
+      const profile = profileFor(root);
+      return {
+        root, symbol,
+        side: p.side === "buy" || p.side === "sell" ? p.side : null,
+        quantity: Math.abs(Number(p.volume ?? 0)),
+        entry_price: p.price_open == null ? null : Number(p.price_open),
+        price_current: p.price_current == null ? null : Number(p.price_current),
+        profit_brl: p.profit == null ? null : Number(p.profit),
+        magic_number: p.magic_number == null ? null : Number(p.magic_number),
+        ticket: p.ticket ?? null,
+        opened_at: p.opened_at ?? null,
+        tick_size: profile.tick_size,
+        point_value_brl: profile.point_value_brl,
+      };
+    });
+
+  // Divergência: comparação por raiz do ativo (a conta da B3 é netting, então o
+  // magic do livro pode não bater com o magic da posição líquida).
+  const net = (items: { root: string; side: "buy" | "sell" | null; quantity: number }[]) => {
+    const m = new Map<string, number>();
+    for (const i of items) {
+      const dir = i.side === "sell" ? -1 : 1;
+      m.set(i.root, (m.get(i.root) ?? 0) + dir * i.quantity);
+    }
+    return m;
+  };
+  const brokerNet = net(positions);
+  const ledgerNet = net(ledgerPositions);
+  const roots = Array.from(new Set([...brokerNet.keys(), ...ledgerNet.keys()]));
+  const divergences = roots
+    .map((root) => ({
+      root,
+      broker_net: brokerNet.get(root) ?? 0,
+      ledger_net: ledgerNet.get(root) ?? 0,
+    }))
+    .filter((d) => d.broker_net !== d.ledger_net);
+
+  return {
+    reported: !!row,
+    reported_at: reportedAt,
+    report_age_s: ageS,
+    stale: ageS == null ? true : ageS > STALE_REPORT_S,
+    balance_brl: row?.balance == null ? null : Number(row.balance),
+    equity_brl: row?.equity == null ? null : Number(row.equity),
+    free_margin_brl: row?.free_margin == null ? null : Number(row.free_margin),
+    account_login: row?.account_login ?? null,
+    server_name: row?.server_name ?? null,
+    positions,
+    open_profit_brl: positions.length
+      ? positions.reduce((s, p) => s + (p.profit_brl ?? 0), 0)
+      : 0,
+    divergences,
+    has_divergence: divergences.length > 0,
+  };
+}
