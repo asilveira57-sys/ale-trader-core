@@ -3043,9 +3043,19 @@ async function runB3SimulationTickInner(
         let trailingDebug: any = null;
         let trailingIntrabar: { level: number; price: number; minute_ts: string } | null = null;
 
+        // ─────────── ZERO A ZERO (breakeven) — proteção DENTRO da operação ───────────
+        // Vale para todas as modalidades. Nasce DESLIGADA: com
+        // breakeven_ativa_pts vazio ou zero, nada abaixo muda o comportamento.
+        let hitBreakeven = false;
+        let breakevenDebug: any = null;
+        let breakevenIntrabar: { level: number; price: number; minute_ts: string } | null = null;
+        const beAtivaPts = Number(cfg.breakeven_ativa_pts ?? 0);
+        const beOn = Number.isFinite(beAtivaPts) && beAtivaPts > 0;
+
         const trailingOn = Number(cfg.trailing_activation_pts) > 0;
         const entryMsForTrailing = open.entry_time ? new Date(open.entry_time).getTime() : null;
-        if (trailingOn && entryMsForTrailing) {
+        // O pico a favor desde a entrada serve ao trailing E ao zero a zero.
+        if ((trailingOn || beOn) && entryMsForTrailing) {
           const sinceEntry = marketHistory
             .filter((h: any) => {
               const t = new Date(h.market_time).getTime();
