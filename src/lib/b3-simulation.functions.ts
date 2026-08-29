@@ -1742,6 +1742,287 @@ async function runB3SimulationTickInner(
   }
 
 
+  // ── SEXTA MODALIDADE: `pullback` (29/08/2026) ─────────────────────────────
+  // Lacuna do sistema: o `indicador` entra no cruzamento de médias e o
+  // `rompimento` na quebra do canal — nenhum entra no REPIQUE dentro de uma
+  // tendência já estabelecida.
+  //
+  // Os dois erros que NÃO se repetem aqui:
+  //  1. a tendência é medida na janela ANTERIOR ao recuo (a perna), nunca no
+  //     instante atual — foi medir no instante errado que deixou o rompimento
+  //     dois pregões sem operar;
+  //  2. o lado sai da tendência da perna, nunca do intendedSide.
+  //
+  // Níveis devolvidos pelo classificador: stop além do extremo do recuo (se o
+  // preço rompe o fundo do repique numa alta, o setup falhou) e alvo
+  // proporcional à perna anterior.
+  function classifySetupPullback(params: {
+    ctxLocal: any; cfg: any; m1Candles: any[];
+  }): {
+    name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>;
+    side_override?: "buy" | "sell";
+    stop_pts_override?: number | null; gain_pts_override?: number | null;
+  } {
+    const { ctxLocal, cfg, m1Candles } = params;
+    const price = Number(ctxLocal.price);
+    const stopPtsCfg = Math.max(1, Number(cfg.stop_pts) || 0);
+    const tick = Math.max(Number(asset?.tick_size ?? 1), 0.01);
+    const vol = Number(ctxLocal.volatility_pct ?? 0);
+
+    const sorted = (m1Candles ?? []).slice()
+      .sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
+    const pbLen = Math.max(2, Math.min(8, Number((cfg as any).pullback_candles ?? 3)));
+    const lookback = Math.max(10, Math.min(60, Number((cfg as any).pullback_lookback_candles ?? 20)));
+    const minCandles = pbLen + 6;
+    if (sorted.length < minCandles) {
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: [`aguardando candles de 1 minuto (mínimo ${minCandles})`],
+        details: { m1_candles: sorted.length, entry_style: "pullback" },
+      };
+    }
+
+    // Janela: [ perna ][ recuo (pbLen) ][ candle de retomada ]
+    const windowAll = sorted.slice(-(lookback + 1));
+    const rest = windowAll.slice(0, -1);
+    const resume: any = windowAll[windowAll.length - 1];
+    const legCandles = rest.slice(0, Math.max(0, rest.length - pbLen));
+    const pbCandles = rest.slice(-pbLen);
+    if (legCandles.length < 5 || pbCandles.length < 2) {
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: ["janela sem perna e recuo separáveis"],
+        details: { leg_candles: legCandles.length, pullback_candles: pbCandles.length, entry_style: "pullback" },
+      };
+    }
+
+    const num = (v: any) => Number(v);
+    const legStart = num(legCandles[0]?.candle_open);
+    const legEnd = num(legCandles[legCandles.length - 1]?.candle_close);
+    const legHigh = Math.max(...legCandles.map((c: any) => num(c.candle_high)).filter(Number.isFinite));
+    const legLow = Math.min(...legCandles.map((c: any) => num(c.candle_low)).filter(Number.isFinite));
+    const legMove = legEnd - legStart;
+    const legAbs = Math.abs(legMove);
+    const legRange = legHigh - legLow;
+    const legEfficiency = legRange > 0 ? legAbs / legRange : 0;
+
+    const trendDir: "alta" | "baixa" | null = legMove > 0 ? "alta" : legMove < 0 ? "baixa" : null;
+    const side: "buy" | "sell" | undefined =
+      trendDir === "alta" ? "buy" : trendDir === "baixa" ? "sell" : undefined;
+
+    const minLegPts = Number((cfg as any).pullback_min_leg_pts ?? stopPtsCfg * 1.5);
+    const minLegEff = Number((cfg as any).pullback_min_leg_efficiency ?? 0.5);
+
+    // Extremo do recuo: fundo do repique na alta, topo na baixa.
+    const pbLow = Math.min(...pbCandles.map((c: any) => num(c.candle_low)).filter(Number.isFinite));
+    const pbHigh = Math.max(...pbCandles.map((c: any) => num(c.candle_high)).filter(Number.isFinite));
+    const pbExtreme = trendDir === "alta" ? pbLow : pbHigh;
+    const retrPts = trendDir === "alta" ? legEnd - pbLow : pbHigh - legEnd;
+    const retrRatio = legAbs > 0 ? retrPts / legAbs : 0;
+    const minRetr = Number((cfg as any).pullback_min_retracement ?? 0.2);
+    const maxRetr = Number((cfg as any).pullback_max_retracement ?? 0.7);
+    // Não pode romper o início da perna — aí não é repique, é reversão.
+    const keptLegOrigin = trendDir === "alta" ? pbLow > legStart : pbHigh < legStart;
+
+    const rOpen = num(resume?.candle_open);
+    const rClose = num(resume?.candle_close);
+    const lastPbHigh = num(pbCandles[pbCandles.length - 1]?.candle_high);
+    const lastPbLow = num(pbCandles[pbCandles.length - 1]?.candle_low);
+    // Retomada: corpo do minuto a favor E fechando além do candle final do recuo.
+    const bodyWithTrend = trendDir === "alta" ? rClose > rOpen : rClose < rOpen;
+    const brokeResumeLevel = trendDir === "alta" ? rClose > lastPbHigh : rClose < lastPbLow;
+
+    // Níveis dinâmicos: stop além do extremo do recuo, alvo na proporção da perna.
+    const folga = Math.max(tick * 2, stopPtsCfg * 0.1);
+    const stopDyn = Math.max(tick * 2, Math.round(Math.abs(price - pbExtreme) + folga));
+    const targetRatio = Number((cfg as any).pullback_target_leg_ratio ?? 1.0);
+    const gainDyn = Math.max(tick * 2, Math.round(legAbs * targetRatio));
+    const rr = stopDyn > 0 ? gainDyn / stopDyn : 0;
+
+    const details: Record<string, any> = {
+      entry_style: "pullback",
+      lookback_candles: lookback, pullback_candles: pbCandles.length, leg_candles: legCandles.length,
+      tendencia_da_perna: trendDir, perna_inicio: legStart, perna_fim: legEnd,
+      perna_pts: Number(legAbs.toFixed(1)), perna_min_pts: minLegPts,
+      perna_eficiencia: Number(legEfficiency.toFixed(3)), perna_min_eficiencia: minLegEff,
+      recuo_extremo: pbExtreme, recuo_pts: Number(retrPts.toFixed(1)),
+      recuo_fracao: Number(retrRatio.toFixed(3)), recuo_min: minRetr, recuo_max: maxRetr,
+      manteve_origem_da_perna: keptLegOrigin,
+      retomada_open: rOpen, retomada_close: rClose,
+      retomada_corpo_a_favor: bodyWithTrend, retomada_rompeu_ultimo_candle_do_recuo: brokeResumeLevel,
+      price, volatility_pct: vol,
+      stop_dinamico_pts: stopDyn, alvo_dinamico_pts: gainDyn, "r:r": Number(rr.toFixed(2)),
+    };
+
+    const hardBlock: string[] = [];
+    if (!trendDir) hardBlock.push("perna anterior sem direção (deslocamento zero)");
+    if (legAbs < minLegPts) hardBlock.push(`perna anterior curta demais (${legAbs.toFixed(0)} pts < mínimo ${minLegPts.toFixed(0)} pts)`);
+    if (legEfficiency < minLegEff) hardBlock.push(`tendência não confirmada antes do recuo (eficiência ${(legEfficiency * 100).toFixed(0)}% < mínimo ${(minLegEff * 100).toFixed(0)}%)`);
+    if (retrRatio < minRetr) hardBlock.push(`recuo insuficiente (${(retrRatio * 100).toFixed(0)}% < mínimo ${(minRetr * 100).toFixed(0)}% da perna)`);
+    if (retrRatio > maxRetr) hardBlock.push(`recuo profundo demais (${(retrRatio * 100).toFixed(0)}% > máximo ${(maxRetr * 100).toFixed(0)}% da perna)`);
+    if (!keptLegOrigin) hardBlock.push("recuo rompeu o início da perna — não é repique, é reversão");
+    if (!bodyWithTrend) hardBlock.push(`minuto de retomada sem corpo a favor da tendência (${rOpen.toFixed(1)}→${rClose.toFixed(1)})`);
+
+    const soft: { label: string; pass: boolean }[] = [
+      { label: `retomada não superou o último candle do recuo (${rClose.toFixed(1)})`, pass: brokeResumeLevel },
+      { label: `recuo fora da faixa nobre (30%–60% da perna: ${(retrRatio * 100).toFixed(0)}%)`,
+        pass: retrRatio >= 0.3 && retrRatio <= 0.6 },
+      { label: `risco-retorno abaixo de 1,2 (${rr.toFixed(2)})`, pass: rr >= 1.2 },
+      { label: `preço corrente já longe do gatilho da retomada`,
+        pass: trendDir === "alta" ? price >= rClose - stopDyn * 0.5 : price <= rClose + stopDyn * 0.5 },
+    ];
+    const failedSoft = soft.filter((s) => !s.pass).map((s) => s.label);
+    const minHits = Number((cfg as any).pullback_min_soft_hits ?? 3);
+    const hits = soft.length - failedSoft.length;
+    const softOk = hits >= minHits;
+    Object.assign(details, { soft_hits: hits, soft_total: soft.length, soft_min_hits: minHits, soft_failed: failedSoft });
+
+    if (hardBlock.length === 0 && softOk) {
+      return {
+        name: "trend_pullback", ok: true, reasons: [], details,
+        side_override: side, stop_pts_override: stopDyn, gain_pts_override: gainDyn,
+      };
+    }
+    return {
+      name: "no_valid_setup", ok: false,
+      reasons: [...hardBlock, ...(softOk ? [] : failedSoft)],
+      details,
+      side_override: side,
+      stop_pts_override: hardBlock.length === 0 ? stopDyn : null,
+      gain_pts_override: hardBlock.length === 0 ? gainDyn : null,
+    };
+  }
+
+
+  // ── SÉTIMA MODALIDADE: `vwap` (29/08/2026) ────────────────────────────────
+  // Reversão à média com REFERÊNCIA diferente: não a média móvel, mas o preço
+  // médio ponderado por volume, que é o que a mesa institucional olha. A coluna
+  // `vwap` já vem no snapshot desde o início; aqui só se lê.
+  //
+  // A entrada é o RETORNO ao VWAP, não o afastamento: exige afastamento além do
+  // limiar em algum ponto da janela recente E aproximação em curso agora.
+  // Lado derivado pelo classificador: acima do VWAP é venda, abaixo é compra.
+  function classifySetupVwap(params: {
+    ctxLocal: any; cfg: any; m1Candles: any[];
+  }): {
+    name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>;
+    side_override?: "buy" | "sell";
+    stop_pts_override?: number | null; gain_pts_override?: number | null;
+  } {
+    const { ctxLocal, cfg, m1Candles } = params;
+    const price = Number(ctxLocal.price);
+    const vwap = Number(ctxLocal.vwap);
+    const stopPtsCfg = Math.max(1, Number(cfg.stop_pts) || 0);
+    const tick = Math.max(Number(asset?.tick_size ?? 1), 0.01);
+    const vol = Number(ctxLocal.volatility_pct ?? 0);
+
+    if (!Number.isFinite(vwap) || vwap <= 0) {
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: ["VWAP indisponível no snapshot"],
+        details: { entry_style: "vwap", vwap: ctxLocal.vwap },
+      };
+    }
+
+    const sorted = (m1Candles ?? []).slice()
+      .sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
+    if (sorted.length < 10) {
+      return {
+        name: "no_valid_setup", ok: false,
+        reasons: ["aguardando candles de 1 minuto (mínimo 10)"],
+        details: { m1_candles: sorted.length, entry_style: "vwap" },
+      };
+    }
+
+    const dayHigh = Math.max(...sorted.map((c: any) => Number(c.candle_high)).filter(Number.isFinite));
+    const dayLow = Math.min(...sorted.map((c: any) => Number(c.candle_low)).filter(Number.isFinite));
+    const dayRange = dayHigh - dayLow;
+
+    const dist = price - vwap;
+    const distAbs = Math.abs(dist);
+    const side: "buy" | "sell" | undefined = dist > 0 ? "sell" : dist < 0 ? "buy" : undefined;
+
+    // Limiar do afastamento: o maior entre uma fração do stop e uma fração da
+    // amplitude do dia (em ativo parado o stop manda; em dia amplo, a amplitude).
+    const minByStop = Number((cfg as any).vwap_min_distance_pts ?? stopPtsCfg * 0.8);
+    const rangeRatio = Number((cfg as any).vwap_min_distance_range_ratio ?? 0.25);
+    const threshold = Math.max(minByStop, dayRange * rangeRatio);
+
+    // Afastamento máximo recente do MESMO lado em que o preço está agora.
+    const win = Math.max(3, Math.min(30, Number((cfg as any).vwap_lookback_candles ?? 10)));
+    const recent = sorted.slice(-win);
+    const extremeAbove = Math.max(...recent.map((c: any) => Number(c.candle_high)).filter(Number.isFinite));
+    const extremeBelow = Math.min(...recent.map((c: any) => Number(c.candle_low)).filter(Number.isFinite));
+    const extreme = side === "sell" ? extremeAbove : extremeBelow;
+    const maxDistAbs = Math.abs(extreme - vwap);
+
+    // Voltando: a distância atual já é uma fração da máxima do afastamento.
+    const returnRatio = Number((cfg as any).vwap_return_ratio ?? 0.7);
+    const returning = maxDistAbs > 0 && distAbs <= maxDistAbs * returnRatio;
+    // …mas ainda com espaço até o VWAP para valer como alvo.
+    const minRoomRatio = Number((cfg as any).vwap_min_room_ratio ?? 0.25);
+    const hasRoom = distAbs >= Math.max(tick * 2, threshold * minRoomRatio);
+
+    // Níveis: alvo no próprio VWAP; stop além do extremo do afastamento.
+    const folga = Math.max(tick * 2, stopPtsCfg * 0.1);
+    const gainDyn = Math.max(tick * 2, Math.round(distAbs));
+    const stopDyn = Math.max(tick * 2, Math.round(Math.abs(extreme - price) + folga));
+    const rr = stopDyn > 0 ? gainDyn / stopDyn : 0;
+
+    const details: Record<string, any> = {
+      entry_style: "vwap",
+      vwap, price, dist_vwap_pts: Number(dist.toFixed(1)),
+      lado_derivado: side, amplitude_dia_pts: Number(dayRange.toFixed(1)),
+      limiar_afastamento_pts: Number(threshold.toFixed(1)),
+      limiar_por_stop_pts: Number(minByStop.toFixed(1)), limiar_fracao_da_amplitude: rangeRatio,
+      lookback_candles: recent.length,
+      extremo_do_afastamento: extreme, afastamento_maximo_pts: Number(maxDistAbs.toFixed(1)),
+      voltando_ao_vwap: returning, fracao_de_retorno_max: returnRatio,
+      espaco_ate_o_vwap_ok: hasRoom, volatility_pct: vol,
+      stop_dinamico_pts: stopDyn, alvo_dinamico_pts: gainDyn, "r:r": Number(rr.toFixed(2)),
+    };
+
+    const hardBlock: string[] = [];
+    if (!side) hardBlock.push("preço exatamente no VWAP — sem afastamento a reverter");
+    if (maxDistAbs < threshold) hardBlock.push(`afastamento do VWAP insuficiente (máx ${maxDistAbs.toFixed(1)} pts < limiar ${threshold.toFixed(1)} pts)`);
+    if (!returning) hardBlock.push(`ainda se afastando do VWAP (atual ${distAbs.toFixed(1)} pts de máx ${maxDistAbs.toFixed(1)} pts; exigido ≤ ${(maxDistAbs * returnRatio).toFixed(1)})`);
+    if (!hasRoom) hardBlock.push(`sem espaço até o VWAP para servir de alvo (${distAbs.toFixed(1)} pts)`);
+
+    const soft: { label: string; pass: boolean }[] = [
+      { label: `risco-retorno abaixo de 1,0 (${rr.toFixed(2)})`, pass: rr >= 1.0 },
+      { label: `retorno ao VWAP ainda incipiente (${(distAbs / (maxDistAbs || 1) * 100).toFixed(0)}% do afastamento)`,
+        pass: maxDistAbs > 0 && distAbs <= maxDistAbs * 0.85 },
+      { label: `último minuto sem fechar na direção do VWAP`,
+        pass: (() => {
+          const last: any = sorted[sorted.length - 1];
+          const o = Number(last?.candle_open); const c = Number(last?.candle_close);
+          if (!Number.isFinite(o) || !Number.isFinite(c)) return false;
+          return side === "sell" ? c < o : c > o;
+        })() },
+    ];
+    const failedSoft = soft.filter((s) => !s.pass).map((s) => s.label);
+    const minHits = Number((cfg as any).vwap_min_soft_hits ?? 2);
+    const hits = soft.length - failedSoft.length;
+    const softOk = hits >= minHits;
+    Object.assign(details, { soft_hits: hits, soft_total: soft.length, soft_min_hits: minHits, soft_failed: failedSoft });
+
+    if (hardBlock.length === 0 && softOk) {
+      return {
+        name: "vwap_reversion", ok: true, reasons: [], details,
+        side_override: side, stop_pts_override: stopDyn, gain_pts_override: gainDyn,
+      };
+    }
+    return {
+      name: "no_valid_setup", ok: false,
+      reasons: [...hardBlock, ...(softOk ? [] : failedSoft)],
+      details,
+      side_override: side,
+      stop_pts_override: hardBlock.length === 0 ? stopDyn : null,
+      gain_pts_override: hardBlock.length === 0 ? gainDyn : null,
+    };
+  }
+
+
   // Mapa entry_style → classificador. Acrescentar modalidade nova = uma linha
   // aqui, sem tocar no ponto de chamada dentro do laço de modos.
   type SetupClassifierArgs = {
