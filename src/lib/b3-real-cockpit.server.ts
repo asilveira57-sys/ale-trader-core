@@ -160,6 +160,7 @@ export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileL
           entry_time: lot.time, exit_time: time,
           result_pts: pts, result_brl: pts == null ? null : pts * profile.point_value_brl * used,
           broker_ticket: c.broker_ticket ?? lot.ticket ?? null,
+          closed_by: c.requested_by ?? null,
         });
         lot.qty -= used;
         qty -= used;
