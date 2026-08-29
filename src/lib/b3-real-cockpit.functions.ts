@@ -48,7 +48,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         .eq("user_id", userId).maybeSingle(),
       // Verdade da corretora, reportada pelo executor a cada 2s. Sem cache.
       supabase.from("b3_mt5_account_state")
-        .select("reported_at, balance, equity, free_margin, positions, account_login, server_name")
+        .select("reportado_em, saldo, capital_liquido, margem_livre, negociacao_permitida, posicoes, account_login, server_name")
         .eq("user_id", userId).maybeSingle(),
     ]);
 
