@@ -4651,9 +4651,11 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       const auditModes: any[] = snaps?.[0]?.engine_modes ?? [];
       const enabledByMode: Record<string, boolean> = {};
       const lossLimitByMode: Record<string, number | null> = {};
+      const givebackByMode: Record<string, number | null> = {};
       for (const s of settings ?? []) {
         enabledByMode[s.mode] = s.enabled !== false;
         lossLimitByMode[s.mode] = s.daily_loss_limit_brl == null ? null : Number(s.daily_loss_limit_brl);
+        givebackByMode[s.mode] = s.peak_giveback_pct == null ? null : Number(s.peak_giveback_pct);
       }
       const openByMode: Record<string, any> = {};
       for (const o of openOrders ?? []) openByMode[o.mode] = o;
@@ -4750,6 +4752,10 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           protection_state: mode?.protection_state ?? null,
           protection_block_reason: mode?.protection_block_reason ?? null,
           daily_loss_limit_brl: lossLimitByMode[m] ?? null,
+          // Pico do dia e limite de devolução: canal visual próprio no card
+          // (a cor da linha continua significando constância).
+          day_peak_profit_brl: mode?.day_peak_profit_brl == null ? null : Number(mode.day_peak_profit_brl),
+          peak_giveback_pct: givebackByMode[m] ?? null,
           reactivated_today: reactivatedToday,
           score: audit?.last_score ?? null, confidence: audit?.last_confidence ?? null,
           blocked_reason: open ? null : (audit?.first_stop?.label ?? audit?.last_refusal_reason ?? null),
