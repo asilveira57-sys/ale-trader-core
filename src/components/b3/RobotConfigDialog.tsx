@@ -47,6 +47,11 @@ const GROUPS: Array<{ title: string; fields: Array<{ k: string; step?: number }>
     fields: [{ k: "trailing_activation_pts" }, { k: "trailing_giveback_pts" }],
   },
   {
+    // Vazio ou 0 = desligado (comportamento idêntico ao de antes).
+    title: "Zero a zero",
+    fields: [{ k: "breakeven_ativa_pts" }, { k: "breakeven_folga_pts" }],
+  },
+  {
     title: "Proteção",
     fields: [
       { k: "daily_gain_target_brl", step: 10 }, { k: "minimum_trades_before_profit_lock" },

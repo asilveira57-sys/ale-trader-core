@@ -36,6 +36,40 @@ export const Route = createFileRoute("/_authenticated/b3-cockpit")({
 
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+// ── Indicador de pico e recuo ────────────────────────────────────────────────
+// Canal visual PRÓPRIO: a cor da linha do robô continua significando
+// constância (b3_cor_do_robo) e não é usada aqui.
+function PeakRing({ peak, atual, limite }: { peak: number; atual: number; limite: number }) {
+  if (!(peak > 0)) return null;
+  const recuo = Math.min(1, Math.max(0, (peak - atual) / peak));
+  const lim = limite > 0 ? limite : 0.4;
+  const razao = recuo / lim;
+  const cor = razao >= 0.8 ? "text-rose-400" : razao >= 0.5 ? "text-amber-300" : "text-emerald-400";
+  const faltaPct = Math.max(0, lim - recuo) * 100;
+  const R = 9, C = 2 * Math.PI * R;
+  const title = [
+    `Pico do dia: ${BRL(peak)}`,
+    `Resultado agora: ${BRL(atual)}`,
+    `Recuo do pico: ${(recuo * 100).toFixed(0)}% (freio em ${(lim * 100).toFixed(0)}%)`,
+    recuo >= lim ? "Freio de pico no limite" : `Faltam ${faltaPct.toFixed(0)} pontos percentuais para o freio`,
+  ].join(" · ");
+  return (
+    <span className={`inline-flex items-center gap-1 ${cor}`} title={title} aria-label={title}>
+      <svg viewBox="0 0 24 24" className="w-5 h-5 -rotate-90">
+        <circle cx="12" cy="12" r={R} fill="none" strokeWidth="3" className="stroke-muted" opacity="0.4" />
+        <circle
+          cx="12" cy="12" r={R} fill="none" strokeWidth="3" strokeLinecap="round"
+          className="stroke-current"
+          strokeDasharray={`${C * Math.min(1, razao)} ${C}`}
+        />
+      </svg>
+      <span className="text-[10px] font-mono">{(recuo * 100).toFixed(0)}%</span>
+    </span>
+  );
+}
+
+
+
 
 const MODE_COLOR: Record<string, string> = {
   conservador: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
@@ -586,6 +620,18 @@ function CockpitPage() {
                           compact
                         />
                       </div>
+                      {/* Autorização real deste robô — leva à tela já filtrada.
+                          Não autoriza nada: a autorização continua exigindo ação explícita. */}
+                      <Link
+                        to="/prd-autorizacoes"
+                        search={{ symbol: c.symbol, variant: c.variant ?? "indicador", mode: c.mode }}
+                        aria-label="Abrir autorização real deste robô"
+                        title="Abrir autorização real deste robô"
+                        className="absolute top-1.5 right-[3.4rem] z-10 rounded p-1 text-muted-foreground/70 hover:text-orange-300 hover:bg-muted/50"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ShieldAlert className="w-3.5 h-3.5" />
+                      </Link>
                       {/* Copiar este robô — fora do <button> do card pra não aninhar botões */}
                       <button
                         type="button"
@@ -606,6 +652,11 @@ function CockpitPage() {
                           <div className="flex flex-wrap items-center gap-1">
                             <Badge className={`uppercase text-[10px] ${MODE_COLOR[c.mode]}`}>{c.mode.replace("_", " ")}</Badge>
                             <Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge>
+                            <PeakRing
+                              peak={Number(c.day_peak_profit_brl ?? 0)}
+                              atual={Number(c.total_today ?? 0)}
+                              limite={Number(c.peak_giveback_pct ?? 0.4)}
+                            />
                           </div>
                           {isOpen ? <ChevronUp className="w-4 h-4 mr-5 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 mr-5 text-muted-foreground" />}
                         </div>

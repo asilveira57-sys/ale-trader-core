@@ -3278,6 +3278,8 @@ export type Database = {
       }
       b3_simulation_mode_settings: {
         Row: {
+          breakeven_ativa_pts: number | null
+          breakeven_folga_pts: number | null
           breakout_min_clearance_pts: number | null
           consecutive_loss_after_target: number
           created_at: string
@@ -3316,6 +3318,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          breakeven_ativa_pts?: number | null
+          breakeven_folga_pts?: number | null
           breakout_min_clearance_pts?: number | null
           consecutive_loss_after_target?: number
           created_at?: string
@@ -3354,6 +3358,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          breakeven_ativa_pts?: number | null
+          breakeven_folga_pts?: number | null
           breakout_min_clearance_pts?: number | null
           consecutive_loss_after_target?: number
           created_at?: string

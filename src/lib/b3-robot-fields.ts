@@ -16,6 +16,8 @@ export const B3_ROBOT_EDITABLE_FIELDS = [
   "stop_pts", "gain_pts", "max_contracts",
   // Trailing
   "trailing_mode", "trailing_activation_pts", "trailing_giveback_pts",
+  // Zero a zero (vazio ou 0 = desligado)
+  "breakeven_ativa_pts", "breakeven_folga_pts",
   // Proteção
   "daily_gain_target_brl", "minimum_trades_before_profit_lock",
   "profit_multiplier_before_lock", "post_target_allowed_retracement",
@@ -41,6 +43,8 @@ export const B3_ROBOT_FIELD_LABEL: Record<string, string> = {
   trailing_mode: "Tipo de trailing",
   trailing_activation_pts: "Ativação do trailing (pontos)",
   trailing_giveback_pts: "Recuo permitido do pico (pontos)",
+  breakeven_ativa_pts: "Zero a zero: ativa a partir de (pontos)",
+  breakeven_folga_pts: "Zero a zero: folga sobre a entrada (pontos)",
   daily_gain_target_brl: "Meta diária de ganho (R$)",
   minimum_trades_before_profit_lock: "Operações mínimas antes do lock",
   profit_multiplier_before_lock: "Multiplicador da meta",

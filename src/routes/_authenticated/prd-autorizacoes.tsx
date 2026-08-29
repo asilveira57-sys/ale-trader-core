@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -22,6 +22,13 @@ export const Route = createFileRoute("/_authenticated/prd-autorizacoes")({
       { name: "twitter:card", content: "summary" },
     ],
   }),
+  // Atalho vindo do cockpit: ?symbol=&variant=&mode= apenas FILTRA e destaca.
+  // Nada é autorizado por URL.
+  validateSearch: (search: Record<string, unknown>): { symbol?: string; variant?: string; mode?: string } => ({
+    symbol: typeof search.symbol === "string" ? search.symbol : undefined,
+    variant: typeof search.variant === "string" ? search.variant : undefined,
+    mode: typeof search.mode === "string" ? search.mode : undefined,
+  }),
   component: PrdAuthorizationsPage,
 });
 
@@ -44,6 +51,8 @@ const VARIANT_LABEL: Record<string, string> = {
 };
 
 function PrdAuthorizationsPage() {
+  const focus = Route.useSearch();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const list = useServerFn(listPrdAuthorizations);
   const setAuth = useServerFn(setPrdAuthorization);
@@ -88,7 +97,12 @@ function PrdAuthorizationsPage() {
 
   if (isLoading || !data) return <div className="p-8 text-muted-foreground">Carregando autorizações…</div>;
 
-  const rows = (data.authorizations ?? []) as Row[];
+  const allRows = (data.authorizations ?? []) as Row[];
+  const focused = !!(focus.symbol || focus.variant || focus.mode);
+  const rows = allRows.filter((r) =>
+    (!focus.symbol || r.symbol === focus.symbol)
+    && (!focus.variant || (r.variant ?? "indicador") === focus.variant)
+    && (!focus.mode || r.mode === focus.mode));
   // Agrupa por ativo + modalidade: o par autorizado é (ativo, modalidade, modo).
   const grouped = rows.reduce<Record<string, Row[]>>((acc, r) => {
     (acc[`${r.symbol}||${r.variant ?? "indicador"}`] ??= []).push(r);
@@ -116,13 +130,26 @@ function PrdAuthorizationsPage() {
         </div>
         <div className="flex items-center gap-3">
           <div className={`panel px-4 py-2 text-sm ${enabledCount > 0 ? "border-orange-500/50 bg-orange-500/10 text-orange-300" : "text-muted-foreground"}`}>
-            <span className="font-mono text-lg font-semibold">{enabledCount}</span> / {rows.length} pares ligados
+            <span className="font-mono text-lg font-semibold">{enabledCount}</span> / {allRows.length} pares ligados
           </div>
           <Button variant="destructive" onClick={() => setKillStep(1)}>
             <AlertTriangle className="size-4 mr-1" /> Desligar tudo
           </Button>
         </div>
       </header>
+
+      {focused && (
+        <div className="panel p-3 flex flex-wrap items-center gap-3 text-sm">
+          <span className="text-muted-foreground">Filtrado pelo robô do cockpit:</span>
+          <Badge variant="outline" className="font-mono">
+            {[focus.symbol, focus.variant && (VARIANT_LABEL[focus.variant] ?? focus.variant), focus.mode && (MODE_LABEL[focus.mode] ?? focus.mode)]
+              .filter(Boolean).join(" · ")}
+          </Badge>
+          <Button size="sm" variant="ghost" onClick={() => navigate({ to: "/prd-autorizacoes", search: {} })}>
+            Ver todos os pares
+          </Button>
+        </div>
+      )}
 
       <div className="panel p-4 border-orange-500/40 bg-orange-500/10 text-sm text-orange-200 space-y-1">
         <p className="font-medium flex items-center gap-2"><AlertTriangle className="size-4" /> Isto controla envio de ordem com DINHEIRO REAL.</p>

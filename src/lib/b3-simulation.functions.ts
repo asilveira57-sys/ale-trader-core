@@ -3043,9 +3043,19 @@ async function runB3SimulationTickInner(
         let trailingDebug: any = null;
         let trailingIntrabar: { level: number; price: number; minute_ts: string } | null = null;
 
+        // ─────────── ZERO A ZERO (breakeven) — proteção DENTRO da operação ───────────
+        // Vale para todas as modalidades. Nasce DESLIGADA: com
+        // breakeven_ativa_pts vazio ou zero, nada abaixo muda o comportamento.
+        let hitBreakeven = false;
+        let breakevenDebug: any = null;
+        let breakevenIntrabar: { level: number; price: number; minute_ts: string } | null = null;
+        const beAtivaPts = Number(cfg.breakeven_ativa_pts ?? 0);
+        const beOn = Number.isFinite(beAtivaPts) && beAtivaPts > 0;
+
         const trailingOn = Number(cfg.trailing_activation_pts) > 0;
         const entryMsForTrailing = open.entry_time ? new Date(open.entry_time).getTime() : null;
-        if (trailingOn && entryMsForTrailing) {
+        // O pico a favor desde a entrada serve ao trailing E ao zero a zero.
+        if ((trailingOn || beOn) && entryMsForTrailing) {
           const sinceEntry = marketHistory
             .filter((h: any) => {
               const t = new Date(h.market_time).getTime();
@@ -3059,7 +3069,9 @@ async function runB3SimulationTickInner(
             const move = (p - Number(open.entry_price)) * dirSign;
             if (move > peakPts) peakPts = move;
           }
-          const armed = peakPts >= Number(cfg.trailing_activation_pts);
+          // `trailingOn` no armed: com o zero a zero ligado e o trailing
+          // desligado (ativação 0), sem esta guarda o trailing armaria sozinho.
+          const armed = trailingOn && peakPts >= Number(cfg.trailing_activation_pts);
 
           if (armed && cfg.trailing_mode === "structural") {
             // Fractal N=1 sobre candles M1 REAIS (b3_m1_candles): candle i é
@@ -3112,13 +3124,43 @@ async function runB3SimulationTickInner(
           }
         }
 
-        if (forceClose || hitStop || hitGain || hitTrailing) {
-          const reason = forceClose ? "force_close" : hitStop ? "stop" : hitGain ? "gain" : "trailing_stop";
+        // ─────────── ZERO A ZERO: stop sobe para o preço de entrada ───────────
+        // Depois que a operação anda `breakeven_ativa_pts` a favor, o nível de
+        // saída passa a ser o preço de entrada (mais `breakeven_folga_pts`, se
+        // configurada). Quando o trailing também está armado, o nível MAIS
+        // PROTETIVO prevalece: para compra o maior, para venda o menor.
+        if (beOn && entryMsForTrailing && peakPts >= beAtivaPts) {
+          const folgaPts = Math.max(0, Number(cfg.breakeven_folga_pts ?? 0) || 0);
+          const beLevel = Number(open.entry_price) + dirSign * folgaPts;
+          const trailLevel = Number(trailingDebug?.trailing_level_price ?? NaN);
+          const trailMaisProtetivo = Number.isFinite(trailLevel)
+            && (dirSign === 1 ? trailLevel >= beLevel : trailLevel <= beLevel);
+          breakevenDebug = {
+            ativa_pts: beAtivaPts, folga_pts: folgaPts, peak_pts: peakPts,
+            breakeven_level_price: beLevel,
+            trailing_level_price: Number.isFinite(trailLevel) ? trailLevel : null,
+            nivel_vencedor: trailMaisProtetivo ? "trailing" : "breakeven",
+          };
+          if (!trailMaisProtetivo) {
+            const touchCandle = candlesToEval.find((c: any) => adverseTouch(c, beLevel));
+            if (touchCandle) {
+              hitBreakeven = true;
+              breakevenIntrabar = { level: beLevel, price: markAudit.execution_price, minute_ts: touchCandle.minute_ts };
+            } else {
+              hitBreakeven = dirSign === 1 ? markPrice <= beLevel : markPrice >= beLevel;
+            }
+          }
+        }
+
+        if (forceClose || hitStop || hitGain || hitTrailing || hitBreakeven) {
+          const reason = forceClose ? "force_close" : hitStop ? "stop" : hitGain ? "gain"
+            : hitTrailing ? "trailing_stop" : "breakeven_stop";
           // O nível detecta o toque; o preço executado é sempre o Bid/Ask
           // corrente de markAudit, compatível com a auditoria MT5 do banco.
           const levelExec = reason === "stop" || reason === "gain"
             ? (intrabarHit && intrabarHit.reason === reason ? intrabarHit : null)
-            : reason === "trailing_stop" ? trailingIntrabar : null;
+            : reason === "trailing_stop" ? trailingIntrabar
+            : reason === "breakeven_stop" ? breakevenIntrabar : null;
           const exitAuditFinal: B3QuoteExecutionAudit = levelExec
             ? { ...markAudit,
                 execution_price_origin: `${markAudit.execution_price_origin}+m1_market` }
@@ -3142,6 +3184,7 @@ async function runB3SimulationTickInner(
                 ambos_no_mesmo_candle: Boolean(intrabarHit?.both && reason === "stop"),
                 tick_price_at_detection: markPrice,
                 trailing_debug: trailingDebug,
+                breakeven_debug: breakevenDebug,
                 candle_incompleto_ignorado: candleIncompletoIgnorado,
               },
               last_eval_minute_ts: lastEvaluatedMinuteTs ?? open.last_eval_minute_ts ?? null,
@@ -4589,9 +4632,9 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
 
       const [{ data: modes }, { data: settings }, { data: openOrders }, { data: snaps }, { data: closedToday }] = await Promise.all([
         (supabase as any).from("b3_simulation_modes")
-          .select("mode, initial_balance, current_balance, current_status, protection_state, protection_block_reason")
+          .select("mode, initial_balance, current_balance, current_status, protection_state, protection_block_reason, day_peak_profit_brl")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
-        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl")
+        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl, peak_giveback_pct")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, entry_time, created_at")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
@@ -4608,9 +4651,11 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       const auditModes: any[] = snaps?.[0]?.engine_modes ?? [];
       const enabledByMode: Record<string, boolean> = {};
       const lossLimitByMode: Record<string, number | null> = {};
+      const givebackByMode: Record<string, number | null> = {};
       for (const s of settings ?? []) {
         enabledByMode[s.mode] = s.enabled !== false;
         lossLimitByMode[s.mode] = s.daily_loss_limit_brl == null ? null : Number(s.daily_loss_limit_brl);
+        givebackByMode[s.mode] = s.peak_giveback_pct == null ? null : Number(s.peak_giveback_pct);
       }
       const openByMode: Record<string, any> = {};
       for (const o of openOrders ?? []) openByMode[o.mode] = o;
@@ -4707,6 +4752,10 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           protection_state: mode?.protection_state ?? null,
           protection_block_reason: mode?.protection_block_reason ?? null,
           daily_loss_limit_brl: lossLimitByMode[m] ?? null,
+          // Pico do dia e limite de devolução: canal visual próprio no card
+          // (a cor da linha continua significando constância).
+          day_peak_profit_brl: mode?.day_peak_profit_brl == null ? null : Number(mode.day_peak_profit_brl),
+          peak_giveback_pct: givebackByMode[m] ?? null,
           reactivated_today: reactivatedToday,
           score: audit?.last_score ?? null, confidence: audit?.last_confidence ?? null,
           blocked_reason: open ? null : (audit?.first_stop?.label ?? audit?.last_refusal_reason ?? null),
