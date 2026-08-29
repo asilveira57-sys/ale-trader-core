@@ -27,9 +27,23 @@ export const REAL_MAGIC_VARIANT_BLOCK: Record<string, number> = {
   indicador: 0, price_action: 500, mean_reversion: 1000, range: 1500,
 };
 
+// ORDEM NUMÉRICA ≠ ORDEM DE AGRESSIVIDADE — DELIBERADO (29/08/2026)
+//
+// `cauteloso` fica entre conservador e moderado, e `arrojado` entre
+// semi_agressivo e agressivo. Encaixá-los na posição lógica (cauteloso=2)
+// empurraria moderado 2→3, equilibrado 3→4, semi_agressivo 4→5: o magic 2504
+// (WIN price_action semi_agressivo) deixaria de existir. Esse número tem
+// dinheiro real na XP e está gravado na lista branca ROBOS_REAIS do executor,
+// no VPS — fora do alcance de qualquer migração daqui.
+//
+// Por isso os dois modos novos entram NO FIM, com 6 e 7. Nenhum magic em uso
+// muda. Mesmo espírito do bloco alto do rompimento logo abaixo: preservar a
+// numeração em uso vale mais que a elegância da sequência.
 export const REAL_MAGIC_MODE_INDEX: Record<string, number> = {
   conservador: 1, moderado: 2, equilibrado: 3, semi_agressivo: 4, agressivo: 5,
+  cauteloso: 6, arrojado: 7,
 };
+
 
 // ────────────────────────────────────────────────────────────────────────────
 // QUINTA MODALIDADE EM DIANTE — BLOCO ALTO SEPARADO (25/08/2026)
