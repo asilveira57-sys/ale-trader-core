@@ -1150,6 +1150,7 @@ async function runB3SimulationTickInner(
     | "mean_reversion_snapback"
     | "range_fade"
     | "channel_breakout"
+    | "vwap_reversion"
     | "no_valid_setup";
 
   function classifySetup(params: {
@@ -2047,6 +2048,8 @@ async function runB3SimulationTickInner(
     mean_reversion: ({ ctxLocal, cfg, m1Candles }) => classifySetupMeanReversion({ ctxLocal, cfg, m1Candles }),
     range: ({ ctxLocal, cfg, m1Candles }) => classifySetupRange({ ctxLocal, cfg, m1Candles }),
     rompimento: ({ ctxLocal, cfg, m1Candles }) => classifySetupBreakout({ ctxLocal, cfg, m1Candles }),
+    pullback: ({ ctxLocal, cfg, m1Candles }) => classifySetupPullback({ ctxLocal, cfg, m1Candles }),
+    vwap: ({ ctxLocal, cfg, m1Candles }) => classifySetupVwap({ ctxLocal, cfg, m1Candles }),
   };
   function classifySetupFor(entryStyle: string | null | undefined, args: SetupClassifierArgs): SetupResult {
     const style = String(entryStyle ?? "indicador");
