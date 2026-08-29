@@ -2586,6 +2586,66 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_paridade_modalidades: {
+        Row: {
+          amostra_confiavel: boolean | null
+          calculado_em: string
+          correlacao: number | null
+          desvio_a: number | null
+          desvio_b: number | null
+          desvio_juntas: number | null
+          desvio_se_independentes: number | null
+          dias_em_comum: number
+          dias_mesmo_sinal: number
+          janela_desde: string
+          media_a: number | null
+          media_b: number | null
+          pct_mesmo_sinal: number | null
+          reducao_pct: number | null
+          symbol: string
+          variant_a: string
+          variant_b: string
+        }
+        Insert: {
+          amostra_confiavel?: boolean | null
+          calculado_em?: string
+          correlacao?: number | null
+          desvio_a?: number | null
+          desvio_b?: number | null
+          desvio_juntas?: number | null
+          desvio_se_independentes?: number | null
+          dias_em_comum: number
+          dias_mesmo_sinal: number
+          janela_desde: string
+          media_a?: number | null
+          media_b?: number | null
+          pct_mesmo_sinal?: number | null
+          reducao_pct?: number | null
+          symbol: string
+          variant_a: string
+          variant_b: string
+        }
+        Update: {
+          amostra_confiavel?: boolean | null
+          calculado_em?: string
+          correlacao?: number | null
+          desvio_a?: number | null
+          desvio_b?: number | null
+          desvio_juntas?: number | null
+          desvio_se_independentes?: number | null
+          dias_em_comum?: number
+          dias_mesmo_sinal?: number
+          janela_desde?: string
+          media_a?: number | null
+          media_b?: number | null
+          pct_mesmo_sinal?: number | null
+          reducao_pct?: number | null
+          symbol?: string
+          variant_a?: string
+          variant_b?: string
+        }
+        Relationships: []
+      }
       b3_prd_authorization_log: {
         Row: {
           de_enabled: boolean | null
@@ -6977,6 +7037,7 @@ export type Database = {
           out_motivo: string
         }[]
       }
+      b3_calcular_paridade: { Args: { p_desde?: string }; Returns: number }
       b3_calcular_score_dia: { Args: { p_date?: string }; Returns: number }
       b3_cor_do_robo: {
         Args: {
@@ -7047,6 +7108,26 @@ export type Database = {
           posicao: number
           resultado: number
           retorno_pct: number
+          symbol: string
+          variant: string
+        }[]
+      }
+      b3_resultado_combinacao: {
+        Args: { p_ate: string; p_de: string; p_group?: string }
+        Returns: {
+          chave: string
+          hit_rate: number
+          media_op: number
+          melhor_dia: number
+          mode: string
+          ops: number
+          ops_pos: number
+          pct_pregoes_pos: number
+          pior_dia: number
+          pregoes: number
+          pregoes_pos: number
+          resultado_brl: number
+          score_medio: number
           symbol: string
           variant: string
         }[]

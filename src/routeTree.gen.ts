@@ -53,6 +53,8 @@ import { Route as AuthenticatedB3Vale3RouteImport } from './routes/_authenticate
 import { Route as AuthenticatedB3SimHistoryRouteImport } from './routes/_authenticated/b3-sim-history'
 import { Route as AuthenticatedB3Petr4RouteImport } from './routes/_authenticated/b3-petr4'
 import { Route as AuthenticatedB3Mt5simRouteImport } from './routes/_authenticated/b3-mt5sim'
+import { Route as AuthenticatedB3ListasRouteImport } from './routes/_authenticated/b3-listas'
+import { Route as AuthenticatedB3ExtratoRealRouteImport } from './routes/_authenticated/b3-extrato-real'
 import { Route as AuthenticatedB3DiagnosticoRouteImport } from './routes/_authenticated/b3-diagnostico'
 import { Route as AuthenticatedB3CockpitRouteImport } from './routes/_authenticated/b3-cockpit'
 import { Route as AuthenticatedB3AuditoriaRouteImport } from './routes/_authenticated/b3-auditoria'
@@ -320,6 +322,17 @@ const AuthenticatedB3Mt5simRoute = AuthenticatedB3Mt5simRouteImport.update({
   path: '/b3-mt5sim',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedB3ListasRoute = AuthenticatedB3ListasRouteImport.update({
+  id: '/b3-listas',
+  path: '/b3-listas',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedB3ExtratoRealRoute =
+  AuthenticatedB3ExtratoRealRouteImport.update({
+    id: '/b3-extrato-real',
+    path: '/b3-extrato-real',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedB3DiagnosticoRoute =
   AuthenticatedB3DiagnosticoRouteImport.update({
     id: '/b3-diagnostico',
@@ -530,6 +543,8 @@ export interface FileRoutesByFullPath {
   '/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
   '/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
+  '/b3-extrato-real': typeof AuthenticatedB3ExtratoRealRoute
+  '/b3-listas': typeof AuthenticatedB3ListasRoute
   '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-petr4': typeof AuthenticatedB3Petr4Route
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
@@ -609,6 +624,8 @@ export interface FileRoutesByTo {
   '/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
   '/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
+  '/b3-extrato-real': typeof AuthenticatedB3ExtratoRealRoute
+  '/b3-listas': typeof AuthenticatedB3ListasRoute
   '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-petr4': typeof AuthenticatedB3Petr4Route
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
@@ -690,6 +707,8 @@ export interface FileRoutesById {
   '/_authenticated/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
   '/_authenticated/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/_authenticated/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
+  '/_authenticated/b3-extrato-real': typeof AuthenticatedB3ExtratoRealRoute
+  '/_authenticated/b3-listas': typeof AuthenticatedB3ListasRoute
   '/_authenticated/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/_authenticated/b3-petr4': typeof AuthenticatedB3Petr4Route
   '/_authenticated/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
@@ -771,6 +790,8 @@ export interface FileRouteTypes {
     | '/b3-auditoria'
     | '/b3-cockpit'
     | '/b3-diagnostico'
+    | '/b3-extrato-real'
+    | '/b3-listas'
     | '/b3-mt5sim'
     | '/b3-petr4'
     | '/b3-sim-history'
@@ -850,6 +871,8 @@ export interface FileRouteTypes {
     | '/b3-auditoria'
     | '/b3-cockpit'
     | '/b3-diagnostico'
+    | '/b3-extrato-real'
+    | '/b3-listas'
     | '/b3-mt5sim'
     | '/b3-petr4'
     | '/b3-sim-history'
@@ -930,6 +953,8 @@ export interface FileRouteTypes {
     | '/_authenticated/b3-auditoria'
     | '/_authenticated/b3-cockpit'
     | '/_authenticated/b3-diagnostico'
+    | '/_authenticated/b3-extrato-real'
+    | '/_authenticated/b3-listas'
     | '/_authenticated/b3-mt5sim'
     | '/_authenticated/b3-petr4'
     | '/_authenticated/b3-sim-history'
@@ -1324,6 +1349,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedB3Mt5simRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/b3-listas': {
+      id: '/_authenticated/b3-listas'
+      path: '/b3-listas'
+      fullPath: '/b3-listas'
+      preLoaderRoute: typeof AuthenticatedB3ListasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-extrato-real': {
+      id: '/_authenticated/b3-extrato-real'
+      path: '/b3-extrato-real'
+      fullPath: '/b3-extrato-real'
+      preLoaderRoute: typeof AuthenticatedB3ExtratoRealRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/b3-diagnostico': {
       id: '/_authenticated/b3-diagnostico'
       path: '/b3-diagnostico'
@@ -1610,6 +1649,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedB3AuditoriaRoute: typeof AuthenticatedB3AuditoriaRoute
   AuthenticatedB3CockpitRoute: typeof AuthenticatedB3CockpitRoute
   AuthenticatedB3DiagnosticoRoute: typeof AuthenticatedB3DiagnosticoRoute
+  AuthenticatedB3ExtratoRealRoute: typeof AuthenticatedB3ExtratoRealRoute
+  AuthenticatedB3ListasRoute: typeof AuthenticatedB3ListasRoute
   AuthenticatedB3Mt5simRoute: typeof AuthenticatedB3Mt5simRoute
   AuthenticatedB3Petr4Route: typeof AuthenticatedB3Petr4Route
   AuthenticatedB3SimHistoryRoute: typeof AuthenticatedB3SimHistoryRoute
@@ -1673,6 +1714,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedB3AuditoriaRoute: AuthenticatedB3AuditoriaRoute,
   AuthenticatedB3CockpitRoute: AuthenticatedB3CockpitRoute,
   AuthenticatedB3DiagnosticoRoute: AuthenticatedB3DiagnosticoRoute,
+  AuthenticatedB3ExtratoRealRoute: AuthenticatedB3ExtratoRealRoute,
+  AuthenticatedB3ListasRoute: AuthenticatedB3ListasRoute,
   AuthenticatedB3Mt5simRoute: AuthenticatedB3Mt5simRoute,
   AuthenticatedB3Petr4Route: AuthenticatedB3Petr4Route,
   AuthenticatedB3SimHistoryRoute: AuthenticatedB3SimHistoryRoute,

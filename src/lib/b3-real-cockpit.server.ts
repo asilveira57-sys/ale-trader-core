@@ -19,6 +19,9 @@ export interface RealCommandRow {
   filled_price: number | null;
   broker_ticket: string | null;
   magic_number: number | null;
+  // 'engine_auto' | 'user_manual_close' | ... — distingue fechamento do sistema
+  // do fechamento na mão pelo usuário. Opcional: consultas antigas não pedem.
+  requested_by?: string | null;
 }
 
 export interface AssetProfile {
@@ -94,6 +97,8 @@ export interface RealTrade {
   entry_time: string | null; exit_time: string | null;
   result_pts: number | null; result_brl: number | null;
   broker_ticket: string | null;
+  // quem pediu o FECHAMENTO desta operação (engine_auto / user_manual_close)
+  closed_by?: string | null;
 }
 
 interface Lot {
@@ -155,6 +160,7 @@ export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileL
           entry_time: lot.time, exit_time: time,
           result_pts: pts, result_brl: pts == null ? null : pts * profile.point_value_brl * used,
           broker_ticket: c.broker_ticket ?? lot.ticket ?? null,
+          closed_by: c.requested_by ?? null,
         });
         lot.qty -= used;
         qty -= used;
