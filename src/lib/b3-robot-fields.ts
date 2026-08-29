@@ -16,6 +16,8 @@ export const B3_ROBOT_EDITABLE_FIELDS = [
   "stop_pts", "gain_pts", "max_contracts",
   // Trailing
   "trailing_mode", "trailing_activation_pts", "trailing_giveback_pts",
+  // Zero a zero (vazio ou 0 = desligado)
+  "breakeven_ativa_pts", "breakeven_folga_pts",
   // Proteção
   "daily_gain_target_brl", "minimum_trades_before_profit_lock",
   "profit_multiplier_before_lock", "post_target_allowed_retracement",
