@@ -144,7 +144,7 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 const PRINCIPAL_NAV = [
-  { to: "/cockpit-real", label: "Cockpit Real (celular)", icon: Smartphone },
+  { to: "/cockpit-real", label: "Cockpit Real (dinheiro real)", icon: Smartphone },
   { to: "/prd-autorizacoes", label: "B3 — Autorizações Reais", icon: ShieldAlert },
   { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
   { to: "/b3-diagnostico", label: "Diagnóstico diário", icon: Stethoscope },
