@@ -24,7 +24,7 @@ export const Route = createFileRoute("/_authenticated/prd-autorizacoes")({
   }),
   // Atalho vindo do cockpit: ?symbol=&variant=&mode= apenas FILTRA e destaca.
   // Nada é autorizado por URL.
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { symbol?: string; variant?: string; mode?: string } => ({
     symbol: typeof search.symbol === "string" ? search.symbol : undefined,
     variant: typeof search.variant === "string" ? search.variant : undefined,
     mode: typeof search.mode === "string" ? search.mode : undefined,
