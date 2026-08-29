@@ -3124,13 +3124,43 @@ async function runB3SimulationTickInner(
           }
         }
 
-        if (forceClose || hitStop || hitGain || hitTrailing) {
-          const reason = forceClose ? "force_close" : hitStop ? "stop" : hitGain ? "gain" : "trailing_stop";
+        // ─────────── ZERO A ZERO: stop sobe para o preço de entrada ───────────
+        // Depois que a operação anda `breakeven_ativa_pts` a favor, o nível de
+        // saída passa a ser o preço de entrada (mais `breakeven_folga_pts`, se
+        // configurada). Quando o trailing também está armado, o nível MAIS
+        // PROTETIVO prevalece: para compra o maior, para venda o menor.
+        if (beOn && entryMsForTrailing && peakPts >= beAtivaPts) {
+          const folgaPts = Math.max(0, Number(cfg.breakeven_folga_pts ?? 0) || 0);
+          const beLevel = Number(open.entry_price) + dirSign * folgaPts;
+          const trailLevel = Number(trailingDebug?.trailing_level_price ?? NaN);
+          const trailMaisProtetivo = Number.isFinite(trailLevel)
+            && (dirSign === 1 ? trailLevel >= beLevel : trailLevel <= beLevel);
+          breakevenDebug = {
+            ativa_pts: beAtivaPts, folga_pts: folgaPts, peak_pts: peakPts,
+            breakeven_level_price: beLevel,
+            trailing_level_price: Number.isFinite(trailLevel) ? trailLevel : null,
+            nivel_vencedor: trailMaisProtetivo ? "trailing" : "breakeven",
+          };
+          if (!trailMaisProtetivo) {
+            const touchCandle = candlesToEval.find((c: any) => adverseTouch(c, beLevel));
+            if (touchCandle) {
+              hitBreakeven = true;
+              breakevenIntrabar = { level: beLevel, price: markAudit.execution_price, minute_ts: touchCandle.minute_ts };
+            } else {
+              hitBreakeven = dirSign === 1 ? markPrice <= beLevel : markPrice >= beLevel;
+            }
+          }
+        }
+
+        if (forceClose || hitStop || hitGain || hitTrailing || hitBreakeven) {
+          const reason = forceClose ? "force_close" : hitStop ? "stop" : hitGain ? "gain"
+            : hitTrailing ? "trailing_stop" : "breakeven_stop";
           // O nível detecta o toque; o preço executado é sempre o Bid/Ask
           // corrente de markAudit, compatível com a auditoria MT5 do banco.
           const levelExec = reason === "stop" || reason === "gain"
             ? (intrabarHit && intrabarHit.reason === reason ? intrabarHit : null)
-            : reason === "trailing_stop" ? trailingIntrabar : null;
+            : reason === "trailing_stop" ? trailingIntrabar
+            : reason === "breakeven_stop" ? breakevenIntrabar : null;
           const exitAuditFinal: B3QuoteExecutionAudit = levelExec
             ? { ...markAudit,
                 execution_price_origin: `${markAudit.execution_price_origin}+m1_market` }
