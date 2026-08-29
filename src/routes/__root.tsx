@@ -37,6 +37,32 @@ if (typeof window !== "undefined") {
   // Erro sem mensagem ("Uncaught undefined") com tela branca costuma ser chunk
   // obsoleto após deploy. Em vez de recarregar às cegas (o que derrubava o
   // painel no meio do pregão), confirmamos se o asset em uso ainda existe.
+  // Tela branca sem erro legível: se o bundle sumiu (deploy novo), recarrega.
+  // Se o bundle está no ar, o erro é real — e aí NÃO recarregamos em loop:
+  // mostramos um aviso clicável, porque tela preta muda no meio do pregão é pior.
+  const showBlankScreenFallback = () => {
+    if (document.getElementById("aletrader-blank-fallback")) return;
+    const text = (document.body?.innerText ?? "").trim();
+    if (text.length > 0) return; // a tela ainda mostra algo: não atrapalhar
+    const box = document.createElement("div");
+    box.id = "aletrader-blank-fallback";
+    box.setAttribute(
+      "style",
+      "position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;gap:12px;" +
+        "align-items:center;justify-content:center;padding:24px;text-align:center;" +
+        "font-family:system-ui,sans-serif;background:#0b0f16;color:#e6edf7",
+    );
+    box.innerHTML =
+      '<p style="font-weight:800;font-size:18px;margin:0">A tela travou ao carregar</p>' +
+      '<p style="margin:0;font-size:13px;opacity:.75;max-width:34rem">' +
+      "Nenhuma operação foi afetada: o motor e o executor rodam no servidor. Recarregue para voltar ao painel." +
+      "</p>" +
+      '<button id="aletrader-blank-reload" style="margin-top:4px;padding:10px 18px;border-radius:10px;' +
+      'border:0;background:#e11d48;color:#fff;font-weight:800;cursor:pointer">Recarregar o painel</button>';
+    document.body.appendChild(box);
+    document.getElementById("aletrader-blank-reload")?.addEventListener("click", hardReload);
+  };
+
   const reloadIfStaleDeploy = async () => {
     try {
       const srcs = Array.from(document.querySelectorAll<HTMLScriptElement>("script[src]"))
@@ -50,12 +76,17 @@ if (typeof window !== "undefined") {
             .catch(() => false),
         ),
       );
-      if (alive.every(Boolean)) return;
+      if (alive.every(Boolean)) {
+        // Bundle íntegro: erro de execução de verdade. Dá saída ao usuário.
+        setTimeout(showBlankScreenFallback, 400);
+        return;
+      }
       if (canReloadNow()) hardReload();
     } catch {
       /* silencioso */
     }
   };
+
   const maybeReload = (value: unknown) => {
     try {
       const msg = String((value as any)?.message ?? value ?? "");
