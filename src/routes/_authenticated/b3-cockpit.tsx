@@ -39,9 +39,11 @@ const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "curr
 
 const MODE_COLOR: Record<string, string> = {
   conservador: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  cauteloso: "bg-teal-500/15 text-teal-300 border-teal-500/30",
   moderado: "bg-sky-500/15 text-sky-300 border-sky-500/30",
   equilibrado: "bg-violet-500/15 text-violet-300 border-violet-500/30",
   semi_agressivo: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  arrojado: "bg-orange-500/15 text-orange-300 border-orange-500/30",
   agressivo: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
 const VARIANT_LABEL: Record<string, string> = {
@@ -97,10 +99,12 @@ const roboShort = (r: any) =>
 type Filter = "all" | "open" | "blocked";
 type Sort = "none" | "desc" | "asc";
 
-const MODE_LIST = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
+// Ordem de exibição = ordem de agressividade (cauteloso e arrojado no meio).
+const MODE_LIST = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo"] as const;
 const MODE_LABEL: Record<string, string> = {
-  conservador: "Conservador", moderado: "Moderado", equilibrado: "Equilibrado",
-  semi_agressivo: "Semi agressivo", agressivo: "Agressivo",
+  conservador: "Conservador", cauteloso: "Cauteloso", moderado: "Moderado",
+  equilibrado: "Equilibrado", semi_agressivo: "Semi agressivo",
+  arrojado: "Arrojado", agressivo: "Agressivo",
 };
 const VARIANT_LIST = Object.keys(VARIANT_LABEL);
 

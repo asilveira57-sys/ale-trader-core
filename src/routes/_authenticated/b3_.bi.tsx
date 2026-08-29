@@ -82,9 +82,11 @@ const VARIANTS = [
 ] as const;
 const MODES = [
   { key: "conservador", label: "conservador" },
+  { key: "cauteloso", label: "cauteloso" },
   { key: "moderado", label: "moderado" },
   { key: "equilibrado", label: "equilibrado" },
   { key: "semi_agressivo", label: "semi-agressivo" },
+  { key: "arrojado", label: "arrojado" },
   { key: "agressivo", label: "agressivo" },
 ] as const;
 

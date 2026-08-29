@@ -32,8 +32,9 @@ type Row = {
 };
 
 const MODE_LABEL: Record<string, string> = {
-  conservador: "Conservador", moderado: "Moderado", equilibrado: "Equilibrado",
-  semi_agressivo: "Semi-agressivo", agressivo: "Agressivo",
+  conservador: "Conservador", cauteloso: "Cauteloso", moderado: "Moderado",
+  equilibrado: "Equilibrado", semi_agressivo: "Semi-agressivo",
+  arrojado: "Arrojado", agressivo: "Agressivo",
 };
 
 const VARIANT_LABEL: Record<string, string> = {

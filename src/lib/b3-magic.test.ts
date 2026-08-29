@@ -20,6 +20,7 @@ describe("realMagicNumber", () => {
     const modes = Object.keys(REAL_MAGIC_MODE_INDEX);
     expect(assets.length).toBe(10);
     expect(ALL_VARIANTS.length).toBe(5);
+    expect(modes.length).toBe(7);
 
     const seen = new Map<number, string>();
     for (const a of assets) {
@@ -32,11 +33,18 @@ describe("realMagicNumber", () => {
       }
     }
     expect(seen.size).toBe(assets.length * ALL_VARIANTS.length * modes.length);
-    expect(seen.size).toBe(250);
-    expect(Math.max(...seen.keys())).toBe(20904);
+    expect(seen.size).toBe(350);
+    expect(Math.max(...seen.keys())).toBe(20906);
     // Os quatro ativos originais precisam manter a numeração já em uso.
     expect(realMagicNumber("WIN", "indicador", "conservador")).toBe(2001);
     expect(realMagicNumber("VALE3", "range", "agressivo")).toBe(3805);
+    // Dinheiro real: este número está na lista branca do executor.
+    expect(realMagicNumber("WIN", "price_action", "semi_agressivo")).toBe(2504);
+    // Modos novos entram no fim, sem deslocar nenhum dos cinco anteriores.
+    expect(realMagicNumber("WIN", "indicador", "cauteloso")).toBe(2006);
+    expect(realMagicNumber("WIN", "indicador", "arrojado")).toBe(2007);
+    expect(realMagicNumber("WIN", "rompimento", "cauteloso")).toBe(20005);
+    expect(realMagicNumber("WIN", "rompimento", "arrojado")).toBe(20006);
   });
 
   it("quinta modalidade (rompimento) usa bloco alto separado, sem colidir com ITUB4", () => {

@@ -34,9 +34,11 @@ const NUM = (v: any, d = 0) =>
 
 const MODE_LABEL: Record<string, string> = {
   conservador: "Conservador",
+  cauteloso: "Cauteloso",
   moderado: "Moderado",
   equilibrado: "Equilibrado",
   semi_agressivo: "Semi agressivo",
+  arrojado: "Arrojado",
   agressivo: "Agressivo",
 };
 

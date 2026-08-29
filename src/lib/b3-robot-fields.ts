@@ -1,6 +1,8 @@
 // Campos e rótulos da configuração por robô — módulo puro, seguro no cliente.
 export const B3_ROBOT_MODES = [
-  "conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo",
+  // Ordem de exibição = ordem de agressividade. (A numeração do magic number
+  // é outra: cauteloso/arrojado entram no fim lá, para não mover magics em uso.)
+  "conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo",
 ] as const;
 export type B3RobotMode = (typeof B3_ROBOT_MODES)[number];
 

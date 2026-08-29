@@ -22,8 +22,9 @@ const VARIANT_LABEL: Record<string, string> = {
   mean_reversion: "reversão à média", range: "range", rompimento: "rompimento",
 };
 const MODE_LABEL: Record<string, string> = {
-  conservador: "conservador", moderado: "moderado", equilibrado: "equilibrado",
-  semi_agressivo: "semi-agressivo", agressivo: "agressivo",
+  conservador: "conservador", cauteloso: "cauteloso", moderado: "moderado",
+  equilibrado: "equilibrado", semi_agressivo: "semi-agressivo",
+  arrojado: "arrojado", agressivo: "agressivo",
 };
 const vLabel = (v: string) => VARIANT_LABEL[v] ?? String(v ?? "");
 const mLabel = (m: string) => MODE_LABEL[m] ?? String(m ?? "");

@@ -1,11 +1,11 @@
 // Magic number do espelhamento real (MT5). Módulo puro — nenhuma regra de
 // motor aqui, apenas a numeração que separa robôs na conta real.
 //
-// magic = bloco do ativo + bloco da modalidade (500 em 500) + índice do modo (1..5).
+// magic = bloco do ativo + bloco da modalidade (500 em 500) + índice do modo (1..7).
 // Ex.: WIN price_action semi_agressivo = 2000 + 500 + 4 = 2504.
 //
-// ATENÇÃO à espessura do bloco: cada ativo ocupa 1505 números (4 modalidades ×
-// 500 + 5 modos), então blocos de ativo espaçados de 100 em 100 COLIDEM — WIN
+// ATENÇÃO à espessura do bloco: cada ativo ocupa 1507 números (4 modalidades ×
+// 500 + 7 modos), então blocos de ativo espaçados de 100 em 100 COLIDEM — WIN
 // price_action (2500) cairia sobre BBDC4 indicador. Os quatro ativos originais
 // mantêm os números que já estão em uso (2000..2300, teto 3805) e os seis novos
 // entram acima disso, espaçados de 2000 em 2000. Dois robôs com o mesmo magic
@@ -27,9 +27,23 @@ export const REAL_MAGIC_VARIANT_BLOCK: Record<string, number> = {
   indicador: 0, price_action: 500, mean_reversion: 1000, range: 1500,
 };
 
+// ORDEM NUMÉRICA ≠ ORDEM DE AGRESSIVIDADE — DELIBERADO (29/08/2026)
+//
+// `cauteloso` fica entre conservador e moderado, e `arrojado` entre
+// semi_agressivo e agressivo. Encaixá-los na posição lógica (cauteloso=2)
+// empurraria moderado 2→3, equilibrado 3→4, semi_agressivo 4→5: o magic 2504
+// (WIN price_action semi_agressivo) deixaria de existir. Esse número tem
+// dinheiro real na XP e está gravado na lista branca ROBOS_REAIS do executor,
+// no VPS — fora do alcance de qualquer migração daqui.
+//
+// Por isso os dois modos novos entram NO FIM, com 6 e 7. Nenhum magic em uso
+// muda. Mesmo espírito do bloco alto do rompimento logo abaixo: preservar a
+// numeração em uso vale mais que a elegância da sequência.
 export const REAL_MAGIC_MODE_INDEX: Record<string, number> = {
   conservador: 1, moderado: 2, equilibrado: 3, semi_agressivo: 4, agressivo: 5,
+  cauteloso: 6, arrojado: 7,
 };
+
 
 // ────────────────────────────────────────────────────────────────────────────
 // QUINTA MODALIDADE EM DIANTE — BLOCO ALTO SEPARADO (25/08/2026)
@@ -70,9 +84,13 @@ export const REAL_MAGIC_ASSET_INDEX: Record<string, number> = {
   BBDC4: 5, BBAS3: 6, BIT: 7, ETR: 8, SOL: 9,
 };
 
+// Mesma razão do bloco clássico: `cauteloso` e `arrojado` entram DEPOIS dos
+// cinco atuais (índices 5 e 6), nunca na posição lógica de agressividade.
 export const REAL_MAGIC_MODE_INDEX_V2: Record<string, number> = {
   conservador: 0, moderado: 1, equilibrado: 2, semi_agressivo: 3, agressivo: 4,
+  cauteloso: 5, arrojado: 6,
 };
+
 
 export class MagicNumberNotRegisteredError extends Error {}
 

@@ -3,8 +3,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-type Mode = "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agressivo";
-const MODES: Mode[] = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"];
+type Mode = "conservador" | "cauteloso" | "moderado" | "equilibrado" | "semi_agressivo" | "arrojado" | "agressivo";
+const MODES: Mode[] = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo"];
 
 function startOfTodayBrtISO(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
