@@ -76,7 +76,9 @@ export const REAL_MAGIC_MODE_INDEX: Record<string, number> = {
 // ────────────────────────────────────────────────────────────────────────────
 export const REAL_MAGIC_VARIANT_HIGH_BLOCK: Record<string, number> = {
   rompimento: 20000,
-  // sexta modalidade: 21000, sétima: 22000, …
+  pullback: 21000,
+  vwap: 22000,
+  // oitava modalidade: 23000, nona: 24000, …
 };
 
 export const REAL_MAGIC_ASSET_INDEX: Record<string, number> = {
