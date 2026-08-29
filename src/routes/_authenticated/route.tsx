@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet, redirect, Link, useNavigate, useRouterState, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { LayoutDashboard, LayoutGrid, Coins, Bot, Bell, ScrollText, Settings, LogOut, Activity, Users, Wallet, Receipt, BookOpen, Trophy, Brain, FlaskConical, Radio, ListChecks, ShieldAlert, BarChart3, ShieldCheck, FileText, Gauge, PowerOff, Eye, AlertTriangle, FileBarChart, Lightbulb, Database, Radar, Calendar, BookMarked, Sparkles, FileSearch, Smartphone, Menu, Stethoscope, Table2 } from "lucide-react";
+import { LayoutDashboard, LayoutGrid, Coins, Bot, Bell, ScrollText, Settings, LogOut, Activity, Users, Wallet, Receipt, BookOpen, Trophy, Brain, FlaskConical, Radio, ListChecks, ShieldAlert, BarChart3, ShieldCheck, FileText, Gauge, PowerOff, Eye, AlertTriangle, FileBarChart, Lightbulb, Database, Radar, Calendar, BookMarked, Sparkles, FileSearch, Smartphone, Menu, Stethoscope, Table2, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -210,8 +210,11 @@ const INTEL_NAV = [
 
 
 // Navegação compartilhada entre a barra lateral (desktop) e a gaveta (celular).
-function NavContent({ pathname, onNavigate, onSignOut }: {
+const SIDEBAR_COLLAPSED_KEY = "aletrader:menu-recolhido";
+
+function NavContent({ pathname, onNavigate, onSignOut, collapsed = false, onToggleCollapse }: {
   pathname: string; onNavigate?: () => void; onSignOut: () => void;
+  collapsed?: boolean; onToggleCollapse?: () => void;
 }) {
   const group = (
     items: readonly { to: string; label: string; icon: any }[],
@@ -225,42 +228,62 @@ function NavContent({ pathname, onNavigate, onSignOut }: {
           key={to}
           to={to}
           onClick={onNavigate}
-          className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${isActive ? active : idle}`}
+          title={label}
+          className={`flex items-center gap-2 rounded-md py-2 text-sm transition-colors ${collapsed ? "justify-center px-2" : "px-3"} ${isActive ? active : idle}`}
         >
           <Icon className="size-4 shrink-0" />
-          <span className="truncate">{label}</span>
+          {!collapsed && <span className="truncate">{label}</span>}
         </Link>
       );
     });
 
   return (
     <>
-      <div className="px-5 py-5 border-b border-sidebar-border">
-        <div className="flex items-center gap-2">
-          <div className="grid place-items-center size-8 rounded-md bg-primary/15 text-primary">
-            <Activity className="size-4" />
+      <div className={`border-b border-sidebar-border py-5 ${collapsed ? "px-2" : "px-5"}`}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="grid place-items-center size-8 shrink-0 rounded-md bg-primary/15 text-primary">
+              <Activity className="size-4" />
+            </div>
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="text-sm font-semibold tracking-tight">AleTrader AI</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Painel privado</p>
+              </div>
+            )}
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold tracking-tight">AleTrader AI</p>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Painel privado</p>
-          </div>
+          {onToggleCollapse && (
+            <Button
+              variant="ghost" size="icon"
+              className={`size-7 text-muted-foreground ${collapsed ? "absolute left-1/2 top-16 -translate-x-1/2" : ""}`}
+              aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+              title={collapsed ? "Expandir menu" : "Recolher menu"}
+              onClick={onToggleCollapse}
+            >
+              {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+            </Button>
+          )}
         </div>
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        <div className="pb-1 px-3 text-[10px] uppercase tracking-wider text-muted-foreground">Principal</div>
+        {!collapsed && <div className="pb-1 px-3 text-[10px] uppercase tracking-wider text-muted-foreground">Principal</div>}
         {group(PRINCIPAL_NAV, "bg-primary/15 text-primary", "text-foreground hover:bg-primary/10 hover:text-primary")}
-        <div className="pt-4 pb-1 px-3 text-[10px] uppercase tracking-wider text-muted-foreground">Geral</div>
+        {!collapsed && <div className="pt-4 pb-1 px-3 text-[10px] uppercase tracking-wider text-muted-foreground">Geral</div>}
         {group(NAV, "bg-accent text-accent-foreground", "text-muted-foreground hover:bg-accent/50 hover:text-foreground")}
-        <div className="pt-4 pb-1 px-3 text-[10px] uppercase tracking-wider text-emerald-400/80">Automação</div>
+        {!collapsed && <div className="pt-4 pb-1 px-3 text-[10px] uppercase tracking-wider text-emerald-400/80">Automação</div>}
         {group(AUTO_NAV, "bg-emerald-500/15 text-emerald-200", "text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-200")}
-        <div className="pt-4 pb-1 px-3 text-[10px] uppercase tracking-wider text-orange-400/80">Operação Real</div>
+        {!collapsed && <div className="pt-4 pb-1 px-3 text-[10px] uppercase tracking-wider text-orange-400/80">Operação Real</div>}
         {group(REAL_NAV, "bg-orange-500/15 text-orange-200", "text-muted-foreground hover:bg-orange-500/10 hover:text-orange-200")}
-        <div className="pt-4 pb-1 px-3 text-[10px] uppercase tracking-wider text-purple-400/80">Inteligência</div>
+        {!collapsed && <div className="pt-4 pb-1 px-3 text-[10px] uppercase tracking-wider text-purple-400/80">Inteligência</div>}
         {group(INTEL_NAV, "bg-purple-500/15 text-purple-200", "text-muted-foreground hover:bg-purple-500/10 hover:text-purple-200")}
       </nav>
       <div className="p-3 border-t border-sidebar-border">
-        <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-muted-foreground" onClick={onSignOut}>
-          <LogOut className="size-4" /> Sair
+        <Button
+          variant="ghost" size="sm" title="Sair"
+          className={`w-full gap-2 text-muted-foreground ${collapsed ? "justify-center" : "justify-start"}`}
+          onClick={onSignOut}
+        >
+          <LogOut className="size-4" /> {!collapsed && "Sair"}
         </Button>
       </div>
     </>
@@ -272,6 +295,18 @@ function AuthedLayout() {
   const qc = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [menuOpen, setMenuOpen] = useState(false);
+  // Preferência de menu recolhido — lembrada entre visitas.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try { setCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1"); } catch { /* modo privado */ }
+  }, []);
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try { window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0"); } catch { /* modo privado */ }
+      return next;
+    });
+  }
 
   async function signOut() {
     await qc.cancelQueries();
@@ -283,8 +318,8 @@ function AuthedLayout() {
   return (
     <div className="min-h-screen flex bg-background text-foreground">
       {/* Celular: a barra lateral fixa de 240px não cabe — vira gaveta. */}
-      <aside className="hidden md:flex w-60 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground flex-col">
-        <NavContent pathname={pathname} onSignOut={signOut} />
+      <aside className={`relative hidden md:flex shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground flex-col transition-[width] ${collapsed ? "w-14" : "w-60"}`}>
+        <NavContent pathname={pathname} onSignOut={signOut} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-40 flex items-center gap-2 border-b border-sidebar-border bg-background/95 px-2 py-2 backdrop-blur md:hidden">
