@@ -2703,6 +2703,36 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_real_execution_state: {
+        Row: {
+          real_enabled: boolean
+          resumed_at: string | null
+          stopped_at: string | null
+          stopped_by: string | null
+          stopped_reason: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          real_enabled?: boolean
+          resumed_at?: string | null
+          stopped_at?: string | null
+          stopped_by?: string | null
+          stopped_reason?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          real_enabled?: boolean
+          resumed_at?: string | null
+          stopped_at?: string | null
+          stopped_by?: string | null
+          stopped_reason?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_regime_dia: {
         Row: {
           amplitude: number
