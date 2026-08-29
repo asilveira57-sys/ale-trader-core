@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { B3_ASSETS } from "@/lib/b3-format";
 
-const MODES = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
+const MODES = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo"] as const;
 const SYMBOLS = B3_ASSETS;
 const VARIANTS = ["indicador", "price_action", "mean_reversion", "range"] as const;
 

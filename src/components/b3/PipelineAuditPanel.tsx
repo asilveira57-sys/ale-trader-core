@@ -8,9 +8,11 @@ import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval"
 
 const MODE_LABEL: Record<string, string> = {
   conservador: "Conservador",
+  cauteloso: "Cauteloso",
   moderado: "Moderado",
   equilibrado: "Equilibrado",
   semi_agressivo: "Semi-agressivo",
+  arrojado: "Arrojado",
   agressivo: "Agressivo",
 };
 

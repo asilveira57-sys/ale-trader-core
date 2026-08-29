@@ -55,13 +55,15 @@ function exportExtratoCSV(symbol: string, period: string, modes: any[]) {
   URL.revokeObjectURL(url);
 }
 
-const MODES = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
+const MODES = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo"] as const;
 type Mode = typeof MODES[number];
 const MODE_COLOR: Record<Mode, string> = {
   conservador: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  cauteloso: "bg-teal-500/15 text-teal-300 border-teal-500/30",
   moderado: "bg-sky-500/15 text-sky-300 border-sky-500/30",
   equilibrado: "bg-violet-500/15 text-violet-300 border-violet-500/30",
   semi_agressivo: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  arrojado: "bg-orange-500/15 text-orange-300 border-orange-500/30",
   agressivo: "bg-rose-500/15 text-rose-300 border-rose-500/30",
 };
 
