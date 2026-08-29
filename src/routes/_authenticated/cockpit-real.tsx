@@ -292,6 +292,25 @@ function CockpitRealPage() {
           : null}
       </div>
 
+      {broker.has_divergence ? (
+        <div className="mt-3 rounded-xl border-2 border-amber-400 bg-amber-500/15 px-4 py-3 text-amber-100">
+          <p className="flex items-center gap-2 text-sm font-black">
+            <GitCompareArrows className="size-5" /> DIVERGÊNCIA entre a corretora e o cálculo por comandos
+          </p>
+          <ul className="mt-1 space-y-0.5 text-[11px]">
+            {(broker.divergences ?? []).map((dv: any) => (
+              <li key={dv.root}>
+                {assetLabel(dv.root)}: corretora <b>{dv.broker_net}</b> · comandos <b>{dv.ledger_net}</b>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-[11px] opacity-90">
+            Algum comando expirou ou executou quantidade diferente da pedida. A corretora é a verdade;
+            o cálculo por comandos é segunda opinião.
+          </p>
+        </div>
+      ) : null}
+
       {q.isError ? (
         <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
           Falha ao ler os dados reais: {(q.error as any)?.message ?? "erro desconhecido"}
@@ -304,9 +323,16 @@ function CockpitRealPage() {
         <Tile label="Em aberto" value={today.unrealized_brl == null ? "—" : SIGNED_BRL(today.unrealized_brl)} sub={PCT(today.unrealized_pct)} cls={money(today.unrealized_brl)} />
         <Tile label="Total do dia" value={SIGNED_BRL(today.total_brl ?? 0)} sub={PCT(today.total_pct)} cls={money(today.total_brl)} />
         <Tile
-          label="Saldo estimado"
-          value={today.saldo_estimado_brl == null ? "—" : BRL(today.saldo_estimado_brl)}
-          sub={today.capital_brl == null ? "capital não configurado" : `capital ${BRL(today.capital_brl)}`}
+          label="Saldo da conta"
+          value={
+            today.saldo_conta_brl != null ? BRL(today.saldo_conta_brl)
+              : today.saldo_estimado_brl == null ? "—" : BRL(today.saldo_estimado_brl)
+          }
+          sub={
+            today.saldo_conta_brl != null
+              ? `reportado pelo executor${today.capital_liquido_brl != null ? ` · líquido ${BRL(today.capital_liquido_brl)}` : ""}`
+              : "estimado pelo capital cadastrado — executor não reportou"
+          }
         />
         <Tile
           label="Ordens do dia"
@@ -322,8 +348,92 @@ function CockpitRealPage() {
 
       <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-3">
-          {/* Posição real aberta */}
-          <Panel title="Posição real aberta" hint="Derivada dos comandos executados: aberturas menos fechamentos, por magic. Marcada a mercado com a cotação viva.">
+          {/* Posição real na corretora — verdade reportada pelo executor */}
+          <Panel
+            title="Posição na corretora (reportada pelo executor)"
+            hint="Vem do relatório que o executor manda a cada 2s lendo o MT5. É a verdade — não é cálculo."
+          >
+            <p className={`mb-2 flex items-center gap-2 rounded-lg border px-2 py-1.5 text-[11px] ${
+              !broker.reported || broker.stale
+                ? "border-rose-500/50 bg-rose-500/10 text-rose-100"
+                : "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+            }`}>
+              <Radio className="size-3.5 shrink-0" />
+              {!broker.reported
+                ? "O executor nunca enviou relatório. Sem isso, só existe o cálculo por comandos — que pode divergir."
+                : broker.stale
+                  ? `Último relatório ${ageText(broker.report_age_s)} — o executor pode estar parado. Não trate estes números como atuais.`
+                  : `Relatório de ${hhmmss(broker.reported_at)} (${ageText(broker.report_age_s)})${broker.account_login ? ` · conta ${broker.account_login}` : ""}${broker.server_name ? ` · ${broker.server_name}` : ""}`}
+            </p>
+
+            {!brokerPositions.length ? (
+              <p className="rounded-lg border border-border bg-muted/30 px-3 py-6 text-center text-sm font-semibold text-muted-foreground">
+                {broker.reported ? "Conta zerada na corretora — nenhuma posição aberta" : "Sem relatório do executor"}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {brokerPositions.map((p) => (
+                  <div key={`${p.symbol}-${p.ticket ?? p.magic_number}`} className="rounded-lg border-2 border-rose-500/40 bg-rose-500/5 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-lg font-black tracking-tight">
+                          {sideLabel(p.side)} {p.quantity}x {p.symbol}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {assetLabel(p.root)}
+                          {p.magic_number ? ` · magic ${p.magic_number}` : ""}
+                          {p.ticket ? ` · ticket ${p.ticket}` : ""}
+                          {p.opened_at ? ` · aberta ${openSinceText(p.opened_at)}` : ""}
+                        </p>
+                      </div>
+                      <p className={`text-2xl font-black ${money(p.profit_brl)}`}>
+                        {p.profit_brl == null ? "—" : SIGNED_BRL(p.profit_brl)}
+                      </p>
+                    </div>
+                    <dl className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+                      <div><dt className="text-muted-foreground">Preço médio</dt><dd className="font-semibold">{PX(p.entry_price, p.tick_size)}</dd></div>
+                      <div><dt className="text-muted-foreground">Preço corrente</dt><dd className="font-semibold">{PX(p.price_current, p.tick_size)}</dd></div>
+                      <div><dt className="text-muted-foreground">Resultado</dt><dd className={`font-semibold ${money(p.profit_brl)}`}>{p.profit_brl == null ? "—" : SIGNED_BRL(p.profit_brl)}</dd></div>
+                    </dl>
+                    <Button
+                      size="lg"
+                      variant="destructive"
+                      className="mt-3 h-auto min-h-14 w-full justify-center gap-2 whitespace-normal py-2 text-base font-black"
+                      onClick={() => setCloseTarget(p)}
+                      disabled={mCloseOne.isPending}
+                    >
+                      <XOctagon className="size-5 shrink-0" />
+                      Fechar esta posição a mercado
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {lastCommandId ? (
+              <div className="mt-2 rounded-lg border border-border bg-muted/30 p-2 text-[11px]">
+                <p className="font-semibold">
+                  Comando de fechamento {STATUS_LABEL[(cmdQ.data as any)?.status ?? "pending"] ?? (cmdQ.data as any)?.status ?? "na fila"}
+                </p>
+                <p className="text-muted-foreground">
+                  {(cmdQ.data as any)?.status === "filled"
+                    ? `Executado a ${PX((cmdQ.data as any)?.filled_price, 5)}${(cmdQ.data as any)?.broker_ticket ? ` · ticket ${(cmdQ.data as any).broker_ticket}` : ""} às ${hhmmss((cmdQ.data as any)?.filled_at)}`
+                    : (cmdQ.data as any)?.error_message
+                      ? `Resposta do executor: ${(cmdQ.data as any).error_message}`
+                      : "Aguardando o executor reivindicar e confirmar (validade de 2 min)."}
+                </p>
+                <Button size="sm" variant="ghost" className="mt-1 h-6 px-2 text-[11px]" onClick={() => setLastCommandId(null)}>
+                  dispensar
+                </Button>
+              </div>
+            ) : null}
+          </Panel>
+
+          {/* Segunda opinião: livro por comandos */}
+          <Panel
+            title="Segunda opinião — cálculo por comandos"
+            hint="Aberturas executadas menos fechamentos executados, por magic. Serve para detectar comando expirado ou executado fora do previsto — não é a verdade da corretora."
+          >
             {!positions.length ? (
               <p className="rounded-lg border border-border bg-muted/30 px-3 py-6 text-center text-sm font-semibold text-muted-foreground">
                 Sem posição real aberta
