@@ -2,6 +2,7 @@
 // nada aqui participa do motor de simulação, nem lê/escreve no banco.
 
 import { decimalsForTick, openSinceText, rootSymbol, PX } from "./b3-format";
+import { modeFullLabel } from "./mode-nick-registry";
 
 const BRL = (v: number | null | undefined) =>
   Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -18,7 +19,7 @@ const VARIANT_LABEL: Record<string, string> = {
   vwap: "VWAP",
 };
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? String(v ?? "");
-const modeLabel = (m: string) => String(m ?? "").replace("_", " ");
+const modeLabel = (m: string) => modeFullLabel(m);
 
 // Em ações (tick 0,01) o movimento é lido em centavos; em futuros, em pontos.
 const movementText = (pts: number, tick: number) => {

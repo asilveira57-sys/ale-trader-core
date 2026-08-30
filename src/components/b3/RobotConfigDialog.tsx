@@ -16,19 +16,16 @@ import { Switch } from "@/components/ui/switch";
 import { getB3RobotConfig, saveB3RobotConfig } from "@/lib/b3-robot-config.functions";
 import { B3_ROBOT_FIELD_LABEL } from "@/lib/b3-robot-fields";
 import { BRL, rootSymbol } from "@/lib/b3-format";
+import { modeFullLabel } from "@/lib/mode-nick-registry";
 
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "indicador", price_action: "price action",
   mean_reversion: "reversão à média", range: "range", rompimento: "rompimento",
   pullback: "repique", vwap: "VWAP",
 };
-const MODE_LABEL: Record<string, string> = {
-  conservador: "conservador", cauteloso: "cauteloso", moderado: "moderado",
-  equilibrado: "equilibrado", semi_agressivo: "semi-agressivo",
-  arrojado: "arrojado", agressivo: "agressivo", enoir: "enoir",
-};
+// MODE_LABEL removido (30/08/2026): rótulo vem de public.b3_mode_apelidos.
 const vLabel = (v: string) => VARIANT_LABEL[v] ?? String(v ?? "");
-const mLabel = (m: string) => MODE_LABEL[m] ?? String(m ?? "");
+const mLabel = (m: string) => modeFullLabel(m);
 
 const GROUPS: Array<{ title: string; fields: Array<{ k: string; step?: number }> }> = [
   {

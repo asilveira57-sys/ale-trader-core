@@ -4,6 +4,7 @@
 import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import { decimalsForTick, BRL, SIGNED_BRL, assetLabel } from "./b3-format";
+import { modeFullLabel } from "./mode-nick-registry";
 
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "indicador",
@@ -15,7 +16,8 @@ const VARIANT_LABEL: Record<string, string> = {
   vwap: "VWAP",
 };
 export const variantLabel = (v: string) => VARIANT_LABEL[v] ?? String(v ?? "");
-export const modeLabel = (m: string) => String(m ?? "").replace("_", " ");
+// Rótulo do modo: apelido + técnico, vindos de public.b3_mode_apelidos.
+export const modeLabel = (m: string) => modeFullLabel(m);
 
 const dm = (d: string) => (d ? d.slice(8, 10) + "/" + d.slice(5, 7) : "—");
 

@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -142,11 +143,8 @@ type Sort = "none" | "desc" | "asc";
 
 // Ordem de exibição = ordem de agressividade (cauteloso e arrojado no meio).
 const MODE_LIST = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo", "enoir"] as const;
-const MODE_LABEL: Record<string, string> = {
-  conservador: "Conservador", cauteloso: "Cauteloso", moderado: "Moderado",
-  equilibrado: "Equilibrado", semi_agressivo: "Semi agressivo",
-  arrojado: "Arrojado", agressivo: "Agressivo", enoir: "Enoir",
-};
+// MODE_LABEL removido (30/08/2026): rótulo vem de public.b3_mode_apelidos
+// (useModeApelidos). MODE_LIST acima são CHAVES de identidade, não rótulos.
 const VARIANT_LIST = Object.keys(VARIANT_LABEL);
 
 // PERSISTÊNCIA DO RECORTE (26/08/2026)
@@ -179,6 +177,7 @@ function loadFilters(): SavedFilters {
 }
 
 function CockpitPage() {
+  const apelidos = useModeApelidos();
   const qc = useQueryClient();
   const getOverview = useServerFn(getB3CockpitOverview);
   const closeMode = useServerFn(closeModeOrderManually);
@@ -506,7 +505,7 @@ function CockpitPage() {
             <Button key={m} size="sm" variant={modesSel.includes(m) ? "default" : "outline"}
               className="h-7 text-[11px]" title="Clique isola; Ctrl/Shift soma"
               onClick={(e) => clickItem("modes", m, e)}>
-              {MODE_LABEL[m]}
+              {apelidos.nick(m)}
             </Button>
           ))}
         </div>
@@ -652,7 +651,7 @@ function CockpitPage() {
 
                         <div className="flex items-center justify-between gap-1">
                           <div className="flex flex-wrap items-center gap-1">
-                            <Badge className={`uppercase text-[10px] ${MODE_COLOR[c.mode]}`}>{c.mode.replace("_", " ")}</Badge>
+                            <Badge className={`text-[10px] ${MODE_COLOR[c.mode]}`}>{apelidos.nick(c.mode)}<span className="ml-1 opacity-70 text-[9px]">{apelidos.tech(c.mode)}</span></Badge>
                             <Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge>
                             <PeakRing
                               peak={Number(c.day_peak_profit_brl ?? 0)}

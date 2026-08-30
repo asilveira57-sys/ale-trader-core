@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from "sonner";
 import { rootSymbol } from "@/lib/b3-format";
 import { computeGlobalRealStop } from "@/lib/b3-real-sizing";
+import { useModeApelidos } from "@/hooks/use-mode-apelidos";
+import { ModeName } from "@/components/b3/ModeName";
 import { ShieldAlert, AlertTriangle, Lock, Unlock } from "lucide-react";
 
 type SizingRow = {
@@ -55,11 +57,9 @@ type Row = {
   authorized_at: string | null; authorized_by: string | null;
 };
 
-const MODE_LABEL: Record<string, string> = {
-  conservador: "Conservador", cauteloso: "Cauteloso", moderado: "Moderado",
-  equilibrado: "Equilibrado", semi_agressivo: "Semi-agressivo",
-  arrojado: "Arrojado", agressivo: "Agressivo", enoir: "Enoir",
-};
+// MODE_LABEL removido (30/08/2026): o rótulo do modo vem de
+// public.b3_mode_apelidos via useModeApelidos. Rótulo duplicado em TypeScript
+// diverge do banco com o tempo — mesma lição da colisão de magics 2002..2005.
 
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "Indicador", price_action: "Price Action",
@@ -69,6 +69,7 @@ const VARIANT_LABEL: Record<string, string> = {
 
 function PrdAuthorizationsPage() {
   const focus = Route.useSearch();
+  const apelidos = useModeApelidos();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const list = useServerFn(listPrdAuthorizations);
@@ -167,7 +168,7 @@ function PrdAuthorizationsPage() {
         <div className="panel p-3 flex flex-wrap items-center gap-3 text-sm">
           <span className="text-muted-foreground">Filtrado pelo robô do cockpit:</span>
           <Badge variant="outline" className="font-mono">
-            {[focus.symbol, focus.variant && (VARIANT_LABEL[focus.variant] ?? focus.variant), focus.mode && (MODE_LABEL[focus.mode] ?? focus.mode)]
+            {[focus.symbol, focus.variant && (VARIANT_LABEL[focus.variant] ?? focus.variant), focus.mode && apelidos.nick(focus.mode)]
               .filter(Boolean).join(" · ")}
           </Badge>
           <Button size="sm" variant="ghost" onClick={() => navigate({ to: "/prd-autorizacoes", search: {} })}>
@@ -221,8 +222,10 @@ function PrdAuthorizationsPage() {
       </section>
 
 
-      {Object.entries(grouped).map(([key, list]) => {
+      {Object.entries(grouped).map(([key, group]) => {
         const [symbol, variant] = key.split("||");
+        // Ordenação pela coluna `ordem` da tabela de apelidos (1..8), não alfabética.
+        const list = apelidos.sortModes(group, (r) => r.mode);
         return (
         <section key={key} className="panel p-5 space-y-3">
           <h2 className="font-medium flex items-center gap-2">
@@ -248,7 +251,7 @@ function PrdAuthorizationsPage() {
                 const s = sizingFor(r);
                 return (
                 <tr key={r.id} className="border-b border-border/40">
-                  <td className="py-2 font-medium">{MODE_LABEL[r.mode] ?? r.mode}</td>
+                  <td className="py-2"><ModeName mode={r.mode} api={apelidos} stacked /></td>
                   <td className="text-muted-foreground">{VARIANT_LABEL[r.variant] ?? r.variant}</td>
                   <td>
                     {r.enabled
@@ -291,7 +294,7 @@ function PrdAuthorizationsPage() {
           <ul className="space-y-1 text-xs font-mono">
             {(data.log as any[]).map((l) => (
               <li key={l.id} className="text-muted-foreground">
-                {new Date(l.ts).toLocaleString("pt-BR")} · {l.symbol} · {VARIANT_LABEL[l.variant] ?? l.variant ?? "indicador"} · {l.mode} ·{" "}
+                {new Date(l.ts).toLocaleString("pt-BR")} · {l.symbol} · {VARIANT_LABEL[l.variant] ?? l.variant ?? "indicador"} · {apelidos.nick(l.mode)} ·{" "}
                 <span className={l.para_enabled ? "text-orange-400" : "text-emerald-400"}>
                   {String(l.de_enabled)} → {String(l.para_enabled)}
                 </span>{" "}
@@ -317,7 +320,7 @@ function PrdAuthorizationsPage() {
               <div className="rounded-md border border-border p-3 text-sm space-y-1">
                 <div>Ativo: <span className="font-medium">{target.symbol}</span></div>
                 <div>Modalidade: <span className="font-medium">{VARIANT_LABEL[target.variant] ?? target.variant}</span></div>
-                <div>Modo: <span className="font-medium">{MODE_LABEL[target.mode] ?? target.mode}</span></div>
+                <div>Modo: <ModeName mode={target.mode} api={apelidos} /></div>
                 <div>Quantidade máxima: <span className="font-mono">{qty}</span> contrato(s)</div>
               </div>
               {target.enabled && (

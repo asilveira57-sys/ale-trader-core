@@ -18,6 +18,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
+import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
   getB3RealCockpit, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
@@ -46,7 +47,7 @@ const hhmm = (iso: string | null | undefined) =>
   !iso ? "—" : new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const hhmmss = (iso: string | null | undefined) =>
   !iso ? "—" : new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(iso));
-const modeLabel = (m: string) => String(m ?? "").replace("_", "-");
+// Rótulo do modo vem de public.b3_mode_apelidos (useModeApelidos).
 const ageText = (s: number | null | undefined) => {
   const sec = Math.max(0, Math.round(Number(s ?? 0)));
   if (sec < 90) return `há ${sec}s`;
@@ -125,6 +126,7 @@ function Tile({ label, value, sub, cls }: { label: string; value: string; sub?: 
 }
 
 function CockpitRealPage() {
+  const apelidos = useModeApelidos();
   const qc = useQueryClient();
   const load = useServerFn(getB3RealCockpit);
   const stopEntries = useServerFn(stopRealNewEntries);
@@ -449,7 +451,7 @@ function CockpitRealPage() {
                           {sideLabel(p.side)} {p.quantity}x {p.root}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
-                          {assetLabel(p.root)} · {VARIANT_LABEL[p.variant] ?? p.variant} · {modeLabel(p.mode)} · magic {p.magic_number}
+                          {assetLabel(p.root)} · {VARIANT_LABEL[p.variant] ?? p.variant} · {apelidos.nick(p.mode)} ({apelidos.tech(p.mode)}) · magic {p.magic_number}
                           {p.broker_ticket ? ` · ticket ${p.broker_ticket}` : ""}
                         </p>
                       </div>
@@ -503,7 +505,7 @@ function CockpitRealPage() {
                         <td className={`py-1 font-semibold ${o.side === "buy" ? "text-emerald-300" : "text-rose-300"}`}>{sideLabel(o.side)}</td>
                         <td className="py-1 text-right">{o.quantity}</td>
                         <td className="py-1">{o.symbol}</td>
-                        <td className="py-1 text-muted-foreground">{VARIANT_LABEL[o.variant] ?? o.variant} · {modeLabel(o.mode)}</td>
+                        <td className="py-1 text-muted-foreground">{VARIANT_LABEL[o.variant] ?? o.variant} · {apelidos.nick(o.mode)}</td>
                         <td className="py-1 text-right font-mono">{o.magic_number || "—"}</td>
                         <td className="py-1 text-right font-mono font-semibold">{o.filled_price == null ? "—" : PX(o.filled_price, o.tick_size)}</td>
                         <td className="py-1 font-mono">{o.broker_ticket ?? "—"}</td>
@@ -553,7 +555,7 @@ function CockpitRealPage() {
                       <tr key={`${r.symbol}-${r.variant}-${r.mode}`} className="border-b border-border/50">
                         <td className="py-1">
                           <span className="font-semibold">{r.symbol}</span>{" "}
-                          <span className="text-muted-foreground">{VARIANT_LABEL[r.variant] ?? r.variant} · {modeLabel(r.mode)}</span>
+                          <span className="text-muted-foreground">{VARIANT_LABEL[r.variant] ?? r.variant} · {apelidos.nick(r.mode)}</span>
                           {r.has_open_position ? <span className="ml-1 rounded bg-amber-500/20 px-1 text-[10px] text-amber-200">posicionado</span> : null}
                         </td>
                         <td className="py-1 text-right font-mono">{r.magic_number ?? "—"}</td>

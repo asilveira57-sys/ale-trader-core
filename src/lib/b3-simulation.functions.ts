@@ -5931,6 +5931,7 @@ export const getB3BiDashboard = createServerFn({ method: "POST" })
       }).sort((a, b) => b.resultado_brl - a.resultado_brl);
     };
 
+    // Rótulo puramente textual do servidor: a chave `mode` é a identidade.
     const modeLabelOf = (m: string) => String(m ?? "");
     const composicao = {
       robo: compose((r) => `${r.symbol} · ${r.variant ?? "indicador"} · ${modeLabelOf(r.mode)}`),

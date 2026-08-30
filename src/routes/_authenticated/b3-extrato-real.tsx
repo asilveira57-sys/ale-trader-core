@@ -7,7 +7,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getB3ExtratoReal } from "@/lib/b3-listas.functions";
 import { BRL, SIGNED_BRL } from "@/lib/b3-format";
-import { vLabel, mLabel, downloadCsv, printPage, dm, hm, todayBrt, daysAgoBrt } from "@/lib/b3-listas-format";
+import { useModeApelidos } from "@/hooks/use-mode-apelidos";
+import { ModeName } from "@/components/b3/ModeName";
+import { vLabel, downloadCsv, printPage, dm, hm, todayBrt, daysAgoBrt } from "@/lib/b3-listas-format";
 import { Button } from "@/components/ui/button";
 import { Receipt, Download, Printer, AlertTriangle } from "lucide-react";
 
@@ -31,6 +33,12 @@ const PX = (v: number | null) => (v == null ? "—" : Number(v).toLocaleString("
 
 function ExtratoRealPage() {
   const fn = useServerFn(getB3ExtratoReal);
+  const apelidos = useModeApelidos();
+  const mText = (m?: string | null) => {
+    if (!m) return "—";
+    const t = apelidos.tech(m), n = apelidos.nick(m);
+    return t && t !== n ? `${n} (${t})` : n;
+  };
   const [de, setDe] = useState(daysAgoBrt(29));
   const [ate, setAte] = useState(todayBrt());
 
@@ -49,7 +57,7 @@ function ExtratoRealPage() {
       ["Data", "Entrada", "Saída", "Ativo", "Modalidade", "Modo", "Magic", "Lado", "Qtd",
         "Preço entrada", "Preço saída", "Resultado (R$)", "Ticket corretora", "Fechada por"],
       rows.map((r) => [
-        r.data, hm(r.entry_time), hm(r.exit_time), r.symbol, vLabel(r.variant), mLabel(r.mode),
+        r.data, hm(r.entry_time), hm(r.exit_time), r.symbol, vLabel(r.variant), mText(r.mode),
         r.magic_number, r.side === "buy" ? "Compra" : "Venda", r.quantity,
         r.entry_price, r.exit_price, r.result_brl, r.broker_ticket ?? "",
         r.fechada_por === "manual" ? "Manual" : r.fechada_por === "sistema" ? "Sistema" : "Desconhecido",
@@ -142,7 +150,7 @@ function ExtratoRealPage() {
                     <td className="px-3 py-1.5">{hm(r.entry_time)}</td>
                     <td className="px-3 py-1.5">{hm(r.exit_time)}</td>
                     <td className="whitespace-nowrap px-3 py-1.5">{r.symbol}</td>
-                    <td className="whitespace-nowrap px-3 py-1.5">{vLabel(r.variant)} · {mLabel(r.mode)}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5">{vLabel(r.variant)} · <ModeName mode={r.mode} api={apelidos} /></td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{r.magic_number || "—"}</td>
                     <td className={`px-3 py-1.5 text-right ${r.side === "buy" ? "text-emerald-500" : "text-destructive"}`}>
                       {r.side === "buy" ? "Compra" : "Venda"}
@@ -186,7 +194,7 @@ function ExtratoRealPage() {
                 <tbody>
                   {(q.data?.por_robo ?? []).map((b) => (
                     <tr key={b.chave} className="border-t border-border/60">
-                      <td className="px-3 py-1.5">{b.root} · {vLabel(b.variant)} · {mLabel(b.mode)}</td>
+                      <td className="px-3 py-1.5">{b.root} · {vLabel(b.variant)} · <ModeName mode={b.mode} api={apelidos} /></td>
                       <td className="px-3 py-1.5 text-right tabular-nums">{b.magic_number || "—"}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">{b.ops} ops</td>
                       <td className={`px-3 py-1.5 text-right tabular-nums ${b.resultado_brl >= 0 ? "text-emerald-500" : "text-destructive"}`}>
