@@ -29,7 +29,6 @@ import {
   type B3GrupoLimites, type B3GrupoEstado, type B3GrupoDecision,
 } from "./b3-grupo.server";
 
-import { realMagicNumber, MagicNumberNotRegisteredError } from "./b3-magic";
 
 
 const POINT_VALUE_BRL = 0.2;
