@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -176,6 +177,7 @@ function loadFilters(): SavedFilters {
 }
 
 function CockpitPage() {
+  const apelidos = useModeApelidos();
   const qc = useQueryClient();
   const getOverview = useServerFn(getB3CockpitOverview);
   const closeMode = useServerFn(closeModeOrderManually);

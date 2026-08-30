@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getB3PipelineAudit } from "@/lib/b3-simulation.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { Badge } from "@/components/ui/badge";
 import { Activity, CheckCircle2, XCircle, ArrowDown } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
@@ -26,6 +27,7 @@ function formatDuration(seconds: number): string {
 
 
 export function PipelineAuditPanel() {
+  const apelidos = useModeApelidos();
   const fetchFn = useServerFn(getB3PipelineAudit);
   const auditInterval = useVisibleRefetchInterval(10000);
   const q = useQuery({

@@ -5,6 +5,8 @@ import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval"
 import { useState } from "react";
 import { getB3EntryAuditReport } from "@/lib/b3-simulation.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useModeApelidos } from "@/hooks/use-mode-apelidos";
+import { MODE_KEYS } from "@/lib/b3-listas-format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -33,6 +35,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function Page() {
+  const apelidos = useModeApelidos();
   const fetchFn = useServerFn(getB3EntryAuditReport);
   const [hours, setHours] = useState(24);
   const [modeFilter, setModeFilter] = useState<string>("all");

@@ -125,6 +125,7 @@ function Tile({ label, value, sub, cls }: { label: string; value: string; sub?: 
 }
 
 function CockpitRealPage() {
+  const apelidos = useModeApelidos();
   const qc = useQueryClient();
   const load = useServerFn(getB3RealCockpit);
   const stopEntries = useServerFn(stopRealNewEntries);
