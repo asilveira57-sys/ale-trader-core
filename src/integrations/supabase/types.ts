@@ -2798,6 +2798,7 @@ export type Database = {
           enabled: boolean
           id: string
           max_daily_loss_brl: number
+          max_daily_loss_mult: number | null
           max_qty: number
           mode: string
           notes: string | null
@@ -2814,6 +2815,7 @@ export type Database = {
           enabled?: boolean
           id?: string
           max_daily_loss_brl?: number
+          max_daily_loss_mult?: number | null
           max_qty?: number
           mode: string
           notes?: string | null
@@ -2830,6 +2832,7 @@ export type Database = {
           enabled?: boolean
           id?: string
           max_daily_loss_brl?: number
+          max_daily_loss_mult?: number | null
           max_qty?: number
           mode?: string
           notes?: string | null
