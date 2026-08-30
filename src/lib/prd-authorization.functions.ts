@@ -56,7 +56,7 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
     const [rows, logs, sizing, estado] = await Promise.all([
       supabase
         .from("b3_prd_authorizations")
-        .select("id, symbol, variant, mode, enabled, max_qty, max_daily_loss_brl, authorized_at, authorized_by, revoked_at, notes, updated_at")
+        .select("id, symbol, variant, mode, enabled, max_qty, max_daily_loss_brl, max_daily_loss_mult, authorized_at, authorized_by, revoked_at, notes, updated_at")
         .eq("user_id", userId)
         .order("symbol", { ascending: true })
         .order("variant", { ascending: true })
@@ -104,14 +104,34 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
         mode: z.enum(MODES),
         enabled: z.boolean(),
         max_qty: z.number().int().min(1).max(100),
-        max_daily_loss_brl: z.number().min(0).max(1_000_000),
+        // Unidade de entrada: MULTIPLICADOR de stop (adimensional). Os reais
+        // são derivados no servidor — nunca digitados.
+        max_daily_loss_mult: z.number().min(0).max(50),
         password: z.string().min(1),
       })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { userId } = context;
+    const { supabase, userId } = context;
     await assertMasterPassword(data.password);
+
+    // perda_diaria_brl = multiplicador × stop_pts × valor_do_ponto × max_qty.
+    // As duas colunas ficam em sincronia: max_daily_loss_brl continua sendo a
+    // fonte em R$ do portão de perda e do histórico; max_daily_loss_mult é a
+    // unidade digitada. O stop em pontos vem do robô, não da tela.
+    const { loadRealSizing } = await import("@/lib/b3-real-stop.server");
+    const { brlFromMult } = await import("@/lib/b3-real-sizing");
+    const { rootSymbol } = await import("@/lib/b3-format");
+    const sizing = await loadRealSizing(supabase, userId);
+    const robot = sizing.find(
+      (s) => s.symbol === rootSymbol(data.symbol) && s.variant === data.variant && s.mode === data.mode,
+    );
+    if (!robot || !(robot.stop_pts > 0) || !(robot.point_value_brl > 0)) {
+      throw new Error(
+        "Não foi possível ler o stop em pontos deste robô, então a perda diária em reais não pode ser derivada do multiplicador. Nenhuma autorização foi alterada.",
+      );
+    }
+    const lossBrl = brlFromMult(data.max_daily_loss_mult, robot.stop_pts, robot.point_value_brl, data.max_qty);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     await setOrigem(supabaseAdmin, "painel");
@@ -120,7 +140,8 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
     const patch: Record<string, unknown> = {
       enabled: data.enabled,
       max_qty: data.max_qty,
-      max_daily_loss_brl: data.max_daily_loss_brl,
+      max_daily_loss_mult: data.max_daily_loss_mult,
+      max_daily_loss_brl: lossBrl,
       updated_at: now,
     };
     if (data.enabled) {
@@ -138,7 +159,7 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
       .eq("symbol", data.symbol)
       .eq("variant", data.variant)
       .eq("mode", data.mode)
-      .select("id, symbol, variant, mode, enabled, max_qty")
+      .select("id, symbol, variant, mode, enabled, max_qty, max_daily_loss_brl, max_daily_loss_mult")
       .maybeSingle();
 
     if (error) throw error;
