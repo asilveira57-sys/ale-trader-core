@@ -185,6 +185,42 @@ function PrdAuthorizationsPage() {
         </p>
       </div>
 
+      {/* Stop global DERIVADO — nunca digitado. Soma de 3 × stop_pts × valor do
+          ponto × max_qty dos robôs ligados. Muda sozinho ao ligar/desligar
+          robô ou alterar a quantidade. */}
+      <section className="panel p-5 space-y-3">
+        <h2 className="font-medium">Stop global do dia (derivado)</h2>
+        <div className="grid gap-4 sm:grid-cols-4">
+          <div>
+            <div className="text-xs uppercase text-muted-foreground">Stop global</div>
+            <div className="font-mono text-2xl font-semibold text-orange-300">{brl(stopGlobal)}</div>
+            <div className="text-xs text-muted-foreground">3 stops de cada robô ligado, no tamanho real</div>
+          </div>
+          <div>
+            <div className="text-xs uppercase text-muted-foreground">Saldo da conta</div>
+            <div className="font-mono text-2xl font-semibold">{brl(saldo)}</div>
+            <div className="text-xs text-muted-foreground">
+              {(data as any).estado_reportado_em
+                ? `reportado em ${new Date((data as any).estado_reportado_em).toLocaleString("pt-BR")}`
+                : "sem relatório do executor"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs uppercase text-muted-foreground">Global / saldo</div>
+            <div className="font-mono text-2xl font-semibold">{pctSaldo == null ? "—" : `${pctSaldo.toFixed(1)}%`}</div>
+          </div>
+          <div>
+            <div className="text-xs uppercase text-muted-foreground">Se todos fossem 2 contratos</div>
+            <div className="font-mono text-2xl font-semibold text-muted-foreground">{brl(stopGlobal2)}</div>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Ao alcançar o global, nenhum robô real abre nova posição — o simulado continua rodando normalmente.
+          Por robô vale o MENOR entre o limite digitado e 3 stops no tamanho real.
+        </p>
+      </section>
+
+
       {Object.entries(grouped).map(([key, list]) => {
         const [symbol, variant] = key.split("||");
         return (
