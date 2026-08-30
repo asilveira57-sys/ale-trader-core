@@ -237,12 +237,16 @@ function PrdAuthorizationsPage() {
                 <th className="text-left">Status</th>
                 <th className="text-right">Qtd. máx.</th>
                 <th className="text-right">Perda diária máx.</th>
+                <th className="text-right">3 stops (real)</th>
+                <th className="text-right">Trava em</th>
                 <th className="text-left pl-4">Autorizado em</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {list.map((r) => (
+              {list.map((r) => {
+                const s = sizingFor(r);
+                return (
                 <tr key={r.id} className="border-b border-border/40">
                   <td className="py-2 font-medium">{MODE_LABEL[r.mode] ?? r.mode}</td>
                   <td className="text-muted-foreground">{VARIANT_LABEL[r.variant] ?? r.variant}</td>
@@ -253,6 +257,14 @@ function PrdAuthorizationsPage() {
                   </td>
                   <td className="text-right font-mono">{r.max_qty}</td>
                   <td className="text-right font-mono">R$ {Number(r.max_daily_loss_brl).toFixed(2)}</td>
+                  <td className="text-right font-mono text-muted-foreground">
+                    {s ? brl(s.three_stops_brl) : "—"}
+                    {s ? <span className="ml-1 text-[10px]">({s.stop_pts} pts × {s.max_qty})</span> : null}
+                  </td>
+                  <td className="text-right font-mono">
+                    {s ? brl(s.effective_daily_loss_brl) : "—"}
+                    {s ? <span className="ml-1 text-[10px] text-muted-foreground">{s.limite_origem === "manual" ? "manual" : "3 stops"}</span> : null}
+                  </td>
                   <td className="pl-4 text-muted-foreground">
                     {r.authorized_at ? new Date(r.authorized_at).toLocaleString("pt-BR") : "—"}
                   </td>
@@ -262,8 +274,10 @@ function PrdAuthorizationsPage() {
                     </Button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
+
           </table>
         </section>
         );
