@@ -51,7 +51,9 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    const [rows, logs] = await Promise.all([
+    const { loadRealSizing, globalStopFromSizing } = await import("@/lib/b3-real-stop.server");
+
+    const [rows, logs, sizing, estado] = await Promise.all([
       supabase
         .from("b3_prd_authorizations")
         .select("id, symbol, variant, mode, enabled, max_qty, max_daily_loss_brl, authorized_at, authorized_by, revoked_at, notes, updated_at")
@@ -65,6 +67,12 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
         .eq("user_id", userId)
         .order("ts", { ascending: false })
         .limit(20),
+      loadRealSizing(supabase, userId),
+      supabase
+        .from("b3_mt5_account_state")
+        .select("saldo, capital_liquido, reportado_em")
+        .eq("user_id", userId)
+        .maybeSingle(),
     ]);
 
     if (rows.error) throw rows.error;
@@ -75,8 +83,16 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
       authorizations: list,
       log: logs.data ?? [],
       enabled_count: list.filter((r: any) => r.enabled).length,
+      // MUDANÇA 2/3 — stop global DERIVADO (nunca digitado) + insumos para a tela
+      // recalcular ao vivo quando o usuário mexe em max_qty ou liga/desliga.
+      sizing,
+      stop_global_brl: globalStopFromSizing(sizing).total_brl,
+      saldo_brl: (estado.data as any)?.saldo == null ? null : Number((estado.data as any).saldo),
+      capital_liquido_brl: (estado.data as any)?.capital_liquido == null ? null : Number((estado.data as any).capital_liquido),
+      estado_reportado_em: (estado.data as any)?.reportado_em ?? null,
     };
   });
+
 
 export const setPrdAuthorization = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

@@ -24,6 +24,8 @@ import {
   type B3QuoteExecutionAudit,
 } from "./b3-price-source.server";
 import { b3WindowState } from "./b3-window.server";
+import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobotSizing } from "./b3-real-stop.server";
+
 import {
   decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
   type B3GrupoLimites, type B3GrupoEstado, type B3GrupoDecision,
@@ -110,9 +112,12 @@ async function loadGlobalDailyLossLimit(supabase: any, userId: string): Promise<
 // Decisão do usuário em 05/08/2026: espelhar os 5 modos desde já, mantendo
 // o conector em modo dry-run até validação manual.
 const REAL_MIRROR_ENABLED = true;
-const REAL_QTY_BY_MODE: Record<Mode, number> = {
-  conservador: 1, moderado: 1, equilibrado: 1, semi_agressivo: 1, agressivo: 1,
-};
+// A quantidade real NÃO fica em código: sai de b3_prd_authorizations.max_qty
+// (tela "Automações Reais"). Mudar de 1 para 2 contratos na tela basta.
+// Todo valor em R$ vindo do simulado é convertido pelo tamanho real:
+//   valor_real = valor_simulado ÷ contratos_simulados × max_qty  (b3-real-sizing)
+// Pontos (stop_pts, gain_pts, trailing_*, breakeven_*) não se convertem.
+
 // Magic number: FONTE ÚNICA NO BANCO (30/08/2026).
 // A fórmula vive só em public.b3_magic(p_symbol, p_variant, p_mode) e a
 // validação em public.b3_magic_valido(p_magic). Nenhuma cópia em TypeScript —
@@ -154,7 +159,9 @@ async function mirrorToReal(
     return;
   }
 
-  const quantity = Math.max(1, Math.min(REAL_QTY_BY_MODE[mode] ?? 1, authMaxQty));
+  // Quantidade real = max_qty da autorização (tela), nunca max_contracts do simulado.
+  const quantity = Math.max(1, authMaxQty);
+
 
   // Falha FECHADA: o magic vem do banco (public.b3_magic) e só é aceito se
   // public.b3_magic_valido aprovar. Erro de RPC, magic nulo/0 ou fora da faixa
@@ -198,8 +205,69 @@ async function mirrorToReal(
   }
 
 
+  // ── PORTÃO DE PERDA REAL (só ABERTURA; fechamento nunca é bloqueado) ──
+  // Dois freios, ambos em R$ já no tamanho REAL:
+  //  · por robô: MENOR entre o limite manual da tela e 3 stops × valor do ponto
+  //    × max_qty (manual frouxo não afrouxa a regra);
+  //  · global derivado: soma dos 3 stops reais de TODOS os robôs ligados —
+  //    ao alcançá-lo, nenhum robô real abre mais nada.
+  // O simulado segue rodando normalmente: a coleta de dados não para nunca.
+  if (action === "open") {
+    try {
+      const [sizing, dayResult] = await Promise.all([
+        loadRealSizing(supabase, userId),
+        loadRealDayResult(supabase, userId),
+      ]);
+      const perda = dayResult.total_brl < 0 ? Math.abs(dayResult.total_brl) : 0;
+      const global = globalStopFromSizing(sizing);
+      const mine = sizing.find(
+        (s: RealRobotSizing) => s.symbol === rootSymbol(symbol) && s.variant === variant && s.mode === mode,
+      );
+      const perdaRobo = (() => {
+        const v = dayResult.by_magic.get(magic) ?? 0;
+        return v < 0 ? Math.abs(v) : 0;
+      })();
+
+      let motivo: string | null = null;
+      if (global.total_brl > 0 && perda >= global.total_brl) {
+        motivo = `stop global real alcançado: perda R$ ${perda.toFixed(2)} ≥ global derivado R$ ${global.total_brl.toFixed(2)}`;
+      } else if (mine && mine.effective_daily_loss_brl > 0 && perdaRobo >= mine.effective_daily_loss_brl) {
+        motivo = `limite diário real do robô alcançado: perda R$ ${perdaRobo.toFixed(2)} ≥ R$ ${mine.effective_daily_loss_brl.toFixed(2)} (${mine.limite_origem})`;
+      }
+
+      if (motivo) {
+        try {
+          await supabase.from("system_logs").insert({
+            event_type: "stop_real_bloqueou_abertura",
+            source: `b3_real_mirror:${symbol}:${variant}:${mode}`,
+            severity: "warning",
+            message: `Abertura real NÃO enfileirada: ${motivo}`,
+            technical_data: {
+              symbol, variant, mode, side, magic, run_id: runId,
+              perda_real_dia_brl: perda, perda_real_robo_brl: perdaRobo,
+              stop_global_brl: global.total_brl,
+              limite_robo_brl: mine?.effective_daily_loss_brl ?? null,
+              limite_origem: mine?.limite_origem ?? null,
+              tres_stops_brl: mine?.three_stops_brl ?? null,
+              max_qty: mine?.max_qty ?? quantity,
+              contratos_simulados: mine?.sim_max_contracts ?? null,
+              parametros_reais_convertidos: mine?.real_brl ?? null,
+            } as any,
+          });
+        } catch { /* log best-effort; o bloqueio já aconteceu */ }
+        return;
+      }
+    } catch (e) {
+      // Falha ao avaliar o freio real não pode derrubar o simulado; falha FECHADA
+      // para o dinheiro real (não enfileira sem saber a perda do dia).
+      console.error("[mirror] falha ao avaliar stop real — abertura não enfileirada:", (e as Error).message);
+      return;
+    }
+  }
+
   try {
     await supabase.from("b3_mt5_commands").insert({
+
       user_id: userId, env: "real", simulation_run_id: runId, mode, variant,
       action, side, symbol, quantity,
       magic_number: magic, idempotency_key: idempotencyKey,
