@@ -9,7 +9,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { rootSymbol } from "@/lib/b3-format";
+import { computeGlobalRealStop } from "@/lib/b3-real-sizing";
 import { ShieldAlert, AlertTriangle, Lock, Unlock } from "lucide-react";
+
+type SizingRow = {
+  symbol: string; variant: string; mode: string; enabled: boolean;
+  max_qty: number; point_value_brl: number; stop_pts: number; sim_max_contracts: number;
+  manual_daily_loss_brl: number | null; three_stops_brl: number;
+  effective_daily_loss_brl: number; limite_origem: "manual" | "tres_stops";
+  real_brl: { daily_loss_limit_brl: number | null; daily_gain_target_brl: number | null; peak_lock_min_profit_brl: number | null; escala: number };
+};
+const toGlobalRobot = (s: SizingRow) => ({
+  symbol: s.symbol, variant: s.variant, mode: s.mode,
+  enabled: s.enabled, max_qty: s.max_qty, stop_pts: s.stop_pts, point_value_brl: s.point_value_brl,
+});
+const brl = (v: number | null | undefined) =>
+  v == null ? "—" : `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 
 export const Route = createFileRoute("/_authenticated/prd-autorizacoes")({
   head: () => ({
