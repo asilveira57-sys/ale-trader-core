@@ -91,10 +91,9 @@ export async function loadRealSizing(supabase: SupabaseClient, userId: string): 
     const mult = storedMult != null && Number.isFinite(storedMult) && storedMult > 0
       ? storedMult
       : multFromBrl(a.max_daily_loss_brl, stopPts, pv, maxQty);
-    const manualBrl = storedMult != null && Number.isFinite(storedMult) && storedMult > 0 && one > 0
-      ? brlFromMult(storedMult, stopPts, pv, maxQty)
-      : a.max_daily_loss_brl;
-    const eff = effectiveRealDailyLossBrl(manualBrl, stopPts, pv, maxQty);
+    // Quem trava continua sendo o valor em REAIS gravado — o multiplicador é
+    // unidade de entrada e de leitura, não uma segunda fonte de verdade.
+    const eff = effectiveRealDailyLossBrl(a.max_daily_loss_brl, stopPts, pv, maxQty);
     return {
       symbol: rootSymbol(String(a.symbol)), variant: String(a.variant ?? "indicador"), mode: String(a.mode),
       enabled: a.enabled === true,
