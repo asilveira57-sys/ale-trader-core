@@ -18,6 +18,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
+import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
   getB3RealCockpit, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
