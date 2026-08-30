@@ -114,10 +114,13 @@ const REAL_MIRROR_ENABLED = true;
 const REAL_QTY_BY_MODE: Record<Mode, number> = {
   conservador: 1, moderado: 1, equilibrado: 1, semi_agressivo: 1, agressivo: 1,
 };
-// Magic number: ver src/lib/b3-magic.ts (blocos por ativo/modalidade/modo).
-// CORRIGIDO em 17/08/2026: os dez ativos ganharam bloco próprio e o fallback
-// genérico 2900 (que colidiria com SOL) foi removido — ativo não cadastrado
-// falha FECHADA e nenhum comando real é enfileirado.
+// Magic number: FONTE ÚNICA NO BANCO (30/08/2026).
+// A fórmula vive só em public.b3_magic(p_symbol, p_variant, p_mode) e a
+// validação em public.b3_magic_valido(p_magic). Nenhuma cópia em TypeScript —
+// duas fórmulas divergem com o tempo e foi exatamente isso que produziu a
+// colisão real 2002..2005 entre WIN e WDO. Ativo/modalidade/modo não mapeado
+// falha FECHADA (nada de magic 0 seguindo em silêncio para o executor).
+
 
 
 async function mirrorToReal(
