@@ -123,7 +123,17 @@ function PrdAuthorizationsPage() {
   const allRows = (data.authorizations ?? []) as Row[];
   const sizing = ((data as any).sizing ?? []) as SizingRow[];
   const stopGlobal = computeGlobalRealStop(sizing.map(toGlobalRobot)).total_brl;
-  const stopGlobal2 = computeGlobalRealStop(sizing.map((s) => ({ ...toGlobalRobot(s), max_qty: 2 }))).total_brl;
+  // Cenário "todos a 2 contratos": o multiplicador é adimensional, então o
+  // limite manual acompanha o tamanho (e o teto de 3 stops também).
+  const stopGlobal2 = computeGlobalRealStop(
+    sizing.map((s) => ({
+      ...toGlobalRobot(s),
+      max_qty: 2,
+      manual_daily_loss_brl: s.manual_daily_loss_mult == null
+        ? s.manual_daily_loss_brl
+        : brlFromMult(s.manual_daily_loss_mult, s.stop_pts, s.point_value_brl, 2),
+    })),
+  ).total_brl;
   const saldo = (data as any).capital_liquido_brl ?? (data as any).saldo_brl ?? null;
   const pctSaldo = saldo && saldo > 0 ? (stopGlobal / saldo) * 100 : null;
   const sizingFor = (r: Row) =>
