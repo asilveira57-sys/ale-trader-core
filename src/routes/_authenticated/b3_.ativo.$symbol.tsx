@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { RobotConfigDialog } from "@/components/b3/RobotConfigDialog";
 import { Badge } from "@/components/ui/badge";
+import { modeFullLabel } from "@/lib/mode-nick-registry";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -43,7 +44,7 @@ const VARIANT_LABEL: Record<string, string> = {
   vwap: "VWAP",
 };
 const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
-const modeLabel = (m: string) => m.replace("_", " ");
+const modeLabel = (m: string) => modeFullLabel(m);
 const pnlColor = (v: number) => (v >= 0 ? "text-emerald-400" : "text-rose-400");
 const NUM = (v: number) => Number(v ?? 0).toLocaleString("pt-BR");
 

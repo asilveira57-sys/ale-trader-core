@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo } from "react";
 import { listModeApelidos } from "@/lib/mode-apelidos.functions";
+import { setModeNicks } from "@/lib/mode-nick-registry";
 
 export interface ModeApelido {
   mode: string;
@@ -39,6 +40,9 @@ export function useModeApelidos(): ModeApelidoApi {
   });
 
   const rows = (q.data?.rows ?? []) as ModeApelido[];
+
+  // Espelha no registro para os módulos de cópia/exportação usarem o MESMO rótulo.
+  setModeNicks(rows);
 
   return useMemo(() => {
     const byMode = new Map(rows.map((r) => [String(r.mode), r]));
