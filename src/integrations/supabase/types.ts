@@ -735,6 +735,72 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_calibracao_semanal: {
+        Row: {
+          apelido: string | null
+          aplicado: boolean
+          aplicado_em: string | null
+          calculado_em: string
+          confiavel: boolean
+          dias_afetados: number | null
+          ganho_estimado: number | null
+          id: string
+          mode: string
+          motivo: string | null
+          mult_atual: number | null
+          mult_sugerido: number | null
+          peso_top3: number | null
+          pregoes: number | null
+          resultado_atual: number | null
+          resultado_sugerido: number | null
+          semana_ref: string
+          symbol: string
+          variant: string
+        }
+        Insert: {
+          apelido?: string | null
+          aplicado?: boolean
+          aplicado_em?: string | null
+          calculado_em?: string
+          confiavel?: boolean
+          dias_afetados?: number | null
+          ganho_estimado?: number | null
+          id?: string
+          mode: string
+          motivo?: string | null
+          mult_atual?: number | null
+          mult_sugerido?: number | null
+          peso_top3?: number | null
+          pregoes?: number | null
+          resultado_atual?: number | null
+          resultado_sugerido?: number | null
+          semana_ref: string
+          symbol: string
+          variant: string
+        }
+        Update: {
+          apelido?: string | null
+          aplicado?: boolean
+          aplicado_em?: string | null
+          calculado_em?: string
+          confiavel?: boolean
+          dias_afetados?: number | null
+          ganho_estimado?: number | null
+          id?: string
+          mode?: string
+          motivo?: string | null
+          mult_atual?: number | null
+          mult_sugerido?: number | null
+          peso_top3?: number | null
+          pregoes?: number | null
+          resultado_atual?: number | null
+          resultado_sugerido?: number | null
+          semana_ref?: string
+          symbol?: string
+          variant?: string
+        }
+        Relationships: []
+      }
       b3_daily_protection_history: {
         Row: {
           block_at: string | null
@@ -7078,6 +7144,7 @@ export type Database = {
       }
       b3_calcular_paridade: { Args: { p_desde?: string }; Returns: number }
       b3_calcular_score_dia: { Args: { p_date?: string }; Returns: number }
+      b3_calibrar_limites: { Args: { p_dias?: number }; Returns: number }
       b3_cor_do_robo: {
         Args: {
           p_caiu_em: string
