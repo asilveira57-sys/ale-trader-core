@@ -15,11 +15,8 @@ export const Route = createFileRoute("/_authenticated/b3-auditoria")({
   component: Page,
 });
 
-const MODE_LABEL: Record<string, string> = {
-  conservador: "Conservador", cauteloso: "Cauteloso", moderado: "Moderado",
-  equilibrado: "Equilibrado", semi_agressivo: "Semi-agressivo",
-  arrojado: "Arrojado", agressivo: "Agressivo", enoir: "Enoir",
-};
+// MODE_LABEL removido (30/08/2026): rótulo vem de public.b3_mode_apelidos.
+// As CHAVES de modo do seletor continuam vindo dos dados/MODE_KEYS.
 const CAT_COLOR: Record<string, string> = {
   tecnico: "bg-red-500/15 text-red-400 border-red-500/30",
   operacional: "bg-amber-500/15 text-amber-400 border-amber-500/30",
@@ -90,7 +87,7 @@ function Page() {
                 <thead className="text-muted-foreground border-b border-border/40"><tr className="text-left"><th className="py-1 pr-2">Robô</th><th className="py-1 pr-2">Campo</th><th className="py-1 pr-2">Tela</th><th className="py-1 pr-2">Motor</th></tr></thead>
                 <tbody>
                   {data.config_mismatches.map((m: any, i: number) => (
-                    <tr key={i} className="border-b border-border/20"><td className="py-1 pr-2">{MODE_LABEL[m.mode] ?? m.mode}</td><td className="py-1 pr-2 font-mono">{m.field}</td><td className="py-1 pr-2">{fmt(m.screen)}</td><td className="py-1 pr-2 text-amber-400">{fmt(m.motor)}</td></tr>
+                    <tr key={i} className="border-b border-border/20"><td className="py-1 pr-2">{apelidos.nick(m.mode)}</td><td className="py-1 pr-2 font-mono">{m.field}</td><td className="py-1 pr-2">{fmt(m.screen)}</td><td className="py-1 pr-2 text-amber-400">{fmt(m.motor)}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -111,7 +108,7 @@ function Page() {
             {modes.map((m: any) => (
               <Card key={m.mode}>
                 <CardHeader className="pb-2 flex-row items-center justify-between">
-                  <CardTitle className="text-base">{MODE_LABEL[m.mode]}</CardTitle>
+                  <CardTitle className="text-base">{apelidos.nick(m.mode)}</CardTitle>
                   <Badge variant={m.entradas_executadas > 0 ? "default" : "outline"}>{m.entradas_executadas} ordens</Badge>
                 </CardHeader>
                 <CardContent className="space-y-1 text-xs">
@@ -151,7 +148,7 @@ function Page() {
                   <SelectTrigger className="w-[160px]"><SelectValue placeholder="Robô" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os robôs</SelectItem>
-                    {Object.entries(MODE_LABEL).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
+                    {apelidos.sortModes([...MODE_KEYS] as string[]).map((k) => <SelectItem key={k} value={k}>{apelidos.nick(k)}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={catFilter} onValueChange={setCatFilter}>
@@ -190,7 +187,7 @@ function Page() {
                       {reasons.map((r: any, i: number) => (
                         <tr key={i} className="border-b border-border/20 align-top">
                           <td className="py-1 pr-2 text-muted-foreground">{i + 1}</td>
-                          <td className="py-1 pr-2">{MODE_LABEL[r.mode] ?? r.mode}</td>
+                          <td className="py-1 pr-2">{apelidos.nick(r.mode)}</td>
                           <td className="py-1 pr-2"><Badge variant="outline" className={`text-[10px] ${CAT_COLOR[r.category] ?? ""}`}>{r.category_label}</Badge></td>
                           <td className="py-1 pr-2">
                             <div className="font-medium">{r.label}</div>
@@ -225,7 +222,7 @@ function Page() {
                   <thead className="text-muted-foreground border-b border-border/40">
                     <tr className="text-left">
                       <th className="py-1 pr-2">Indicador</th>
-                      {modes.map((m: any) => <th key={m.mode} className="py-1 pr-2 text-right">{MODE_LABEL[m.mode]}</th>)}
+                      {modes.map((m: any) => <th key={m.mode} className="py-1 pr-2 text-right">{apelidos.nick(m.mode)}</th>)}
                     </tr>
                   </thead>
                   <tbody>

@@ -6,16 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Activity, CheckCircle2, XCircle, ArrowDown } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 
-const MODE_LABEL: Record<string, string> = {
-  conservador: "Conservador",
-  cauteloso: "Cauteloso",
-  moderado: "Moderado",
-  equilibrado: "Equilibrado",
-  semi_agressivo: "Semi-agressivo",
-  arrojado: "Arrojado",
-  agressivo: "Agressivo",
-  enoir: "Enoir",
-};
+// MODE_LABEL removido (30/08/2026): rótulo vem de public.b3_mode_apelidos.
 
 function fmt(v: any) {
   if (v == null) return "—";
@@ -125,7 +116,7 @@ export function PipelineAuditPanel() {
               <div key={m.mode} className="rounded-md border border-border/60 p-3 space-y-3">
                 <div className="flex items-start justify-between gap-2 flex-wrap">
                   <div>
-                    <Badge variant="outline" className="uppercase text-[10px]">{MODE_LABEL[m.mode] ?? m.mode}</Badge>
+                    <Badge variant="outline" className="uppercase text-[10px]">{apelidos.nick(m.mode)}</Badge>
                     <p className="mt-2 text-sm font-medium">{objetivo}</p>
                     {m.last_step_blocked && (
                       <p className="text-xs text-amber-400 mt-1">
@@ -199,7 +190,7 @@ export function PipelineAuditPanel() {
                   {history.map((h: any, i: number) => (
                     <tr key={i} className="border-b border-border/20">
                       <td className="py-1 pr-2 font-mono">{new Date(h.at).toLocaleTimeString("pt-BR")}</td>
-                      <td className="py-1 pr-2"><Badge variant="outline" className="text-[10px]">{MODE_LABEL[h.mode] ?? h.mode}</Badge></td>
+                      <td className="py-1 pr-2"><Badge variant="outline" className="text-[10px]">{apelidos.nick(h.mode)}</Badge></td>
                       <td className="py-1 pr-2">{h.step ?? h.step_key}</td>
                       <td className="py-1 pr-2 text-muted-foreground">{h.detail ?? "—"}</td>
                       <td className="py-1 pr-2">{h.reason ?? "—"}</td>
@@ -250,7 +241,7 @@ export function PipelineAuditPanel() {
                   {(data.decisions ?? []).map((d: any, i: number) => (
                     <tr key={i} className="border-b border-border/20 align-top">
                       <td className="py-1 pr-2 font-mono">{new Date(d.at).toLocaleTimeString("pt-BR")}</td>
-                      <td className="py-1 pr-2"><Badge variant="outline" className="text-[9px]">{MODE_LABEL[d.robot] ?? d.robot}</Badge></td>
+                      <td className="py-1 pr-2"><Badge variant="outline" className="text-[9px]">{apelidos.nick(d.robot)}</Badge></td>
                       <td className="py-1 pr-2 font-mono uppercase">{d.suggested_side}</td>
                       <td className="py-1 pr-2 font-mono">{fmt(d.price)}</td>
                       <td className="py-1 pr-2 font-mono">{fmt(d.score)}/{fmt(d.score_min)}</td>
@@ -316,7 +307,7 @@ export function PipelineAuditPanel() {
                   {(data.trade_events ?? []).map((t: any, i: number) => (
                     <tr key={i} className="border-b border-border/20">
                       <td className="py-1 pr-2 font-mono">{new Date(t.at).toLocaleTimeString("pt-BR")}</td>
-                      <td className="py-1 pr-2"><Badge variant="outline" className="text-[9px]">{MODE_LABEL[t.mode] ?? t.mode}</Badge></td>
+                      <td className="py-1 pr-2"><Badge variant="outline" className="text-[9px]">{apelidos.nick(t.mode)}</Badge></td>
                       <td className="py-1 pr-2 font-mono uppercase">{t.side}</td>
                       <td className="py-1 pr-2 font-mono">{fmt(t.entry_price)}</td>
                       <td className="py-1 pr-2 font-mono">{fmt(t.exit_price)}</td>

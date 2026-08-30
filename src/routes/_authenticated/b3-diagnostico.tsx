@@ -6,6 +6,8 @@ import { getB3DiagnosticoDia } from "@/lib/b3-diagnostico.functions";
 import { BRL, SIGNED_BRL, rootSymbol, assetLabel } from "@/lib/b3-format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useModeApelidos } from "@/hooks/use-mode-apelidos";
+import { ModeName } from "@/components/b3/ModeName";
 import { Stethoscope, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/b3-diagnostico")({
@@ -32,16 +34,8 @@ const isGrave = (frase: string) => GRAVES.some((g) => frase.toLowerCase().includ
 const NUM = (v: any, d = 0) =>
   Number(v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
-const MODE_LABEL: Record<string, string> = {
-  conservador: "Conservador",
-  cauteloso: "Cauteloso",
-  moderado: "Moderado",
-  equilibrado: "Equilibrado",
-  semi_agressivo: "Semi agressivo",
-  arrojado: "Arrojado",
-  agressivo: "Agressivo",
-  enoir: "Enoir",
-};
+// MODE_LABEL removido (30/08/2026): rótulo do modo vem de
+// public.b3_mode_apelidos via useModeApelidos.
 
 function Chip({ on, children, onClick }: { on: boolean; children: React.ReactNode; onClick: () => void }) {
   return (
@@ -59,6 +53,7 @@ function Chip({ on, children, onClick }: { on: boolean; children: React.ReactNod
 
 function DiagnosticoPage() {
   const fn = useServerFn(getB3DiagnosticoDia);
+  const apelidos = useModeApelidos();
   const [date, setDate] = useState<string | null>(null);
   const q = useQuery({
     queryKey: ["b3-diagnostico", date],
@@ -85,8 +80,9 @@ function DiagnosticoPage() {
       va.add(String(r.variant ?? "indicador"));
       m.add(String(r.mode));
     }
-    return { symbols: [...s].sort(), variants: [...va].sort(), modes: [...m].sort() };
-  }, [rows]);
+    // Modo sai na escada da tabela (ordem 1..8), não em ordem alfabética.
+    return { symbols: [...s].sort(), variants: [...va].sort(), modes: apelidos.sortModes([...m]) };
+  }, [rows, apelidos]);
 
   const visiveis = useMemo(() => {
     const list = rows.filter((r: any) => {
@@ -162,7 +158,7 @@ function DiagnosticoPage() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="w-24 text-[11px] uppercase tracking-wider text-muted-foreground">Modo</span>
           {opts.modes.map((m) => (
-            <Chip key={m} on={fModes.includes(m)} onClick={() => toggle(fModes, setFModes, m)}>{MODE_LABEL[m] ?? m}</Chip>
+            <Chip key={m} on={fModes.includes(m)} onClick={() => toggle(fModes, setFModes, m)}>{apelidos.nick(m)}</Chip>
           ))}
           <span className="mx-2 h-4 w-px bg-border" />
           <Chip on={soAlerta} onClick={() => setSoAlerta((v) => !v)}>Só com alerta</Chip>
@@ -221,7 +217,7 @@ function DiagnosticoPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{r.symbol}</span>
                   <Badge variant="outline" className="text-[10px]">{r.variant ?? "indicador"}</Badge>
-                  <Badge variant="outline" className="text-[10px]">{MODE_LABEL[r.mode] ?? r.mode}</Badge>
+                  <Badge variant="outline" className="text-[10px]"><ModeName mode={r.mode} api={apelidos} /></Badge>
                   {grave ? (
                     <span className="inline-flex items-center gap-1 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-200">
                       <AlertTriangle className="size-3" /> atenção
