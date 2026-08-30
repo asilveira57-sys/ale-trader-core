@@ -1482,6 +1482,33 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_mode_apelidos: {
+        Row: {
+          apelido: string
+          criado_em: string
+          mode: string
+          observacao: string | null
+          ordem: number
+          rotulo_tecnico: string
+        }
+        Insert: {
+          apelido: string
+          criado_em?: string
+          mode: string
+          observacao?: string | null
+          ordem: number
+          rotulo_tecnico: string
+        }
+        Update: {
+          apelido?: string
+          criado_em?: string
+          mode?: string
+          observacao?: string | null
+          ordem?: number
+          rotulo_tecnico?: string
+        }
+        Relationships: []
+      }
       b3_mode_user_defaults: {
         Row: {
           consecutive_loss_after_target: number | null
