@@ -110,9 +110,12 @@ async function loadGlobalDailyLossLimit(supabase: any, userId: string): Promise<
 // Decisão do usuário em 05/08/2026: espelhar os 5 modos desde já, mantendo
 // o conector em modo dry-run até validação manual.
 const REAL_MIRROR_ENABLED = true;
-const REAL_QTY_BY_MODE: Record<Mode, number> = {
-  conservador: 1, moderado: 1, equilibrado: 1, semi_agressivo: 1, agressivo: 1,
-};
+// A quantidade real NÃO fica em código: sai de b3_prd_authorizations.max_qty
+// (tela "Automações Reais"). Mudar de 1 para 2 contratos na tela basta.
+// Todo valor em R$ vindo do simulado é convertido pelo tamanho real:
+//   valor_real = valor_simulado ÷ contratos_simulados × max_qty  (b3-real-sizing)
+// Pontos (stop_pts, gain_pts, trailing_*, breakeven_*) não se convertem.
+
 // Magic number: FONTE ÚNICA NO BANCO (30/08/2026).
 // A fórmula vive só em public.b3_magic(p_symbol, p_variant, p_mode) e a
 // validação em public.b3_magic_valido(p_magic). Nenhuma cópia em TypeScript —
