@@ -8,6 +8,7 @@ import { rootSymbol } from "@/lib/b3-format";
 import { buildRealLedger, loadAssetProfiles, saoPauloDate, type RealCommandRow } from "@/lib/b3-real-cockpit.server";
 import {
   computeGlobalRealStop, convertSimBrlParamsToReal, effectiveRealDailyLossBrl,
+  brlFromMult, multFromBrl, oneStopRealBrl, STOPS_POR_DIA,
   type GlobalStopRobot,
 } from "@/lib/b3-real-sizing";
 
@@ -18,8 +19,14 @@ export interface RealRobotSizing {
   point_value_brl: number;
   stop_pts: number;
   sim_max_contracts: number;
-  /** limite manual digitado na tela */
+  /** limite manual digitado na tela, em R$ */
   manual_daily_loss_brl: number | null;
+  /** o MESMO limite na unidade digitada: múltiplos de stop (adimensional) */
+  manual_daily_loss_mult: number | null;
+  /** 1 stop cheio no tamanho real — a unidade do multiplicador */
+  one_stop_brl: number;
+  /** teto: acima disto o multiplicador digitado não tem efeito */
+  max_mult: number;
   /** 3 stops no tamanho real */
   three_stops_brl: number;
   /** MENOR entre manual e 3 stops — é este que trava */
@@ -40,7 +47,7 @@ export async function loadRealSizing(supabase: SupabaseClient, userId: string): 
   const [authRes, runsRes, profileFor] = await Promise.all([
     supabase
       .from("b3_prd_authorizations")
-      .select("symbol, variant, mode, enabled, max_qty, max_daily_loss_brl")
+      .select("symbol, variant, mode, enabled, max_qty, max_daily_loss_brl, max_daily_loss_mult")
       .eq("user_id", userId),
     supabase
       .from("b3_simulation_runs")
@@ -76,7 +83,18 @@ export async function loadRealSizing(supabase: SupabaseClient, userId: string): 
     const stopPts = Number(cfg?.stop_pts ?? 0);
     const simQty = Math.max(1, Number(cfg?.max_contracts ?? 1));
     const maxQty = Math.max(0, Number(a.max_qty ?? 0));
-    const eff = effectiveRealDailyLossBrl(a.max_daily_loss_brl, stopPts, pv, maxQty);
+    // O multiplicador é a unidade de entrada; os REAIS continuam sendo a fonte
+    // gravada. Linha antiga sem multiplicador: deriva dividindo pelos R$ de um
+    // stop, sem tocar no valor em reais nem no portão de perda.
+    const one = oneStopRealBrl(stopPts, pv, maxQty);
+    const storedMult = a.max_daily_loss_mult == null ? null : Number(a.max_daily_loss_mult);
+    const mult = storedMult != null && Number.isFinite(storedMult) && storedMult > 0
+      ? storedMult
+      : multFromBrl(a.max_daily_loss_brl, stopPts, pv, maxQty);
+    const manualBrl = storedMult != null && Number.isFinite(storedMult) && storedMult > 0 && one > 0
+      ? brlFromMult(storedMult, stopPts, pv, maxQty)
+      : a.max_daily_loss_brl;
+    const eff = effectiveRealDailyLossBrl(manualBrl, stopPts, pv, maxQty);
     return {
       symbol: rootSymbol(String(a.symbol)), variant: String(a.variant ?? "indicador"), mode: String(a.mode),
       enabled: a.enabled === true,
@@ -85,6 +103,9 @@ export async function loadRealSizing(supabase: SupabaseClient, userId: string): 
       stop_pts: stopPts,
       sim_max_contracts: simQty,
       manual_daily_loss_brl: eff.manual_brl,
+      manual_daily_loss_mult: mult,
+      one_stop_brl: one,
+      max_mult: STOPS_POR_DIA,
       three_stops_brl: eff.three_stops_brl,
       effective_daily_loss_brl: eff.limit_brl,
       limite_origem: eff.origem,
@@ -101,6 +122,10 @@ export function globalStopFromSizing(rows: RealRobotSizing[], overrideMaxQty?: n
     max_qty: overrideMaxQty == null ? r.max_qty : overrideMaxQty,
     stop_pts: r.stop_pts,
     point_value_brl: r.point_value_brl,
+    // Com outro tamanho, o limite manual acompanha o multiplicador digitado.
+    manual_daily_loss_brl: overrideMaxQty == null || r.manual_daily_loss_mult == null
+      ? r.manual_daily_loss_brl
+      : brlFromMult(r.manual_daily_loss_mult, r.stop_pts, r.point_value_brl, overrideMaxQty),
   }));
   return computeGlobalRealStop(robots);
 }
