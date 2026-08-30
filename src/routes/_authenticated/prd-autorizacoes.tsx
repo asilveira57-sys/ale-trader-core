@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { rootSymbol } from "@/lib/b3-format";
-import { computeGlobalRealStop } from "@/lib/b3-real-sizing";
+import { computeGlobalRealStop, brlFromMult, STOPS_POR_DIA } from "@/lib/b3-real-sizing";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { ModeName } from "@/components/b3/ModeName";
 import { ShieldAlert, AlertTriangle, Lock, Unlock } from "lucide-react";
@@ -18,14 +18,19 @@ import { ShieldAlert, AlertTriangle, Lock, Unlock } from "lucide-react";
 type SizingRow = {
   symbol: string; variant: string; mode: string; enabled: boolean;
   max_qty: number; point_value_brl: number; stop_pts: number; sim_max_contracts: number;
-  manual_daily_loss_brl: number | null; three_stops_brl: number;
+  manual_daily_loss_brl: number | null; manual_daily_loss_mult: number | null;
+  one_stop_brl: number; max_mult: number; three_stops_brl: number;
   effective_daily_loss_brl: number; limite_origem: "manual" | "tres_stops";
   real_brl: { daily_loss_limit_brl: number | null; daily_gain_target_brl: number | null; peak_lock_min_profit_brl: number | null; escala: number };
 };
 const toGlobalRobot = (s: SizingRow) => ({
   symbol: s.symbol, variant: s.variant, mode: s.mode,
   enabled: s.enabled, max_qty: s.max_qty, stop_pts: s.stop_pts, point_value_brl: s.point_value_brl,
+  // O global soma o limite EFETIVO (o mesmo da coluna "Trava em").
+  manual_daily_loss_brl: s.manual_daily_loss_brl,
 });
+const mult = (v: number | null | undefined) =>
+  v == null ? "—" : `${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}×`;
 const brl = (v: number | null | undefined) =>
   v == null ? "—" : `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -53,7 +58,7 @@ export const Route = createFileRoute("/_authenticated/prd-autorizacoes")({
 
 type Row = {
   id: string; symbol: string; variant: string; mode: string; enabled: boolean;
-  max_qty: number; max_daily_loss_brl: number;
+  max_qty: number; max_daily_loss_brl: number; max_daily_loss_mult: number | null;
   authorized_at: string | null; authorized_by: string | null;
 };
 
@@ -81,18 +86,18 @@ function PrdAuthorizationsPage() {
   const [target, setTarget] = useState<Row | null>(null);
   const [password, setPassword] = useState("");
   const [qty, setQty] = useState(1);
-  const [loss, setLoss] = useState(0);
+  const [lossMult, setLossMult] = useState(2.5);
   const [killStep, setKillStep] = useState<0 | 1 | 2>(0);
   const [killPassword, setKillPassword] = useState("");
 
   const mSet = useMutation({
-    mutationFn: (p: { row: Row; enabled: boolean; password: string; max_qty: number; max_daily_loss_brl: number }) =>
+    mutationFn: (p: { row: Row; enabled: boolean; password: string; max_qty: number; max_daily_loss_mult: number }) =>
       setAuth({
         data: {
           symbol: p.row.symbol as never, variant: (p.row.variant ?? "indicador") as never,
           mode: p.row.mode as never,
           enabled: p.enabled, max_qty: p.max_qty,
-          max_daily_loss_brl: p.max_daily_loss_brl, password: p.password,
+          max_daily_loss_mult: p.max_daily_loss_mult, password: p.password,
         },
       }),
     onSuccess: () => {
@@ -139,7 +144,9 @@ function PrdAuthorizationsPage() {
   function openDialog(row: Row, enabling: boolean) {
     setTarget({ ...row, enabled: enabling });
     setQty(Number(row.max_qty ?? 1));
-    setLoss(Number(row.max_daily_loss_brl ?? 0));
+    // Multiplicador guardado; linha antiga cai no derivado do sizing.
+    const s0 = sizingFor(row);
+    setLossMult(Number(row.max_daily_loss_mult ?? s0?.manual_daily_loss_mult ?? 2.5));
     setPassword("");
   }
 
@@ -195,7 +202,7 @@ function PrdAuthorizationsPage() {
           <div>
             <div className="text-xs uppercase text-muted-foreground">Stop global</div>
             <div className="font-mono text-2xl font-semibold text-orange-300">{brl(stopGlobal)}</div>
-            <div className="text-xs text-muted-foreground">3 stops de cada robô ligado, no tamanho real</div>
+            <div className="text-xs text-muted-foreground">soma do limite que de fato trava cada robô ligado</div>
           </div>
           <div>
             <div className="text-xs uppercase text-muted-foreground">Saldo da conta</div>
@@ -217,7 +224,8 @@ function PrdAuthorizationsPage() {
         </div>
         <p className="text-xs text-muted-foreground">
           Ao alcançar o global, nenhum robô real abre nova posição — o simulado continua rodando normalmente.
-          Por robô vale o MENOR entre o limite digitado e 3 stops no tamanho real.
+          Por robô vale o MENOR entre o limite digitado e {STOPS_POR_DIA} stops no tamanho real — e o global é
+          exatamente a soma da coluna “Trava em”.
         </p>
       </section>
 
@@ -239,7 +247,7 @@ function PrdAuthorizationsPage() {
                 <th className="text-left">Modalidade</th>
                 <th className="text-left">Status</th>
                 <th className="text-right">Qtd. máx.</th>
-                <th className="text-right">Perda diária máx.</th>
+                <th className="text-right">Perda diária máx. (x stop)</th>
                 <th className="text-right">3 stops (real)</th>
                 <th className="text-right">Trava em</th>
                 <th className="text-left pl-4">Autorizado em</th>
@@ -259,7 +267,10 @@ function PrdAuthorizationsPage() {
                       : <Badge variant="secondary">bloqueado</Badge>}
                   </td>
                   <td className="text-right font-mono">{r.max_qty}</td>
-                  <td className="text-right font-mono">R$ {Number(r.max_daily_loss_brl).toFixed(2)}</td>
+                  <td className="text-right font-mono">
+                    {mult(r.max_daily_loss_mult ?? s?.manual_daily_loss_mult ?? null)}
+                    <span className="ml-1 text-[10px] text-muted-foreground">{brl(r.max_daily_loss_brl)}</span>
+                  </td>
                   <td className="text-right font-mono text-muted-foreground">
                     {s ? brl(s.three_stops_brl) : "—"}
                     {s ? <span className="ml-1 text-[10px]">({s.stop_pts} pts × {s.max_qty})</span> : null}
@@ -330,8 +341,31 @@ function PrdAuthorizationsPage() {
                     <Input type="number" min={1} max={100} value={qty} onChange={(e) => setQty(Number(e.target.value))} />
                   </div>
                   <div>
-                    <Label>Perda diária máx. (R$)</Label>
-                    <Input type="number" min={0} step={10} value={loss} onChange={(e) => setLoss(Number(e.target.value))} />
+                    <Label>Perda diária máx. (x stop)</Label>
+                    <Input type="number" min={0} step={0.05} value={lossMult}
+                      onChange={(e) => setLossMult(Number(e.target.value))} />
+                    {(() => {
+                      const s0 = sizingFor(target);
+                      if (!s0 || !(s0.stop_pts > 0)) {
+                        return <p className="mt-1 text-xs text-amber-300">Sem stop em pontos para este robô — o valor em reais não pode ser derivado.</p>;
+                      }
+                      const valor = brlFromMult(lossMult, s0.stop_pts, s0.point_value_brl, qty);
+                      const teto = brlFromMult(STOPS_POR_DIA, s0.stop_pts, s0.point_value_brl, qty);
+                      return (
+                        <>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            = <span className="font-mono text-foreground">{brl(valor)}</span> · {s0.stop_pts} pts ×{" "}
+                            {brl(s0.point_value_brl)}/pt × {qty} contrato(s)
+                          </p>
+                          {lossMult > STOPS_POR_DIA ? (
+                            <p className="mt-1 text-xs text-amber-300">
+                              Acima de {STOPS_POR_DIA}× não tem efeito: o teto de {STOPS_POR_DIA} stops prevalece e o robô
+                              vai travar em {brl(teto)}.
+                            </p>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
@@ -346,7 +380,7 @@ function PrdAuthorizationsPage() {
             <Button
               variant={target?.enabled ? "destructive" : "default"}
               disabled={!password || mSet.isPending}
-              onClick={() => target && mSet.mutate({ row: target, enabled: target.enabled, password, max_qty: qty, max_daily_loss_brl: loss })}
+              onClick={() => target && mSet.mutate({ row: target, enabled: target.enabled, password, max_qty: qty, max_daily_loss_mult: lossMult })}
             >
               {target?.enabled ? "Liberar conta real" : "Bloquear"}
             </Button>
