@@ -18,7 +18,7 @@ export const Route = createFileRoute("/_authenticated/b3-auditoria")({
 const MODE_LABEL: Record<string, string> = {
   conservador: "Conservador", cauteloso: "Cauteloso", moderado: "Moderado",
   equilibrado: "Equilibrado", semi_agressivo: "Semi-agressivo",
-  arrojado: "Arrojado", agressivo: "Agressivo",
+  arrojado: "Arrojado", agressivo: "Agressivo", enoir: "Enoir",
 };
 const CAT_COLOR: Record<string, string> = {
   tecnico: "bg-red-500/15 text-red-400 border-red-500/30",

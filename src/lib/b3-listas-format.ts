@@ -19,6 +19,7 @@ export const LISTA_MODE_LABEL: Record<string, string> = {
   semi_agressivo: "Semi agressivo",
   arrojado: "Arrojado",
   agressivo: "Agressivo",
+  enoir: "Enoir",
 };
 
 export const vLabel = (v?: string | null) => (v ? (LISTA_VARIANT_LABEL[v] ?? v) : "—");

@@ -93,6 +93,7 @@ const MODES = [
   { key: "semi_agressivo", label: "semi-agressivo" },
   { key: "arrojado", label: "arrojado" },
   { key: "agressivo", label: "agressivo" },
+  { key: "enoir", label: "enoir" },
 ] as const;
 
 const labelOfMode = (m: string) => MODES.find((x) => x.key === m)?.label ?? m;

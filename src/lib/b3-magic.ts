@@ -1,7 +1,7 @@
 // Magic number do espelhamento real (MT5). Módulo puro — nenhuma regra de
 // motor aqui, apenas a numeração que separa robôs na conta real.
 //
-// magic = bloco do ativo + bloco da modalidade (500 em 500) + índice do modo (1..7).
+// magic = bloco do ativo + bloco da modalidade (500 em 500) + índice do modo (1..8).
 // Ex.: WIN price_action semi_agressivo = 2000 + 500 + 4 = 2504.
 //
 // ATENÇÃO à espessura do bloco: cada ativo ocupa 1507 números (4 modalidades ×
@@ -42,6 +42,9 @@ export const REAL_MAGIC_VARIANT_BLOCK: Record<string, number> = {
 export const REAL_MAGIC_MODE_INDEX: Record<string, number> = {
   conservador: 1, moderado: 2, equilibrado: 3, semi_agressivo: 4, agressivo: 5,
   cauteloso: 6, arrojado: 7,
+  // `enoir` (30/08/2026) entra como 8, no fim: perfil de acerto alto com
+  // ganho/perda curto e zero a zero — não é degrau de agressividade.
+  enoir: 8,
 };
 
 
@@ -90,7 +93,7 @@ export const REAL_MAGIC_ASSET_INDEX: Record<string, number> = {
 // cinco atuais (índices 5 e 6), nunca na posição lógica de agressividade.
 export const REAL_MAGIC_MODE_INDEX_V2: Record<string, number> = {
   conservador: 0, moderado: 1, equilibrado: 2, semi_agressivo: 3, agressivo: 4,
-  cauteloso: 5, arrojado: 6,
+  cauteloso: 5, arrojado: 6, enoir: 7,
 };
 
 

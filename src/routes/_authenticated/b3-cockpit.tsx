@@ -79,6 +79,8 @@ const MODE_COLOR: Record<string, string> = {
   semi_agressivo: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   arrojado: "bg-orange-500/15 text-orange-300 border-orange-500/30",
   agressivo: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  // Cor própria: enoir é outro perfil, não o topo da rampa.
+  enoir: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
 };
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "Indicador",
@@ -139,11 +141,11 @@ type Filter = "all" | "open" | "blocked";
 type Sort = "none" | "desc" | "asc";
 
 // Ordem de exibição = ordem de agressividade (cauteloso e arrojado no meio).
-const MODE_LIST = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo"] as const;
+const MODE_LIST = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo", "enoir"] as const;
 const MODE_LABEL: Record<string, string> = {
   conservador: "Conservador", cauteloso: "Cauteloso", moderado: "Moderado",
   equilibrado: "Equilibrado", semi_agressivo: "Semi agressivo",
-  arrojado: "Arrojado", agressivo: "Agressivo",
+  arrojado: "Arrojado", agressivo: "Agressivo", enoir: "Enoir",
 };
 const VARIANT_LIST = Object.keys(VARIANT_LABEL);
 

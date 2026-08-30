@@ -14,6 +14,7 @@ const MODE_LABEL: Record<string, string> = {
   semi_agressivo: "Semi-agressivo",
   arrojado: "Arrojado",
   agressivo: "Agressivo",
+  enoir: "Enoir",
 };
 
 function fmt(v: any) {

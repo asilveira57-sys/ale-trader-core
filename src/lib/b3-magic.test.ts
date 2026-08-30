@@ -20,7 +20,7 @@ describe("realMagicNumber", () => {
     const modes = Object.keys(REAL_MAGIC_MODE_INDEX);
     expect(assets.length).toBe(10);
     expect(ALL_VARIANTS.length).toBe(7);
-    expect(modes.length).toBe(7);
+    expect(modes.length).toBe(8);
 
     const seen = new Map<number, string>();
     for (const a of assets) {
@@ -33,8 +33,8 @@ describe("realMagicNumber", () => {
       }
     }
     expect(seen.size).toBe(assets.length * ALL_VARIANTS.length * modes.length);
-    expect(seen.size).toBe(490);
-    expect(Math.max(...seen.keys())).toBe(22906);
+    expect(seen.size).toBe(560);
+    expect(Math.max(...seen.keys())).toBe(22907);
     // Os quatro ativos originais precisam manter a numeração já em uso.
     expect(realMagicNumber("WIN", "indicador", "conservador")).toBe(2001);
     expect(realMagicNumber("VALE3", "range", "agressivo")).toBe(3805);
@@ -43,6 +43,9 @@ describe("realMagicNumber", () => {
     // Modos novos entram no fim, sem deslocar nenhum dos cinco anteriores.
     expect(realMagicNumber("WIN", "indicador", "cauteloso")).toBe(2006);
     expect(realMagicNumber("WIN", "indicador", "arrojado")).toBe(2007);
+    expect(realMagicNumber("WIN", "indicador", "enoir")).toBe(2008);
+    expect(realMagicNumber("WIN", "rompimento", "enoir")).toBe(20007);
+    expect(realMagicNumber("SOL", "vwap", "enoir")).toBe(22907);
     expect(realMagicNumber("WIN", "rompimento", "cauteloso")).toBe(20005);
     expect(realMagicNumber("WIN", "rompimento", "arrojado")).toBe(20006);
   });
