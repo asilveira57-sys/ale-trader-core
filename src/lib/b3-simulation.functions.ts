@@ -221,7 +221,7 @@ async function mirrorToReal(
       const perda = dayResult.total_brl < 0 ? Math.abs(dayResult.total_brl) : 0;
       const global = globalStopFromSizing(sizing);
       const mine = sizing.find(
-        (s) => s.symbol === rootSymbol(symbol) && s.variant === variant && s.mode === mode,
+        (s: RealRobotSizing) => s.symbol === rootSymbol(symbol) && s.variant === variant && s.mode === mode,
       );
       const perdaRobo = (() => {
         const v = dayResult.by_magic.get(magic) ?? 0;
