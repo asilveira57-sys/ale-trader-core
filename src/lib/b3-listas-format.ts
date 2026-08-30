@@ -11,19 +11,16 @@ export const LISTA_VARIANT_LABEL: Record<string, string> = {
   vwap: "VWAP",
 };
 
-export const LISTA_MODE_LABEL: Record<string, string> = {
-  conservador: "Conservador",
-  cauteloso: "Cauteloso",
-  moderado: "Moderado",
-  equilibrado: "Equilibrado",
-  semi_agressivo: "Semi agressivo",
-  arrojado: "Arrojado",
-  agressivo: "Agressivo",
-  enoir: "Enoir",
-};
+// LISTA_MODE_LABEL removido (30/08/2026): o rótulo do modo vem de
+// public.b3_mode_apelidos (useModeApelidos). Aqui ficam só as CHAVES, que são
+// identidade e continuam sendo os valores de `mode` gravados no banco.
+export const MODE_KEYS = [
+  "conservador", "cauteloso", "moderado", "equilibrado",
+  "semi_agressivo", "arrojado", "agressivo", "enoir",
+] as const;
 
 export const vLabel = (v?: string | null) => (v ? (LISTA_VARIANT_LABEL[v] ?? v) : "—");
-export const mLabel = (m?: string | null) => (m ? (LISTA_MODE_LABEL[m] ?? String(m).replace("_", " ")) : "—");
+export const mLabel = (m?: string | null) => (m ? String(m).replace(/_/g, " ") : "—");
 
 const csvCell = (v: unknown) => {
   if (v == null) return "";

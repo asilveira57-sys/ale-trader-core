@@ -8,9 +8,10 @@ import { useServerFn } from "@tanstack/react-start";
 import { getB3ResultadoCombinacao, type CombGroup } from "@/lib/b3-listas.functions";
 import { BRL, SIGNED_BRL, assetLabel, B3_ASSETS } from "@/lib/b3-format";
 import {
-  vLabel, mLabel, downloadCsv, printPage, dm, todayBrt, daysAgoBrt,
-  LISTA_VARIANT_LABEL, LISTA_MODE_LABEL,
+  vLabel, downloadCsv, printPage, dm, todayBrt, daysAgoBrt,
+  LISTA_VARIANT_LABEL, MODE_KEYS,
 } from "@/lib/b3-listas-format";
+import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { Button } from "@/components/ui/button";
 import { Table2, Download, Printer, ArrowUp, ArrowDown } from "lucide-react";
 
@@ -58,7 +59,7 @@ const N = (v: any, d = 0) => (v == null ? "—" : Number(v).toLocaleString("pt-B
 
 const ASSETS = [...B3_ASSETS] as string[];
 const VARIANTS = Object.keys(LISTA_VARIANT_LABEL);
-const MODES = Object.keys(LISTA_MODE_LABEL);
+const MODES = [...MODE_KEYS] as string[];
 
 const STORE = "aletrader:b3-listas-filtro";
 
@@ -119,6 +120,14 @@ function MultiPick({
 
 function ListasPage() {
   const fn = useServerFn(getB3ResultadoCombinacao);
+  const apelidos = useModeApelidos();
+  // Apelido em destaque, técnico entre parênteses. Chave nunca muda.
+  const mText = (m?: string | null) => {
+    if (!m) return "—";
+    const t = apelidos.tech(m);
+    const n = apelidos.nick(m);
+    return t && t !== n ? `${n} (${t})` : n;
+  };
   const [de, setDe] = useState(daysAgoBrt(13));
   const [ate, setAte] = useState(todayBrt());
   const [group, setGroup] = useState<CombGroup>("trio");
@@ -164,7 +173,7 @@ function ListasPage() {
   const nada = !symbols.length || !variants.length || !modes.length;
 
   const nome = (r: any) =>
-    [r.symbol ? `${r.symbol} — ${assetLabel(r.symbol)}` : null, r.variant ? vLabel(r.variant) : null, r.mode ? mLabel(r.mode) : null]
+    [r.symbol ? `${r.symbol} — ${assetLabel(r.symbol)}` : null, r.variant ? vLabel(r.variant) : null, r.mode ? mText(r.mode) : null]
       .filter(Boolean)
       .join(" · ") || r.chave;
 
@@ -241,7 +250,7 @@ function ListasPage() {
         <div className="flex flex-wrap gap-4">
           <MultiPick title="Ativo" all={ASSETS} sel={symbols} onChange={setSymbols} labelOf={(v) => v} />
           <MultiPick title="Modalidade" all={VARIANTS} sel={variants} onChange={setVariants} labelOf={vLabel} />
-          <MultiPick title="Modo" all={MODES} sel={modes} onChange={setModes} labelOf={mLabel} />
+          <MultiPick title="Modo" all={MODES} sel={modes} onChange={setModes} labelOf={mText} />
         </div>
         <p className="text-[11px] text-muted-foreground">
           Clique isola o item · Ctrl (ou Shift) no clique soma · caixinhas somam · "Todos" marca e desmarca tudo
