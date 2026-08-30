@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { RobotConfigDialog } from "@/components/b3/RobotConfigDialog";
 import { Badge } from "@/components/ui/badge";
 import { modeFullLabel } from "@/lib/mode-nick-registry";
+import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -71,6 +72,9 @@ const copyText = (text: string, msg: string) => {
 };
 
 function AssetDashboardPage() {
+  // Carrega os apelidos (public.b3_mode_apelidos) e alimenta o registro usado
+  // pelos textos de cópia/exportação desta tela.
+  useModeApelidos();
   const { symbol } = Route.useParams();
   const root = String(symbol ?? "").toUpperCase();
   const fetchDash = useServerFn(getB3AssetDashboard);
