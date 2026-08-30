@@ -157,7 +157,9 @@ async function mirrorToReal(
     return;
   }
 
-  const quantity = Math.max(1, Math.min(REAL_QTY_BY_MODE[mode] ?? 1, authMaxQty));
+  // Quantidade real = max_qty da autorização (tela), nunca max_contracts do simulado.
+  const quantity = Math.max(1, authMaxQty);
+
 
   // Falha FECHADA: o magic vem do banco (public.b3_magic) e só é aceito se
   // public.b3_magic_valido aprovar. Erro de RPC, magic nulo/0 ou fora da faixa
