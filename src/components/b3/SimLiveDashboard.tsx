@@ -27,7 +27,10 @@ const COLOR: Record<Mode, string> = {
   semi_agressivo: "#f59e0b",
   arrojado: "#fb7185",
   agressivo: "#f43f5e",
+  // Cor própria (índigo): enoir é outro perfil, não o topo da rampa.
+  enoir: "#6366f1",
 };
+
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const NUM = (v: number, d = 0) => Number(v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
