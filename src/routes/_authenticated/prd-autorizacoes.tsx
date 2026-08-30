@@ -98,6 +98,13 @@ function PrdAuthorizationsPage() {
   if (isLoading || !data) return <div className="p-8 text-muted-foreground">Carregando autorizações…</div>;
 
   const allRows = (data.authorizations ?? []) as Row[];
+  const sizing = ((data as any).sizing ?? []) as SizingRow[];
+  const stopGlobal = computeGlobalRealStop(sizing.map(toGlobalRobot)).total_brl;
+  const stopGlobal2 = computeGlobalRealStop(sizing.map((s) => ({ ...toGlobalRobot(s), max_qty: 2 }))).total_brl;
+  const saldo = (data as any).capital_liquido_brl ?? (data as any).saldo_brl ?? null;
+  const pctSaldo = saldo && saldo > 0 ? (stopGlobal / saldo) * 100 : null;
+  const sizingFor = (r: Row) =>
+    sizing.find((s) => s.symbol === rootSymbol(r.symbol) && s.variant === (r.variant ?? "indicador") && s.mode === r.mode);
   const focused = !!(focus.symbol || focus.variant || focus.mode);
   const rows = allRows.filter((r) =>
     (!focus.symbol || r.symbol === focus.symbol)
@@ -109,6 +116,7 @@ function PrdAuthorizationsPage() {
     return acc;
   }, {});
   const enabledCount = data.enabled_count ?? 0;
+
 
   function openDialog(row: Row, enabling: boolean) {
     setTarget({ ...row, enabled: enabling });
