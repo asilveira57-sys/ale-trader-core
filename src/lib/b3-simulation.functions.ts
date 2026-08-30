@@ -29,7 +29,6 @@ import {
   type B3GrupoLimites, type B3GrupoEstado, type B3GrupoDecision,
 } from "./b3-grupo.server";
 
-import { realMagicNumber, MagicNumberNotRegisteredError } from "./b3-magic";
 
 
 const POINT_VALUE_BRL = 0.2;
@@ -114,10 +113,13 @@ const REAL_MIRROR_ENABLED = true;
 const REAL_QTY_BY_MODE: Record<Mode, number> = {
   conservador: 1, moderado: 1, equilibrado: 1, semi_agressivo: 1, agressivo: 1,
 };
-// Magic number: ver src/lib/b3-magic.ts (blocos por ativo/modalidade/modo).
-// CORRIGIDO em 17/08/2026: os dez ativos ganharam bloco próprio e o fallback
-// genérico 2900 (que colidiria com SOL) foi removido — ativo não cadastrado
-// falha FECHADA e nenhum comando real é enfileirado.
+// Magic number: FONTE ÚNICA NO BANCO (30/08/2026).
+// A fórmula vive só em public.b3_magic(p_symbol, p_variant, p_mode) e a
+// validação em public.b3_magic_valido(p_magic). Nenhuma cópia em TypeScript —
+// duas fórmulas divergem com o tempo e foi exatamente isso que produziu a
+// colisão real 2002..2005 entre WIN e WDO. Ativo/modalidade/modo não mapeado
+// falha FECHADA (nada de magic 0 seguindo em silêncio para o executor).
+
 
 
 async function mirrorToReal(
@@ -154,29 +156,47 @@ async function mirrorToReal(
 
   const quantity = Math.max(1, Math.min(REAL_QTY_BY_MODE[mode] ?? 1, authMaxQty));
 
-  // Falha FECHADA: ativo/modalidade/modo sem magic number cadastrado não pode
-  // receber número genérico (dois robôs com o mesmo magic fechariam a posição
-  // um do outro no MT5). Registra em system_logs e não enfileira o comando.
-  let magic: number;
+  // Falha FECHADA: o magic vem do banco (public.b3_magic) e só é aceito se
+  // public.b3_magic_valido aprovar. Erro de RPC, magic nulo/0 ou fora da faixa
+  // ⇒ comando real NÃO enfileirado + registro crítico em system_logs.
+  let magic = 0;
+  let magicMotivo: string | null = null;
   try {
-    magic = realMagicNumber(symbol, variant, mode);
+    const { data: magicData, error: magicErr } = await supabase.rpc("b3_magic", {
+      p_symbol: symbol, p_variant: variant, p_mode: mode,
+    });
+    if (magicErr) {
+      magicMotivo = `b3_magic falhou: ${magicErr.message}`;
+    } else {
+      magic = Number(magicData);
+      if (!Number.isFinite(magic) || magic <= 0) {
+        magicMotivo = `b3_magic devolveu valor inválido (${String(magicData)}) para ${symbol}/${variant}/${mode}`;
+      } else {
+        const { data: valido, error: validoErr } = await supabase.rpc("b3_magic_valido", { p_magic: magic });
+        if (validoErr) magicMotivo = `b3_magic_valido falhou: ${validoErr.message}`;
+        else if (valido !== true) magicMotivo = `magic ${magic} reprovado por b3_magic_valido (${symbol}/${variant}/${mode})`;
+      }
+    }
   } catch (e) {
-    const message = (e as Error).message;
-    console.error(`[mirror] magic number não cadastrado — comando real NÃO enfileirado: ${message}`);
+    magicMotivo = `erro inesperado ao obter magic: ${(e as Error).message}`;
+  }
+  if (magicMotivo) {
+    console.error(`[mirror] magic inválido — comando real NÃO enfileirado: ${magicMotivo}`);
     try {
       await supabase.from("system_logs").insert({
-        event_type: "magic_number_nao_cadastrado",
+        event_type: "magic_number_invalido",
         source: `b3_real_mirror:${symbol}:${variant}:${mode}`,
         severity: "critical",
-        message: `Comando real NÃO enfileirado: ${message}`,
+        message: `Comando real NÃO enfileirado: ${magicMotivo}`,
         technical_data: {
-          symbol, variant, mode, action, side, run_id: runId,
-          erro: e instanceof MagicNumberNotRegisteredError ? "nao_cadastrado" : "inesperado",
+          symbol, variant, mode, action, side, run_id: runId, magic_calculado: magic,
+          fonte: "public.b3_magic",
         } as any,
       });
     } catch { /* log é best-effort; o bloqueio já aconteceu */ }
     return;
   }
+
 
   try {
     await supabase.from("b3_mt5_commands").insert({
