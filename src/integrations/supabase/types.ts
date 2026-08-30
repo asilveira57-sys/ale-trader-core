@@ -7124,26 +7124,54 @@ export type Database = {
           variant: string
         }[]
       }
-      b3_resultado_combinacao: {
-        Args: { p_ate: string; p_de: string; p_group?: string }
-        Returns: {
-          chave: string
-          hit_rate: number
-          media_op: number
-          melhor_dia: number
-          mode: string
-          ops: number
-          ops_pos: number
-          pct_pregoes_pos: number
-          pior_dia: number
-          pregoes: number
-          pregoes_pos: number
-          resultado_brl: number
-          score_medio: number
-          symbol: string
-          variant: string
-        }[]
-      }
+      b3_resultado_combinacao:
+        | {
+            Args: { p_ate: string; p_de: string; p_group?: string }
+            Returns: {
+              chave: string
+              hit_rate: number
+              media_op: number
+              melhor_dia: number
+              mode: string
+              ops: number
+              ops_pos: number
+              pct_pregoes_pos: number
+              pior_dia: number
+              pregoes: number
+              pregoes_pos: number
+              resultado_brl: number
+              score_medio: number
+              symbol: string
+              variant: string
+            }[]
+          }
+        | {
+            Args: {
+              p_ate: string
+              p_de: string
+              p_group?: string
+              p_modes?: string[]
+              p_symbols?: string[]
+              p_variants?: string[]
+            }
+            Returns: {
+              chave: string
+              hit_rate: number
+              media_op: number
+              melhor_dia: number
+              mode: string
+              ops: number
+              ops_pos: number
+              pct_pregoes_pos: number
+              pior_dia: number
+              pregoes: number
+              pregoes_pos: number
+              resultado_brl: number
+              score_medio: number
+              symbol: string
+              variant: string
+            }[]
+          }
       b3_retencao_diaria:
         | {
             Args: never

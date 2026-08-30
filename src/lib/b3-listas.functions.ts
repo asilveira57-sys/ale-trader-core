@@ -47,9 +47,20 @@ const shiftDay = (iso: string, days: number) =>
 
 const num = (v: any) => (v == null ? null : Number(v));
 
+const arg = (v?: string[] | null) => {
+  if (!Array.isArray(v)) return null;
+  const vals = v.map((s) => String(s)).filter((s) => s && s !== "all");
+  // Lista vazia = nada selecionado. Sentinela impossível para devolver vazio,
+  // em vez de silenciosamente mostrar tudo.
+  return vals.length ? vals : ["__nenhum__"];
+};
+
 export const getB3ResultadoCombinacao = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { de: string; ate: string; group?: CombGroup; sort?: string; dir?: "asc" | "desc" }) => d)
+  .inputValidator((d: {
+    de: string; ate: string; group?: CombGroup; sort?: string; dir?: "asc" | "desc";
+    symbols?: string[] | null; variants?: string[] | null; modes?: string[] | null;
+  }) => d)
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     const group: CombGroup = (["ativo", "par", "trio", "modalidade", "modo"] as const).includes(data.group as any)
@@ -61,14 +72,22 @@ export const getB3ResultadoCombinacao = createServerFn({ method: "POST" })
     const prevAte = shiftDay(de, -1);
     const prevDe = shiftDay(prevAte, -(span - 1));
 
+    const p_symbols = arg(data.symbols);
+    const p_variants = arg(data.variants);
+    const p_modes = arg(data.modes);
+
     const [atual, anterior] = await Promise.all([
-      (supabase as any).rpc("b3_resultado_combinacao", { p_de: de, p_ate: ate, p_group: group }),
-      (supabase as any).rpc("b3_resultado_combinacao", { p_de: prevDe, p_ate: prevAte, p_group: group }),
+      (supabase as any).rpc("b3_resultado_combinacao", { p_de: de, p_ate: ate, p_group: group, p_symbols, p_variants, p_modes }),
+      (supabase as any).rpc("b3_resultado_combinacao", { p_de: prevDe, p_ate: prevAte, p_group: group, p_symbols, p_variants, p_modes }),
     ]);
     if (atual.error) throw atual.error;
 
     const prevByKey = new Map<string, number>();
-    for (const r of (anterior.data ?? []) as any[]) prevByKey.set(String(r.chave), Number(r.resultado_brl ?? 0));
+    let prevOps = 0;
+    for (const r of (anterior.data ?? []) as any[]) {
+      prevByKey.set(String(r.chave), Number(r.resultado_brl ?? 0));
+      prevOps += Number(r.ops ?? 0);
+    }
 
     const rows: CombRow[] = ((atual.data ?? []) as any[]).map((r) => ({
       chave: String(r.chave),
@@ -118,9 +137,23 @@ export const getB3ResultadoCombinacao = createServerFn({ method: "POST" })
 
     return {
       group, de, ate, prev_de: prevDe, prev_ate: prevAte, sort, dir: data.dir === "asc" ? "asc" : "desc",
-      rows, totais,
+      rows,
+      totais: {
+        ...totais,
+        // Resultado por operação: a única leitura comparável quando o número de
+        // robôs muda entre os períodos.
+        media_op: totais.ops ? totais.resultado_brl / totais.ops : null,
+        ops_anterior: prevOps,
+        media_op_anterior: prevOps ? totais.resultado_anterior_brl / prevOps : null,
+      },
+      filtro: {
+        symbols: p_symbols && p_symbols[0] !== "__nenhum__" ? p_symbols : p_symbols ? [] : null,
+        variants: p_variants && p_variants[0] !== "__nenhum__" ? p_variants : p_variants ? [] : null,
+        modes: p_modes && p_modes[0] !== "__nenhum__" ? p_modes : p_modes ? [] : null,
+      },
     };
   });
+
 
 // ─────────────────────── Lista 2 — extrato do real ───────────────────────
 
