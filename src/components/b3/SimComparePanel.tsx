@@ -67,6 +67,8 @@ const MODE_COLOR: Record<string, string> = {
   semi_agressivo: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   arrojado: "bg-orange-500/15 text-orange-300 border-orange-500/30",
   agressivo: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  // Cor própria: enoir não é degrau da rampa de agressividade.
+  enoir: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
 };
 
 const STATUS_META: Record<string, { label: string; cls: string; canResumeToday: boolean; type: "operando" | "pausa" | "stop_op" | "stop_dia" | "meta" | "risco" | "horario" | "zeragem" | "erro" }> = {

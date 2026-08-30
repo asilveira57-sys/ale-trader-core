@@ -3,6 +3,8 @@ export const B3_ROBOT_MODES = [
   // Ordem de exibição = ordem de agressividade. (A numeração do magic number
   // é outra: cauteloso/arrojado entram no fim lá, para não mover magics em uso.)
   "conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo",
+  // `enoir` no fim: perfil próprio (acerto alto, alvo curto, zero a zero).
+  "enoir",
 ] as const;
 export type B3RobotMode = (typeof B3_ROBOT_MODES)[number];
 

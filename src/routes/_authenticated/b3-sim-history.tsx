@@ -25,7 +25,7 @@ export const Route = createFileRoute("/_authenticated/b3-sim-history")({
   notFoundComponent: () => <div className="p-6">Não encontrado.</div>,
 });
 
-const MODES = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo"] as const;
+const MODES = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo", "enoir"] as const;
 type Mode = typeof MODES[number];
 const MODE_COLOR: Record<Mode, string> = {
   conservador: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
@@ -35,6 +35,7 @@ const MODE_COLOR: Record<Mode, string> = {
   semi_agressivo: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   arrojado: "bg-orange-500/15 text-orange-300 border-orange-500/30",
   agressivo: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  enoir: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
 };
 const BRL = (v: any) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const NUM = (v: any, d = 0) => Number(v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -290,6 +291,7 @@ function HistoryPage() {
                   <SelectItem value="equilibrado">Equilibrado</SelectItem>
                   <SelectItem value="semi_agressivo">Semi-agressivo</SelectItem>
                   <SelectItem value="arrojado">Arrojado</SelectItem>
+                  <SelectItem value="enoir">Enoir</SelectItem>
                   <SelectItem value="agressivo">Agressivo</SelectItem>
                 </SelectContent>
               </Select>

@@ -25,7 +25,7 @@ const VARIANT_LABEL: Record<string, string> = {
 const MODE_LABEL: Record<string, string> = {
   conservador: "conservador", cauteloso: "cauteloso", moderado: "moderado",
   equilibrado: "equilibrado", semi_agressivo: "semi-agressivo",
-  arrojado: "arrojado", agressivo: "agressivo",
+  arrojado: "arrojado", agressivo: "agressivo", enoir: "enoir",
 };
 const vLabel = (v: string) => VARIANT_LABEL[v] ?? String(v ?? "");
 const mLabel = (m: string) => MODE_LABEL[m] ?? String(m ?? "");

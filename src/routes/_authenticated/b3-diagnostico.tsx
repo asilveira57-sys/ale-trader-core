@@ -40,6 +40,7 @@ const MODE_LABEL: Record<string, string> = {
   semi_agressivo: "Semi agressivo",
   arrojado: "Arrojado",
   agressivo: "Agressivo",
+  enoir: "Enoir",
 };
 
 function Chip({ on, children, onClick }: { on: boolean; children: React.ReactNode; onClick: () => void }) {
