@@ -1027,7 +1027,7 @@ function CockpitRealPage() {
                 {brokerPositions.length ? (
                   brokerPositions.map((p) => (
                     <p key={`z-${p.symbol}-${p.ticket ?? p.magic_number}`} className="text-sm font-semibold text-foreground">
-                      {sideLabel(p.side === "buy" ? "sell" : "buy")} {p.quantity}x {rootOf(p.symbol)} a mercado, resultado atual{" "}
+                      {sideLabel(p.side === "buy" ? "sell" : "buy")} {p.quantity}x {p.symbol} a mercado, resultado atual{" "}
                       <span className={money(p.profit_brl)}>{p.profit_brl == null ? "—" : SIGNED_BRL(p.profit_brl)}</span>
                     </p>
                   ))
