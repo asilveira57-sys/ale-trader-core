@@ -9,7 +9,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   AlertTriangle, CheckCircle2, CircleSlash, Clock, Hand, KeyRound, LayoutDashboard,
-  Play, RefreshCw, ShieldOff, XOctagon, Radio, GitCompareArrows,
+  Play, RefreshCw, ShieldOff, XOctagon, Radio, GitCompareArrows, TrendingDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,7 @@ import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
   getB3RealCockpit, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
-  closeRealPositionByBroker, getRealCommandStatus,
+  closeRealPositionByBroker, getRealCommandStatus, setRealAccountPeakConfig,
 } from "@/lib/b3-real-cockpit.functions";
 
 export const Route = createFileRoute("/_authenticated/cockpit-real")({
@@ -124,6 +124,92 @@ function Tile({ label, value, sub, cls }: { label: string; value: string; sub?: 
     </div>
   );
 }
+
+// ─────────── Freio de pico da CONTA, ao vivo ───────────
+// Mostra ANTES de virar prejuízo: pico do dia, resultado agora, quanto já foi
+// devolvido (R$ e %) e quanto ainda falta para o freio armar. A configuração
+// aqui é SÓ da camada da conta — não toca em nenhum parâmetro de robô.
+function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => void }) {
+  const save = useServerFn(setRealAccountPeakConfig);
+  const [pct, setPct] = useState<string>("");
+  const [floor, setFloor] = useState<string>("");
+
+  const mSave = useMutation({
+    mutationFn: () =>
+      save({ data: {
+        peak_giveback_pct: Math.min(95, Math.max(5, Number(pct || (peak?.peak_giveback_pct ?? 0.35) * 100))) / 100,
+        peak_min_brl: Math.max(0, Number(floor || (peak?.peak_min_brl ?? 100))),
+      } }),
+    onSuccess: () => { toast.success("Freio de pico da conta atualizado"); onSaved(); },
+    onError: (e: any) => toast.error(e?.message ?? "falha ao salvar"),
+  });
+
+  if (!peak) return null;
+  const armed = peak.armed === true;
+  const pctCfg = Number(peak.peak_giveback_pct ?? 0.35);
+  const bar = peak.peak_brl > 0
+    ? Math.min(100, Math.max(0, (Number(peak.given_back_brl) / Math.max(1e-9, Number(peak.allowed_giveback_brl))) * 100))
+    : 0;
+
+  return (
+    <section className={`mt-3 rounded-xl border-2 p-4 ${armed ? "border-rose-400 bg-rose-600/20" : "border-amber-400/50 bg-amber-500/5"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-black tracking-tight">
+            <TrendingDown className="size-4" />
+            Freio de pico da CONTA {armed ? "— ARMADO" : "— vigiando"}
+          </h2>
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            {armed
+              ? `Armou ${peak.armed_at ? `às ${hhmm(peak.armed_at)}` : ""} com pico de ${BRL(peak.armed_peak_brl ?? peak.peak_brl)}. Novas ABERTURAS reais bloqueadas até o fim do pregão. Fechamento nunca é bloqueado e a simulação segue coletando.`
+              : `Camada acima do freio por robô: olha o total da conta (realizado + aberto a mercado). Só arma a partir de um pico de ${BRL(peak.peak_min_brl)}.`}
+          </p>
+        </div>
+        <div className="flex items-end gap-2">
+          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Devolução máx. (%)
+            <Input
+              className="mt-0.5 h-8 w-20"
+              inputMode="decimal"
+              value={pct === "" ? String(Math.round(pctCfg * 100)) : pct}
+              onChange={(e) => setPct(e.target.value)}
+            />
+          </label>
+          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Pico mínimo (R$)
+            <Input
+              className="mt-0.5 h-8 w-24"
+              inputMode="decimal"
+              value={floor === "" ? String(Number(peak.peak_min_brl ?? 100)) : floor}
+              onChange={(e) => setFloor(e.target.value)}
+            />
+          </label>
+          <Button size="sm" variant="outline" disabled={mSave.isPending} onClick={() => mSave.mutate()}>Salvar</Button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <Tile label="Pico do dia" value={SIGNED_BRL(peak.peak_brl ?? 0)} sub={peak.peak_at ? `às ${hhmm(peak.peak_at)}` : "—"} cls="text-emerald-300" />
+        <Tile label="Resultado agora" value={SIGNED_BRL(peak.result_brl ?? 0)} cls={money(peak.result_brl)} />
+        <Tile label="Já devolvido" value={BRL(peak.given_back_brl ?? 0)} sub={peak.given_back_pct == null ? "—" : `${(Number(peak.given_back_pct) * 100).toFixed(1)}% do pico`} cls="text-rose-300" />
+        <Tile label={`Tolerado (${(pctCfg * 100).toFixed(0)}%)`} value={BRL(peak.allowed_giveback_brl ?? 0)} sub={peak.trigger_at_brl == null ? "pico abaixo do piso" : `arma se cair de ${BRL(peak.trigger_at_brl)}`} />
+        <Tile
+          label="Falta para armar"
+          value={armed ? "ARMADO" : peak.remaining_brl == null ? "—" : BRL(peak.remaining_brl)}
+          sub={armed ? "aberturas reais bloqueadas" : peak.eligible ? "de devolução restante" : "pico ainda é ruído"}
+          cls={armed ? "text-rose-300" : "text-amber-200"}
+        />
+      </div>
+
+      {peak.eligible ? (
+        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+          <div className={`h-full ${armed ? "bg-rose-500" : bar > 66 ? "bg-amber-400" : "bg-emerald-500"}`} style={{ width: `${armed ? 100 : bar}%` }} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 
 function CockpitRealPage() {
   const apelidos = useModeApelidos();
@@ -348,6 +434,10 @@ function CockpitRealPage() {
           sub={`${today.wins ?? 0} ganho(s) · ${today.losses ?? 0} perda(s)${today.sem_preco_count ? ` · ${today.sem_preco_count} sem preço` : ""}`}
         />
       </div>
+
+      <PeakBrakePanel peak={d?.account_peak ?? null} onSaved={() => q.refetch()} />
+
+
 
       <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-3">

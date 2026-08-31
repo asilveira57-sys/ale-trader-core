@@ -2901,8 +2901,61 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_real_account_peak: {
+        Row: {
+          armed: boolean
+          armed_at: string | null
+          armed_giveback_brl: number | null
+          armed_giveback_pct: number | null
+          armed_peak_brl: number | null
+          armed_result_brl: number | null
+          created_at: string
+          id: string
+          last_result_brl: number
+          peak_at: string | null
+          peak_brl: number
+          session_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          armed?: boolean
+          armed_at?: string | null
+          armed_giveback_brl?: number | null
+          armed_giveback_pct?: number | null
+          armed_peak_brl?: number | null
+          armed_result_brl?: number | null
+          created_at?: string
+          id?: string
+          last_result_brl?: number
+          peak_at?: string | null
+          peak_brl?: number
+          session_date: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          armed?: boolean
+          armed_at?: string | null
+          armed_giveback_brl?: number | null
+          armed_giveback_pct?: number | null
+          armed_peak_brl?: number | null
+          armed_result_brl?: number | null
+          created_at?: string
+          id?: string
+          last_result_brl?: number
+          peak_at?: string | null
+          peak_brl?: number
+          session_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_real_execution_state: {
         Row: {
+          peak_giveback_pct: number
+          peak_min_brl: number
           real_enabled: boolean
           resumed_at: string | null
           stopped_at: string | null
@@ -2912,6 +2965,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          peak_giveback_pct?: number
+          peak_min_brl?: number
           real_enabled?: boolean
           resumed_at?: string | null
           stopped_at?: string | null
@@ -2921,6 +2976,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          peak_giveback_pct?: number
+          peak_min_brl?: number
           real_enabled?: boolean
           resumed_at?: string | null
           stopped_at?: string | null

@@ -228,12 +228,33 @@ async function mirrorToReal(
         return v < 0 ? Math.abs(v) : 0;
       })();
 
+      // Freio de pico da CONTA (camada acima do freio por robô, que segue igual).
+      // Acompanha o pico do resultado real do dia da conta inteira e bloqueia
+      // TODAS as novas aberturas reais quando a devolução passa do percentual.
+      const { refreshAccountPeak } = await import("./b3-real-account-peak.server");
+      const accountPeak = await refreshAccountPeak(supabase, userId, dayResult.total_brl);
+
+      // "Parar novas entradas reais" (botão laranja): já bloqueia a ENTREGA no
+      // hook do executor; aqui bloqueia também a ENFILEIRAÇÃO, para o comando
+      // nem existir. Fechamento segue livre — este bloco só roda em 'open'.
+      const { data: execState } = await supabase
+        .from("b3_real_execution_state").select("real_enabled, stopped_reason")
+        .eq("user_id", userId).maybeSingle();
+      const realParado = execState ? (execState as any).real_enabled === false : false;
+
       let motivo: string | null = null;
-      if (global.total_brl > 0 && perda >= global.total_brl) {
+      if (realParado) {
+        motivo = `real PARADO pela tela${(execState as any)?.stopped_reason ? `: ${(execState as any).stopped_reason}` : ""}`;
+      } else if (accountPeak.armed) {
+        motivo = accountPeak.reason
+          ?? `freio de pico da conta real armado às ${accountPeak.armed_at ?? "—"} (pico R$ ${accountPeak.peak_brl.toFixed(2)})`;
+
+      } else if (global.total_brl > 0 && perda >= global.total_brl) {
         motivo = `stop global real alcançado: perda R$ ${perda.toFixed(2)} ≥ global derivado R$ ${global.total_brl.toFixed(2)}`;
       } else if (mine && mine.effective_daily_loss_brl > 0 && perdaRobo >= mine.effective_daily_loss_brl) {
         motivo = `limite diário real do robô alcançado: perda R$ ${perdaRobo.toFixed(2)} ≥ R$ ${mine.effective_daily_loss_brl.toFixed(2)} (${mine.limite_origem})`;
       }
+
 
       if (motivo) {
         try {
@@ -252,7 +273,17 @@ async function mirrorToReal(
               max_qty: mine?.max_qty ?? quantity,
               contratos_simulados: mine?.sim_max_contracts ?? null,
               parametros_reais_convertidos: mine?.real_brl ?? null,
+              freio_pico_conta: {
+                armado: accountPeak.armed,
+                pico_brl: accountPeak.peak_brl,
+                resultado_brl: accountPeak.result_brl,
+                devolvido_brl: accountPeak.given_back_brl,
+                devolvido_pct: accountPeak.given_back_pct,
+                tolerado_pct: accountPeak.peak_giveback_pct,
+                piso_brl: accountPeak.peak_min_brl,
+              },
             } as any,
+
           });
         } catch { /* log best-effort; o bloqueio já aconteceu */ }
         return;
