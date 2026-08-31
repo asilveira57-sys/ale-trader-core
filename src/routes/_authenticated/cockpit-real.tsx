@@ -703,13 +703,71 @@ function CockpitRealPage() {
             )}
           </Panel>
 
-          {/* Ordens reais do dia */}
-          <Panel title={`Ordens reais de hoje (${orders.length})`} hint="O que o executor mandou para a corretora, com preço executado e ticket da XP.">
-            {!orders.length ? (
+          {/* Ordens reais do dia — duas visões */}
+          <Panel
+            title={ordersView === "trades" ? `Operações reais de hoje (${trades.length})` : `Ordens reais de hoje (${orders.length})`}
+            hint="Verde e vermelho só para dinheiro. Compra e venda são selo neutro. Operação sem preço executado gravado fica fora do acumulado, com travessão."
+          >
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant={ordersView === "trades" ? "default" : "outline"} onClick={() => setOrdersView("trades")}>
+                Por operação
+              </Button>
+              <Button size="sm" variant={ordersView === "commands" ? "default" : "outline"} onClick={() => setOrdersView("commands")}>
+                Por comando (auditoria)
+              </Button>
+            </div>
+
+            {ordersView === "trades" ? (
+              !trades.length ? (
+                <p className="text-xs text-muted-foreground">Nenhuma operação real hoje.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[880px] text-xs">
+                    <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <tr className="border-b border-border">
+                        <th className="py-1 text-left">Entrada</th>
+                        <th className="py-1 text-left">Saída</th>
+                        <th className="py-1 text-right">Duração</th>
+                        <th className="py-1 text-left">Ativo</th>
+                        <th className="py-1 text-left">Robô</th>
+                        <th className="py-1 text-left">Lado</th>
+                        <th className="py-1 text-right">Qtd</th>
+                        <th className="py-1 text-right">Preço entrada</th>
+                        <th className="py-1 text-right">Preço saída</th>
+                        <th className="py-1 text-right">Pontos</th>
+                        <th className="py-1 text-right">Resultado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trades.map((t) => (
+                        <tr key={t.id} className="border-b border-border/50">
+                          <td className="py-1 font-mono">{hhmmss(t.entry_time)}</td>
+                          <td className="py-1 font-mono">
+                            {t.open ? <span className="rounded bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-200">EM ABERTO</span> : hhmmss(t.exit_time)}
+                          </td>
+                          <td className="py-1 text-right">{durationText(t.entry_time, t.exit_time)}</td>
+                          <td className="py-1">{t.symbol}</td>
+                          <td className="py-1 text-muted-foreground">{VARIANT_LABEL[t.variant] ?? t.variant} · {apelidos.nick(t.mode)}</td>
+                          <td className="py-1"><SideTag side={t.side} /></td>
+                          <td className="py-1 text-right">{t.quantity}</td>
+                          <td className="py-1 text-right font-mono">{t.entry_price == null ? "—" : PX(t.entry_price, t.tick_size)}</td>
+                          <td className="py-1 text-right font-mono">{t.exit_price == null ? "—" : PX(t.exit_price, t.tick_size)}</td>
+                          <td className="py-1 text-right font-mono">{PTS(t.result_pts)}</td>
+                          <td className={`py-1 text-right font-mono font-black ${t.result_brl == null ? "text-muted-foreground" : money(t.result_brl)}`}>
+                            {t.result_brl == null ? "—" : SIGNED_BRL(t.result_brl)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <TradeTotals rows={trades} />
+                </div>
+              )
+            ) : !orders.length ? (
               <p className="text-xs text-muted-foreground">Nenhum comando real hoje.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] text-xs">
+                <table className="w-full min-w-[980px] text-xs">
                   <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
                     <tr className="border-b border-border">
                       <th className="py-1 text-left">Hora</th>
@@ -720,33 +778,50 @@ function CockpitRealPage() {
                       <th className="py-1 text-left">Robô</th>
                       <th className="py-1 text-right">Magic</th>
                       <th className="py-1 text-right">Preço exec.</th>
+                      <th className="py-1 text-right">Entrada</th>
+                      <th className="py-1 text-right">Saída</th>
+                      <th className="py-1 text-right">Pontos</th>
+                      <th className="py-1 text-right">Resultado</th>
                       <th className="py-1 text-left">Ticket</th>
                       <th className="py-1 text-left">Situação</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {orders.map((o) => (
-                      <tr key={o.id} className="border-b border-border/50 align-top">
-                        <td className="py-1 font-mono">{hhmmss(o.at)}</td>
-                        <td className="py-1">{o.action === "open" ? "abertura" : o.action === "close" ? "fechamento" : o.action}</td>
-                        <td className={`py-1 font-semibold ${o.side === "buy" ? "text-emerald-300" : "text-rose-300"}`}>{sideLabel(o.side)}</td>
-                        <td className="py-1 text-right">{o.quantity}</td>
-                        <td className="py-1">{o.symbol}</td>
-                        <td className="py-1 text-muted-foreground">{VARIANT_LABEL[o.variant] ?? o.variant} · {apelidos.nick(o.mode)}</td>
-                        <td className="py-1 text-right font-mono">{o.magic_number || "—"}</td>
-                        <td className="py-1 text-right font-mono font-semibold">{o.filled_price == null ? "—" : PX(o.filled_price, o.tick_size)}</td>
-                        <td className="py-1 font-mono">{o.broker_ticket ?? "—"}</td>
-                        <td className={`py-1 ${statusCls(o.status)}`}>
-                          {STATUS_LABEL[o.status] ?? o.status}
-                          {o.error_message ? <span className="block max-w-[240px] break-words text-[10px] opacity-80">{o.error_message}</span> : null}
-                        </td>
-                      </tr>
-                    ))}
+                    {orders.map((o) => {
+                      const failed = o.status === "rejected" || o.status === "error" || o.status === "expired" || o.status === "cancelled";
+                      const showMoney = !failed && (o.action === "close" || o.trade_open);
+                      return (
+                        <tr key={o.id} className={`border-b border-border/50 align-top ${failed ? "text-muted-foreground" : ""}`}>
+                          <td className="py-1 font-mono">{hhmmss(o.at)}</td>
+                          <td className="py-1">{o.action === "open" ? "abertura" : o.action === "close" ? "fechamento" : o.action}</td>
+                          <td className="py-1"><SideTag side={o.side} /></td>
+                          <td className="py-1 text-right">{o.quantity}</td>
+                          <td className="py-1">{o.symbol}</td>
+                          <td className="py-1 text-muted-foreground">{VARIANT_LABEL[o.variant] ?? o.variant} · {apelidos.nick(o.mode)}</td>
+                          <td className="py-1 text-right font-mono">{o.magic_number || "—"}</td>
+                          <td className="py-1 text-right font-mono font-semibold">{o.filled_price == null ? "—" : PX(o.filled_price, o.tick_size)}</td>
+                          <td className="py-1 text-right font-mono">{failed || o.trade_entry_price == null ? "—" : PX(o.trade_entry_price, o.tick_size)}</td>
+                          <td className="py-1 text-right font-mono">{failed || o.trade_exit_price == null ? "—" : PX(o.trade_exit_price, o.tick_size)}</td>
+                          <td className="py-1 text-right font-mono">{showMoney ? PTS(o.trade_result_pts) : "—"}</td>
+                          <td className={`py-1 text-right font-mono font-black ${showMoney && o.trade_result_brl != null ? money(o.trade_result_brl) : "text-muted-foreground"}`}>
+                            {showMoney && o.trade_result_brl != null ? SIGNED_BRL(o.trade_result_brl) : "—"}
+                            {o.trade_open ? <span className="block text-[10px] font-semibold text-amber-200">a mercado</span> : null}
+                          </td>
+                          <td className="py-1 font-mono">{o.broker_ticket ?? "—"}</td>
+                          <td className={`py-1 ${failed ? "text-muted-foreground" : statusCls(o.status)}`}>
+                            {STATUS_LABEL[o.status] ?? o.status}
+                            {o.error_message ? <span className="block max-w-[240px] break-words text-[10px] opacity-80">{o.error_message}</span> : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+                <TradeTotals rows={trades} note="Totais das operações do dia (a visão por comando lista também recusa, expiração e erro, que não são resultado)." />
               </div>
             )}
           </Panel>
+
 
           {/* Robôs */}
           <Panel
