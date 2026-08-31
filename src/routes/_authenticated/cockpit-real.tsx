@@ -891,6 +891,8 @@ function CockpitRealPage() {
           </Panel>
         </div>
       </div>
+      </div>
+
 
       {/* Confirmação: fechar UMA posição reportada pela corretora */}
       <AlertDialog open={!!closeTarget} onOpenChange={(o) => { if (!o) setCloseTarget(null); }}>
