@@ -279,8 +279,18 @@ async function mirrorToReal(
   }
 }
 
-type Mode = "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agressivo";
-const MODES: Mode[] = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"];
+// Os 8 modos, na ordem de `b3_mode_apelidos.ordem` (1..8):
+// João, Amanda, Bernardo, Camila, Davi, Ana, Alexandre, Enoir.
+// ATENÇÃO: esta lista NÃO é a lista de execução do motor. O laço do tique lê
+// os modos habilitados de b3_simulation_mode_settings (ver `activeModes`).
+// Aqui ela só serve de ordem de exibição e de fallback de criação de linhas.
+type Mode =
+  | "conservador" | "cauteloso" | "moderado" | "equilibrado"
+  | "semi_agressivo" | "arrojado" | "agressivo" | "enoir";
+const MODES: Mode[] = [
+  "conservador", "cauteloso", "moderado", "equilibrado",
+  "semi_agressivo", "arrojado", "agressivo", "enoir",
+];
 
 // Instrumentação da gestão de posição aberta: no máximo 1 gravação por minuto
 // por ordem (chave = order_id → minuto epoch já registrado).
