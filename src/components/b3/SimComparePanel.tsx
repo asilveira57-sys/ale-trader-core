@@ -55,9 +55,12 @@ function exportExtratoCSV(symbol: string, period: string, modes: any[]) {
   URL.revokeObjectURL(url);
 }
 
-// Esta tela compara a execução de simulação antiga, que roda os cinco modos
-// originais; cauteloso/arrojado só aparecem no rótulo/cor quando vierem do banco.
-const MODES = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"] as const;
+// Os oito modos, na ordem de b3_mode_apelidos.ordem (1..8). O motor passou a
+// avaliar todos os modos habilitados no banco, então a comparação também.
+const MODES = [
+  "conservador", "cauteloso", "moderado", "equilibrado",
+  "semi_agressivo", "arrojado", "agressivo", "enoir",
+] as const;
 type Mode = typeof MODES[number];
 const MODE_COLOR: Record<string, string> = {
   conservador: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
