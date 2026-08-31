@@ -161,7 +161,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         const q = t.quantity || 0;
         cur.entry = t.entry_price == null ? cur.entry : ((cur.entry ?? 0) * cur.qty + t.entry_price * q) / (cur.qty + q);
         cur.exit = t.exit_price ?? cur.exit;
-        cur.pts = t.result_pts == null ? cur.pts : (cur.pts ?? 0) + t.result_pts * q;
+        cur.pts = t.result_pts == null ? cur.pts : ((cur.pts ?? 0) * cur.qty + t.result_pts * q) / (cur.qty + q);
         cur.brl = t.result_brl == null ? cur.brl : (cur.brl ?? 0) + t.result_brl;
         cur.qty += q;
         if (t.result_brl == null) cur.missing = true;
@@ -207,6 +207,34 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         trade_open: c.action === "open" ? openLive.has(c.id) : false,
       }))
       .reverse();
+
+    // ── 4b. Visão por OPERAÇÃO (uma linha por operação completa) ──
+    const dayTrades = [
+      ...ledger.trades
+        .filter((t) => (t.exit_time ?? "") >= dayStartUtc)
+        .map((t) => ({
+          id: `${t.close_command_id ?? t.magic_number}-${t.entry_time ?? ""}`,
+          root: t.root, symbol: t.symbol, mode: t.mode, variant: t.variant,
+          magic_number: t.magic_number, side: t.side, quantity: t.quantity,
+          entry_time: t.entry_time, exit_time: t.exit_time,
+          entry_price: t.entry_price, exit_price: t.exit_price,
+          result_pts: t.result_pts, result_brl: t.result_brl,
+          broker_ticket: t.broker_ticket,
+          tick_size: t.tick_size ?? profileFor(t.root).tick_size,
+          open: false,
+        })),
+      ...positions.map((p) => ({
+        id: `open-${p.root}-${p.magic_number}`,
+        root: p.root, symbol: p.symbol, mode: p.mode, variant: p.variant,
+        magic_number: p.magic_number, side: p.side, quantity: p.quantity,
+        entry_time: p.entry_time, exit_time: null as string | null,
+        entry_price: p.entry_price, exit_price: p.live_price,
+        result_pts: p.unrealized_pts, result_brl: p.unrealized_brl,
+        broker_ticket: p.broker_ticket,
+        tick_size: p.tick_size,
+        open: true,
+      })),
+    ].sort((a, b) => new Date(b.entry_time ?? 0).getTime() - new Date(a.entry_time ?? 0).getTime());
 
     const filledToday = dayOrders.filter((o) => o.status === "filled").length;
     const rejectedToday = dayOrders.filter((o) => o.status === "rejected" || o.status === "error").length;
@@ -412,6 +440,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       broker,
       positions,
       day_orders: dayOrders,
+      day_trades: dayTrades,
       trades_today: tradesToday.slice().reverse(),
       today,
       robots,
