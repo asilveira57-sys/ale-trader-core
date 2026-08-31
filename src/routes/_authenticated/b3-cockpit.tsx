@@ -356,8 +356,11 @@ function CockpitPage() {
   const allCollapsed = orderedAssets.length > 0 && orderedAssets.every(([root]) => collapsedAssets.has(root));
 
 
+  // mx-auto + teto largo: o `container` do Tailwind satura em 1536px e impede
+  // um ultrawide de mostrar os 8 modos em linha. Teto generoso aproveita a
+  // largura real (e responde ao menu lateral retrátil).
   return (
-    <div className="container mx-auto px-3 py-4 space-y-4 sm:px-4 sm:py-6">
+    <div className="mx-auto w-full max-w-[2400px] px-3 py-4 space-y-4 sm:px-4 sm:py-6">
       <header className="grid gap-2 sm:flex sm:items-center sm:justify-between sm:flex-wrap">
         <div className="min-w-0">
           <h1 className="text-xl font-bold sm:text-2xl">Cockpit — todos os robôs</h1>
@@ -569,7 +572,7 @@ function CockpitPage() {
           {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
             const sub = (hdr?.por_modalidade ?? []).find((m: any) => m.variant === variant);
             return (
-            <div key={variant} className="space-y-2 rounded-lg border border-border/40 bg-background/30 p-3">
+            <div key={variant} className="@container space-y-2 rounded-lg border border-border/40 bg-background/30 p-3">
               <h3 className="text-xs font-semibold flex items-center gap-2 flex-wrap">
                 <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
                 <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
@@ -594,7 +597,11 @@ function CockpitPage() {
                 </Button>
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
+                  mede a largura real disponível — inclusive após recolher o menu
+                  lateral — em vez do viewport. Cortes na área útil do grid:
+                    < 380px → 1 col | 380–780 → 2 | 780–1500 → 4 | ≥1500 → 8. */}
+              <div className="grid grid-cols-1 @[380px]:grid-cols-2 @[780px]:grid-cols-4 @[1500px]:grid-cols-8 gap-3">
                 {cards.map((c: any) => {
                   const key = `${c.run_id}:${c.mode}`;
                   const isOpen = expanded.has(key);
