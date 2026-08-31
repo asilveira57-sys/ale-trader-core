@@ -511,7 +511,7 @@ function CockpitPage() {
             <Button size="sm" variant={allModes ? "default" : "outline"} className="h-8 shrink-0 text-[11px] sm:h-7"
               title={allModes ? "Desmarcar todos" : "Marcar todos"}
               onClick={() => toggleAll("modes", allModes)}>Todos</Button>
-            {apelidos.sortModes(MODE_LIST).map((m) => (
+            {apelidos.sortModes([...MODE_LIST] as string[]).map((m) => (
               <Button key={m} size="sm" variant={modesSel.includes(m) ? "default" : "outline"}
                 className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique isola; Ctrl/Shift soma"
                 onClick={(e) => clickItem("modes", m, e)}>
