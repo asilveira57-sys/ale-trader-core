@@ -77,11 +77,19 @@ if (typeof window !== "undefined") {
         ),
       );
       if (alive.every(Boolean)) {
-        // Bundle íntegro: erro de execução de verdade. Dá saída ao usuário.
-        setTimeout(showBlankScreenFallback, 400);
+        // Bundle íntegro. Se a tela ficou realmente em branco, tenta UMA recarga
+        // com cache-bust (index.html pode estar velho no cache do browser);
+        // se já recarregou há pouco, mostra a saída manual.
+        setTimeout(() => {
+          const blank = (document.body?.innerText ?? "").trim().length === 0;
+          if (!blank) return;
+          if (canReloadNow()) hardReload();
+          else showBlankScreenFallback();
+        }, 400);
         return;
       }
       if (canReloadNow()) hardReload();
+
     } catch {
       /* silencioso */
     }
