@@ -37,12 +37,32 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   });
 }
 
+function preventStaleDocumentCache(request: Request, response: Response): Response {
+  const contentType = response.headers.get("content-type") ?? "";
+  const isDocument =
+    request.headers.get("sec-fetch-dest") === "document" || contentType.includes("text/html");
+  if (!isDocument) return response;
+
+  // HTML must never outlive its hashed assets. Otherwise a browser/CDN can keep
+  // an old document that points at chunks removed by the next deployment.
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "no-store, no-cache, must-revalidate, max-age=0");
+  headers.set("pragma", "no-cache");
+  headers.set("expires", "0");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const normalized = await normalizeCatastrophicSsrResponse(response);
+      return preventStaleDocumentCache(request, normalized);
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {
