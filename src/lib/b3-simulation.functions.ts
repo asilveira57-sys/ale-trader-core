@@ -867,7 +867,7 @@ async function runB3SimulationTickInner(
     if (!grupoLimites) return null;
     const openList = (await getOpen()) ?? [];
     const porModo: Record<string, number> = {};
-    for (const mode of MODES) {
+    for (const mode of activeModes) {
       let v = Number(realizedTodayByMode[mode] ?? 0);
       for (const o of openList) {
         if (o.mode !== mode) continue;
