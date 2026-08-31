@@ -976,11 +976,11 @@ async function runB3SimulationTickInner(
       .eq("simulation_run_id", runId).eq("user_id", userId)
       .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider");
     const byMode: Record<string, any[]> = {};
-    for (const mode of MODES) byMode[mode] = [];
+    for (const mode of activeModes) byMode[mode] = [];
     for (const o of (validOrders ?? [])) if (byMode[o.mode]) byMode[o.mode].push(o);
     providerStats.valid_mt5_orders = (validOrders ?? []).length;
 
-    for (const mode of MODES) {
+    for (const mode of activeModes) {
       const m = modeByName[mode];
       if (!m) continue;
       const orders = byMode[mode] ?? [];
