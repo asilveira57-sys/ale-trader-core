@@ -597,6 +597,7 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
         message: `Zeragem real solicitada pelo painel: ${commands.length} comando(s) 'close' enfileirado(s).`,
         technical_data: {
           comandos: commands.map((c) => ({ symbol: c.symbol, side: c.side, quantity: c.quantity, magic_number: c.magic_number })),
+          fontes: positions.map((p) => ({ magic_number: p.magic_number, fonte: p.fonte })),
           autorizacoes_desligadas: rows ?? [],
         } as any,
       });
