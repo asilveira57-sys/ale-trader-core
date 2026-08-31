@@ -171,13 +171,123 @@ export interface ExtratoRealRow {
   entry_time: string | null;
   exit_time: string | null;
   result_brl: number | null;
+  /** Montante movimentado da operação (preço de entrada × ponto × qtd). */
+  volume_brl: number | null;
   broker_ticket: string | null;
   fechada_por: "sistema" | "manual" | "desconhecido";
 }
 
+/** Testeira: bruto separado do líquido. O líquido esconde a natureza do resultado. */
+export interface ExtratoStats {
+  ops: number;
+  ops_somaveis: number;
+  sem_preco: number;
+  ganho_bruto: number;
+  perda_bruta: number;
+  resultado_bruto: number;
+  /** Custos (corretagem + emolumentos). null = a base não guarda esse dado. */
+  custos_brl: number | null;
+  /** Bruto − custos quando existirem; igual ao bruto quando não existem. */
+  resultado_liquido: number;
+  fator_lucro: number | null;
+  ganhos: number;
+  perdas: number;
+  hit_rate: number | null;
+  ganho_medio: number | null;
+  perda_media: number | null;
+  maior_ganho: number | null;
+  maior_perda: number | null;
+  volume_brl: number;
+  manuais: number;
+  automaticas: number;
+}
+
+export interface ExtratoGrupo extends ExtratoStats {
+  chave: string;
+  rotulo: string;
+  root?: string;
+  variant?: string;
+  mode?: string;
+  magic_number?: number;
+  ordem?: number;
+}
+
+// Custos: b3_mt5_commands não guarda corretagem/emolumentos. Enquanto o
+// executor não reportar, a linha aparece com "—" e o líquido segue BRUTO.
+// Inventar número aqui faria o extrato parecer melhor do que a conta é.
+const COSTS_AVAILABLE = false;
+
+const emptyStats = (): ExtratoStats => ({
+  ops: 0, ops_somaveis: 0, sem_preco: 0, ganho_bruto: 0, perda_bruta: 0,
+  resultado_bruto: 0, custos_brl: COSTS_AVAILABLE ? 0 : null, resultado_liquido: 0,
+  fator_lucro: null, ganhos: 0, perdas: 0, hit_rate: null,
+  ganho_medio: null, perda_media: null, maior_ganho: null, maior_perda: null,
+  volume_brl: 0, manuais: 0, automaticas: 0,
+});
+
+function statsOf(rows: ExtratoRealRow[]): ExtratoStats {
+  const s = emptyStats();
+  s.ops = rows.length;
+  for (const r of rows) {
+    if (r.fechada_por === "manual") s.manuais += 1;
+    else if (r.fechada_por === "sistema") s.automaticas += 1;
+    s.volume_brl += r.volume_brl ?? 0;
+    // Sem preço executado: fora do acumulado (decisão de 30/08/2026).
+    if (r.result_brl == null) { s.sem_preco += 1; continue; }
+    const v = r.result_brl;
+    s.ops_somaveis += 1;
+    if (v >= 0) {
+      s.ganhos += 1; s.ganho_bruto += v;
+      s.maior_ganho = s.maior_ganho == null ? v : Math.max(s.maior_ganho, v);
+    } else {
+      s.perdas += 1; s.perda_bruta += Math.abs(v);
+      s.maior_perda = s.maior_perda == null ? Math.abs(v) : Math.max(s.maior_perda, Math.abs(v));
+    }
+  }
+  s.resultado_bruto = s.ganho_bruto - s.perda_bruta;
+  s.resultado_liquido = s.resultado_bruto - (s.custos_brl ?? 0);
+  s.fator_lucro = s.perda_bruta > 0 ? s.ganho_bruto / s.perda_bruta : null;
+  s.hit_rate = s.ops_somaveis ? s.ganhos / s.ops_somaveis : null;
+  s.ganho_medio = s.ganhos ? s.ganho_bruto / s.ganhos : null;
+  s.perda_media = s.perdas ? s.perda_bruta / s.perdas : null;
+  return s;
+}
+
+function groupBy(
+  rows: ExtratoRealRow[],
+  key: (r: ExtratoRealRow) => { chave: string; rotulo: string; extra?: Partial<ExtratoGrupo> } | null,
+): ExtratoGrupo[] {
+  const buckets = new Map<string, { rotulo: string; extra: Partial<ExtratoGrupo>; rows: ExtratoRealRow[] }>();
+  for (const r of rows) {
+    const k = key(r);
+    if (!k) continue;
+    const b = buckets.get(k.chave) ?? { rotulo: k.rotulo, extra: k.extra ?? {}, rows: [] };
+    b.rows.push(r);
+    buckets.set(k.chave, b);
+  }
+  return [...buckets.entries()].map(([chave, b]) => ({
+    chave, rotulo: b.rotulo, ...b.extra, ...statsOf(b.rows),
+  }));
+}
+
+// Semana ISO em horário de Brasília (a data já vem convertida por saoPauloDate).
+const isoWeek = (ymd: string) => {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  const day = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - day + 3);
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const fday = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - fday + 3);
+  const week = 1 + Math.round((d.getTime() - firstThursday.getTime()) / (7 * 86_400_000));
+  return `${d.getUTCFullYear()}-S${String(week).padStart(2, "0")}`;
+};
+
 export const getB3ExtratoReal = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { de?: string | null; ate?: string | null }) => d)
+  .inputValidator((d: {
+    de?: string | null; ate?: string | null;
+    symbols?: string[] | null; variants?: string[] | null; modes?: string[] | null;
+  }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const hoje = saoPauloDate(new Date());
@@ -196,13 +306,20 @@ export const getB3ExtratoReal = createServerFn({ method: "POST" })
     const profileFor = await loadAssetProfiles(supabase);
     const { trades } = buildRealLedger(commands, profileFor);
 
+    // Apelidos e ordem dos modos: a ordenação por modo segue a coluna `ordem`.
+    const { data: apelidos } = await (supabase as any)
+      .from("b3_mode_apelidos").select("mode, apelido, ordem");
+    const modeMeta = new Map<string, { apelido: string; ordem: number }>(
+      ((apelidos ?? []) as any[]).map((a) => [String(a.mode), { apelido: String(a.apelido ?? a.mode), ordem: Number(a.ordem ?? 999) }]),
+    );
+
     const inRange = (iso: string | null) => {
       if (!iso) return false;
       const d = saoPauloDate(new Date(iso));
       return d >= de && d <= ate;
     };
 
-    const rows: ExtratoRealRow[] = trades
+    const todas: ExtratoRealRow[] = trades
       .filter((t) => inRange(t.exit_time))
       .map((t) => ({
         data: t.exit_time ? saoPauloDate(new Date(t.exit_time)) : null,
@@ -218,6 +335,8 @@ export const getB3ExtratoReal = createServerFn({ method: "POST" })
         entry_time: t.entry_time,
         exit_time: t.exit_time,
         result_brl: t.result_brl,
+        volume_brl: t.entry_price == null ? null
+          : Math.abs(t.entry_price) * profileFor(t.root).point_value_brl * t.quantity,
         broker_ticket: t.broker_ticket,
         fechada_por: (t.closed_by === "user_manual_close"
           ? "manual"
@@ -227,32 +346,70 @@ export const getB3ExtratoReal = createServerFn({ method: "POST" })
       }))
       .sort((a, b) => new Date(b.exit_time ?? 0).getTime() - new Date(a.exit_time ?? 0).getTime());
 
-    // Preço zerado pelo defeito antigo do executor: fica fora da soma, com
-    // aviso — virar zero mentiria no acumulado.
-    const semPreco = rows.filter((r) => r.result_brl == null).length;
-    const somaveis = rows.filter((r) => r.result_brl != null);
+    // Recorte: a testeira e TODOS os agrupamentos usam as mesmas linhas
+    // filtradas — total parado com lista filtrada mente.
+    const sel = (v?: string[] | null) => {
+      if (!Array.isArray(v)) return null;
+      const vals = v.map(String).filter((s) => s && s !== "all");
+      return new Set(vals);
+    };
+    const fSym = sel(data.symbols), fVar = sel(data.variants), fMode = sel(data.modes);
+    const rows = todas.filter((r) =>
+      (!fSym || fSym.has(rootSymbol(r.symbol))) &&
+      (!fVar || fVar.has(r.variant)) &&
+      (!fMode || fMode.has(r.mode)));
 
-    const porDia = new Map<string, { data: string; resultado_brl: number; ops: number }>();
-    const porRobo = new Map<string, { chave: string; root: string; variant: string; mode: string; magic_number: number; resultado_brl: number; ops: number }>();
-    for (const r of somaveis) {
-      const dk = r.data ?? "—";
-      const d = porDia.get(dk) ?? { data: dk, resultado_brl: 0, ops: 0 };
-      d.resultado_brl += r.result_brl as number; d.ops += 1; porDia.set(dk, d);
+    const stats = statsOf(rows);
 
-      const rk = `${rootSymbol(r.symbol)}|${r.variant}|${r.mode}|${r.magic_number}`;
-      const b = porRobo.get(rk) ?? {
-        chave: rk, root: rootSymbol(r.symbol), variant: r.variant, mode: r.mode,
-        magic_number: r.magic_number, resultado_brl: 0, ops: 0,
-      };
-      b.resultado_brl += r.result_brl as number; b.ops += 1; porRobo.set(rk, b);
-    }
+    const porDia = groupBy(rows, (r) => (r.data ? { chave: r.data, rotulo: r.data } : null))
+      .sort((a, b) => (a.chave < b.chave ? 1 : -1));
+    const porRobo = groupBy(rows, (r) => ({
+      chave: `${rootSymbol(r.symbol)}|${r.variant}|${r.mode}|${r.magic_number}`,
+      rotulo: `${rootSymbol(r.symbol)} · ${r.variant} · ${r.mode}`,
+      extra: { root: rootSymbol(r.symbol), variant: r.variant, mode: r.mode, magic_number: r.magic_number },
+    })).sort((a, b) => b.resultado_liquido - a.resultado_liquido);
+    const porAtivo = groupBy(rows, (r) => ({
+      chave: rootSymbol(r.symbol), rotulo: rootSymbol(r.symbol), extra: { root: rootSymbol(r.symbol) },
+    })).sort((a, b) => b.resultado_liquido - a.resultado_liquido);
+    const porModalidade = groupBy(rows, (r) => ({
+      chave: r.variant, rotulo: r.variant, extra: { variant: r.variant },
+    })).sort((a, b) => b.resultado_liquido - a.resultado_liquido);
+    const porModo = groupBy(rows, (r) => ({
+      chave: r.mode,
+      rotulo: modeMeta.get(r.mode)?.apelido ?? r.mode,
+      extra: { mode: r.mode, ordem: modeMeta.get(r.mode)?.ordem ?? 999 },
+    })).sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999) || a.chave.localeCompare(b.chave));
+    const porSemana = groupBy(rows, (r) => (r.data ? { chave: isoWeek(r.data), rotulo: isoWeek(r.data) } : null))
+      .sort((a, b) => (a.chave < b.chave ? 1 : -1));
+    const porMes = groupBy(rows, (r) => (r.data ? { chave: r.data.slice(0, 7), rotulo: r.data.slice(0, 7) } : null))
+      .sort((a, b) => (a.chave < b.chave ? 1 : -1));
 
     return {
       de, ate, rows,
-      sem_preco: semPreco,
-      total_brl: somaveis.reduce((s, r) => s + (r.result_brl as number), 0),
-      total_ops: rows.length,
-      por_dia: [...porDia.values()].sort((a, b) => (a.data < b.data ? 1 : -1)),
-      por_robo: [...porRobo.values()].sort((a, b) => b.resultado_brl - a.resultado_brl),
+      custos_disponiveis: COSTS_AVAILABLE,
+      stats,
+      // Compatibilidade com os cartões antigos da tela.
+      sem_preco: stats.sem_preco,
+      total_brl: stats.resultado_liquido,
+      total_ops: stats.ops,
+      por_dia: porDia,
+      por_robo: porRobo,
+      por_ativo: porAtivo,
+      por_modalidade: porModalidade,
+      por_modo: porModo,
+      por_semana: porSemana,
+      por_mes: porMes,
+      filtro: {
+        symbols: fSym ? [...fSym] : null,
+        variants: fVar ? [...fVar] : null,
+        modes: fMode ? [...fMode] : null,
+      },
+      opcoes: {
+        symbols: [...new Set(todas.map((r) => rootSymbol(r.symbol)))].sort(),
+        variants: [...new Set(todas.map((r) => r.variant))].sort(),
+        modes: [...new Set(todas.map((r) => r.mode))]
+          .sort((a, b) => (modeMeta.get(a)?.ordem ?? 999) - (modeMeta.get(b)?.ordem ?? 999)),
+      },
     };
   });
+
