@@ -907,6 +907,12 @@ function CockpitRealPage() {
                   <div><dt className="text-[10px] uppercase text-muted-foreground">Quantidade</dt><dd className="font-black">{closeTarget?.quantity ?? "—"}</dd></div>
                   <div><dt className="text-[10px] uppercase text-muted-foreground">Preço corrente</dt><dd className="font-black">{PX(closeTarget?.price_current, closeTarget?.tick_size ?? 5)}</dd></div>
                 </dl>
+                {reportStale ? (
+                  <p className="rounded-lg border-2 border-rose-400 bg-rose-600 px-2 py-1.5 text-xs font-bold text-white">
+                    Relatório da corretora {broker.reported ? `parado há ${reportAgeS}s` : "ausente"}. Estes dados podem
+                    estar velhos e o comando <b>pode não ser executado</b> — se expirar em 120s, ligue para a mesa.
+                  </p>
+                ) : null}
                 <p className="text-xs text-muted-foreground">
                   Entra um comando <b>close</b> a mercado na fila (validade 2 min). Quem executa é o executor,
                   que fala com o MT5. Isto NÃO desliga autorizações e NÃO pausa a simulação.
