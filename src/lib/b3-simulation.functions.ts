@@ -2520,11 +2520,30 @@ async function runB3SimulationTickInner(
 
     const runT0 = Date.now();
 
-    for (const mode of MODES) {
+    for (const mode of activeModes) {
       const modeT0 = Date.now();
       try {
       const m = modeByName[mode];
-      if (!m) continue;
+      if (!m) {
+        // Modo habilitado no banco que o motor não conseguiu processar.
+        // Silêncio aqui foi o defeito que escondeu 210 robôs parados.
+        entryStageRows.push({
+          user_id: userId, simulation_run_id: runId, symbol: asset.symbol,
+          variant: runVariant, mode, stage: "motor",
+          reason: "modo_habilitado_sem_carteira",
+          detail: "Modo habilitado em b3_simulation_mode_settings sem linha em b3_simulation_modes",
+        });
+        try {
+          await (supabase as any).from("system_logs").insert({
+            event_type: "b3_modo_nao_processado",
+            source: "b3-simulation-tick",
+            severity: "error",
+            message: `Modo ${mode} habilitado não pôde ser processado (sem carteira) em ${asset.symbol}/${runVariant}`,
+            technical_data: { run_id: runId, mode, symbol: asset.symbol, variant: runVariant },
+          });
+        } catch { /* log nunca derruba o tique */ }
+        continue;
+      }
       const cfg = settingsByMode[mode];
       const realizedToday = Number(realizedTodayByMode[mode] ?? 0);
       const startMin = hhmmToMin(cfg.trading_start_time);
