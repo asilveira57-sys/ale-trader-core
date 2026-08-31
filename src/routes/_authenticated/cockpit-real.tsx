@@ -295,6 +295,9 @@ function CockpitRealPage() {
   const [resumeOpen, setResumeOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [showAllRobots, setShowAllRobots] = useState(false);
+  // Visão padrão: por OPERAÇÃO. A visão por comando fica como auditoria.
+  const [ordersView, setOrdersView] = useState<"trades" | "commands">("trades");
+
   // Fechamento pontual de UMA posição reportada pela corretora.
   const [closeTarget, setCloseTarget] = useState<any | null>(null);
   const [lastCommandId, setLastCommandId] = useState<string | null>(null);
