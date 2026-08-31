@@ -76,7 +76,7 @@ function AuthPage() {
       if (cancelled) return;
       const email = data.user?.email?.toLowerCase() ?? sessionData.session.user?.email?.toLowerCase();
       if (email === ALLOWED_EMAIL) {
-        navigate({ to: (takeReturnTo() ?? "/dashboard") as any, replace: true });
+        navigate({ to: (takeReturnTo() ?? "/b3-cockpit") as any, replace: true });
         return;
       }
       if (error && isDefinitiveSessionError(error)) supabase.auth.signOut({ scope: "local" });
@@ -98,7 +98,7 @@ function AuthPage() {
         await supabase.auth.signOut({ scope: "local" });
         throw new Error("Não foi possível validar a sessão. Tente novamente.");
       }
-      navigate({ to: (takeReturnTo() ?? "/dashboard") as any, replace: true });
+      navigate({ to: (takeReturnTo() ?? "/b3-cockpit") as any, replace: true });
     } catch (err: any) {
       const status = getAuthStatus(err);
       if (status === 504 || isRetryableAuthError(err)) {
