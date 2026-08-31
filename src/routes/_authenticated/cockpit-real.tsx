@@ -229,6 +229,10 @@ function CockpitRealPage() {
   // Fechamento pontual de UMA posição reportada pela corretora.
   const [closeTarget, setCloseTarget] = useState<any | null>(null);
   const [lastCommandId, setLastCommandId] = useState<string | null>(null);
+  // Confirmação em DOIS passos nos botões de emergência: no bolso, um toque
+  // acidental não pode parar o real nem zerar posição.
+  const [stopStep, setStopStep] = useState<1 | 2>(1);
+  const [closeStep, setCloseStep] = useState<1 | 2>(1);
 
   // Ao vivo: sem cache de posição nem de cotação.
   const refetchInterval = useVisibleRefetchInterval(15_000);
@@ -322,9 +326,139 @@ function CockpitRealPage() {
   const realEnabled = d?.real_state?.real_enabled !== false;
   const today = d?.today ?? {};
 
+  // Requisito de SEGURANÇA, não de estilo: relatório da corretora com mais de
+  // 60s é dado velho. A tela é a única proteção de quem está na rua.
+  const reportAgeS = broker.report_age_s == null ? null : Math.round(Number(broker.report_age_s));
+  const reportStale = !broker.reported || (reportAgeS != null && reportAgeS > 60);
+
+  const StaleBanner = () =>
+    !reportStale ? null : (
+      <div className="rounded-xl border-2 border-rose-300 bg-rose-600 px-3 py-2 text-white">
+        <p className="flex items-center gap-2 text-base font-black leading-tight">
+          <AlertTriangle className="size-6 shrink-0 animate-pulse" />
+          {broker.reported
+            ? `DADO VELHO — relatório da corretora parado há ${reportAgeS}s`
+            : "SEM RELATÓRIO DA CORRETORA — a posição abaixo não é confirmada"}
+        </p>
+        <p className="mt-1 text-[12px] font-medium leading-snug opacity-95">
+          O executor manda relatório a cada 2s. Parado, a tela mostra a última foto — a posição pode já
+          estar fechada, ou pode existir outra. Fechar pelo painel só enfileira o comando: se o executor
+          estiver morto, ele expira em 120s e <b>nada acontece</b>. Nesse caso, ligue para a mesa da corretora.
+        </p>
+      </div>
+    );
+
   return (
-    <div className="mx-auto w-full max-w-[1500px] px-3 pb-16 pt-4 sm:px-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+    <div className="mx-auto w-full max-w-[1500px] px-3 pb-16 pt-3 sm:px-6 sm:pt-4">
+      {/* ══════════ CELULAR: tela de emergência, uma mão, sem rolagem ══════════
+          Ordem obrigatória: 1) tenho posição? 2) resultado e saldo 3) fechar. */}
+      <div className="space-y-2 md:hidden">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-black tracking-tight">Cockpit Real</h1>
+            <p className="truncate text-[11px] text-muted-foreground">
+              {realEnabled ? "real operando" : "REAL PARADO"} · {d?.server_time ? hhmmss(d.server_time) : "—"}
+            </p>
+          </div>
+          <Button size="sm" variant="outline" className="h-9 shrink-0" onClick={() => q.refetch()}>
+            <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+
+        <StaleBanner />
+
+        {/* 1) Tenho posição aberta? */}
+        {!brokerPositions.length ? (
+          <p className="rounded-xl border-2 border-border bg-muted/30 px-3 py-4 text-center text-base font-black">
+            Nenhuma posição aberta na corretora
+          </p>
+        ) : (
+          brokerPositions.map((p) => (
+            <div key={`m-${p.symbol}-${p.ticket ?? p.magic_number}`} className="rounded-xl border-2 border-rose-500/60 bg-rose-500/10 p-3">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+                <p className="min-w-0 truncate text-xl font-black tracking-tight">
+                  {sideLabel(p.side)} {p.quantity}x {p.symbol}
+                </p>
+                <p className={`shrink-0 text-xl font-black ${money(p.profit_brl)}`}>
+                  {p.profit_brl == null ? "—" : SIGNED_BRL(p.profit_brl)}
+                </p>
+              </div>
+              <dl className="mt-1 grid grid-cols-2 gap-x-3 text-[12px]">
+                <div className="flex justify-between"><dt className="text-muted-foreground">entrada</dt><dd className="font-bold">{PX(p.entry_price, p.tick_size)}</dd></div>
+                <div className="flex justify-between"><dt className="text-muted-foreground">agora</dt><dd className="font-bold">{PX(p.price_current, p.tick_size)}</dd></div>
+              </dl>
+              {/* 3) Botão de fechar, grande, ao alcance do polegar */}
+              <Button
+                variant="destructive"
+                className="mt-3 h-auto min-h-20 w-full flex-col gap-0.5 whitespace-normal py-3 text-lg font-black"
+                onClick={() => setCloseTarget(p)}
+                disabled={mCloseOne.isPending}
+              >
+                <span className="flex items-center gap-2"><XOctagon className="size-6 shrink-0" /> FECHAR ESTA POSIÇÃO</span>
+                <span className="text-[11px] font-semibold opacity-90">
+                  {reportStale ? "ATENÇÃO: executor pode estar morto — comando pode não executar" : "a mercado · quem executa é o executor"}
+                </span>
+              </Button>
+            </div>
+          ))
+        )}
+
+        {/* 2) Resultado do dia e saldo */}
+        <div className="grid grid-cols-2 gap-2">
+          <Tile label="Resultado do dia" value={SIGNED_BRL(today.total_brl ?? 0)} sub={`realizado ${SIGNED_BRL(today.realized_brl ?? 0)}`} cls={money(today.total_brl)} />
+          <Tile
+            label="Saldo da conta"
+            value={today.saldo_conta_brl != null ? BRL(today.saldo_conta_brl) : today.saldo_estimado_brl == null ? "—" : BRL(today.saldo_estimado_brl)}
+            sub={today.saldo_conta_brl != null ? "reportado" : "estimado"}
+          />
+        </div>
+
+        {/* Emergência — sem rolar muito, mas com dois passos de confirmação */}
+        <div className="grid gap-2">
+          {realEnabled ? (
+            <Button
+              className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal bg-amber-500 py-2 text-sm font-black text-black hover:bg-amber-400"
+              onClick={() => { setStopStep(1); setConfirmStop(true); }}
+            >
+              <Hand className="size-5 shrink-0" /> Parar novas entradas reais
+            </Button>
+          ) : (
+            <Button
+              className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal bg-emerald-600 py-2 text-sm font-black text-white hover:bg-emerald-500"
+              onClick={() => setResumeOpen(true)}
+            >
+              <Play className="size-5 shrink-0" /> Liberar entradas reais (senha)
+            </Button>
+          )}
+          <Button
+            variant="destructive"
+            className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal py-2 text-sm font-black"
+            onClick={() => { setCloseStep(1); setConfirmClose(true); }}
+          >
+            <XOctagon className="size-5 shrink-0" /> Zerar posição real agora
+          </Button>
+        </div>
+
+        <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+          O painel apenas <b>enfileira</b> o comando; quem fala com o MT5 é o executor. Comando não
+          reivindicado expira em 120s. Se o executor estiver morto, a saída é <b>ligar para a mesa da corretora</b>.
+        </p>
+
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" className="h-9 flex-1" asChild>
+            <Link to="/b3-cockpit"><LayoutDashboard className="mr-1 size-4" /> Robôs</Link>
+          </Button>
+          <Button size="sm" variant="outline" className="h-9 flex-1" asChild>
+            <Link to="/prd-autorizacoes"><KeyRound className="mr-1 size-4" /> Autorizações</Link>
+          </Button>
+        </div>
+      </div>
+
+      <div className="hidden md:block">
+        <StaleBanner />
+      </div>
+
+      <header className="mt-3 hidden flex-wrap items-start justify-between gap-3 md:flex">
         <div className="min-w-0">
           <h1 className="text-2xl font-black tracking-tight">Cockpit Real</h1>
           <p className="text-xs text-muted-foreground">
@@ -350,6 +484,9 @@ function CockpitRealPage() {
         </div>
       </header>
 
+      {/* Do ponto abaixo em diante é a leitura completa de DESKTOP; no celular
+          ela só atrapalharia a tela de emergência acima. */}
+      <div className="hidden md:block">
       {/* Estado permanente do real — nunca sai da tela */}
       {!realEnabled ? (
         <div className="mt-3 rounded-xl border-2 border-rose-400 bg-rose-600 px-4 py-3 text-white">
@@ -754,6 +891,8 @@ function CockpitRealPage() {
           </Panel>
         </div>
       </div>
+      </div>
+
 
       {/* Confirmação: fechar UMA posição reportada pela corretora */}
       <AlertDialog open={!!closeTarget} onOpenChange={(o) => { if (!o) setCloseTarget(null); }}>
@@ -768,6 +907,12 @@ function CockpitRealPage() {
                   <div><dt className="text-[10px] uppercase text-muted-foreground">Quantidade</dt><dd className="font-black">{closeTarget?.quantity ?? "—"}</dd></div>
                   <div><dt className="text-[10px] uppercase text-muted-foreground">Preço corrente</dt><dd className="font-black">{PX(closeTarget?.price_current, closeTarget?.tick_size ?? 5)}</dd></div>
                 </dl>
+                {reportStale ? (
+                  <p className="rounded-lg border-2 border-rose-400 bg-rose-600 px-2 py-1.5 text-xs font-bold text-white">
+                    Relatório da corretora {broker.reported ? `parado há ${reportAgeS}s` : "ausente"}. Estes dados podem
+                    estar velhos e o comando <b>pode não ser executado</b> — se expirar em 120s, ligue para a mesa.
+                  </p>
+                ) : null}
                 <p className="text-xs text-muted-foreground">
                   Entra um comando <b>close</b> a mercado na fila (validade 2 min). Quem executa é o executor,
                   que fala com o MT5. Isto NÃO desliga autorizações e NÃO pausa a simulação.
@@ -788,11 +933,13 @@ function CockpitRealPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Confirmação: parar */}
-      <AlertDialog open={confirmStop} onOpenChange={setConfirmStop}>
+      {/* Confirmação: parar — DOIS passos (resumo, depois confirmação final) */}
+      <AlertDialog open={confirmStop} onOpenChange={(o) => { setConfirmStop(o); if (!o) setStopStep(1); }}>
         <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Parar novas entradas reais?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {stopStep === 1 ? "Parar novas entradas reais?" : "Confirmar: parar o dinheiro real"}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-left text-sm">
                 <p className="font-semibold text-foreground">O que acontece agora:</p>
@@ -802,21 +949,37 @@ function CockpitRealPage() {
                   <li>fechamentos continuam sendo entregues — a posição aberta segue gerida;</li>
                   <li>a simulação NÃO é afetada.</li>
                 </ul>
+                {stopStep === 2 ? (
+                  <p className="rounded-lg border-2 border-amber-400 bg-amber-500/15 px-2 py-1.5 text-xs font-bold text-amber-100">
+                    Segundo passo de propósito: toque acidental no bolso não para o real.
+                    Religar depois exige a senha mestra.
+                  </p>
+                ) : null}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-amber-500 text-black hover:bg-amber-400"
-              onClick={(e) => { e.preventDefault(); mStop.mutate(); }}
-              disabled={mStop.isPending}
-            >
-              {mStop.isPending ? "Parando…" : "Parar o real"}
-            </AlertDialogAction>
+            {stopStep === 1 ? (
+              <AlertDialogAction
+                className="bg-amber-500 text-black hover:bg-amber-400"
+                onClick={(e) => { e.preventDefault(); setStopStep(2); }}
+              >
+                Continuar
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction
+                className="bg-amber-500 text-black hover:bg-amber-400"
+                onClick={(e) => { e.preventDefault(); mStop.mutate(); }}
+                disabled={mStop.isPending}
+              >
+                {mStop.isPending ? "Parando…" : "Confirmar — parar o real"}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
 
       {/* Confirmação: religar com senha */}
       <AlertDialog open={resumeOpen} onOpenChange={(o) => { setResumeOpen(o); if (!o) setPassword(""); }}>
@@ -852,34 +1015,65 @@ function CockpitRealPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Confirmação: zerar */}
-      <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}>
+      {/* Confirmação: zerar — DOIS passos */}
+      <AlertDialog open={confirmClose} onOpenChange={(o) => { setConfirmClose(o); if (!o) setCloseStep(1); }}>
         <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Zerar posição real agora?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {closeStep === 1 ? "Zerar posição real agora?" : "Confirmar: zeragem de emergência"}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-left">
-                {positions.map((p) => (
-                  <p key={`${p.root}-${p.magic_number}`} className="text-sm font-semibold text-foreground">
-                    {sideLabel(p.side === "buy" ? "sell" : "buy")} {p.quantity}x {p.root} a mercado, resultado atual{" "}
-                    <span className={money(p.unrealized_brl)}>{p.unrealized_brl == null ? "—" : SIGNED_BRL(p.unrealized_brl)}</span>
+                {brokerPositions.length ? (
+                  brokerPositions.map((p) => (
+                    <p key={`z-${p.symbol}-${p.ticket ?? p.magic_number}`} className="text-sm font-semibold text-foreground">
+                      {sideLabel(p.side === "buy" ? "sell" : "buy")} {p.quantity}x {p.symbol} a mercado, resultado atual{" "}
+                      <span className={money(p.profit_brl)}>{p.profit_brl == null ? "—" : SIGNED_BRL(p.profit_brl)}</span>
+                    </p>
+                  ))
+                ) : positions.length ? (
+                  positions.map((p) => (
+                    <p key={`${p.root}-${p.magic_number}`} className="text-sm font-semibold text-foreground">
+                      {sideLabel(p.side === "buy" ? "sell" : "buy")} {p.quantity}x {p.root} a mercado, resultado atual{" "}
+                      <span className={money(p.unrealized_brl)}>{p.unrealized_brl == null ? "—" : SIGNED_BRL(p.unrealized_brl)}</span>
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-sm font-semibold text-foreground">
+                    Nenhuma posição conhecida — o real será parado de qualquer forma.
                   </p>
-                ))}
+                )}
                 <p className="text-xs text-muted-foreground">
                   Em seguida o real é parado e as autorizações de conta real são desligadas. A simulação não é afetada.
                 </p>
+                {closeStep === 2 ? (
+                  <p className="rounded-lg border-2 border-rose-400 bg-rose-600 px-2 py-1.5 text-xs font-bold text-white">
+                    {reportStale
+                      ? `Relatório da corretora ${broker.reported ? `parado há ${reportAgeS}s` : "ausente"} — o comando pode não ser executado. Se expirar em 120s, ligue para a mesa.`
+                      : "O painel enfileira; quem executa é o executor. Se ele não reivindicar em 120s, o comando expira."}
+                  </p>
+                ) : null}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(e) => { e.preventDefault(); mClose.mutate(); }}
-              disabled={mClose.isPending}
-            >
-              {mClose.isPending ? "Enviando…" : "Zerar agora"}
-            </AlertDialogAction>
+            {closeStep === 1 ? (
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(e) => { e.preventDefault(); setCloseStep(2); }}
+              >
+                Continuar
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(e) => { e.preventDefault(); mClose.mutate(); }}
+                disabled={mClose.isPending}
+              >
+                {mClose.isPending ? "Enviando…" : "Confirmar — zerar agora"}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

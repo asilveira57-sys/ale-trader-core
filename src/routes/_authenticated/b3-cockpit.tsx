@@ -468,50 +468,59 @@ function CockpitPage() {
           </Button>
         </div>
 
-        {/* Ativo (raiz do contrato: WIN, WDO...) — clique isola, Ctrl/Shift soma */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-muted-foreground w-20">Ativo:</span>
-          <Button size="sm" variant={allSymbols ? "default" : "outline"} className="h-7 text-[11px]"
-            title={allSymbols ? "Desmarcar todos" : "Marcar todos"}
-            onClick={() => toggleAll("symbols", allSymbols)}>Todos</Button>
-          {B3_ASSETS.map((s) => (
-            <Button key={s} size="sm" variant={symbolsSel.includes(s) ? "default" : "outline"}
-              className="h-7 text-[11px]" title={`${assetLabel(s)} — clique isola; Ctrl/Shift soma`}
-              onClick={(e) => clickItem("symbols", s, e)}>
-              {s}
-            </Button>
-          ))}
+        {/* Ativo (raiz do contrato: WIN, WDO...) — clique isola, Ctrl/Shift soma.
+            No celular cada faixa rola na horizontal: nada de texto cortado nem
+            de filtro empurrando os cartões para fora da tela. */}
+        <div className="grid gap-1 sm:flex sm:flex-wrap sm:items-center sm:gap-1.5">
+          <span className="text-[11px] text-muted-foreground sm:w-20">Ativo:</span>
+          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+            <Button size="sm" variant={allSymbols ? "default" : "outline"} className="h-8 shrink-0 text-[11px] sm:h-7"
+              title={allSymbols ? "Desmarcar todos" : "Marcar todos"}
+              onClick={() => toggleAll("symbols", allSymbols)}>Todos</Button>
+            {B3_ASSETS.map((s) => (
+              <Button key={s} size="sm" variant={symbolsSel.includes(s) ? "default" : "outline"}
+                className="h-8 shrink-0 text-[11px] sm:h-7" title={`${assetLabel(s)} — clique isola; Ctrl/Shift soma`}
+                onClick={(e) => clickItem("symbols", s, e)}>
+                {s}
+              </Button>
+            ))}
+          </div>
         </div>
 
         {/* Modalidade */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-muted-foreground w-20">Modalidade:</span>
-          <Button size="sm" variant={allVariants ? "default" : "outline"} className="h-7 text-[11px]"
-            title={allVariants ? "Desmarcar todas" : "Marcar todas"}
-            onClick={() => toggleAll("variants", allVariants)}>Todas</Button>
-          {VARIANT_LIST.map((v) => (
-            <Button key={v} size="sm" variant={variantsSel.includes(v) ? "default" : "outline"}
-              className="h-7 text-[11px]" title="Clique isola; Ctrl/Shift soma"
-              onClick={(e) => clickItem("variants", v, e)}>
-              {variantLabel(v)}
-            </Button>
-          ))}
+        <div className="grid gap-1 sm:flex sm:flex-wrap sm:items-center sm:gap-1.5">
+          <span className="text-[11px] text-muted-foreground sm:w-20">Modalidade:</span>
+          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+            <Button size="sm" variant={allVariants ? "default" : "outline"} className="h-8 shrink-0 text-[11px] sm:h-7"
+              title={allVariants ? "Desmarcar todas" : "Marcar todas"}
+              onClick={() => toggleAll("variants", allVariants)}>Todas</Button>
+            {VARIANT_LIST.map((v) => (
+              <Button key={v} size="sm" variant={variantsSel.includes(v) ? "default" : "outline"}
+                className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique isola; Ctrl/Shift soma"
+                onClick={(e) => clickItem("variants", v, e)}>
+                {variantLabel(v)}
+              </Button>
+            ))}
+          </div>
         </div>
 
-        {/* Modo de risco */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-muted-foreground w-20">Modo:</span>
-          <Button size="sm" variant={allModes ? "default" : "outline"} className="h-7 text-[11px]"
-            title={allModes ? "Desmarcar todos" : "Marcar todos"}
-            onClick={() => toggleAll("modes", allModes)}>Todos</Button>
-          {MODE_LIST.map((m) => (
-            <Button key={m} size="sm" variant={modesSel.includes(m) ? "default" : "outline"}
-              className="h-7 text-[11px]" title="Clique isola; Ctrl/Shift soma"
-              onClick={(e) => clickItem("modes", m, e)}>
-              {apelidos.nick(m)}
-            </Button>
-          ))}
+        {/* Modo de risco — apelidos na ordem da coluna `ordem` do banco */}
+        <div className="grid gap-1 sm:flex sm:flex-wrap sm:items-center sm:gap-1.5">
+          <span className="text-[11px] text-muted-foreground sm:w-20">Modo:</span>
+          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+            <Button size="sm" variant={allModes ? "default" : "outline"} className="h-8 shrink-0 text-[11px] sm:h-7"
+              title={allModes ? "Desmarcar todos" : "Marcar todos"}
+              onClick={() => toggleAll("modes", allModes)}>Todos</Button>
+            {apelidos.sortModes([...MODE_LIST] as string[]).map((m) => (
+              <Button key={m} size="sm" variant={modesSel.includes(m) ? "default" : "outline"}
+                className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique isola; Ctrl/Shift soma"
+                onClick={(e) => clickItem("modes", m, e)}>
+                {apelidos.nick(m)}
+              </Button>
+            ))}
+          </div>
         </div>
+
 
       </section>
 
