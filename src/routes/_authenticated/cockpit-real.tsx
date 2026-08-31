@@ -229,6 +229,10 @@ function CockpitRealPage() {
   // Fechamento pontual de UMA posição reportada pela corretora.
   const [closeTarget, setCloseTarget] = useState<any | null>(null);
   const [lastCommandId, setLastCommandId] = useState<string | null>(null);
+  // Confirmação em DOIS passos nos botões de emergência: no bolso, um toque
+  // acidental não pode parar o real nem zerar posição.
+  const [stopStep, setStopStep] = useState<1 | 2>(1);
+  const [closeStep, setCloseStep] = useState<1 | 2>(1);
 
   // Ao vivo: sem cache de posição nem de cotação.
   const refetchInterval = useVisibleRefetchInterval(15_000);
