@@ -506,11 +506,47 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
     if (cmdErr) throw cmdErr;
 
     const profileFor = await loadAssetProfiles(supabase);
-    const { positions } = buildRealLedger((cmds ?? []) as unknown as RealCommandRow[], profileFor);
+    const ledger = buildRealLedger((cmds ?? []) as unknown as RealCommandRow[], profileFor);
+
+    // Saída de emergência: o cálculo por comandos NÃO pode ser a única fonte.
+    // Justamente quando o MT5 se comporta mal (comando expirado, execução
+    // parcial) o livro por comandos zera e a corretora segue posicionada — e é
+    // aí que este botão é necessário. Por isso a verdade da corretora
+    // (b3_mt5_account_state.posicoes) entra como fonte alternativa.
+    const { data: brokerRow } = await supabase.from("b3_mt5_account_state")
+      .select("posicoes, reportado_em").eq("user_id", userId).maybeSingle();
+
+    type ToClose = { symbol: string; side: string; quantity: number; magic_number: number; mode: string; variant: string; fonte: "corretora" | "comandos" };
+    const fromLedger: ToClose[] = ledger.positions.map((p) => ({
+      symbol: rootSymbol(String(p.symbol)), side: String(p.side),
+      quantity: Number(p.quantity), magic_number: Number(p.magic_number ?? 0),
+      mode: String(p.mode), variant: String(p.variant), fonte: "comandos",
+    }));
+    const fromBroker: ToClose[] = (((brokerRow as any)?.posicoes ?? []) as any[])
+      .map((p) => {
+        const qty = Math.abs(Number(p?.volume ?? p?.quantidade ?? p?.quantity ?? 0));
+        const rawSide = String(p?.side ?? p?.tipo ?? p?.type ?? "").toLowerCase();
+        const side = /sell|venda|short/.test(rawSide) ? "sell" : "buy";
+        const magic = Number(p?.magic ?? p?.magic_number ?? 0);
+        const led = ledger.positions.find((x) => Number(x.magic_number ?? 0) === magic);
+        return {
+          symbol: rootSymbol(String(p?.symbol ?? "")), side, quantity: qty, magic_number: magic,
+          mode: String(led?.mode ?? "manual"), variant: String(led?.variant ?? "manual"),
+          fonte: "corretora" as const,
+        };
+      })
+      .filter((p) => p.symbol && p.quantity > 0);
+
+    // Corretora manda; o livro por comandos só cobre o que ela não reportou.
+    const positions: ToClose[] = [...fromBroker];
+    for (const p of fromLedger) {
+      if (!positions.some((x) => x.magic_number === p.magic_number && x.symbol === p.symbol)) positions.push(p);
+    }
 
     if (!positions.length) {
-      return { ok: false as const, queued: 0, disabled: 0, reason: "sem posição real aberta para zerar" };
+      return { ok: false as const, queued: 0, disabled: 0, reason: "sem posição real aberta para zerar (nem na corretora, nem no cálculo por comandos)" };
     }
+
 
     const stamp = nowMs;
     const commands = positions.map((p) => {
