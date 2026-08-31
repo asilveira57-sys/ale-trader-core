@@ -87,8 +87,10 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
           const results: any[] = [];
           const summary: any[] = [];
           const fila = Array.from(latestByUserAsset.values());
+          // Concorrência padrão 12: com 8 modos por execução (antes 5) a carga
+          // por tique subiu ~60% e a janela de um minuto ficou apertada.
           const limite = Math.min(
-            Math.max(1, Number(url.searchParams.get("concurrency") ?? 8)),
+            Math.max(1, Number(url.searchParams.get("concurrency") ?? 12)),
             16,
           );
 
