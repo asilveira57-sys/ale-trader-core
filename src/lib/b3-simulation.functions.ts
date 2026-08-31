@@ -675,6 +675,47 @@ async function runB3SimulationTickInner(
     }
   }
 
+  // ── LISTA DE EXECUÇÃO DO MOTOR: vem do BANCO, não de array em TypeScript ──
+  // Todo modo com enabled = true em b3_simulation_mode_settings é avaliado.
+  // Antes o laço usava a lista fixa de 5 modos e `cauteloso`, `arrojado` e
+  // `enoir` nunca eram sequer avaliados — nem como recusa. Ordem de execução
+  // segue a ordem de exibição conhecida; modo desconhecido vai para o fim.
+  const activeModes: string[] = (settingsRows ?? [])
+    .filter((s: any) => s.enabled !== false)
+    .map((s: any) => String(s.mode))
+    .sort((a, b) => {
+      const ia = MODES.indexOf(a as Mode), ib = MODES.indexOf(b as Mode);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+
+  // Carteira do modo (b3_simulation_modes) é estado do motor: se um modo está
+  // habilitado e não tem carteira nesta execução, criamos a carteira agora e
+  // registramos — robô que não roda tem que ser barulhento.
+  const semCarteira = activeModes.filter((m) => !modeByName[m]);
+  if (semCarteira.length) {
+    const inicial = Number(run.initial_balance ?? 10000);
+    const { data: criados, error: cErr } = await (supabase as any)
+      .from("b3_simulation_modes")
+      .insert(semCarteira.map((m) => ({
+        simulation_run_id: runId, user_id: userId, mode: m,
+        initial_balance: inicial, current_balance: inicial,
+      })))
+      .select("*");
+    for (const r of criados ?? []) { modeById[r.id] = r; modeByName[r.mode] = r; }
+    try {
+      await (supabase as any).from("system_logs").insert({
+        event_type: cErr ? "b3_modo_sem_carteira" : "b3_modo_carteira_criada",
+        source: "b3-simulation-tick",
+        severity: cErr ? "error" : "warning",
+        message: cErr
+          ? `Modos habilitados sem carteira e sem conseguir criar: ${semCarteira.join(", ")} — ${cErr.message}`
+          : `Carteira criada para modos habilitados sem carteira: ${semCarteira.join(", ")}`,
+        technical_data: { run_id: runId, symbol: run.symbol, variant: runVariant, modos: semCarteira },
+      });
+    } catch { /* log nunca derruba o tique */ }
+  }
+
+
   const now0 = new Date();
   const { data: macros } = await supabase.from("b3_macro_events")
     .select("*").eq("user_id", userId).eq("active", true)
