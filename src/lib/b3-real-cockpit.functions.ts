@@ -151,6 +151,39 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     const broker = buildBrokerState(brokerRow as any, ledger.positions, profileFor, nowMs);
 
     // ── 4. Ordens reais de hoje (o que a corretora executou) ──
+    // Apresentação: liga cada comando à(s) operação(ões) que ele originou no
+    // MESMO livro FIFO (buildRealLedger). Nenhum pareamento novo aqui.
+    const closeAgg = new Map<string, { entry: number | null; exit: number | null; pts: number | null; brl: number | null; qty: number; missing: boolean }>();
+    const openAgg = new Map<string, { entry: number | null; qty: number; closed_brl: number | null; missing: boolean }>();
+    for (const t of ledger.trades) {
+      if (t.close_command_id) {
+        const cur = closeAgg.get(t.close_command_id) ?? { entry: null, exit: null, pts: null, brl: null, qty: 0, missing: false };
+        const q = t.quantity || 0;
+        cur.entry = t.entry_price == null ? cur.entry : ((cur.entry ?? 0) * cur.qty + t.entry_price * q) / (cur.qty + q);
+        cur.exit = t.exit_price ?? cur.exit;
+        cur.pts = t.result_pts == null ? cur.pts : ((cur.pts ?? 0) * cur.qty + t.result_pts * q) / (cur.qty + q);
+        cur.brl = t.result_brl == null ? cur.brl : (cur.brl ?? 0) + t.result_brl;
+        cur.qty += q;
+        if (t.result_brl == null) cur.missing = true;
+        closeAgg.set(t.close_command_id, cur);
+      }
+      if (t.open_command_id) {
+        const cur = openAgg.get(t.open_command_id) ?? { entry: null, qty: 0, closed_brl: null, missing: false };
+        cur.entry = t.entry_price ?? cur.entry;
+        cur.qty += t.quantity || 0;
+        if (t.result_brl == null) cur.missing = true;
+        else cur.closed_brl = (cur.closed_brl ?? 0) + t.result_brl;
+        openAgg.set(t.open_command_id, cur);
+      }
+    }
+    // posições ainda abertas: marca a mercado a linha de abertura
+    const openLive = new Map<string, { entry: number | null; pts: number | null; brl: number | null }>();
+    for (const p of positions) {
+      for (const cid of (p.open_command_ids ?? [])) {
+        openLive.set(cid, { entry: p.entry_price, pts: p.unrealized_pts, brl: p.unrealized_brl });
+      }
+    }
+
     const dayOrders = commands
       .filter((c) => c.created_at >= dayStartUtc)
       .map((c) => ({
@@ -162,8 +195,46 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         at: c.filled_at ?? c.created_at,
         error_message: c.error_message ?? null,
         tick_size: profileFor(rootSymbol(String(c.symbol))).tick_size,
+        // Resultado da operação encerrada por ESTE comando de fechamento
+        trade_entry_price: c.action === "close" ? (closeAgg.get(c.id)?.entry ?? null) : (openAgg.get(c.id)?.entry ?? openLive.get(c.id)?.entry ?? (c.filled_price ? Number(c.filled_price) : null)),
+        trade_exit_price: c.action === "close" ? (closeAgg.get(c.id)?.exit ?? null) : null,
+        trade_result_pts: c.action === "close"
+          ? (closeAgg.get(c.id)?.missing ? null : closeAgg.get(c.id)?.pts ?? null)
+          : (openLive.get(c.id)?.pts ?? null),
+        trade_result_brl: c.action === "close"
+          ? (closeAgg.get(c.id)?.missing ? null : closeAgg.get(c.id)?.brl ?? null)
+          : (openLive.get(c.id)?.brl ?? null),
+        trade_open: c.action === "open" ? openLive.has(c.id) : false,
       }))
       .reverse();
+
+    // ── 4b. Visão por OPERAÇÃO (uma linha por operação completa) ──
+    const dayTrades = [
+      ...ledger.trades
+        .filter((t) => (t.exit_time ?? "") >= dayStartUtc)
+        .map((t) => ({
+          id: `${t.close_command_id ?? t.magic_number}-${t.entry_time ?? ""}`,
+          root: t.root, symbol: t.symbol, mode: t.mode, variant: t.variant,
+          magic_number: t.magic_number, side: t.side, quantity: t.quantity,
+          entry_time: t.entry_time, exit_time: t.exit_time,
+          entry_price: t.entry_price, exit_price: t.exit_price,
+          result_pts: t.result_pts, result_brl: t.result_brl,
+          broker_ticket: t.broker_ticket,
+          tick_size: t.tick_size ?? profileFor(t.root).tick_size,
+          open: false,
+        })),
+      ...positions.map((p) => ({
+        id: `open-${p.root}-${p.magic_number}`,
+        root: p.root, symbol: p.symbol, mode: p.mode, variant: p.variant,
+        magic_number: p.magic_number, side: p.side, quantity: p.quantity,
+        entry_time: p.entry_time, exit_time: null as string | null,
+        entry_price: p.entry_price, exit_price: p.live_price,
+        result_pts: p.unrealized_pts, result_brl: p.unrealized_brl,
+        broker_ticket: p.broker_ticket,
+        tick_size: p.tick_size,
+        open: true,
+      })),
+    ].sort((a, b) => new Date(b.entry_time ?? 0).getTime() - new Date(a.entry_time ?? 0).getTime());
 
     const filledToday = dayOrders.filter((o) => o.status === "filled").length;
     const rejectedToday = dayOrders.filter((o) => o.status === "rejected" || o.status === "error").length;
@@ -369,6 +440,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       broker,
       positions,
       day_orders: dayOrders,
+      day_trades: dayTrades,
       trades_today: tradesToday.slice().reverse(),
       today,
       robots,
