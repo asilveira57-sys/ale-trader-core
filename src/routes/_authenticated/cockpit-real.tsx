@@ -1015,34 +1015,65 @@ function CockpitRealPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Confirmação: zerar */}
-      <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}>
+      {/* Confirmação: zerar — DOIS passos */}
+      <AlertDialog open={confirmClose} onOpenChange={(o) => { setConfirmClose(o); if (!o) setCloseStep(1); }}>
         <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Zerar posição real agora?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {closeStep === 1 ? "Zerar posição real agora?" : "Confirmar: zeragem de emergência"}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-left">
-                {positions.map((p) => (
-                  <p key={`${p.root}-${p.magic_number}`} className="text-sm font-semibold text-foreground">
-                    {sideLabel(p.side === "buy" ? "sell" : "buy")} {p.quantity}x {p.root} a mercado, resultado atual{" "}
-                    <span className={money(p.unrealized_brl)}>{p.unrealized_brl == null ? "—" : SIGNED_BRL(p.unrealized_brl)}</span>
+                {brokerPositions.length ? (
+                  brokerPositions.map((p) => (
+                    <p key={`z-${p.symbol}-${p.ticket ?? p.magic_number}`} className="text-sm font-semibold text-foreground">
+                      {sideLabel(p.side === "buy" ? "sell" : "buy")} {p.quantity}x {rootOf(p.symbol)} a mercado, resultado atual{" "}
+                      <span className={money(p.profit_brl)}>{p.profit_brl == null ? "—" : SIGNED_BRL(p.profit_brl)}</span>
+                    </p>
+                  ))
+                ) : positions.length ? (
+                  positions.map((p) => (
+                    <p key={`${p.root}-${p.magic_number}`} className="text-sm font-semibold text-foreground">
+                      {sideLabel(p.side === "buy" ? "sell" : "buy")} {p.quantity}x {p.root} a mercado, resultado atual{" "}
+                      <span className={money(p.unrealized_brl)}>{p.unrealized_brl == null ? "—" : SIGNED_BRL(p.unrealized_brl)}</span>
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-sm font-semibold text-foreground">
+                    Nenhuma posição conhecida — o real será parado de qualquer forma.
                   </p>
-                ))}
+                )}
                 <p className="text-xs text-muted-foreground">
                   Em seguida o real é parado e as autorizações de conta real são desligadas. A simulação não é afetada.
                 </p>
+                {closeStep === 2 ? (
+                  <p className="rounded-lg border-2 border-rose-400 bg-rose-600 px-2 py-1.5 text-xs font-bold text-white">
+                    {reportStale
+                      ? `Relatório da corretora ${broker.reported ? `parado há ${reportAgeS}s` : "ausente"} — o comando pode não ser executado. Se expirar em 120s, ligue para a mesa.`
+                      : "O painel enfileira; quem executa é o executor. Se ele não reivindicar em 120s, o comando expira."}
+                  </p>
+                ) : null}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(e) => { e.preventDefault(); mClose.mutate(); }}
-              disabled={mClose.isPending}
-            >
-              {mClose.isPending ? "Enviando…" : "Zerar agora"}
-            </AlertDialogAction>
+            {closeStep === 1 ? (
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(e) => { e.preventDefault(); setCloseStep(2); }}
+              >
+                Continuar
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(e) => { e.preventDefault(); mClose.mutate(); }}
+                disabled={mClose.isPending}
+              >
+                {mClose.isPending ? "Enviando…" : "Confirmar — zerar agora"}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
