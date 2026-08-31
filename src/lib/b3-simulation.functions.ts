@@ -683,7 +683,7 @@ async function runB3SimulationTickInner(
   const activeModes: string[] = (settingsRows ?? [])
     .filter((s: any) => s.enabled !== false)
     .map((s: any) => String(s.mode))
-    .sort((a, b) => {
+    .sort((a: string, b: string) => {
       const ia = MODES.indexOf(a as Mode), ib = MODES.indexOf(b as Mode);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
     });
