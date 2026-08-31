@@ -71,7 +71,8 @@ export function evaluateAccountPeak(input: {
 }): { peak_brl: number; given_back_brl: number; allowed_giveback_brl: number; trigger_at_brl: number | null; eligible: boolean; should_arm: boolean; reason: string | null } {
   const cfg = input.config;
   const peak = r2(Math.max(input.peak_brl, input.result_brl, 0));
-  const given = r2(Math.max(0, peak - input.result_brl));
+  // Não se devolve mais do que se teve: sem pico, não há devolução nenhuma.
+  const given = r2(Math.min(peak, Math.max(0, peak - input.result_brl)));
   const allowed = r2(peak * cfg.peak_giveback_pct);
   const eligible = peak >= cfg.peak_min_brl && peak > 0;
   const triggerAt = eligible ? r2(peak - allowed) : null;
