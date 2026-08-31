@@ -14,6 +14,31 @@ import appCss from "../styles.css?url";
 import { supabase } from "@/integrations/supabase/client";
 import { Toaster } from "@/components/ui/sonner";
 
+const EARLY_ASSET_RECOVERY = String.raw`
+(() => {
+  const key = "aletrader:failed-asset";
+  const recover = (asset) => {
+    if (!asset || !asset.includes("/assets/")) return;
+    if (sessionStorage.getItem(key) === asset) return;
+    sessionStorage.setItem(key, asset);
+    const url = new URL(location.href);
+    url.searchParams.set("_asset_recovery", Date.now().toString());
+    location.replace(url.toString());
+  };
+  addEventListener("error", (event) => {
+    const target = event.target;
+    if (target && (target.tagName === "SCRIPT" || target.tagName === "LINK")) {
+      recover(target.src || target.href || "");
+    }
+  }, true);
+  addEventListener("vite:preloadError", (event) => {
+    event.preventDefault();
+    const asset = event.payload && (event.payload.url || event.payload.src);
+    recover(asset || "/assets/preload");
+  });
+})();
+`;
+
 // Rede de segurança global: quando um import dinâmico falha ANTES dos error
 // boundaries montarem (ex.: Vite re-otimizando deps no meio da sessão ou chunk
 // obsoleto após deploy), o React desmonta a árvore inteira e nenhum
@@ -187,7 +212,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR" className="dark">
-      <head><HeadContent /></head>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: EARLY_ASSET_RECOVERY }} />
+        <HeadContent />
+      </head>
       <body>{children}<Scripts /></body>
     </html>
   );
