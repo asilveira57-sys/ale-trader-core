@@ -569,7 +569,7 @@ function CockpitPage() {
           {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
             const sub = (hdr?.por_modalidade ?? []).find((m: any) => m.variant === variant);
             return (
-            <div key={variant} className="space-y-2 rounded-lg border border-border/40 bg-background/30 p-3">
+            <div key={variant} className="@container space-y-2 rounded-lg border border-border/40 bg-background/30 p-3">
               <h3 className="text-xs font-semibold flex items-center gap-2 flex-wrap">
                 <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
                 <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
