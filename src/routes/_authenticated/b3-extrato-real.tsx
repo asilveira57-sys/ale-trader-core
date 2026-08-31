@@ -56,7 +56,7 @@ const GROUPS: { key: Group; label: string }[] = [
   { key: "mes", label: "Por mês" },
 ];
 
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function Chip({ active, onClick, children }: { active: boolean; onClick: (e: React.MouseEvent) => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
@@ -121,7 +121,10 @@ function ExtratoRealPage() {
     ) as ExtratoGrupo[];
   }, [q.data, group]);
 
-  const toggle = (cur: string[] | null, all: string[], v: string): string[] | null => {
+  // Clique simples ISOLA o item (mesma convenção do cockpit); Ctrl/Shift soma.
+  const pick = (cur: string[] | null, all: string[], v: string, e: React.MouseEvent): string[] | null => {
+    const aditivo = e.ctrlKey || e.metaKey || e.shiftKey;
+    if (!aditivo) return cur && cur.length === 1 && cur[0] === v ? null : [v];
     const base = cur ?? all;
     const next = base.includes(v) ? base.filter((x) => x !== v) : [...base, v];
     return next.length === all.length ? null : next;
@@ -216,21 +219,21 @@ function ExtratoRealPage() {
             <span className="text-muted-foreground">Ativo:</span>
             <Chip active={!symbols} onClick={() => setSymbols(null)}>Todos</Chip>
             {(opts?.symbols ?? []).map((s) => (
-              <Chip key={s} active={!symbols || symbols.includes(s)} onClick={() => setSymbols(toggle(symbols, opts?.symbols ?? [], s))}>{s}</Chip>
+              <Chip key={s} active={!symbols || symbols.includes(s)} onClick={(e) => setSymbols(pick(symbols, opts?.symbols ?? [], s, e))}>{s}</Chip>
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-muted-foreground">Modalidade:</span>
             <Chip active={!variants} onClick={() => setVariants(null)}>Todas</Chip>
             {(opts?.variants ?? []).map((v) => (
-              <Chip key={v} active={!variants || variants.includes(v)} onClick={() => setVariants(toggle(variants, opts?.variants ?? [], v))}>{vLabel(v)}</Chip>
+              <Chip key={v} active={!variants || variants.includes(v)} onClick={(e) => setVariants(pick(variants, opts?.variants ?? [], v, e))}>{vLabel(v)}</Chip>
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-muted-foreground">Modo:</span>
             <Chip active={!modes} onClick={() => setModes(null)}>Todos</Chip>
             {(opts?.modes ?? []).map((m) => (
-              <Chip key={m} active={!modes || modes.includes(m)} onClick={() => setModes(toggle(modes, opts?.modes ?? [], m))}>{apelidos.nick(m)}</Chip>
+              <Chip key={m} active={!modes || modes.includes(m)} onClick={(e) => setModes(pick(modes, opts?.modes ?? [], m, e))}>{apelidos.nick(m)}</Chip>
             ))}
           </div>
           {filtroAtivo ? (
