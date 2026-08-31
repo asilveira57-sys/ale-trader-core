@@ -357,7 +357,10 @@ function CockpitPage() {
 
 
   return (
-    <div className="container mx-auto px-3 py-4 space-y-4 sm:px-4 sm:py-6">
+    {/* mx-auto + teto largo: o `container` do Tailwind satura em 1536px e impede
+        um ultrawide de mostrar os 8 modos em linha. Usamos um teto generoso para
+        a largura real ser aproveitada (e responder ao menu lateral retrátil). */}
+    <div className="mx-auto w-full max-w-[2400px] px-3 py-4 space-y-4 sm:px-4 sm:py-6">
       <header className="grid gap-2 sm:flex sm:items-center sm:justify-between sm:flex-wrap">
         <div className="min-w-0">
           <h1 className="text-xl font-bold sm:text-2xl">Cockpit — todos os robôs</h1>
