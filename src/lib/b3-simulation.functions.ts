@@ -3592,7 +3592,7 @@ async function runB3SimulationTickInner(
         requested_qty: 1,
         inside_hours: insideHours,
         force_close_now: forceClose,
-        strategy_mode: mode,
+        strategy_mode: mode as B3RiskState["strategy_mode"],
       };
       const localCtx = { ...ctx };
       if (localCtx.volatility_pct > Number(cfg.max_volatility_pct)) {
