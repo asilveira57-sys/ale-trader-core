@@ -356,10 +356,10 @@ function CockpitPage() {
   const allCollapsed = orderedAssets.length > 0 && orderedAssets.every(([root]) => collapsedAssets.has(root));
 
 
+  // mx-auto + teto largo: o `container` do Tailwind satura em 1536px e impede
+  // um ultrawide de mostrar os 8 modos em linha. Teto generoso aproveita a
+  // largura real (e responde ao menu lateral retrátil).
   return (
-    {/* mx-auto + teto largo: o `container` do Tailwind satura em 1536px e impede
-        um ultrawide de mostrar os 8 modos em linha. Usamos um teto generoso para
-        a largura real ser aproveitada (e responder ao menu lateral retrátil). */}
     <div className="mx-auto w-full max-w-[2400px] px-3 py-4 space-y-4 sm:px-4 sm:py-6">
       <header className="grid gap-2 sm:flex sm:items-center sm:justify-between sm:flex-wrap">
         <div className="min-w-0">
