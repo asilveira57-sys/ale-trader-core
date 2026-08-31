@@ -59,6 +59,75 @@ const ageText = (s: number | null | undefined) => {
   return `há ${d}d${h % 24}h`;
 };
 
+// Regra de cor: verde/vermelho são RESERVADOS para dinheiro. O lado da
+// operação é informação neutra — selo com seta, sem cor de resultado.
+const SideTag = ({ side }: { side: string | null | undefined }) => {
+  if (side !== "buy" && side !== "sell") return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className="inline-flex items-center gap-1 rounded border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+      {side === "buy" ? "\u2191" : "\u2193"} {side === "buy" ? "COMPRA" : "VENDA"}
+    </span>
+  );
+};
+
+const PTS = (v: number | null | undefined) =>
+  v == null ? "—" : `${Number(v) > 0 ? "+" : ""}${Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}`;
+
+const durationText = (a: string | null | undefined, b: string | null | undefined) => {
+  if (!a) return "—";
+  const end = b ? new Date(b).getTime() : Date.now();
+  const sec = Math.max(0, Math.round((end - new Date(a).getTime()) / 1000));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `${m}min${String(sec % 60).padStart(2, "0")}`;
+  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
+};
+
+// Rodapé das duas visões. Operação sem preço executado gravado (result_brl
+// null) NÃO entra no acumulado — foi essa regra que revelou o defeito do
+// executor em 30/08.
+function TradeTotals({ rows, note }: { rows: any[]; note?: string }) {
+  const scored = rows.filter((r) => r.result_brl != null);
+  const wins = scored.filter((r) => Number(r.result_brl) > 0);
+  const losses = scored.filter((r) => Number(r.result_brl) < 0);
+  const sum = scored.reduce((a, r) => a + Number(r.result_brl), 0);
+  const avg = (l: any[]) => (l.length ? l.reduce((a, r) => a + Number(r.result_brl), 0) / l.length : null);
+  const semPreco = rows.length - scored.length;
+  const avgWin = avg(wins);
+  const avgLoss = avg(losses);
+  const ratio = avgWin != null && avgLoss != null && avgLoss !== 0 ? avgWin / Math.abs(avgLoss) : null;
+  return (
+    <div className="mt-2 rounded-lg border border-border bg-muted/30 p-2">
+      <dl className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+        <div>
+          <dt className="text-[10px] uppercase text-muted-foreground">Resultado somado</dt>
+          <dd className={`font-black ${money(sum)}`}>{SIGNED_BRL(sum)}</dd>
+        </div>
+        <div>
+          <dt className="text-[10px] uppercase text-muted-foreground">Operações</dt>
+          <dd className="font-semibold">{scored.length}{semPreco ? <span className="text-[10px] text-amber-300"> (+{semPreco} sem preço)</span> : null}</dd>
+        </div>
+        <div>
+          <dt className="text-[10px] uppercase text-muted-foreground">Ganhos / perdas</dt>
+          <dd className="font-semibold">{wins.length} / {losses.length}</dd>
+        </div>
+        <div>
+          <dt className="text-[10px] uppercase text-muted-foreground">Ganho médio</dt>
+          <dd className={`font-semibold ${avgWin == null ? "text-muted-foreground" : "text-emerald-300"}`}>{avgWin == null ? "—" : SIGNED_BRL(avgWin)}</dd>
+        </div>
+        <div>
+          <dt className="text-[10px] uppercase text-muted-foreground">Perda média</dt>
+          <dd className={`font-semibold ${avgLoss == null ? "text-muted-foreground" : "text-rose-300"}`}>{avgLoss == null ? "—" : SIGNED_BRL(avgLoss)}</dd>
+        </div>
+      </dl>
+      <p className="mt-1 text-[10px] text-muted-foreground">
+        {ratio != null ? `Relação ganho médio / perda média: ${ratio.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}x. ` : ""}
+        {note ?? "Operação sem preço executado gravado fica fora do acumulado, com travessão."}
+      </p>
+    </div>
+  );
+}
+
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "indicador", price_action: "price action",
   mean_reversion: "reversão à média", range: "faixa", rompimento: "rompimento",
@@ -315,6 +384,7 @@ function CockpitRealPage() {
   const brokerPositions = (broker.positions ?? []) as any[];
   const positions = (d?.positions ?? []) as any[];
   const orders = (d?.day_orders ?? []) as any[];
+  const trades = (d?.day_trades ?? []) as any[];
   const allRobots = (d?.robots ?? []) as any[];
   // Autorização desligada e sem nenhum rastro no executor é ruído: a lista
   // cheia tem centenas de linhas (todo ativo × modalidade × modo).
