@@ -346,6 +346,21 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
 
     alerts.sort((a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime());
 
+    // ── 8. Freio de pico da CONTA (leitura, sem efeito colateral) ──
+    const { readAccountPeak } = await import("@/lib/b3-real-account-peak.server");
+    const accountPeak = await readAccountPeak(supabase, userId, today.total_brl, now);
+    if (accountPeak.armed) {
+      alerts.unshift({
+        kind: "freio_pico_conta_armado", severity: "critical",
+        title: "Freio de pico da CONTA armado",
+        detail:
+          `Pico R$ ${accountPeak.peak_brl.toFixed(2)} · devolvido R$ ${accountPeak.given_back_brl.toFixed(2)}` +
+          ` (${((accountPeak.given_back_pct ?? 0) * 100).toFixed(1)}%). Novas aberturas reais bloqueadas até o fim do pregão.` +
+          " Fechamento e simulação seguem normais.",
+        at: accountPeak.armed_at,
+      });
+    }
+
     return {
       server_time: now.toISOString(),
       session_date: sessionDate,
@@ -357,10 +372,49 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       trades_today: tradesToday.slice().reverse(),
       today,
       robots,
+      account_peak: accountPeak,
       enabled_count: robots.filter((r) => r.enabled).length,
       alerts: alerts.slice(0, 12),
     };
   });
+
+// ─────────── ajuste do freio de pico da CONTA (só a configuração) ───────────
+// Não toca em NENHUM parâmetro de robô: nem stop, nem alvo, nem trailing, nem
+// o freio de pico POR ROBÔ. Só o percentual e o piso da camada da conta.
+export const setRealAccountPeakConfig = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      peak_giveback_pct: z.number().min(0.05).max(0.95),
+      peak_min_brl: z.number().min(0).max(100000),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const now = new Date().toISOString();
+    const { error } = await (supabase as any)
+      .from("b3_real_execution_state")
+      .upsert({
+        user_id: userId,
+        peak_giveback_pct: data.peak_giveback_pct,
+        peak_min_brl: data.peak_min_brl,
+        updated_at: now,
+      }, { onConflict: "user_id" });
+    if (error) throw error;
+
+    try {
+      await (supabase as any).from("system_logs").insert({
+        event_type: "config_freio_pico_conta_real",
+        source: "cockpit_real",
+        severity: "warning",
+        message: `Freio de pico da conta real configurado: devolução máxima ${(data.peak_giveback_pct * 100).toFixed(0)}% do pico, piso R$ ${data.peak_min_brl.toFixed(2)}.`,
+        technical_data: { ...data } as any,
+      });
+    } catch { /* best-effort */ }
+
+    return { ok: true as const, ...data };
+  });
+
 
 // ─────────── botão: PARAR O REAL (sem senha, de propósito) ───────────
 // Parada de emergência não pode ter atrito. Bloqueia novas entradas reais
@@ -459,23 +513,28 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
     }
 
     const stamp = nowMs;
-    const commands = positions.map((p) => ({
-      user_id: userId,
-      env: "real",
-      simulation_run_id: null,
-      mode: p.mode,
-      variant: p.variant,
-      action: "close",
-      // Fechar é a ponta contrária da posição aberta.
-      side: p.side === "buy" ? "sell" : "buy",
-      symbol: p.symbol,
-      quantity: p.quantity,
-      magic_number: p.magic_number,
-      idempotency_key: `panic_close:${p.symbol}:${p.magic_number}:${stamp}`,
-      requested_by: "user_close_all",
-      // Validade folgada: pelo celular vale dar tempo do executor reivindicar.
-      expires_at: new Date(stamp + 120_000).toISOString(),
-    }));
+    const commands = positions.map((p) => {
+      // Mesma regra do motor e do fechamento manual: RAIZ, nunca o contrato.
+      const symbol = rootSymbol(String(p.symbol));
+      return {
+        user_id: userId,
+        env: "real",
+        simulation_run_id: null,
+        mode: p.mode,
+        variant: p.variant,
+        action: "close",
+        // Fechar é a ponta contrária da posição aberta.
+        side: p.side === "buy" ? "sell" : "buy",
+        symbol,
+        quantity: p.quantity,
+        magic_number: p.magic_number,
+        idempotency_key: `panic_close:${symbol}:${p.magic_number}:${stamp}`,
+        requested_by: "user_close_all",
+        // Validade folgada: pelo celular vale dar tempo do executor reivindicar.
+        expires_at: new Date(stamp + 120_000).toISOString(),
+      };
+    });
+
 
     const { error: insErr } = await (supabase as any).from("b3_mt5_commands").insert(commands);
     if (insErr) throw insErr;
@@ -535,6 +594,11 @@ export const closeRealPositionByBroker = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const stamp = Date.now();
     const magic = data.magic_number ?? 0;
+    // Símbolo é RAIZ; contrato ('WINV26') é detalhe de execução. O motor
+    // enfileira com a raiz e a lista branca do executor é indexada por ela —
+    // mandar o contrato daqui era o que fazia o fechamento manual ser recusado
+    // com "nao autorizado na lista branca do executor".
+    const symbol = rootSymbol(String(data.symbol));
 
     const command = {
       user_id: userId,
@@ -545,13 +609,14 @@ export const closeRealPositionByBroker = createServerFn({ method: "POST" })
       action: "close",
       // Fechar é a ponta contrária do que está aberto.
       side: data.side === "buy" ? "sell" : "buy",
-      symbol: data.symbol,
+      symbol,
       quantity: data.quantity,
       magic_number: magic,
-      idempotency_key: `manual_close:${data.symbol}:${magic}:${stamp}`,
+      idempotency_key: `manual_close:${symbol}:${magic}:${stamp}`,
       requested_by: "user_manual_close",
       expires_at: new Date(stamp + 120_000).toISOString(),
     };
+
 
     const { data: inserted, error } = await (supabase as any)
       .from("b3_mt5_commands")
