@@ -484,7 +484,9 @@ function CockpitRealPage() {
         </div>
       </header>
 
-
+      {/* Do ponto abaixo em diante é a leitura completa de DESKTOP; no celular
+          ela só atrapalharia a tela de emergência acima. */}
+      <div className="hidden md:block">
       {/* Estado permanente do real — nunca sai da tela */}
       {!realEnabled ? (
         <div className="mt-3 rounded-xl border-2 border-rose-400 bg-rose-600 px-4 py-3 text-white">
