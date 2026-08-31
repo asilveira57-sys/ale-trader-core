@@ -88,6 +88,8 @@ export interface RealPosition {
   root: string; symbol: string; mode: string; variant: string; magic_number: number;
   side: "buy" | "sell"; quantity: number; entry_price: number | null; entry_time: string | null;
   point_value_brl: number; tick_size: number; broker_ticket: string | null;
+  // ids dos comandos de abertura ainda vivos nesta posição (apresentação)
+  open_command_ids?: string[];
 }
 
 export interface RealTrade {
@@ -99,10 +101,17 @@ export interface RealTrade {
   broker_ticket: string | null;
   // quem pediu o FECHAMENTO desta operação (engine_auto / user_manual_close)
   closed_by?: string | null;
+  // Rastro de apresentação: id do comando de abertura e do de fechamento que
+  // originaram esta operação. Só metadado — não muda o pareamento.
+  open_command_id?: string | null;
+  close_command_id?: string | null;
+  point_value_brl?: number;
+  tick_size?: number;
 }
 
 interface Lot {
   qty: number; price: number | null; time: string | null; ticket: string | null;
+  command_id?: string | null;
 }
 
 // Livro FIFO por (raiz do ativo + magic): comandos 'filled' entram em ordem
@@ -161,6 +170,10 @@ export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileL
           result_pts: pts, result_brl: pts == null ? null : pts * profile.point_value_brl * used,
           broker_ticket: c.broker_ticket ?? lot.ticket ?? null,
           closed_by: c.requested_by ?? null,
+          open_command_id: lot.command_id ?? null,
+          close_command_id: c.id,
+          point_value_brl: profile.point_value_brl,
+          tick_size: profile.tick_size,
         });
         lot.qty -= used;
         qty -= used;
@@ -170,7 +183,7 @@ export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileL
       // Sobra só abre posição quando o comando é de ABERTURA. Fechamento
       // sobrando significa desencontro com a corretora — não inventa posição.
       if (qty > 0 && !isClose) {
-        const lot: Lot = { qty, price, time, ticket: c.broker_ticket ?? null };
+        const lot: Lot = { qty, price, time, ticket: c.broker_ticket ?? null, command_id: c.id };
         if (c.side === "buy") longs.push(lot); else shorts.push(lot);
       }
       last = c;
@@ -192,6 +205,7 @@ export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileL
         entry_time: lots[0]?.time ?? null,
         point_value_brl: profile.point_value_brl, tick_size: profile.tick_size,
         broker_ticket: lots[0]?.ticket ?? null,
+        open_command_ids: lots.map((l) => l.command_id).filter(Boolean) as string[],
       });
     }
   }
