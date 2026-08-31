@@ -3958,6 +3958,36 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_vigia_tique: {
+        Row: {
+          acao: string
+          cotacao_ha_seg: number | null
+          decisao_ha_seg: number | null
+          detectado_em: string
+          id: string
+          observacao: string | null
+          request_id: number | null
+        }
+        Insert: {
+          acao: string
+          cotacao_ha_seg?: number | null
+          decisao_ha_seg?: number | null
+          detectado_em?: string
+          id?: string
+          observacao?: string | null
+          request_id?: number | null
+        }
+        Update: {
+          acao?: string
+          cotacao_ha_seg?: number | null
+          decisao_ha_seg?: number | null
+          detectado_em?: string
+          id?: string
+          observacao?: string | null
+          request_id?: number | null
+        }
+        Relationships: []
+      }
       backtest_agent_votes: {
         Row: {
           agent_id: string | null
@@ -7285,6 +7315,7 @@ export type Database = {
             }[]
           }
       b3_rotular_regime: { Args: { p_date?: string }; Returns: number }
+      b3_vigiar_tique: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

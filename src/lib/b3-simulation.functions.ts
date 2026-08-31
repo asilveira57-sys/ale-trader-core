@@ -279,8 +279,18 @@ async function mirrorToReal(
   }
 }
 
-type Mode = "conservador" | "moderado" | "equilibrado" | "semi_agressivo" | "agressivo";
-const MODES: Mode[] = ["conservador", "moderado", "equilibrado", "semi_agressivo", "agressivo"];
+// Os 8 modos, na ordem de `b3_mode_apelidos.ordem` (1..8):
+// João, Amanda, Bernardo, Camila, Davi, Ana, Alexandre, Enoir.
+// ATENÇÃO: esta lista NÃO é a lista de execução do motor. O laço do tique lê
+// os modos habilitados de b3_simulation_mode_settings (ver `activeModes`).
+// Aqui ela só serve de ordem de exibição e de fallback de criação de linhas.
+type Mode =
+  | "conservador" | "cauteloso" | "moderado" | "equilibrado"
+  | "semi_agressivo" | "arrojado" | "agressivo" | "enoir";
+const MODES: Mode[] = [
+  "conservador", "cauteloso", "moderado", "equilibrado",
+  "semi_agressivo", "arrojado", "agressivo", "enoir",
+];
 
 // Instrumentação da gestão de posição aberta: no máximo 1 gravação por minuto
 // por ordem (chave = order_id → minuto epoch já registrado).
@@ -299,6 +309,11 @@ const MODE_DEFAULTS: Record<Mode, ModeDefaults> = {
   equilibrado:    { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 62, min_score: 62, max_contracts: 3, stop_pts: 220, gain_pts: 440, max_volatility_pct: 3.8, daily_loss_limit_brl: 500, daily_gain_target_brl: 700, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
   semi_agressivo: { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
   agressivo:      { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  // Fallback de fábrica dos três modos novos. NÃO sobrescreve nada já salvo:
+  // só é usado quando não existe linha em b3_simulation_mode_settings.
+  cauteloso:      { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 66, min_score: 70, max_contracts: 1, stop_pts: 120, gain_pts: 240, max_volatility_pct: 3.0, daily_loss_limit_brl: 200, daily_gain_target_brl: 350, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  arrojado:       { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 3, stop_pts: 260, gain_pts: 520, max_volatility_pct: 4.0, daily_loss_limit_brl: 600, daily_gain_target_brl: 900, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  enoir:          { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 58, min_score: 58, max_contracts: 2, stop_pts: 480, gain_pts: 240, max_volatility_pct: 4.5, daily_loss_limit_brl: 700, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
 };
 
 function hhmmToMin(s: string) { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; }
@@ -660,6 +675,47 @@ async function runB3SimulationTickInner(
     }
   }
 
+  // ── LISTA DE EXECUÇÃO DO MOTOR: vem do BANCO, não de array em TypeScript ──
+  // Todo modo com enabled = true em b3_simulation_mode_settings é avaliado.
+  // Antes o laço usava a lista fixa de 5 modos e `cauteloso`, `arrojado` e
+  // `enoir` nunca eram sequer avaliados — nem como recusa. Ordem de execução
+  // segue a ordem de exibição conhecida; modo desconhecido vai para o fim.
+  const activeModes: string[] = (settingsRows ?? [])
+    .filter((s: any) => s.enabled !== false)
+    .map((s: any) => String(s.mode))
+    .sort((a: string, b: string) => {
+      const ia = MODES.indexOf(a as Mode), ib = MODES.indexOf(b as Mode);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+
+  // Carteira do modo (b3_simulation_modes) é estado do motor: se um modo está
+  // habilitado e não tem carteira nesta execução, criamos a carteira agora e
+  // registramos — robô que não roda tem que ser barulhento.
+  const semCarteira = activeModes.filter((m) => !modeByName[m]);
+  if (semCarteira.length) {
+    const inicial = Number(run.initial_balance ?? 10000);
+    const { data: criados, error: cErr } = await (supabase as any)
+      .from("b3_simulation_modes")
+      .insert(semCarteira.map((m) => ({
+        simulation_run_id: runId, user_id: userId, mode: m,
+        initial_balance: inicial, current_balance: inicial,
+      })))
+      .select("*");
+    for (const r of criados ?? []) { modeById[r.id] = r; modeByName[r.mode] = r; }
+    try {
+      await (supabase as any).from("system_logs").insert({
+        event_type: cErr ? "b3_modo_sem_carteira" : "b3_modo_carteira_criada",
+        source: "b3-simulation-tick",
+        severity: cErr ? "error" : "warning",
+        message: cErr
+          ? `Modos habilitados sem carteira e sem conseguir criar: ${semCarteira.join(", ")} — ${cErr.message}`
+          : `Carteira criada para modos habilitados sem carteira: ${semCarteira.join(", ")}`,
+        technical_data: { run_id: runId, symbol: run.symbol, variant: runVariant, modos: semCarteira },
+      });
+    } catch { /* log nunca derruba o tique */ }
+  }
+
+
   const now0 = new Date();
   const { data: macros } = await supabase.from("b3_macro_events")
     .select("*").eq("user_id", userId).eq("active", true)
@@ -811,7 +867,7 @@ async function runB3SimulationTickInner(
     if (!grupoLimites) return null;
     const openList = (await getOpen()) ?? [];
     const porModo: Record<string, number> = {};
-    for (const mode of MODES) {
+    for (const mode of activeModes) {
       let v = Number(realizedTodayByMode[mode] ?? 0);
       for (const o of openList) {
         if (o.mode !== mode) continue;
@@ -920,11 +976,11 @@ async function runB3SimulationTickInner(
       .eq("simulation_run_id", runId).eq("user_id", userId)
       .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider");
     const byMode: Record<string, any[]> = {};
-    for (const mode of MODES) byMode[mode] = [];
+    for (const mode of activeModes) byMode[mode] = [];
     for (const o of (validOrders ?? [])) if (byMode[o.mode]) byMode[o.mode].push(o);
     providerStats.valid_mt5_orders = (validOrders ?? []).length;
 
-    for (const mode of MODES) {
+    for (const mode of activeModes) {
       const m = modeByName[mode];
       if (!m) continue;
       const orders = byMode[mode] ?? [];
@@ -2464,11 +2520,30 @@ async function runB3SimulationTickInner(
 
     const runT0 = Date.now();
 
-    for (const mode of MODES) {
+    for (const mode of activeModes) {
       const modeT0 = Date.now();
       try {
       const m = modeByName[mode];
-      if (!m) continue;
+      if (!m) {
+        // Modo habilitado no banco que o motor não conseguiu processar.
+        // Silêncio aqui foi o defeito que escondeu 210 robôs parados.
+        entryStageRows.push({
+          user_id: userId, simulation_run_id: runId, symbol: asset.symbol,
+          variant: runVariant, mode, stage: "motor",
+          reason: "modo_habilitado_sem_carteira",
+          detail: "Modo habilitado em b3_simulation_mode_settings sem linha em b3_simulation_modes",
+        });
+        try {
+          await (supabase as any).from("system_logs").insert({
+            event_type: "b3_modo_nao_processado",
+            source: "b3-simulation-tick",
+            severity: "error",
+            message: `Modo ${mode} habilitado não pôde ser processado (sem carteira) em ${asset.symbol}/${runVariant}`,
+            technical_data: { run_id: runId, mode, symbol: asset.symbol, variant: runVariant },
+          });
+        } catch { /* log nunca derruba o tique */ }
+        continue;
+      }
       const cfg = settingsByMode[mode];
       const realizedToday = Number(realizedTodayByMode[mode] ?? 0);
       const startMin = hhmmToMin(cfg.trading_start_time);
@@ -3517,7 +3592,7 @@ async function runB3SimulationTickInner(
         requested_qty: 1,
         inside_hours: insideHours,
         force_close_now: forceClose,
-        strategy_mode: mode,
+        strategy_mode: mode as B3RiskState["strategy_mode"],
       };
       const localCtx = { ...ctx };
       if (localCtx.volatility_pct > Number(cfg.max_volatility_pct)) {
