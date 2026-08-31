@@ -933,11 +933,13 @@ function CockpitRealPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Confirmação: parar */}
-      <AlertDialog open={confirmStop} onOpenChange={setConfirmStop}>
+      {/* Confirmação: parar — DOIS passos (resumo, depois confirmação final) */}
+      <AlertDialog open={confirmStop} onOpenChange={(o) => { setConfirmStop(o); if (!o) setStopStep(1); }}>
         <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Parar novas entradas reais?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {stopStep === 1 ? "Parar novas entradas reais?" : "Confirmar: parar o dinheiro real"}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-left text-sm">
                 <p className="font-semibold text-foreground">O que acontece agora:</p>
@@ -947,21 +949,37 @@ function CockpitRealPage() {
                   <li>fechamentos continuam sendo entregues — a posição aberta segue gerida;</li>
                   <li>a simulação NÃO é afetada.</li>
                 </ul>
+                {stopStep === 2 ? (
+                  <p className="rounded-lg border-2 border-amber-400 bg-amber-500/15 px-2 py-1.5 text-xs font-bold text-amber-100">
+                    Segundo passo de propósito: toque acidental no bolso não para o real.
+                    Religar depois exige a senha mestra.
+                  </p>
+                ) : null}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-amber-500 text-black hover:bg-amber-400"
-              onClick={(e) => { e.preventDefault(); mStop.mutate(); }}
-              disabled={mStop.isPending}
-            >
-              {mStop.isPending ? "Parando…" : "Parar o real"}
-            </AlertDialogAction>
+            {stopStep === 1 ? (
+              <AlertDialogAction
+                className="bg-amber-500 text-black hover:bg-amber-400"
+                onClick={(e) => { e.preventDefault(); setStopStep(2); }}
+              >
+                Continuar
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction
+                className="bg-amber-500 text-black hover:bg-amber-400"
+                onClick={(e) => { e.preventDefault(); mStop.mutate(); }}
+                disabled={mStop.isPending}
+              >
+                {mStop.isPending ? "Parando…" : "Confirmar — parar o real"}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
 
       {/* Confirmação: religar com senha */}
       <AlertDialog open={resumeOpen} onOpenChange={(o) => { setResumeOpen(o); if (!o) setPassword(""); }}>
