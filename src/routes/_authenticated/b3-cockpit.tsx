@@ -594,7 +594,11 @@ function CockpitPage() {
                 </Button>
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
+                  mede a largura real disponível — inclusive após recolher o menu
+                  lateral — em vez do viewport. Cortes na área útil do grid:
+                    < 380px → 1 col | 380–780 → 2 | 780–1500 → 4 | ≥1500 → 8. */}
+              <div className="grid grid-cols-1 @[380px]:grid-cols-2 @[780px]:grid-cols-4 @[1500px]:grid-cols-8 gap-3">
                 {cards.map((c: any) => {
                   const key = `${c.run_id}:${c.mode}`;
                   const isOpen = expanded.has(key);
