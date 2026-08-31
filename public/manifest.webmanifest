@@ -1,15 +1,22 @@
 {
-  "name": "AleTrader AI",
-  "short_name": "AleTrader",
-  "description": "Painel privado AleTrader AI",
-  "start_url": "/",
+  "id": "/cockpit-real",
+  "name": "AleTrader AI — Cockpit Real",
+  "short_name": "Cockpit Real",
+  "description": "Tela de emergência do dinheiro real: ver posição aberta e fechar a mercado.",
+  "start_url": "/cockpit-real",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0b0f17",
   "theme_color": "#0b0f17",
+  "shortcuts": [
+    { "name": "Cockpit Real", "url": "/cockpit-real" },
+    { "name": "Todos os robôs", "url": "/b3-cockpit" }
+  ],
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
