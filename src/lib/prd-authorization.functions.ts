@@ -178,7 +178,7 @@ export const revokeAllPrdAuthorizations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ password: z.string().min(1) }).parse(input))
   .handler(async ({ data, context }) => {
-    const { userId } = context;
+    const { supabase, userId } = context;
     await assertMasterPassword(data.password);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
