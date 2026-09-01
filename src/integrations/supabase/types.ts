@@ -7274,6 +7274,7 @@ export type Database = {
         }[]
       }
       b3_diagnosticar_dia: { Args: { p_date: string }; Returns: number }
+      b3_disparar_tique: { Args: never; Returns: string }
       b3_m1_candles: {
         Args: { p_limit?: number; p_symbol: string; p_user_id: string }
         Returns: {
