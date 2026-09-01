@@ -2956,6 +2956,7 @@ export type Database = {
         Row: {
           peak_giveback_pct: number
           peak_min_brl: number
+          peak_min_pct_of_global: number
           real_enabled: boolean
           resumed_at: string | null
           stopped_at: string | null
@@ -2967,6 +2968,7 @@ export type Database = {
         Insert: {
           peak_giveback_pct?: number
           peak_min_brl?: number
+          peak_min_pct_of_global?: number
           real_enabled?: boolean
           resumed_at?: string | null
           stopped_at?: string | null
@@ -2978,6 +2980,7 @@ export type Database = {
         Update: {
           peak_giveback_pct?: number
           peak_min_brl?: number
+          peak_min_pct_of_global?: number
           real_enabled?: boolean
           resumed_at?: string | null
           stopped_at?: string | null
