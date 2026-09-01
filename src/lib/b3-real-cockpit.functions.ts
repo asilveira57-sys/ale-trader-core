@@ -460,13 +460,16 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
 
 // ─────────── ajuste do freio de pico da CONTA (só a configuração) ───────────
 // Não toca em NENHUM parâmetro de robô: nem stop, nem alvo, nem trailing, nem
-// o freio de pico POR ROBÔ. Só o percentual e o piso da camada da conta.
+// o freio de pico POR ROBÔ. Só a devolução (35%) e o piso da camada da conta.
+// O piso é digitado como PERCENTUAL DO STOP GLOBAL; os R$ são derivados e
+// gravados em peak_min_brl para não quebrar o portão que já funciona.
 export const setRealAccountPeakConfig = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
     z.object({
       peak_giveback_pct: z.number().min(0.05).max(0.95),
-      peak_min_brl: z.number().min(0).max(100000),
+      /** fração do stop global (0,5 = 50%) */
+      peak_min_pct_of_global: z.number().min(0).max(3),
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
@@ -477,23 +480,29 @@ export const setRealAccountPeakConfig = createServerFn({ method: "POST" })
       .upsert({
         user_id: userId,
         peak_giveback_pct: data.peak_giveback_pct,
-        peak_min_brl: data.peak_min_brl,
         updated_at: now,
       }, { onConflict: "user_id" });
     if (error) throw error;
+
+    // Grava percentual e R$ juntos, a partir do stop global do momento.
+    const { syncPeakFloorFromGlobalStop } = await import("@/lib/b3-real-stop.server");
+    const sync = await syncPeakFloorFromGlobalStop(supabase, userId, { pctOverride: data.peak_min_pct_of_global });
 
     try {
       await (supabase as any).from("system_logs").insert({
         event_type: "config_freio_pico_conta_real",
         source: "cockpit_real",
         severity: "warning",
-        message: `Freio de pico da conta real configurado: devolução máxima ${(data.peak_giveback_pct * 100).toFixed(0)}% do pico, piso R$ ${data.peak_min_brl.toFixed(2)}.`,
-        technical_data: { ...data } as any,
+        message:
+          `Freio de pico da conta real configurado: devolução máxima ${(data.peak_giveback_pct * 100).toFixed(0)}% do pico, ` +
+          `piso ${(sync.pct * 100).toFixed(0)}% do stop global (R$ ${sync.peak_min_brl.toFixed(2)} com stop global de R$ ${sync.global_stop_brl.toFixed(2)}).`,
+        technical_data: { ...data, ...sync } as any,
       });
     } catch { /* best-effort */ }
 
-    return { ok: true as const, ...data };
+    return { ok: true as const, peak_giveback_pct: data.peak_giveback_pct, ...sync };
   });
+
 
 
 // ─────────── botão: PARAR O REAL (sem senha, de propósito) ───────────
