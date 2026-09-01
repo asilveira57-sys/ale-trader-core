@@ -417,9 +417,17 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
 
     alerts.sort((a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime());
 
-    // ── 8. Freio de pico da CONTA (leitura, sem efeito colateral) ──
+    // ── 8. Freio de pico da CONTA ──
+    // O piso é PERCENTUAL do stop global: recalcula antes de ler, para que
+    // ligar/desligar um robô não deixe o valor em R$ velho e errado em silêncio.
     const { readAccountPeak } = await import("@/lib/b3-real-account-peak.server");
-    const accountPeak = await readAccountPeak(supabase, userId, today.total_brl, now);
+    const { syncPeakFloorFromGlobalStop } = await import("@/lib/b3-real-stop.server");
+    const floorSync = await syncPeakFloorFromGlobalStop(supabase, userId);
+    const accountPeak = {
+      ...(await readAccountPeak(supabase, userId, today.total_brl, now)),
+      peak_min_pct_of_global: floorSync.pct,
+      global_stop_brl: floorSync.global_stop_brl,
+    };
     if (accountPeak.armed) {
       alerts.unshift({
         kind: "freio_pico_conta_armado", severity: "critical",
