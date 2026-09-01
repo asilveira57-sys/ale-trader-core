@@ -49,10 +49,13 @@ export async function loadRealSizing(supabase: SupabaseClient, userId: string): 
       .from("b3_prd_authorizations")
       .select("symbol, variant, mode, enabled, max_qty, max_daily_loss_brl, max_daily_loss_mult")
       .eq("user_id", userId),
+    // Só execução VIGENTE entra no cálculo de risco real. Execução de contrato
+    // vencido fica no banco (histórico), mas não contamina número vivo.
     supabase
       .from("b3_simulation_runs")
       .select("id, symbol, status, started_at")
       .eq("user_id", userId)
+      .eq("status", "running")
       .order("started_at", { ascending: false }),
     loadAssetProfiles(supabase),
   ]);
@@ -66,8 +69,21 @@ export async function loadRealSizing(supabase: SupabaseClient, userId: string): 
     .select("simulation_run_id, mode, entry_style, stop_pts, max_contracts, daily_loss_limit_brl, daily_gain_target_brl, peak_lock_min_profit_brl")
     .eq("user_id", userId);
 
-  const runById = new Map(runs.map((r) => [String(r.id), r]));
-  // A run mais recente por (raiz, modalidade, modo) é a que vale.
+  // Contrato vigente de cada raiz = o contrato usado pela execução rodando mais
+  // recente daquela raiz (runs já vêm em started_at desc).
+  const currentContractByRoot = new Map<string, string>();
+  for (const r of runs) {
+    const root = rootSymbol(String(r.symbol));
+    if (!currentContractByRoot.has(root)) currentContractByRoot.set(root, String(r.symbol));
+  }
+
+  const runById = new Map(
+    runs
+      .filter((r) => currentContractByRoot.get(rootSymbol(String(r.symbol))) === String(r.symbol))
+      .map((r) => [String(r.id), r]),
+  );
+  // Entre as execuções vigentes que sobraram, a mais recente por (raiz,
+  // modalidade, modo) é a que vale.
   const cfgByKey = new Map<string, any>();
   for (const s of (settingsData ?? []) as any[]) {
     const run = runById.get(String(s.simulation_run_id));
@@ -75,6 +91,27 @@ export async function loadRealSizing(supabase: SupabaseClient, userId: string): 
     const k = key(String(run.symbol), String(s.entry_style ?? "indicador"), String(s.mode));
     if (!cfgByKey.has(k)) cfgByKey.set(k, s); // runs já vêm da mais recente para a mais antiga
   }
+
+  // Autorização real LIGADA sem execução vigente: registra em system_logs para
+  // não ficar silencioso entrando no cálculo com número errado.
+  const orphans = auths
+    .filter((a) => a.enabled === true)
+    .filter((a) => !cfgByKey.has(key(String(a.symbol), String(a.variant ?? "indicador"), String(a.mode))))
+    .map((a) => `${rootSymbol(String(a.symbol))}/${a.variant ?? "indicador"}/${a.mode}`);
+  if (orphans.length) {
+    try {
+      await (supabase as any).from("system_logs").insert({
+        event_type: "b3_real_sizing_sem_execucao_vigente",
+        source: "loadRealSizing",
+        severity: "warning",
+        message: `Autorização real ligada sem execução vigente (contrato atual): ${orphans.join(", ")}. O risco real destes robôs não pode ser derivado.`,
+        technical_data: { robots: orphans, contratos_vigentes: Object.fromEntries(currentContractByRoot) } as any,
+      });
+    } catch (e) {
+      console.error("[real-sizing] falha ao registrar robôs sem execução vigente:", (e as Error).message);
+    }
+  }
+
 
   return auths.map((a) => {
     const k = key(String(a.symbol), String(a.variant ?? "indicador"), String(a.mode));
