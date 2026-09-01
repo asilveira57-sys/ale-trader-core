@@ -201,13 +201,20 @@ function Tile({ label, value, sub, cls }: { label: string; value: string; sub?: 
 function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => void }) {
   const save = useServerFn(setRealAccountPeakConfig);
   const [pct, setPct] = useState<string>("");
-  const [floor, setFloor] = useState<string>("");
+  const [floorPct, setFloorPct] = useState<string>("");
+
+  const globalStop = Number(peak?.global_stop_brl ?? 0);
+  const floorPctCfg = Number(peak?.peak_min_pct_of_global ?? 0.5);
+  const floorPctNum = Math.max(0, Math.min(300, Number(floorPct === "" ? floorPctCfg * 100 : floorPct) || 0));
+  // Prévia em reais do percentual digitado, com o stop global de agora —
+  // mesmo comportamento do multiplicador de stop.
+  const floorPreviewBrl = Math.round((floorPctNum / 100) * globalStop * 100) / 100;
 
   const mSave = useMutation({
     mutationFn: () =>
       save({ data: {
         peak_giveback_pct: Math.min(95, Math.max(5, Number(pct || (peak?.peak_giveback_pct ?? 0.35) * 100))) / 100,
-        peak_min_brl: Math.max(0, Number(floor || (peak?.peak_min_brl ?? 100))),
+        peak_min_pct_of_global: floorPctNum / 100,
       } }),
     onSuccess: () => { toast.success("Freio de pico da conta atualizado"); onSaved(); },
     onError: (e: any) => toast.error(e?.message ?? "falha ao salvar"),
@@ -231,7 +238,7 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
           <p className="text-[11px] leading-snug text-muted-foreground">
             {armed
               ? `Armou ${peak.armed_at ? `às ${hhmm(peak.armed_at)}` : ""} com pico de ${BRL(peak.armed_peak_brl ?? peak.peak_brl)}. Novas ABERTURAS reais bloqueadas até o fim do pregão. Fechamento nunca é bloqueado e a simulação segue coletando.`
-              : `Camada acima do freio por robô: olha o total da conta (realizado + aberto a mercado). Só arma a partir de um pico de ${BRL(peak.peak_min_brl)}.`}
+              : `Camada acima do freio por robô: olha o total da conta (realizado + aberto a mercado). Só arma a partir de um pico de ${BRL(peak.peak_min_brl)} — ${(floorPctCfg * 100).toFixed(0)}% do stop global de ${BRL(globalStop)}, que acompanha sozinho quantos robôs estão ligados.`}
           </p>
         </div>
         <div className="flex items-end gap-2">
@@ -245,17 +252,23 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
             />
           </label>
           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Pico mínimo (R$)
-            <Input
-              className="mt-0.5 h-8 w-24"
-              inputMode="decimal"
-              value={floor === "" ? String(Number(peak.peak_min_brl ?? 100)) : floor}
-              onChange={(e) => setFloor(e.target.value)}
-            />
+            Pico mínimo (% do stop global)
+            <span className="mt-0.5 flex items-center gap-2">
+              <Input
+                className="h-8 w-20"
+                inputMode="decimal"
+                value={floorPct === "" ? String(Math.round(floorPctCfg * 100)) : floorPct}
+                onChange={(e) => setFloorPct(e.target.value)}
+              />
+              <span className="whitespace-nowrap text-xs font-bold normal-case tracking-normal text-foreground">
+                = {BRL(floorPreviewBrl)}
+              </span>
+            </span>
           </label>
           <Button size="sm" variant="outline" disabled={mSave.isPending} onClick={() => mSave.mutate()}>Salvar</Button>
         </div>
       </div>
+
 
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         <Tile label="Pico do dia" value={SIGNED_BRL(peak.peak_brl ?? 0)} sub={peak.peak_at ? `às ${hhmm(peak.peak_at)}` : "—"} cls="text-emerald-300" />

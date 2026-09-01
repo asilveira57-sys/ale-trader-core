@@ -165,14 +165,20 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
     if (error) throw error;
     if (!updated) throw new Error("Combinação ativo/modalidade/modo não encontrada para este usuário.");
 
-    return { ok: true as const, row: updated };
+    // Ligar/desligar robô muda o STOP GLOBAL, e o piso do freio de pico da
+    // CONTA é percentual dele: recalcula os R$ agora, para não ficar velho e
+    // errado em silêncio. Não toca em nenhum outro parâmetro.
+    const { syncPeakFloorFromGlobalStop } = await import("@/lib/b3-real-stop.server");
+    const piso = await syncPeakFloorFromGlobalStop(supabase, userId);
+
+    return { ok: true as const, row: updated, piso_pico_conta: piso };
   });
 
 export const revokeAllPrdAuthorizations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ password: z.string().min(1) }).parse(input))
   .handler(async ({ data, context }) => {
-    const { userId } = context;
+    const { supabase, userId } = context;
     await assertMasterPassword(data.password);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -187,5 +193,10 @@ export const revokeAllPrdAuthorizations = createServerFn({ method: "POST" })
       .select("id");
 
     if (error) throw error;
+
+    // Sem robô ligado o stop global é zero — o piso do freio de pico acompanha.
+    const { syncPeakFloorFromGlobalStop } = await import("@/lib/b3-real-stop.server");
+    await syncPeakFloorFromGlobalStop(supabase, userId);
+
     return { ok: true as const, revoked: (rows ?? []).length };
   });

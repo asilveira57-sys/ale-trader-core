@@ -2956,6 +2956,7 @@ export type Database = {
         Row: {
           peak_giveback_pct: number
           peak_min_brl: number
+          peak_min_pct_of_global: number
           real_enabled: boolean
           resumed_at: string | null
           stopped_at: string | null
@@ -2967,6 +2968,7 @@ export type Database = {
         Insert: {
           peak_giveback_pct?: number
           peak_min_brl?: number
+          peak_min_pct_of_global?: number
           real_enabled?: boolean
           resumed_at?: string | null
           stopped_at?: string | null
@@ -2978,6 +2980,7 @@ export type Database = {
         Update: {
           peak_giveback_pct?: number
           peak_min_brl?: number
+          peak_min_pct_of_global?: number
           real_enabled?: boolean
           resumed_at?: string | null
           stopped_at?: string | null
@@ -7274,6 +7277,7 @@ export type Database = {
         }[]
       }
       b3_diagnosticar_dia: { Args: { p_date: string }; Returns: number }
+      b3_disparar_tique: { Args: never; Returns: string }
       b3_m1_candles: {
         Args: { p_limit?: number; p_symbol: string; p_user_id: string }
         Returns: {

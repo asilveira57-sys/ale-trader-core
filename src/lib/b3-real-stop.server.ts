@@ -183,3 +183,75 @@ export async function loadRealDayResult(supabase: SupabaseClient, userId: string
 
   return { total_brl: Math.round(total * 100) / 100, by_magic: byMagic };
 }
+
+// ───── Piso do freio de pico da CONTA como % do STOP GLOBAL (01/09/2026) ─────
+// O piso absoluto era muito para 1 robô e pouco para 7. O stop global já é a
+// soma do limite EFETIVO de cada robô ligado, então ele acompanha sozinho a
+// quantidade de robôs, de contratos e o tamanho do stop de cada um.
+// A coluna em R$ (peak_min_brl) continua sendo a fonte que o portão lê — aqui
+// só a mantemos em sincronia com o percentual. NÃO muda a devolução (35%), nem
+// a lógica do freio, nem o cálculo do stop global.
+export const DEFAULT_PEAK_MIN_PCT_OF_GLOBAL = 0.5;
+
+export interface PeakFloorSync {
+  /** percentual gravado (ou derivado de uma linha antiga) */
+  pct: number;
+  /** stop global do momento, em R$ */
+  global_stop_brl: number;
+  /** piso em R$ que este percentual produz agora */
+  peak_min_brl: number;
+  /** true quando o valor em R$ gravado estava velho e foi recalculado */
+  updated: boolean;
+}
+
+/**
+ * Recalcula peak_min_brl a partir do percentual e do stop global do momento.
+ * Chamado sempre que um robô é ligado/desligado nas Automações Reais e na
+ * leitura do Cockpit Real — era exatamente o "errado em silêncio" que faltava.
+ */
+export async function syncPeakFloorFromGlobalStop(
+  supabase: SupabaseClient,
+  userId: string,
+  opts?: { pctOverride?: number },
+): Promise<PeakFloorSync> {
+  const [sizing, stateRes] = await Promise.all([
+    loadRealSizing(supabase, userId),
+    supabase
+      .from("b3_real_execution_state")
+      .select("peak_min_brl, peak_min_pct_of_global")
+      .eq("user_id", userId)
+      .maybeSingle(),
+  ]);
+
+  const row = (stateRes.data ?? null) as any;
+  const globalStop = globalStopFromSizing(sizing).total_brl;
+
+  const stored = row?.peak_min_pct_of_global == null ? null : Number(row.peak_min_pct_of_global);
+  // Linha antiga sem percentual: deriva dividindo os R$ gravados pelo stop
+  // global do momento — sem inventar número novo.
+  const derived = globalStop > 0 && row?.peak_min_brl != null ? Number(row.peak_min_brl) / globalStop : null;
+  const pct = opts?.pctOverride != null && Number.isFinite(opts.pctOverride)
+    ? Math.max(0, Math.min(3, Number(opts.pctOverride)))
+    : stored != null && Number.isFinite(stored) && stored > 0
+      ? stored
+      : derived != null && Number.isFinite(derived) && derived > 0
+        ? Math.round(derived * 1000) / 1000
+        : DEFAULT_PEAK_MIN_PCT_OF_GLOBAL;
+
+  const brl = Math.round(pct * globalStop * 100) / 100;
+  const prevBrl = row?.peak_min_brl == null ? null : Number(row.peak_min_brl);
+  const needs = prevBrl == null || Math.abs(prevBrl - brl) >= 0.01 || stored == null || stored !== pct;
+
+  if (needs) {
+    try {
+      await (supabase as any).from("b3_real_execution_state").upsert(
+        { user_id: userId, peak_min_pct_of_global: pct, peak_min_brl: brl, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" },
+      );
+    } catch (e) {
+      console.error("[piso-pico] falha ao sincronizar piso do pico:", (e as Error).message);
+    }
+  }
+
+  return { pct, global_stop_brl: globalStop, peak_min_brl: brl, updated: needs };
+}
