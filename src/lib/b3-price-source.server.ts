@@ -8,6 +8,7 @@
 
 import { buildMockB3Context, type B3Context } from "./b3-committee.server";
 import { b3BrtDate } from "./b3-window.server";
+import { roundToTick } from "./b3-tick";
 
 
 export type B3PriceSource = "csv" | "mt5_xp_demo";
@@ -355,7 +356,7 @@ export function getB3ExecutionAudit(
     }
     return {
       ...quoteAuditBase(info),
-      execution_price: Math.round(price / info.tick_size) * info.tick_size,
+      execution_price: roundToTick(price, info.tick_size),
       execution_price_origin: action === "entry"
         ? (side === "buy" ? "mt5_ask_entry" : "mt5_bid_entry")
         : (side === "buy" ? "mt5_bid_exit_mark" : "mt5_ask_exit_mark"),
@@ -363,7 +364,7 @@ export function getB3ExecutionAudit(
     };
   }
 
-  const price = Math.round(Number(info.ctx.price || 0) / info.tick_size) * info.tick_size;
+  const price = roundToTick(Number(info.ctx.price || 0), info.tick_size);
   return {
     ...quoteAuditBase(info),
     execution_price: price,
@@ -584,7 +585,7 @@ export async function getB3PriceContextUncached(
       sample_window, warming_up_after_gap: sample_window.warming_up_after_gap,
     };
   }
-  const priceRounded = Math.round(price / tickSize) * tickSize;
+  const priceRounded = roundToTick(price, tickSize);
   const open = prices[0] ?? price;
   const high = useM1
     ? Math.max(...m1Rows.map((c) => Number(c.candle_high)), price)

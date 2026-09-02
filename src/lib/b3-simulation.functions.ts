@@ -26,6 +26,7 @@ import {
 import { b3WindowState } from "./b3-window.server";
 import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobotSizing } from "./b3-real-stop.server";
 
+import { roundToTick } from "./b3-tick";
 import {
   decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
   type B3GrupoLimites, type B3GrupoEstado, type B3GrupoDecision,
@@ -838,10 +839,10 @@ async function runB3SimulationTickInner(
       const bid = Number(info.raw?.bid);
       const ask = Number(info.raw?.ask);
       const p = order.side === "buy" ? bid : ask;
-      return p > 0 ? Math.round(p / Number(asset.tick_size)) * Number(asset.tick_size) : null;
+      return p > 0 ? roundToTick(p, Number(asset.tick_size)) : null;
     }
     const p = Number(fallbackCtx?.price);
-    return p > 0 ? Math.round(p / Number(asset.tick_size)) * Number(asset.tick_size) : null;
+    return p > 0 ? roundToTick(p, Number(asset.tick_size)) : null;
   }
 
   // ── Freio escalonado por GRUPO (symbol + variant) ─────────────────────────
@@ -2951,7 +2952,7 @@ async function runB3SimulationTickInner(
             const marketExit = open.side === "buy" ? bid : ask;
             markAudit = {
               ...quoteAuditBase(priceSrc),
-              execution_price: Math.round(marketExit / Number(asset.tick_size)) * Number(asset.tick_size),
+              execution_price: roundToTick(marketExit, Number(asset.tick_size)),
               execution_price_origin: open.side === "buy" ? "mt5_last_known_bid_exit_mark" : "mt5_last_known_ask_exit_mark",
               legacy_price_detected: false,
             };
@@ -3796,7 +3797,7 @@ async function runB3SimulationTickInner(
           const slip = Number(run.simulated_slippage_pts) || 0;
           entryAudit = {
             ...entryAudit,
-            execution_price: Math.round((effectiveSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip) / asset.tick_size) * asset.tick_size,
+            execution_price: roundToTick(effectiveSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip, Number(asset.tick_size)),
             execution_price_origin: `${entryAudit.execution_price_origin}+legacy_slippage`,
           };
         }
@@ -3815,7 +3816,7 @@ async function runB3SimulationTickInner(
         const orderPayload: any = {
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: effectiveSide,
-          entry_price: Math.round(entry / asset.tick_size) * asset.tick_size, quantity: qty,
+          entry_price: roundToTick(entry, Number(asset.tick_size)), quantity: qty,
           // taxa da ponta de entrada, derivada do perfil do ativo
           fees: computeB3Fees({ assetProfile: asset, quantity: qty, entryPrice: entry }), status: "open",
           // Níveis dinâmicos por ordem (rompimento = frações da altura do
@@ -4512,7 +4513,7 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
   const durationS = entryTimeMs ? Math.max(0, Math.round((nowMs - entryTimeMs) / 1000)) : null;
 
   const { data: closedOrder, error: closeError } = await supabase.from("b3_simulation_orders").update({
-    exit_price: Math.round(exitPrice / assetProfile.tick_size) * assetProfile.tick_size,
+    exit_price: roundToTick(exitPrice, Number(assetProfile.tick_size)),
     exit_time: new Date().toISOString(),
     gross_result_points: grossPts,
     gross_result_brl: grossBrl,
@@ -4613,7 +4614,7 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
     entry_reason: order.entry_reason ?? null,
     exit_reason: reason,
     entry_price: Number(order.entry_price),
-    exit_price: Math.round(exitPrice / assetProfile.tick_size) * assetProfile.tick_size,
+    exit_price: roundToTick(exitPrice, Number(assetProfile.tick_size)),
     entry_time: order.entry_time,
     exit_time: new Date().toISOString(),
     duration_s: durationS,
