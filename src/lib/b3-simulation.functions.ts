@@ -26,8 +26,8 @@ import {
 import { b3WindowState } from "./b3-window.server";
 import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobotSizing } from "./b3-real-stop.server";
 
-import {
 import { roundToTick } from "./b3-tick";
+import {
   decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
   type B3GrupoLimites, type B3GrupoEstado, type B3GrupoDecision,
 } from "./b3-grupo.server";
