@@ -3734,6 +3734,8 @@ export type Database = {
           status: string
           stop_pts: number | null
           symbol: string
+          unrealized_brl: number | null
+          unrealized_points: number | null
           updated_at: string
           user_id: string
         }
@@ -3776,6 +3778,8 @@ export type Database = {
           status?: string
           stop_pts?: number | null
           symbol?: string
+          unrealized_brl?: number | null
+          unrealized_points?: number | null
           updated_at?: string
           user_id: string
         }
@@ -3818,6 +3822,8 @@ export type Database = {
           status?: string
           stop_pts?: number | null
           symbol?: string
+          unrealized_brl?: number | null
+          unrealized_points?: number | null
           updated_at?: string
           user_id?: string
         }
