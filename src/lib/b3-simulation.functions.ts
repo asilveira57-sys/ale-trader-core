@@ -3797,7 +3797,7 @@ async function runB3SimulationTickInner(
           const slip = Number(run.simulated_slippage_pts) || 0;
           entryAudit = {
             ...entryAudit,
-            execution_price: Math.round((effectiveSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip) / asset.tick_size) * asset.tick_size,
+            execution_price: roundToTick(effectiveSide === "buy" ? entryAudit.execution_price + slip : entryAudit.execution_price - slip, Number(asset.tick_size)),
             execution_price_origin: `${entryAudit.execution_price_origin}+legacy_slippage`,
           };
         }
