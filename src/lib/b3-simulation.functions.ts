@@ -48,7 +48,7 @@ const WIN_FALLBACK_ASSET_PROFILE = {
   spread_max_price: 15, price_deviation_limit: 2000,
   fee_model: "per_contract", fee_per_contract_brl: 1.5, fee_percent_volume: 0,
 };
-async function loadAssetProfile(supabase: any, symbol: string | null | undefined) {
+export async function loadAssetProfile(supabase: any, symbol: string | null | undefined) {
   if (!symbol) return WIN_FALLBACK_ASSET_PROFILE;
   try {
     const { data } = await supabase.from("b3_asset_profiles").select("*").eq("symbol", symbol).maybeSingle();
