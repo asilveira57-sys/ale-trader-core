@@ -48,7 +48,7 @@ const WIN_FALLBACK_ASSET_PROFILE = {
   spread_max_price: 15, price_deviation_limit: 2000,
   fee_model: "per_contract", fee_per_contract_brl: 1.5, fee_percent_volume: 0,
 };
-async function loadAssetProfile(supabase: any, symbol: string | null | undefined) {
+export async function loadAssetProfile(supabase: any, symbol: string | null | undefined) {
   if (!symbol) return WIN_FALLBACK_ASSET_PROFILE;
   try {
     const { data } = await supabase.from("b3_asset_profiles").select("*").eq("symbol", symbol).maybeSingle();
@@ -4483,7 +4483,11 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
 
 
 
-async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string, marketHistory: any[] = [], assetProfile: any = WIN_FALLBACK_ASSET_PROFILE) {
+// `onlyIfOpen`: usado pelo guardião de saída, que roda em cadência própria e
+// pode disputar a mesma ordem com o tique completo. Com a trava ligada, o
+// UPDATE só afeta a linha se ela ainda estiver `open` — o segundo caminho não
+// consegue fechar de novo (nem contar o resultado duas vezes na carteira).
+export async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string, marketHistory: any[] = [], assetProfile: any = WIN_FALLBACK_ASSET_PROFILE, onlyIfOpen = false) {
   if (exitAudit.quote_source === "MT5 XP DEMO") assertB3StrictMt5ExecutionAudit(exitAudit, "closeOrder", assetProfile.symbol);
   const exitPrice = exitAudit.execution_price;
   const dir = order.side === "buy" ? 1 : -1;
@@ -4512,7 +4516,7 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
   }
   const durationS = entryTimeMs ? Math.max(0, Math.round((nowMs - entryTimeMs) / 1000)) : null;
 
-  const { data: closedOrder, error: closeError } = await supabase.from("b3_simulation_orders").update({
+  let closeUpdate = supabase.from("b3_simulation_orders").update({
     exit_price: roundToTick(exitPrice, Number(assetProfile.tick_size)),
     exit_time: new Date().toISOString(),
     gross_result_points: grossPts,
@@ -4530,7 +4534,9 @@ async function closeOrder(supabase: any, userId: string, run: any, mode: any, or
     execution_price_origin: exitAudit.execution_price_origin,
     legacy_price_detected: exitAudit.legacy_price_detected,
     provider_name: exitAudit.provider_name,
-  }).eq("id", order.id).eq("user_id", userId).select("id, status").maybeSingle();
+  }).eq("id", order.id).eq("user_id", userId);
+  if (onlyIfOpen) closeUpdate = closeUpdate.eq("status", "open");
+  const { data: closedOrder, error: closeError } = await closeUpdate.select("id, status").maybeSingle();
 
   if (closeError || closedOrder?.status !== "closed") {
     const failureMessage = closeError?.message
