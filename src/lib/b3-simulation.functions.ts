@@ -4483,7 +4483,11 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
 
 
 
-async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string, marketHistory: any[] = [], assetProfile: any = WIN_FALLBACK_ASSET_PROFILE) {
+// `onlyIfOpen`: usado pelo guardião de saída, que roda em cadência própria e
+// pode disputar a mesma ordem com o tique completo. Com a trava ligada, o
+// UPDATE só afeta a linha se ela ainda estiver `open` — o segundo caminho não
+// consegue fechar de novo (nem contar o resultado duas vezes na carteira).
+export async function closeOrder(supabase: any, userId: string, run: any, mode: any, order: any, exitAudit: B3QuoteExecutionAudit, reason: string, marketHistory: any[] = [], assetProfile: any = WIN_FALLBACK_ASSET_PROFILE, onlyIfOpen = false) {
   if (exitAudit.quote_source === "MT5 XP DEMO") assertB3StrictMt5ExecutionAudit(exitAudit, "closeOrder", assetProfile.symbol);
   const exitPrice = exitAudit.execution_price;
   const dir = order.side === "buy" ? 1 : -1;
