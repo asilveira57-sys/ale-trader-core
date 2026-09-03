@@ -4516,7 +4516,7 @@ export async function closeOrder(supabase: any, userId: string, run: any, mode: 
   }
   const durationS = entryTimeMs ? Math.max(0, Math.round((nowMs - entryTimeMs) / 1000)) : null;
 
-  const { data: closedOrder, error: closeError } = await supabase.from("b3_simulation_orders").update({
+  let closeUpdate = supabase.from("b3_simulation_orders").update({
     exit_price: roundToTick(exitPrice, Number(assetProfile.tick_size)),
     exit_time: new Date().toISOString(),
     gross_result_points: grossPts,
@@ -4534,7 +4534,9 @@ export async function closeOrder(supabase: any, userId: string, run: any, mode: 
     execution_price_origin: exitAudit.execution_price_origin,
     legacy_price_detected: exitAudit.legacy_price_detected,
     provider_name: exitAudit.provider_name,
-  }).eq("id", order.id).eq("user_id", userId).select("id, status").maybeSingle();
+  }).eq("id", order.id).eq("user_id", userId);
+  if (onlyIfOpen) closeUpdate = closeUpdate.eq("status", "open");
+  const { data: closedOrder, error: closeError } = await closeUpdate.select("id, status").maybeSingle();
 
   if (closeError || closedOrder?.status !== "closed") {
     const failureMessage = closeError?.message
