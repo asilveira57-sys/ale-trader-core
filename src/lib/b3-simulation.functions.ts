@@ -47,7 +47,11 @@ const WIN_FALLBACK_ASSET_PROFILE = {
   tick_size: TICK, tick_value_brl: POINT_VALUE_BRL, base_price_fallback: 130000,
   spread_max_price: 15, price_deviation_limit: 2000,
   fee_model: "per_contract", fee_per_contract_brl: 1.5, fee_percent_volume: 0,
+  // Limiar de afastamento do VWAP, agora configurável POR ATIVO (05/09/2026).
+  // Estes são os valores históricos que estavam embutidos no motor.
+  vwap_min_distance_stop_ratio: 0.8, vwap_min_distance_range_ratio: 0.25,
 };
+
 export async function loadAssetProfile(supabase: any, symbol: string | null | undefined) {
   if (!symbol) return WIN_FALLBACK_ASSET_PROFILE;
   try {
