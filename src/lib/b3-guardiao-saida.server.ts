@@ -40,6 +40,7 @@ export interface GuardiaoResultado {
   fechadas: number;
   ignoradas: number;
   erros: number;
+  marcadas_a_mercado: number;
   janela_ms: number;
   detalhes: any[];
 }
@@ -60,7 +61,7 @@ function saidaCfg(cfg: any) {
 export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResultado> {
   const t0 = Date.now();
   const detalhes: any[] = [];
-  let fechadas = 0, ignoradas = 0, erros = 0;
+  let fechadas = 0, ignoradas = 0, erros = 0, marcadas = 0;
 
   // 1) Ordens abertas de todos os usuários. É a leitura mais barata do sistema:
   //    em pregão normal são poucas dezenas de linhas.
@@ -71,7 +72,20 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   if (errAbertas) throw new Error(`guardião: falha ao ler ordens abertas — ${errAbertas.message}`);
   const ordens = abertas ?? [];
   if (!ordens.length) {
-    return { ordens_abertas: 0, fechadas: 0, ignoradas: 0, erros: 0, janela_ms: Date.now() - t0, detalhes };
+    const vazio: GuardiaoResultado = {
+      ordens_abertas: 0, fechadas: 0, ignoradas: 0, erros: 0, marcadas_a_mercado: 0,
+      janela_ms: Date.now() - t0, detalhes,
+    };
+    try {
+      await supabase.from("system_logs").insert({
+        event_type: "b3_guardiao_summary",
+        source: "b3-guardiao-saida",
+        severity: "info",
+        message: `Guardião avaliou 0 posição(ões) em ${vazio.janela_ms} ms.`,
+        technical_data: vazio,
+      });
+    } catch { /* log nunca derruba o guardião */ }
+    return vazio;
   }
 
   // 2) Execuções e carteiras envolvidas (uma leitura por conjunto, não por ordem).
@@ -247,6 +261,29 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       // Fica no tique completo; acelerá-lo não muda nada.
       if (cfg.trailing_mode === "structural") debug.trailing_structural_no_tique_completo = true;
 
+      // MARCAÇÃO A MERCADO (item 4 da leva de 02/09)
+      // `unrealized_points` / `unrealized_brl` existiam vazias. Aqui elas são
+      // preenchidas pelo MESMO Bid/Ask auditado que decide o fechamento — nunca
+      // por preço histórico de outro snapshot — então o valor em tela é o mesmo
+      // que o motor usaria se fechasse a posição naquele instante.
+      // Escrita econômica: só grava quando o número muda de fato (ponto inteiro
+      // e centavo), para não multiplicar I/O a cada 20 s por posição parada.
+      if (open.exit_time == null) {
+        const qty = Number(open.quantity) || 1;
+        const unrealPts = Math.round(movePts);
+        const unrealBrl = Number((movePts * Number(asset.tick_value_brl) * qty).toFixed(2));
+        const jaPts = open.unrealized_points == null ? null : Math.round(Number(open.unrealized_points));
+        const jaBrl = open.unrealized_brl == null ? null : Number(Number(open.unrealized_brl).toFixed(2));
+        if (jaPts !== unrealPts || jaBrl !== unrealBrl) {
+          try {
+            await supabase.from("b3_simulation_orders")
+              .update({ unrealized_points: unrealPts, unrealized_brl: unrealBrl })
+              .eq("id", open.id).eq("user_id", userId).eq("status", "open");
+            marcadas++;
+          } catch { /* marcação nunca derruba a gestão de risco */ }
+        }
+      }
+
       if (!motivo) { ignoradas++; continue; }
 
       const exitAudit: B3QuoteExecutionAudit = {
@@ -299,17 +336,23 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   }
 
   const janela_ms = Date.now() - t0;
-  if (fechadas > 0 || erros > 0) {
-    try {
-      await supabase.from("system_logs").insert({
-        event_type: "b3_guardiao_saida",
-        source: "b3-guardiao-saida",
-        severity: erros > 0 ? "warning" : "info",
-        message: `Guardião avaliou ${ordens.length} posição(ões): ${fechadas} encerrada(s), ${ignoradas} sem gatilho, ${erros} erro(s) em ${janela_ms} ms.`,
-        technical_data: { ordens_abertas: ordens.length, fechadas, ignoradas, erros, janela_ms, detalhes },
-      });
-    } catch { /* log nunca derruba o guardião */ }
-  }
+  const res: GuardiaoResultado = {
+    ordens_abertas: ordens.length, fechadas, ignoradas, erros,
+    marcadas_a_mercado: marcadas, janela_ms, detalhes,
+  };
 
-  return { ordens_abertas: ordens.length, fechadas, ignoradas, erros, janela_ms, detalhes };
+  // LOG DE DURAÇÃO EM TODA PASSADA (não só quando fecha ordem).
+  // É a única forma de saber quanto custa uma passada com ~75 posições abertas
+  // antes de decidir se a cadência pode cair de 20 s para 10 s.
+  try {
+    await supabase.from("system_logs").insert({
+      event_type: "b3_guardiao_summary",
+      source: "b3-guardiao-saida",
+      severity: erros > 0 ? "warning" : "info",
+      message: `Guardião avaliou ${ordens.length} posição(ões) em ${janela_ms} ms: ${fechadas} encerrada(s), ${ignoradas} sem gatilho, ${marcadas} marcada(s) a mercado, ${erros} erro(s).`,
+      technical_data: res,
+    });
+  } catch { /* log nunca derruba o guardião */ }
+
+  return res;
 }
