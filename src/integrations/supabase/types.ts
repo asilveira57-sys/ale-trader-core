@@ -684,6 +684,8 @@ export type Database = {
           tick_value_brl: number
           trading_calendar: string
           trend_strength_factor: number | null
+          vwap_min_distance_range_ratio: number
+          vwap_min_distance_stop_ratio: number
         }
         Insert: {
           active?: boolean
@@ -708,6 +710,8 @@ export type Database = {
           tick_value_brl: number
           trading_calendar?: string
           trend_strength_factor?: number | null
+          vwap_min_distance_range_ratio?: number
+          vwap_min_distance_stop_ratio?: number
         }
         Update: {
           active?: boolean
@@ -732,6 +736,8 @@ export type Database = {
           tick_value_brl?: number
           trading_calendar?: string
           trend_strength_factor?: number | null
+          vwap_min_distance_range_ratio?: number
+          vwap_min_distance_stop_ratio?: number
         }
         Relationships: []
       }

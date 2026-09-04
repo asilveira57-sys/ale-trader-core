@@ -34,6 +34,8 @@ import {
   type B3PriceContextResult,
   type B3QuoteExecutionAudit,
 } from "@/lib/b3-price-source.server";
+import { b3WindowState } from "@/lib/b3-window.server";
+
 
 export interface GuardiaoResultado {
   ordens_abertas: number;
@@ -41,9 +43,12 @@ export interface GuardiaoResultado {
   ignoradas: number;
   erros: number;
   marcadas_a_mercado: number;
+  oposicoes_longas_detectadas: number;
+  oposicoes_longas_fechadas: number;
   janela_ms: number;
   detalhes: any[];
 }
+
 
 /** Config de saída de um robô, com defaults conservadores. */
 function saidaCfg(cfg: any) {
@@ -62,6 +67,8 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   const t0 = Date.now();
   const detalhes: any[] = [];
   let fechadas = 0, ignoradas = 0, erros = 0, marcadas = 0;
+  let oposDetectadas = 0, oposFechadas = 0;
+
 
   // 1) Ordens abertas de todos os usuários. É a leitura mais barata do sistema:
   //    em pregão normal são poucas dezenas de linhas.
@@ -74,8 +81,10 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   if (!ordens.length) {
     const vazio: GuardiaoResultado = {
       ordens_abertas: 0, fechadas: 0, ignoradas: 0, erros: 0, marcadas_a_mercado: 0,
+      oposicoes_longas_detectadas: 0, oposicoes_longas_fechadas: 0,
       janela_ms: Date.now() - t0, detalhes,
     };
+
     try {
       await supabase.from("system_logs").insert({
         event_type: "b3_guardiao_summary",
@@ -105,6 +114,67 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
     .in("simulation_run_id", runIds);
   const cfgKey = (runId: string, mode: string) => `${runId}:${mode}`;
   const cfgByKey = new Map<string, any>((settings ?? []).map((s: any) => [cfgKey(s.simulation_run_id, s.mode), s]));
+
+  // ── OPOSIÇÃO PROLONGADA (05/09/2026) ─────────────────────────────────────
+  // Medição de 23 pregões válidos, 2.044 pares de posições opostas no WIN:
+  // até 20 min de sobreposição o par soma positivo (+R$ 19 a +R$ 30, 65–70%
+  // de pares positivos); a partir de 20 min o SINAL TROCA (−R$ 27,08 em
+  // 20–40 min; −R$ 30,64 acima de 40 min). O limiar não foi escolhido por
+  // maximizar resultado — é onde a média muda de sinal.
+  //
+  // Fecha a perna MAIS ANTIGA: nos pares acima de 40 min a perna que entrou
+  // primeiro termina em −R$ 38,52 e a mais nova em +R$ 7,88 (a antiga é a
+  // pior em 65% dos casos). A velha é a tese presa; a nova é sinal fresco na
+  // direção contrária.
+  //
+  // NÃO é stop por tempo: ordem longa SEM oposta é o melhor negócio do motor
+  // (+R$ 51,66 em 20–60 min); a mesma duração COM oposta vira prejuízo. O
+  // gatilho é a oposição, não o relógio.
+  //
+  // CORTE DE HORÁRIO: 15:30 BRT. Perto da zeragem (16:55) a oposição é
+  // artefato mecânico do encerramento conjunto, e o dado mostra que à tarde
+  // a oposição longa é neutra (+R$ 1,90) contra claramente ruim de manhã
+  // (−R$ 20,31). Fora da janela a regra não age e nada é forçado.
+  const OPOSICAO_MIN_MINUTOS = 20;
+  const OPOSICAO_CORTE_BRT_MIN = 15 * 60 + 30;
+  const oposicaoPorOrdem = new Map<string, { minutos: number; oposta_id: string; oposta_side: string }>();
+  const agora = Date.now();
+  const janelaBrt = b3WindowState(new Date(agora));
+  if (janelaBrt.minutes <= OPOSICAO_CORTE_BRT_MIN) {
+    // Agrupa por (usuário + ativo). Robôs diferentes do MESMO ativo contam
+    // como oposição — é exatamente o hedge preso que a medição isolou.
+    const grupos = new Map<string, any[]>();
+    for (const o of ordens) {
+      const run = runById.get(o.simulation_run_id);
+      if (!run?.symbol || !o.entry_time) continue;
+      const k = `${o.user_id}:${run.symbol}`;
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k)!.push(o);
+    }
+    const ms = (o: any) => new Date(o.entry_time).getTime();
+    for (const [, lista] of grupos) {
+      const compras = lista.filter((o: any) => o.side === "buy");
+      const vendas = lista.filter((o: any) => o.side === "sell");
+      for (const c of compras) {
+        for (const v of vendas) {
+          const inicioSobreposicao = Math.max(ms(c), ms(v));
+          if (!Number.isFinite(inicioSobreposicao)) continue;
+          const minutos = (agora - inicioSobreposicao) / 60_000;
+          if (minutos < OPOSICAO_MIN_MINUTOS) continue;
+          oposDetectadas++;
+          const velha = ms(c) <= ms(v) ? c : v;
+          const nova = velha === c ? v : c;
+          const ja = oposicaoPorOrdem.get(velha.id);
+          if (!ja || minutos > ja.minutos) {
+            oposicaoPorOrdem.set(velha.id, {
+              minutos: Number(minutos.toFixed(1)), oposta_id: nova.id, oposta_side: nova.side,
+            });
+          }
+        }
+      }
+    }
+  }
+
 
   // 3) Cotação: uma leitura por (usuário + ativo), compartilhada por todos os
   //    robôs daquele ativo. O provedor ainda tem cache de 1,5 s por cima.
@@ -261,6 +331,25 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       // Fica no tique completo; acelerá-lo não muda nada.
       if (cfg.trailing_mode === "structural") debug.trailing_structural_no_tique_completo = true;
 
+      // Oposição prolongada: só depois de stop/alvo/trailing/zero a zero — esses
+      // são nível de preço contratado e têm precedência. Fecha a perna velha.
+      const opos = oposicaoPorOrdem.get(open.id);
+      if (!motivo && opos) {
+        motivo = "oposicao_prolongada";
+        nivel = null;
+        debug.oposicao_prolongada = {
+          minutos: opos.minutos,
+          limiar_minutos: OPOSICAO_MIN_MINUTOS,
+          oposta_order_id: opos.oposta_id,
+          oposta_side: opos.oposta_side,
+          perna: "mais_antiga",
+          corte_brt: "15:30",
+          brt_time: janelaBrt.brt_time,
+        };
+      }
+
+
+
       // MARCAÇÃO A MERCADO (item 4 da leva de 02/09)
       // `unrealized_points` / `unrealized_brl` existiam vazias. Aqui elas são
       // preenchidas pelo MESMO Bid/Ask auditado que decide o fechamento — nunca
@@ -324,12 +413,15 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       try {
         const closed = await closeOrder(supabase, userId, run, m, open, exitAudit, motivo, marketHistory, asset, true);
         fechadas++;
+        if (motivo === "oposicao_prolongada") oposFechadas++;
         detalhes.push({
           order_id: open.id, symbol: asset.symbol, mode: open.mode, variant: run.variant ?? null,
           reason: motivo, level: nivel, executed_price: exitAudit.execution_price,
           beyond_pts: nivel === null ? null : Math.abs(markPrice - nivel),
           net_brl: closed?.net_brl ?? null,
+          oposicao_minutos: opos?.minutos ?? null, oposta_order_id: opos?.oposta_id ?? null,
         });
+
         try {
           await supabase.from("b3_simulation_orders").update({
             diagnostic_payload: {
@@ -339,7 +431,11 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
               executed_price: exitAudit.execution_price,
               overshoot_pts: nivel === null ? 0 : Math.abs(exitAudit.execution_price - nivel),
               quote_age_s: Number(info.quote_age_s ?? 0),
+              // Registro exigido para medir o efeito da regra depois.
+              oposicao_prolongada_minutos: opos?.minutos ?? null,
+              oposicao_prolongada_oposta_order_id: opos?.oposta_id ?? null,
               guardiao_debug: debug,
+
             },
           }).eq("id", open.id).eq("user_id", userId);
         } catch { /* diagnóstico nunca derruba o fechamento */ }
@@ -367,7 +463,9 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   const janela_ms = Date.now() - t0;
   const res: GuardiaoResultado = {
     ordens_abertas: ordens.length, fechadas, ignoradas, erros,
-    marcadas_a_mercado: marcadas, janela_ms, detalhes,
+    marcadas_a_mercado: marcadas,
+    oposicoes_longas_detectadas: oposDetectadas, oposicoes_longas_fechadas: oposFechadas,
+    janela_ms, detalhes,
   };
 
   // LOG DE DURAÇÃO EM TODA PASSADA (não só quando fecha ordem).
@@ -378,10 +476,11 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       event_type: "b3_guardiao_summary",
       source: "b3-guardiao-saida",
       severity: erros > 0 ? "warning" : "info",
-      message: `Guardião avaliou ${ordens.length} posição(ões) em ${janela_ms} ms: ${fechadas} encerrada(s), ${ignoradas} sem gatilho, ${marcadas} marcada(s) a mercado, ${erros} erro(s).`,
+      message: `Guardião avaliou ${ordens.length} posição(ões) em ${janela_ms} ms: ${fechadas} encerrada(s), ${ignoradas} sem gatilho, ${marcadas} marcada(s) a mercado, ${oposDetectadas} oposição(ões) longa(s) detectada(s), ${oposFechadas} fechada(s) por oposição, ${erros} erro(s).`,
       technical_data: res,
     });
   } catch { /* log nunca derruba o guardião */ }
+
 
   return res;
 }
