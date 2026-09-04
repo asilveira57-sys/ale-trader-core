@@ -34,6 +34,8 @@ import {
   type B3PriceContextResult,
   type B3QuoteExecutionAudit,
 } from "@/lib/b3-price-source.server";
+import { b3WindowState } from "@/lib/b3-window.server";
+
 
 export interface GuardiaoResultado {
   ordens_abertas: number;
