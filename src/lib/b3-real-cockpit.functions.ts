@@ -471,6 +471,36 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       });
     }
 
+    // ── 8b. Disjuntor diário da CONTA real (meta de ganho / teto de perda) ──
+    // Leitura pura: a trava só é armada pelo portão de abertura real.
+    const { readDailyCircuit } = await import("@/lib/b3-real-daily-circuit.server");
+    const dailyCircuit = await readDailyCircuit(supabase, userId, now);
+    if (dailyCircuit.armed) {
+      alerts.unshift({
+        kind: "disjuntor_diario_armado", severity: "critical",
+        title: dailyCircuit.armed_kind === "meta_ganho"
+          ? "Disjuntor diário: META DE GANHO atingida — dia travado"
+          : "Disjuntor diário: TETO DE PERDA atingido — novas entradas reais bloqueadas",
+        detail:
+          `Base R$ ${dailyCircuit.base_brl.toFixed(2)} · realizado R$ ${dailyCircuit.realized_brl.toFixed(2)} · ` +
+          `meta R$ ${dailyCircuit.gain_target_brl.toFixed(2)} · teto −R$ ${dailyCircuit.loss_cap_brl.toFixed(2)}. ` +
+          "Nenhum robô real abre até o próximo pregão. Fechamento e simulação seguem normais.",
+        at: dailyCircuit.armed_at,
+      });
+    } else if (dailyCircuit.enabled && dailyCircuit.gain_waiting_flat) {
+      alerts.unshift({
+        kind: "disjuntor_diario_esperando_conta_limpa", severity: "warning",
+        title: "Meta de ganho batida — esperando a conta ficar limpa",
+        detail:
+          `Realizado R$ ${dailyCircuit.realized_brl.toFixed(2)} ≥ meta R$ ${dailyCircuit.gain_target_brl.toFixed(2)}, ` +
+          `mas ainda há ${dailyCircuit.open_positions} posição(ões) real(is) aberta(s)` +
+          `${dailyCircuit.broker_stale ? " (ou o relatório da corretora está velho)" : ""}. ` +
+          "A trava do lucro só entra com a conta limpa, de propósito.",
+        at: now.toISOString(),
+      });
+    }
+
+
     return {
       server_time: now.toISOString(),
       session_date: sessionDate,
