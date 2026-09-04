@@ -1,6 +1,11 @@
 // Cron público: tick automático da Simulação B3 durante o pregão.
-// Chamado por pg_cron a cada minuto. A janela operacional é validada ANTES de
-// qualquer acesso ao banco — fora dela retorna b3_sleeping sem I/O algum.
+// Chamado por pg_cron. CADÊNCIA REAL MEDIDA EM PRODUÇÃO (02/09/2026): ~45 s —
+// o comentário antigo dizia "a cada minuto" e a função b3_disparar_tique() fala
+// de 18 s; os dois estão desatualizados. A gestão de POSIÇÃO ABERTA não depende
+// mais só deste caminho: /api/public/hooks/b3-guardiao-saida confere
+// stop/alvo/trailing em cadência própria e mais curta.
+// A janela operacional é validada ANTES de qualquer acesso ao banco — fora dela
+// retorna b3_sleeping sem I/O algum.
 import { createFileRoute } from "@tanstack/react-router";
 import { runB3SimulationTick } from "@/lib/b3-simulation.functions";
 import { b3WindowState } from "@/lib/b3-window.server";
