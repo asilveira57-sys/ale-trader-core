@@ -235,6 +235,12 @@ async function mirrorToReal(
       const { refreshAccountPeak } = await import("./b3-real-account-peak.server");
       const accountPeak = await refreshAccountPeak(supabase, userId, dayResult.total_brl);
 
+      // Disjuntor diário da CONTA real (meta de ganho / teto de perda sobre a
+      // base de MARGEM dos robôs reais habilitados). Desligado por padrão.
+      // Só a conta real: o simulado nunca é travado por ele.
+      const { refreshDailyCircuit } = await import("./b3-real-daily-circuit.server");
+      const circuit = await refreshDailyCircuit(supabase, userId);
+
       // "Parar novas entradas reais" (botão laranja): já bloqueia a ENTREGA no
       // hook do executor; aqui bloqueia também a ENFILEIRAÇÃO, para o comando
       // nem existir. Fechamento segue livre — este bloco só roda em 'open'.
@@ -246,9 +252,13 @@ async function mirrorToReal(
       let motivo: string | null = null;
       if (realParado) {
         motivo = `real PARADO pela tela${(execState as any)?.stopped_reason ? `: ${(execState as any).stopped_reason}` : ""}`;
+      } else if (circuit.armed) {
+        motivo = circuit.reason ?? `disjuntor diário da conta real armado (${circuit.armed_kind ?? "—"})`;
       } else if (accountPeak.armed) {
         motivo = accountPeak.reason
           ?? `freio de pico da conta real armado às ${accountPeak.armed_at ?? "—"} (pico R$ ${accountPeak.peak_brl.toFixed(2)})`;
+
+
 
       } else if (global.total_brl > 0 && perda >= global.total_brl) {
         motivo = `stop global real alcançado: perda R$ ${perda.toFixed(2)} ≥ global derivado R$ ${global.total_brl.toFixed(2)}`;
