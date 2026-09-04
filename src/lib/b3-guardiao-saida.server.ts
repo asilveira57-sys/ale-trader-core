@@ -40,6 +40,7 @@ export interface GuardiaoResultado {
   fechadas: number;
   ignoradas: number;
   erros: number;
+  marcadas_a_mercado: number;
   janela_ms: number;
   detalhes: any[];
 }
