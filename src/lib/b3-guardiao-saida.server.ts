@@ -72,7 +72,20 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   if (errAbertas) throw new Error(`guardião: falha ao ler ordens abertas — ${errAbertas.message}`);
   const ordens = abertas ?? [];
   if (!ordens.length) {
-    return { ordens_abertas: 0, fechadas: 0, ignoradas: 0, erros: 0, janela_ms: Date.now() - t0, detalhes };
+    const vazio: GuardiaoResultado = {
+      ordens_abertas: 0, fechadas: 0, ignoradas: 0, erros: 0, marcadas_a_mercado: 0,
+      janela_ms: Date.now() - t0, detalhes,
+    };
+    try {
+      await supabase.from("system_logs").insert({
+        event_type: "b3_guardiao_summary",
+        source: "b3-guardiao-saida",
+        severity: "info",
+        message: `Guardião avaliou 0 posição(ões) em ${vazio.janela_ms} ms.`,
+        technical_data: vazio,
+      });
+    } catch { /* log nunca derruba o guardião */ }
+    return vazio;
   }
 
   // 2) Execuções e carteiras envolvidas (uma leitura por conjunto, não por ordem).
