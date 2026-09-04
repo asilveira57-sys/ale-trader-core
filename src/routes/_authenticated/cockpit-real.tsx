@@ -464,9 +464,13 @@ function CockpitRealPage() {
               {realEnabled ? "real operando" : "REAL PARADO"} · {d?.server_time ? hhmmss(d.server_time) : "—"}
             </p>
           </div>
-          <Button size="sm" variant="outline" className="h-9 shrink-0" onClick={() => q.refetch()}>
-            <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <AlertToggle />
+            <Button size="sm" variant="outline" className="h-9 shrink-0" onClick={() => q.refetch()}>
+              <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+
         </div>
 
         <StaleBanner />
