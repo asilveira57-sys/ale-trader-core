@@ -566,6 +566,54 @@ export const setRealAccountPeakConfig = createServerFn({ method: "POST" })
     return { ok: true as const, peak_giveback_pct: data.peak_giveback_pct, ...sync };
   });
 
+// ─── configuração do DISJUNTOR DIÁRIO da conta real (liga/desliga + %) ───
+// Só a conta real. Não toca em parâmetro de robô, comitê, classificador nem no
+// comportamento do simulado. Entregue DESLIGADO por padrão.
+export const setRealDailyCircuitConfig = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      enabled: z.boolean(),
+      /** meta de ganho como fração da base de margem (0,40 = 40%) */
+      gain_target_pct: z.number().min(0.01).max(5),
+      /** teto de perda como fração da base de margem (0,25 = 25%) */
+      loss_cap_pct: z.number().min(0.01).max(5),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const now = new Date().toISOString();
+    const { error } = await (supabase as any)
+      .from("b3_real_execution_state")
+      .upsert({
+        user_id: userId,
+        daily_circuit_enabled: data.enabled,
+        daily_gain_target_pct: data.gain_target_pct,
+        daily_loss_cap_pct: data.loss_cap_pct,
+        updated_at: now,
+      }, { onConflict: "user_id" });
+    if (error) throw error;
+
+    const { readDailyCircuit } = await import("@/lib/b3-real-daily-circuit.server");
+    const status = await readDailyCircuit(supabase, userId);
+
+    try {
+      await (supabase as any).from("system_logs").insert({
+        event_type: "config_disjuntor_diario_real",
+        source: "cockpit_real",
+        severity: "warning",
+        message:
+          `Disjuntor diário da conta real ${data.enabled ? "LIGADO" : "DESLIGADO"}: meta ` +
+          `${(data.gain_target_pct * 100).toFixed(0)}% e teto ${(data.loss_cap_pct * 100).toFixed(0)}% da base ` +
+          `(base agora R$ ${status.base_brl.toFixed(2)} com ${status.robots_count} robô(s) real(is)).`,
+        technical_data: { ...data, base_brl: status.base_brl, robos: status.robots } as any,
+      });
+    } catch { /* best-effort */ }
+
+    return { ok: true as const, ...status };
+  });
+
+
 
 
 // ─────────── botão: PARAR O REAL (sem senha, de propósito) ───────────
