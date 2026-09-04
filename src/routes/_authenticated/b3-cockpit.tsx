@@ -212,6 +212,11 @@ function CockpitPage() {
   const FULL: Record<"symbols" | "variants" | "modes", string[]> = {
     symbols: [...B3_ASSETS], variants: [...VARIANT_LIST], modes: [...MODE_LIST],
   };
+  // SELEÇÃO MÚLTIPLA DE VERDADE (04/09/2026): antes, clicar isolava o item e só
+  // com Ctrl/⌘/Shift somava — quem usa no celular não tem essas teclas e ficava
+  // preso a um ativo por vez. Agora o clique simples MARCA E DESMARCA, e os três
+  // recortes (ativo, modalidade, modo) se combinam. "Todos" continua sendo o
+  // atalho para limpar ou marcar tudo.
   const clickItem = (
     key: "symbols" | "variants" | "modes",
     value: string,
@@ -220,16 +225,17 @@ function CockpitPage() {
     setSaved((s) => {
       const cur = s[key];
       const additive = !!(e?.ctrlKey || e?.metaKey || e?.shiftKey);
-      if (!additive) {
-        // Já isolado? segundo clique volta para tudo marcado.
-        const isolated = cur.length === 1 && cur[0] === value;
-        return { ...s, [key]: isolated ? FULL[key] : [value] };
-      }
-      return { ...s, [key]: cur.includes(value) ? cur.filter((x) => x !== value) : [...cur, value] };
+      // Tudo marcado + clique simples = "quero ver só este" (o caminho mais
+      // comum). Com Ctrl/⌘ o clique soma direto, sem isolar.
+      if (!additive && cur.length === FULL[key].length) return { ...s, [key]: [value] };
+      const next = cur.includes(value) ? cur.filter((x) => x !== value) : [...cur, value];
+      // Desmarcar o último item deixaria a tela vazia sem querer: volta para tudo.
+      return { ...s, [key]: next.length ? next : FULL[key] };
     });
   // "Todos" é alternador: tudo marcado -> desmarca tudo.
   const toggleAll = (key: "symbols" | "variants" | "modes", isAll: boolean) =>
     patch({ [key]: isAll ? [] : FULL[key] } as Partial<SavedFilters>);
+
 
 
   const allSymbols = symbolsSel.length === B3_ASSETS.length;
