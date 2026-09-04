@@ -13,7 +13,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { runB3GuardiaoSaida } from "@/lib/b3-guardiao-saida.server";
 import { b3WindowState } from "@/lib/b3-window.server";
 
-let running = false;
+// Trava por ARRENDAMENTO, não booleana: se a passada anterior for interrompida
+// no meio (limite de tempo do worker, isolate descartado), o `finally` não roda
+// e uma trava booleana ficaria presa até a publicação — foi o que travou o tique
+// de entradas em 04/09/2026. Aqui a passada perdida expira em LEASE_MS.
+let runningSince = 0;
+const LEASE_MS = 60_000;
 
 export const Route = createFileRoute("/api/public/hooks/b3-guardiao-saida")({
   server: {
@@ -35,11 +40,15 @@ export const Route = createFileRoute("/api/public/hooks/b3-guardiao-saida")({
           });
         }
 
-        // Passada anterior ainda rodando: não empilha trabalho.
-        if (running) {
-          return Response.json({ skipped: true, reason: "guardiao_em_execucao" }, { status: 202 });
+        // Passada anterior ainda rodando: não empilha trabalho — salvo se o
+        // arrendamento dela já venceu (passada perdida).
+        if (runningSince && Date.now() - runningSince < LEASE_MS) {
+          return Response.json(
+            { skipped: true, reason: "guardiao_em_execucao", idade_ms: Date.now() - runningSince },
+            { status: 202 },
+          );
         }
-        running = true;
+        runningSince = Date.now();
         try {
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const res = await runB3GuardiaoSaida(supabaseAdmin);
@@ -47,7 +56,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-guardiao-saida")({
         } catch (e) {
           return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });
         } finally {
-          running = false;
+          runningSince = 0;
         }
       },
     },
