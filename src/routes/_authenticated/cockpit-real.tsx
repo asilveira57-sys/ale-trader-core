@@ -24,6 +24,8 @@ import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format"
 import {
   getB3RealCockpit, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
   closeRealPositionByBroker, getRealCommandStatus, setRealAccountPeakConfig,
+  setRealDailyCircuitConfig,
+
 } from "@/lib/b3-real-cockpit.functions";
 
 export const Route = createFileRoute("/_authenticated/cockpit-real")({
