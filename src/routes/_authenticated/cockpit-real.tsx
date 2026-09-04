@@ -417,6 +417,23 @@ function CockpitRealPage() {
   const reportAgeS = broker.report_age_s == null ? null : Math.round(Number(broker.report_age_s));
   const reportStale = !broker.reported || (reportAgeS != null && reportAgeS > 60);
 
+  // AVISO SONORO / NOTIFICAÇÃO de abertura e fechamento de posição REAL.
+  // Fonte: as posições reportadas pelo executor (verdade da corretora), nunca o
+  // momento em que o app manda espelhar. Só simulado nenhum: esta tela é real.
+  const alerta = useRealPositionAlerts(broker.reported ? brokerPositions : undefined, broker.reported_at ?? null);
+
+  const AlertToggle = () => (
+    <button
+      type="button"
+      onClick={() => alerta.setLigado(!alerta.ligado)}
+      className="flex h-9 shrink-0 items-center gap-1 rounded-lg border-2 border-border px-2 text-[11px] font-bold"
+      title={alerta.armado ? "Som liberado neste aparelho" : "Toque em qualquer lugar para liberar o som"}
+    >
+      {alerta.ligado ? <Bell className="size-4 text-emerald-400" /> : <BellOff className="size-4 text-muted-foreground" />}
+      <span className="hidden sm:inline">{alerta.ligado ? (alerta.armado ? "Aviso ligado" : "Aviso: toque p/ liberar som") : "Aviso mudo"}</span>
+    </button>
+  );
+
   const StaleBanner = () =>
     !reportStale ? null : (
       <div className="rounded-xl border-2 border-rose-300 bg-rose-600 px-3 py-2 text-white">
