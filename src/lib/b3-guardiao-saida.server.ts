@@ -331,6 +331,25 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       // Fica no tique completo; acelerá-lo não muda nada.
       if (cfg.trailing_mode === "structural") debug.trailing_structural_no_tique_completo = true;
 
+      // Oposição prolongada: só depois de stop/alvo/trailing/zero a zero — esses
+      // são nível de preço contratado e têm precedência. Fecha a perna velha.
+      const opos = oposicaoPorOrdem.get(open.id);
+      if (!motivo && opos) {
+        motivo = "oposicao_prolongada";
+        nivel = null;
+        debug.oposicao_prolongada = {
+          minutos: opos.minutos,
+          limiar_minutos: OPOSICAO_MIN_MINUTOS,
+          oposta_order_id: opos.oposta_id,
+          oposta_side: opos.oposta_side,
+          perna: "mais_antiga",
+          corte_brt: "15:30",
+          brt_time: janelaBrt.brt_time,
+        };
+      }
+
+
+
       // MARCAÇÃO A MERCADO (item 4 da leva de 02/09)
       // `unrealized_points` / `unrealized_brl` existiam vazias. Aqui elas são
       // preenchidas pelo MESMO Bid/Ask auditado que decide o fechamento — nunca
