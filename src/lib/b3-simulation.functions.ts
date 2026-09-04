@@ -3880,8 +3880,51 @@ async function runB3SimulationTickInner(
             } catch { /* log nunca derruba o motor */ }
             const retry = await (supabase as any).from("b3_simulation_orders")
               .insert(orderPayload).select("id").single();
-            if (retry.error) throw retry.error;
+            if (retry.error) {
+              // Última linha de defesa de REGISTRO: se a validação de preço
+              // (trigger de auditoria de execução) recusar a linha, a ordem NÃO
+              // pode simplesmente desaparecer do banco — ordem que some não é
+              // auditável nem reconciliável depois. Grava com status
+              // 'rejected' (a trigger ignora 'rejected') e o erro anexado.
+              const rejeitada = await (supabase as any).from("b3_simulation_orders")
+                .insert({
+                  ...orderPayload,
+                  status: "rejected",
+                  close_reason: `rejected: ${retry.error.message}`.slice(0, 400),
+                  diagnostic_payload: {
+                    ...(orderPayload.diagnostic_payload ?? {}),
+                    rejected: {
+                      at: new Date().toISOString(),
+                      pg_code: (retry.error as any).code ?? null,
+                      pg_message: retry.error.message,
+                      first_error: res.error.message,
+                      instrumentation,
+                      payload: orderPayload,
+                    },
+                  },
+                }).select("id").single();
+              try {
+                await supabase.from("system_logs").insert({
+                  event_type: rejeitada.error ? "ordem_rejeitada_nao_registrada" : "ordem_rejeitada_registrada",
+                  source: `b3:${asset.symbol}:${mode}`,
+                  severity: rejeitada.error ? "critical" : "warning",
+                  message: rejeitada.error
+                    ? `Ordem recusada E não registrada: ${retry.error.message} / ${rejeitada.error.message}`
+                    : `Ordem recusada pela validação de preço e REGISTRADA como 'rejected': ${retry.error.message}`,
+                  technical_data: {
+                    run_id: runId, mode, symbol: asset.quote_symbol, side: effectiveSide,
+                    pg_code: (retry.error as any).code ?? null,
+                    order_id: rejeitada.data?.id ?? null,
+                    payload: orderPayload,
+                  } as any,
+                });
+              } catch { /* log nunca derruba o motor */ }
+              // Nada de espelhar real nem seguir como se a ordem existisse.
+              log.push({ mode, action: "blocked", reason: "order_rejected", message: retry.error.message });
+              continue;
+            }
             insertedOrder = retry.data;
+
           } else {
             insertedOrder = res.data;
           }
