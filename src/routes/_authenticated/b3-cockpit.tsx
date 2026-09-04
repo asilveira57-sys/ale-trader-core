@@ -676,6 +676,18 @@ function CockpitPage() {
                           <div className="flex flex-wrap items-center gap-1">
                             <Badge className={`text-[10px] ${MODE_COLOR[c.mode]}`}>{apelidos.nick(c.mode)}<span className="ml-1 opacity-70 text-[9px]">{apelidos.tech(c.mode)}</span></Badge>
                             <Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge>
+                            {/* DINHEIRO DE VERDADE (04/09/2026): autorização ligada
+                                e não revogada para este ativo/modalidade/modo. Sem
+                                selo = só simulação. */}
+                            {c.real_auth && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded border border-orange-400/60 bg-orange-500/15 px-1 py-[1px] text-[10px] font-semibold text-orange-200"
+                                title={`Robô autorizado no real — até ${c.real_auth.max_qty} contrato(s) por operação`}
+                              >
+                                REAL {c.real_auth.max_qty}x
+                              </span>
+                            )}
+
                             <PeakRing
                               peak={Number(c.day_peak_profit_brl ?? 0)}
                               atual={Number(c.total_today ?? 0)}
