@@ -79,8 +79,10 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   if (!ordens.length) {
     const vazio: GuardiaoResultado = {
       ordens_abertas: 0, fechadas: 0, ignoradas: 0, erros: 0, marcadas_a_mercado: 0,
+      oposicoes_longas_detectadas: 0, oposicoes_longas_fechadas: 0,
       janela_ms: Date.now() - t0, detalhes,
     };
+
     try {
       await supabase.from("system_logs").insert({
         event_type: "b3_guardiao_summary",
