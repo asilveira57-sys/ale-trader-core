@@ -781,7 +781,7 @@ function CockpitRealPage() {
             ) : (
               <div className="space-y-2">
                 {positions.map((p) => (
-                  <div key={`${p.root}-${p.magic_number}`} className="rounded-lg border border-border p-3">
+                  <div key={`${p.root}-${p.magic_number}`} className={`rounded-lg border p-3 ${p.confirmada_corretora === false ? "border-amber-400/60 bg-amber-500/5" : "border-border"}`}>
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-base font-black tracking-tight">
@@ -792,10 +792,26 @@ function CockpitRealPage() {
                           {p.broker_ticket ? ` · ticket ${p.broker_ticket}` : ""}
                         </p>
                       </div>
-                      <p className={`text-2xl font-black ${money(p.unrealized_brl)}`}>
-                        {p.unrealized_brl == null ? "—" : SIGNED_BRL(p.unrealized_brl)}
-                      </p>
+                      {/* ESTADO DESCONHECIDO (04/09/2026): a corretora não reporta
+                          esta posição. Em vez de um resultado inventado, dizemos
+                          que não sabemos — e ela fica fora da soma do dia. */}
+                      {p.confirmada_corretora === false ? (
+                        <p className="text-right text-[11px] font-bold uppercase leading-tight text-amber-300">
+                          estado<br />desconhecido
+                        </p>
+                      ) : (
+                        <p className={`text-2xl font-black ${money(p.unrealized_brl)}`}>
+                          {p.unrealized_brl == null ? "—" : SIGNED_BRL(p.unrealized_brl)}
+                        </p>
+                      )}
                     </div>
+                    {p.confirmada_corretora === false && (
+                      <p className="mt-2 rounded border border-amber-400/40 bg-amber-500/10 p-2 text-[11px] font-semibold text-amber-200">
+                        O registro do app tem esta posição aberta, mas o relatório da corretora não a mostra —
+                        provavelmente ela já foi fechada lá (stop/alvo do MT5). Não entra no resultado em aberto.
+                      </p>
+                    )}
+
                     <dl className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
                       <div><dt className="text-muted-foreground">Entrada</dt><dd className="font-semibold">{PX(p.entry_price, p.tick_size)}</dd></div>
                       <div><dt className="text-muted-foreground">Preço atual</dt><dd className="font-semibold">{PX(p.live_price, p.tick_size)}</dd></div>
