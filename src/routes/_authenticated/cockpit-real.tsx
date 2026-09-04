@@ -759,7 +759,9 @@ function CockpitRealPage() {
         />
       </div>
 
+      <DailyCircuitPanel circuit={(d as any)?.daily_circuit ?? null} onSaved={() => q.refetch()} />
       <PeakBrakePanel peak={d?.account_peak ?? null} onSaved={() => q.refetch()} />
+
 
 
 
