@@ -1,7 +1,7 @@
 // B3 Day Trade — Fase 2.5: simulação comparativa dos 3 modos
 import { createServerFn } from "@tanstack/react-start";
 import { rootSymbol } from "./b3-format";
-import { buildCockpitFilter, cockpitKeep } from "./b3-cockpit-filter";
+import { buildCockpitFilter, cockpitKeep, cockpitRootSymbol } from "./b3-cockpit-filter";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 import {
@@ -4830,7 +4830,22 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       grupoByKey[`${g.symbol}|${g.variant}`] = g;
     }
 
+    // AUTORIZAÇÃO REAL (04/09/2026): quais robôs desta lista simulada estão
+    // realmente espelhando dinheiro. Cruzamento pela RAIZ do ativo — a
+    // autorização é cadastrada como "WIN" e a execução roda em "WINV26".
+    const { data: prdAuths } = await (supabase as any).from("b3_prd_authorizations")
+      .select("symbol, variant, mode, enabled, revoked_at, max_qty")
+      .eq("user_id", userId).eq("enabled", true).is("revoked_at", null);
+    const authByKey = new Map<string, { max_qty: number }>();
+    for (const a of (prdAuths ?? []) as any[]) {
+      authByKey.set(
+        `${cockpitRootSymbol(a.symbol)}|${a.variant ?? "indicador"}|${a.mode}`,
+        { max_qty: Number(a.max_qty ?? 0) },
+      );
+    }
+
     const cards: any[] = [];
+
 
     const assetBySymbol: Record<string, any> = {};
     // Execução fora do recorte de ativo/modalidade não é nem lida: economiza as
@@ -4945,6 +4960,10 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           tick_size: Number(asset.tick_size),
           environment,
           enabled: enabledByMode[m] ?? true,
+          // Selo "REAL": este robô está autorizado e ligado no espelhamento de
+          // dinheiro de verdade, com o teto de contratos da autorização.
+          real_auth: authByKey.get(`${cockpitRootSymbol(run.symbol)}|${variant}|${m}`) ?? null,
+
           // entry_time viaja para a tela poder mostrar "desde HH:MM (N min)":
           // com dois robôs do mesmo ativo em lados opostos, a ordem de entrada
           // é a única forma de saber quem entrou primeiro.

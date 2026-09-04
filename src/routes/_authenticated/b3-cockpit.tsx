@@ -40,34 +40,41 @@ const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "curr
 // ── Indicador de pico e recuo ────────────────────────────────────────────────
 // Canal visual PRÓPRIO: a cor da linha do robô continua significando
 // constância (b3_cor_do_robo) e não é usada aqui.
+//
+// 04/09/2026 — A BOLINHA SAIU. Era um anel de 20px com o número do lado; nos
+// cards em 8 colunas o anel aparecia vazio e o número ficava solto, sem dizer
+// de que ele era. Agora é um selo escrito: sempre diz o que o número significa.
 function PeakRing({ peak, atual, limite }: { peak: number; atual: number; limite: number }) {
   if (!(peak > 0)) return null;
   const recuo = Math.min(1, Math.max(0, (peak - atual) / peak));
   const lim = limite > 0 ? limite : 0.4;
   const razao = recuo / lim;
-  const cor = razao >= 0.8 ? "text-rose-400" : razao >= 0.5 ? "text-amber-300" : "text-emerald-400";
+  const cor = razao >= 0.8
+    ? "border-rose-400/50 text-rose-300 bg-rose-500/10"
+    : razao >= 0.5
+      ? "border-amber-300/50 text-amber-200 bg-amber-500/10"
+      : "border-emerald-400/40 text-emerald-300 bg-emerald-500/10";
   const faltaPct = Math.max(0, lim - recuo) * 100;
-  const R = 9, C = 2 * Math.PI * R;
   const title = [
+    `Devolvido do pico do dia: ${(recuo * 100).toFixed(0)}%`,
     `Pico do dia: ${BRL(peak)}`,
     `Resultado agora: ${BRL(atual)}`,
-    `Recuo do pico: ${(recuo * 100).toFixed(0)}% (freio em ${(lim * 100).toFixed(0)}%)`,
+    `Freio de pico em ${(lim * 100).toFixed(0)}% de devolução`,
     recuo >= lim ? "Freio de pico no limite" : `Faltam ${faltaPct.toFixed(0)} pontos percentuais para o freio`,
   ].join(" · ");
   return (
-    <span className={`inline-flex items-center gap-1 ${cor}`} title={title} aria-label={title}>
-      <svg viewBox="0 0 24 24" className="w-5 h-5 -rotate-90">
-        <circle cx="12" cy="12" r={R} fill="none" strokeWidth="3" className="stroke-muted" opacity="0.4" />
-        <circle
-          cx="12" cy="12" r={R} fill="none" strokeWidth="3" strokeLinecap="round"
-          className="stroke-current"
-          strokeDasharray={`${C * Math.min(1, razao)} ${C}`}
-        />
-      </svg>
-      <span className="text-[10px] font-mono">{(recuo * 100).toFixed(0)}%</span>
+    <span
+      className={`inline-flex items-center gap-1 rounded border px-1 py-[1px] text-[10px] font-mono ${cor}`}
+      title={title}
+      aria-label={title}
+    >
+      <span aria-hidden>↓</span>
+      {(recuo * 100).toFixed(0)}%
+      <span className="opacity-70 font-sans">do pico</span>
     </span>
   );
 }
+
 
 
 
@@ -200,11 +207,15 @@ function CockpitPage() {
   const patch = (p: Partial<SavedFilters>) => setSaved((s) => ({ ...s, ...p }));
   const setFilter = (v: Filter) => patch({ filter: v });
 
-  // Clique num item ISOLA aquele item (clico em WIN, vejo WIN). Ctrl/Shift/⌘
-  // no clique soma ou remove da seleção — é o que se espera de uma lista.
+  // Recortes combináveis: ativo × modalidade × modo.
   const FULL: Record<"symbols" | "variants" | "modes", string[]> = {
     symbols: [...B3_ASSETS], variants: [...VARIANT_LIST], modes: [...MODE_LIST],
   };
+  // SELEÇÃO MÚLTIPLA DE VERDADE (04/09/2026): antes, clicar isolava o item e só
+  // com Ctrl/⌘/Shift somava — quem usa no celular não tem essas teclas e ficava
+  // preso a um ativo por vez. Agora o clique simples MARCA E DESMARCA, e os três
+  // recortes (ativo, modalidade, modo) se combinam. "Todos" continua sendo o
+  // atalho para limpar ou marcar tudo.
   const clickItem = (
     key: "symbols" | "variants" | "modes",
     value: string,
@@ -213,16 +224,17 @@ function CockpitPage() {
     setSaved((s) => {
       const cur = s[key];
       const additive = !!(e?.ctrlKey || e?.metaKey || e?.shiftKey);
-      if (!additive) {
-        // Já isolado? segundo clique volta para tudo marcado.
-        const isolated = cur.length === 1 && cur[0] === value;
-        return { ...s, [key]: isolated ? FULL[key] : [value] };
-      }
-      return { ...s, [key]: cur.includes(value) ? cur.filter((x) => x !== value) : [...cur, value] };
+      // Tudo marcado + clique simples = "quero ver só este" (o caminho mais
+      // comum). Com Ctrl/⌘ o clique soma direto, sem isolar.
+      if (!additive && cur.length === FULL[key].length) return { ...s, [key]: [value] };
+      const next = cur.includes(value) ? cur.filter((x) => x !== value) : [...cur, value];
+      // Desmarcar o último item deixaria a tela vazia sem querer: volta para tudo.
+      return { ...s, [key]: next.length ? next : FULL[key] };
     });
   // "Todos" é alternador: tudo marcado -> desmarca tudo.
   const toggleAll = (key: "symbols" | "variants" | "modes", isAll: boolean) =>
     patch({ [key]: isAll ? [] : FULL[key] } as Partial<SavedFilters>);
+
 
 
   const allSymbols = symbolsSel.length === B3_ASSETS.length;
@@ -468,7 +480,7 @@ function CockpitPage() {
           </Button>
         </div>
 
-        {/* Ativo (raiz do contrato: WIN, WDO...) — clique isola, Ctrl/Shift soma.
+        {/* Ativo (raiz do contrato: WIN, WDO...) — clique marca e desmarca.
             No celular cada faixa rola na horizontal: nada de texto cortado nem
             de filtro empurrando os cartões para fora da tela. */}
         <div className="grid gap-1 sm:flex sm:flex-wrap sm:items-center sm:gap-1.5">
@@ -479,7 +491,7 @@ function CockpitPage() {
               onClick={() => toggleAll("symbols", allSymbols)}>Todos</Button>
             {B3_ASSETS.map((s) => (
               <Button key={s} size="sm" variant={symbolsSel.includes(s) ? "default" : "outline"}
-                className="h-8 shrink-0 text-[11px] sm:h-7" title={`${assetLabel(s)} — clique isola; Ctrl/Shift soma`}
+                className="h-8 shrink-0 text-[11px] sm:h-7" title={`${assetLabel(s)} — clique marca e desmarca; os três recortes se combinam`}
                 onClick={(e) => clickItem("symbols", s, e)}>
                 {s}
               </Button>
@@ -496,7 +508,7 @@ function CockpitPage() {
               onClick={() => toggleAll("variants", allVariants)}>Todas</Button>
             {VARIANT_LIST.map((v) => (
               <Button key={v} size="sm" variant={variantsSel.includes(v) ? "default" : "outline"}
-                className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique isola; Ctrl/Shift soma"
+                className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique marca e desmarca; os três recortes se combinam"
                 onClick={(e) => clickItem("variants", v, e)}>
                 {variantLabel(v)}
               </Button>
@@ -513,7 +525,7 @@ function CockpitPage() {
               onClick={() => toggleAll("modes", allModes)}>Todos</Button>
             {apelidos.sortModes([...MODE_LIST] as string[]).map((m) => (
               <Button key={m} size="sm" variant={modesSel.includes(m) ? "default" : "outline"}
-                className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique isola; Ctrl/Shift soma"
+                className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique marca e desmarca; os três recortes se combinam"
                 onClick={(e) => clickItem("modes", m, e)}>
                 {apelidos.nick(m)}
               </Button>
@@ -669,6 +681,18 @@ function CockpitPage() {
                           <div className="flex flex-wrap items-center gap-1">
                             <Badge className={`text-[10px] ${MODE_COLOR[c.mode]}`}>{apelidos.nick(c.mode)}<span className="ml-1 opacity-70 text-[9px]">{apelidos.tech(c.mode)}</span></Badge>
                             <Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge>
+                            {/* DINHEIRO DE VERDADE (04/09/2026): autorização ligada
+                                e não revogada para este ativo/modalidade/modo. Sem
+                                selo = só simulação. */}
+                            {c.real_auth && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded border border-orange-400/60 bg-orange-500/15 px-1 py-[1px] text-[10px] font-semibold text-orange-200"
+                                title={`Robô autorizado no real — até ${c.real_auth.max_qty} contrato(s) por operação`}
+                              >
+                                REAL {c.real_auth.max_qty}x
+                              </span>
+                            )}
+
                             <PeakRing
                               peak={Number(c.day_peak_profit_brl ?? 0)}
                               atual={Number(c.total_today ?? 0)}
