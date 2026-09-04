@@ -150,14 +150,37 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-ack")({
           if (insErr) return json({ ok: false, error: insErr.message }, 500);
         } else {
           // action === 'close': acha a posição real aberta correspondente e fecha.
-          const { data: openOrder, error: openErr } = await (supabaseAdmin as any)
+          //
+          // CORRIGIDO em 04/09/2026 — CAUSA DAS 36 ÓRFÃS.
+          // Antes era `.maybeSingle()`. Bastava UMA linha órfã antiga com o
+          // mesmo magic (fechamento rejeitado porque o MT5 já havia fechado no
+          // stop dele, por exemplo) para o SELECT devolver duas linhas e o
+          // maybeSingle virar erro: a partir daí NENHUM fechamento daquele
+          // magic voltava para o banco, e o defeito se multiplicava sozinho.
+          // Agora pega a MAIS ANTIGA aberta (FIFO, igual ao livro do cockpit).
+          const { data: abertas, error: openErr } = await (supabaseAdmin as any)
             .from("b3_live_orders")
             .select("*")
             .eq("user_id", payload.user_id)
             .eq("magic_number", cmd.magic_number)
             .eq("status", "open")
-            .maybeSingle();
+            .order("entry_time", { ascending: true })
+            .limit(5);
           if (openErr) return json({ ok: false, error: openErr.message }, 500);
+          const openOrder = (abertas ?? [])[0];
+          if ((abertas ?? []).length > 1) {
+            // Sinal de que existe órfã acumulada nesse magic: fecha a mais
+            // antiga e deixa rastro para a reconciliação resolver o resto.
+            try {
+              await (supabaseAdmin as any).from("system_logs").insert({
+                event_type: "b3_live_orders_multiplas_abertas",
+                source: "b3-mt5-commands-ack",
+                severity: "warning",
+                message: `magic ${cmd.magic_number}: ${(abertas ?? []).length} ordens abertas no banco ao confirmar um fechamento — fechando a mais antiga.`,
+                technical_data: { command_id: cmd.id, magic: cmd.magic_number, ids: (abertas ?? []).map((o: any) => o.id) },
+              });
+            } catch { /* log nunca derruba a confirmação */ }
+          }
           if (!openOrder) {
             // MT5 confirmou o fechamento, mas não achamos a ordem aberta
             // correspondente no banco — inconsistência real, não escondemos.
@@ -166,6 +189,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-ack")({
               error: "MT5 confirmou fechamento mas não há b3_live_orders aberta com esse magic_number — checar manualmente.",
             }, 409);
           }
+
           const exitPrice = Number(payload.filled_price);
           const entryPrice = Number(openOrder.entry_price);
           const dir = openOrder.side === "buy" ? 1 : -1;

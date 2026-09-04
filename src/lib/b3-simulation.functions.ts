@@ -4830,7 +4830,22 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       grupoByKey[`${g.symbol}|${g.variant}`] = g;
     }
 
+    // AUTORIZAÇÃO REAL (04/09/2026): quais robôs desta lista simulada estão
+    // realmente espelhando dinheiro. Cruzamento pela RAIZ do ativo — a
+    // autorização é cadastrada como "WIN" e a execução roda em "WINV26".
+    const { data: prdAuths } = await (supabase as any).from("b3_prd_authorizations")
+      .select("symbol, variant, mode, enabled, revoked_at, max_qty")
+      .eq("user_id", userId).eq("enabled", true).is("revoked_at", null);
+    const authByKey = new Map<string, { max_qty: number }>();
+    for (const a of (prdAuths ?? []) as any[]) {
+      authByKey.set(
+        `${cockpitRootSymbol(a.symbol)}|${a.variant ?? "indicador"}|${a.mode}`,
+        { max_qty: Number(a.max_qty ?? 0) },
+      );
+    }
+
     const cards: any[] = [];
+
 
     const assetBySymbol: Record<string, any> = {};
     // Execução fora do recorte de ativo/modalidade não é nem lida: economiza as

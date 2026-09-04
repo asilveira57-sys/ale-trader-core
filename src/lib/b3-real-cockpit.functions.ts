@@ -134,21 +134,39 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     }
 
 
+    // ── 3b. Verdade da corretora + divergência contra o livro por comandos ──
+    const broker = buildBrokerState(brokerRow as any, ledger.positions, profileFor, nowMs);
+
+    // POSIÇÃO ABERTA SÓ CONTA SE A CORRETORA CONFIRMAR (04/09/2026).
+    // O livro por comandos podia manter uma posição "aberta" para sempre quando
+    // o MT5 fechava por conta dele (stop/alvo na corretora) e o comando voltava
+    // rejeitado — e essa posição fantasma somava lucro flutuante inventado no
+    // resultado do dia. Agora: relatório fresco sem a posição ⇒ estado
+    // DESCONHECIDO, fora de qualquer soma. A reconciliação
+    // (b3-real-reconcile.server) resolve o registro em b3_live_orders.
+    const brokerTrustworthy = broker.reported && !broker.stale;
     const positions = ledger.positions.map((p) => {
+      // Conta B3 é netting: o magic da posição líquida pode não bater com o do
+      // livro. Presença por raiz + lado já é confirmação suficiente.
+      const naCorretora = broker.positions.some(
+        (b) => b.root === p.root && (b.magic_number === p.magic_number || b.side === null || b.side === p.side),
+      );
+      const confirmada = !brokerTrustworthy || naCorretora;
       const quote = quoteByRoot[p.root] ?? { price: null, tick_ts: null, age_s: null };
       const dir = p.side === "buy" ? 1 : -1;
       const live = quote.price;
-      const pts = live != null && p.entry_price != null ? (live - p.entry_price) * dir : null;
+      const pts = confirmada && live != null && p.entry_price != null ? (live - p.entry_price) * dir : null;
       const brl = pts != null ? pts * p.point_value_brl * p.quantity : null;
       return {
         ...p,
         live_price: live, quote_tick_ts: quote.tick_ts, quote_age_s: quote.age_s,
         unrealized_pts: pts, unrealized_brl: brl,
+        confirmada_corretora: confirmada,
+        estado: confirmada ? "aberta" : "estado_desconhecido",
       };
     });
+    const posFantasma = positions.filter((p) => !p.confirmada_corretora);
 
-    // ── 3b. Verdade da corretora + divergência contra o livro por comandos ──
-    const broker = buildBrokerState(brokerRow as any, ledger.positions, profileFor, nowMs);
 
     // ── 4. Ordens reais de hoje (o que a corretora executou) ──
     // Apresentação: liga cada comando à(s) operação(ões) que ele originou no
@@ -267,6 +285,10 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       wins: tradesToday.filter((t) => (t.result_brl ?? 0) > 0).length,
       losses: tradesToday.filter((t) => (t.result_brl ?? 0) < 0).length,
       sem_preco_count: tradesSemPreco,
+      // Posições que o livro tem como abertas e a corretora não confirma. Não
+      // entram em unrealized_brl nem em total_brl.
+      estado_desconhecido_count: posFantasma.length,
+
       filled_orders: filledToday,
       rejected_orders: rejectedToday,
       environment: ((tset as any)?.environment ?? "simulation") as string,
@@ -414,6 +436,15 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         at: broker.reported_at,
       });
     }
+    if (posFantasma.length) {
+      alerts.push({
+        kind: "posicao_estado_desconhecido", severity: "warning",
+        title: `${posFantasma.length} posição(ões) em ESTADO DESCONHECIDO`,
+        detail: `${posFantasma.map((p) => `${p.root} ${p.side === "buy" ? "compra" : "venda"} magic ${p.magic_number}`).join(", ")} — o livro por comandos ainda tem essa posição aberta, mas a corretora não a reporta. Ficam FORA do resultado em aberto: mostrar um número aqui seria lucro inventado.`,
+        at: broker.reported_at,
+      });
+    }
+
 
     alerts.sort((a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime());
 

@@ -52,12 +52,24 @@ export const Route = createFileRoute("/api/public/hooks/b3-guardiao-saida")({
         try {
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const res = await runB3GuardiaoSaida(supabaseAdmin);
-          return Response.json({ ok: true, at: new Date().toISOString(), ...res });
+          // RECONCILIAÇÃO DO REGISTRO REAL (04/09/2026): compara as ordens
+          // 'open' de b3_live_orders com as posições que o executor leu do MT5.
+          // Roda aqui porque esta passada já é a que olha a corretora a cada
+          // 20 s. Falha dela nunca derruba a gestão de saída.
+          let reconcile: any = null;
+          try {
+            const { reconcileB3LiveOrders } = await import("@/lib/b3-real-reconcile.server");
+            reconcile = await reconcileB3LiveOrders(supabaseAdmin);
+          } catch (e) {
+            reconcile = { error: (e as Error).message };
+          }
+          return Response.json({ ok: true, at: new Date().toISOString(), ...res, reconciliacao: reconcile });
         } catch (e) {
           return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });
         } finally {
           runningSince = 0;
         }
+
       },
     },
   },
