@@ -113,6 +113,67 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   const cfgKey = (runId: string, mode: string) => `${runId}:${mode}`;
   const cfgByKey = new Map<string, any>((settings ?? []).map((s: any) => [cfgKey(s.simulation_run_id, s.mode), s]));
 
+  // ── OPOSIÇÃO PROLONGADA (05/09/2026) ─────────────────────────────────────
+  // Medição de 23 pregões válidos, 2.044 pares de posições opostas no WIN:
+  // até 20 min de sobreposição o par soma positivo (+R$ 19 a +R$ 30, 65–70%
+  // de pares positivos); a partir de 20 min o SINAL TROCA (−R$ 27,08 em
+  // 20–40 min; −R$ 30,64 acima de 40 min). O limiar não foi escolhido por
+  // maximizar resultado — é onde a média muda de sinal.
+  //
+  // Fecha a perna MAIS ANTIGA: nos pares acima de 40 min a perna que entrou
+  // primeiro termina em −R$ 38,52 e a mais nova em +R$ 7,88 (a antiga é a
+  // pior em 65% dos casos). A velha é a tese presa; a nova é sinal fresco na
+  // direção contrária.
+  //
+  // NÃO é stop por tempo: ordem longa SEM oposta é o melhor negócio do motor
+  // (+R$ 51,66 em 20–60 min); a mesma duração COM oposta vira prejuízo. O
+  // gatilho é a oposição, não o relógio.
+  //
+  // CORTE DE HORÁRIO: 15:30 BRT. Perto da zeragem (16:55) a oposição é
+  // artefato mecânico do encerramento conjunto, e o dado mostra que à tarde
+  // a oposição longa é neutra (+R$ 1,90) contra claramente ruim de manhã
+  // (−R$ 20,31). Fora da janela a regra não age e nada é forçado.
+  const OPOSICAO_MIN_MINUTOS = 20;
+  const OPOSICAO_CORTE_BRT_MIN = 15 * 60 + 30;
+  const oposicaoPorOrdem = new Map<string, { minutos: number; oposta_id: string; oposta_side: string }>();
+  const agora = Date.now();
+  const janelaBrt = b3WindowState(new Date(agora));
+  if (janelaBrt.minutes <= OPOSICAO_CORTE_BRT_MIN) {
+    // Agrupa por (usuário + ativo). Robôs diferentes do MESMO ativo contam
+    // como oposição — é exatamente o hedge preso que a medição isolou.
+    const grupos = new Map<string, any[]>();
+    for (const o of ordens) {
+      const run = runById.get(o.simulation_run_id);
+      if (!run?.symbol || !o.entry_time) continue;
+      const k = `${o.user_id}:${run.symbol}`;
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k)!.push(o);
+    }
+    const ms = (o: any) => new Date(o.entry_time).getTime();
+    for (const [, lista] of grupos) {
+      const compras = lista.filter((o: any) => o.side === "buy");
+      const vendas = lista.filter((o: any) => o.side === "sell");
+      for (const c of compras) {
+        for (const v of vendas) {
+          const inicioSobreposicao = Math.max(ms(c), ms(v));
+          if (!Number.isFinite(inicioSobreposicao)) continue;
+          const minutos = (agora - inicioSobreposicao) / 60_000;
+          if (minutos < OPOSICAO_MIN_MINUTOS) continue;
+          oposDetectadas++;
+          const velha = ms(c) <= ms(v) ? c : v;
+          const nova = velha === c ? v : c;
+          const ja = oposicaoPorOrdem.get(velha.id);
+          if (!ja || minutos > ja.minutos) {
+            oposicaoPorOrdem.set(velha.id, {
+              minutos: Number(minutos.toFixed(1)), oposta_id: nova.id, oposta_side: nova.side,
+            });
+          }
+        }
+      }
+    }
+  }
+
+
   // 3) Cotação: uma leitura por (usuário + ativo), compartilhada por todos os
   //    robôs daquele ativo. O provedor ainda tem cache de 1,5 s por cima.
   const priceCache = new Map<string, B3PriceContextResult | null>();
