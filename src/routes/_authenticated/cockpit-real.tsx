@@ -293,6 +293,81 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
   );
 }
 
+// ─── Disjuntor diário da CONTA real: meta de ganho e teto de perda ───
+// Base = soma de (contratos autorizados × margem por contrato) dos robôs reais
+// LIGADOS. Muda sozinha quando robôs ligam/desligam. Só a conta real: a fazenda
+// simulada nunca é travada por aqui.
+function DailyCircuitPanel({ circuit, onSaved }: { circuit: any | null; onSaved: () => void }) {
+  const save = useServerFn(setRealDailyCircuitConfig);
+  const [gain, setGain] = useState<string>("");
+  const [loss, setLoss] = useState<string>("");
+
+  const gainCfg = Number(circuit?.gain_target_pct ?? 0.4);
+  const lossCfg = Number(circuit?.loss_cap_pct ?? 0.25);
+  const base = Number(circuit?.base_brl ?? 0);
+  const gainNum = Math.max(1, Math.min(500, Number(gain === "" ? gainCfg * 100 : gain) || 0));
+  const lossNum = Math.max(1, Math.min(500, Number(loss === "" ? lossCfg * 100 : loss) || 0));
+
+  const mSave = useMutation({
+    mutationFn: (enabled: boolean) =>
+      save({ data: { enabled, gain_target_pct: gainNum / 100, loss_cap_pct: lossNum / 100 } }),
+    onSuccess: () => { toast.success("Disjuntor diário atualizado"); onSaved(); },
+    onError: (e: any) => toast.error(e?.message ?? "falha ao salvar"),
+  });
+
+  if (!circuit) return null;
+  const on = circuit.enabled === true;
+  const armed = circuit.armed === true;
+
+  return (
+    <section className={`mt-3 rounded-xl border-2 p-4 ${armed ? "border-rose-400 bg-rose-600/20" : on ? "border-sky-400/50 bg-sky-500/5" : "border-border bg-muted/20"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-black tracking-tight">
+            Disjuntor diário da CONTA {armed ? `— DIA TRAVADO (${circuit.armed_kind === "meta_ganho" ? "meta de ganho" : "teto de perda"})` : on ? "— ligado" : "— desligado"}
+          </h2>
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Base = {circuit.robots_count} robô(s) real(is) ligado(s) × contratos × margem = <b>{BRL(base)}</b>.
+            {" "}Meta protege o lucro só com a conta limpa; o teto de perda bloqueia novas entradas na hora.
+            {" "}Posições abertas seguem até o próprio stop e a simulação nunca é travada.
+          </p>
+        </div>
+        <div className="flex items-end gap-2">
+          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Meta de ganho (%)
+            <Input className="mt-0.5 h-8 w-20" inputMode="decimal"
+              value={gain === "" ? String(Math.round(gainCfg * 100)) : gain}
+              onChange={(e) => setGain(e.target.value)} />
+          </label>
+          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Teto de perda (%)
+            <Input className="mt-0.5 h-8 w-20" inputMode="decimal"
+              value={loss === "" ? String(Math.round(lossCfg * 100)) : loss}
+              onChange={(e) => setLoss(e.target.value)} />
+          </label>
+          <Button size="sm" variant="outline" disabled={mSave.isPending} onClick={() => mSave.mutate(on)}>Salvar</Button>
+          <Button size="sm" variant={on ? "destructive" : "default"} disabled={mSave.isPending} onClick={() => mSave.mutate(!on)}>
+            {on ? "Desligar" : "Ligar"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <Tile label="Base (margem)" value={BRL(base)} sub={`${circuit.robots_count} robô(s) real(is)`} />
+        <Tile label="Realizado do dia" value={SIGNED_BRL(circuit.realized_brl ?? 0)} cls={money(circuit.realized_brl)} sub={`${circuit.open_positions} posição(ões) aberta(s)`} />
+        <Tile label={`Meta (${(gainCfg * 100).toFixed(0)}%)`} value={BRL(circuit.gain_target_brl ?? 0)} cls="text-emerald-300"
+          sub={armed && circuit.armed_kind === "meta_ganho" ? "atingida — dia travado" : circuit.gain_waiting_flat ? "batida, esperando conta limpa" : `faltam ${BRL(circuit.to_gain_brl ?? 0)}`} />
+        <Tile label={`Teto (${(lossCfg * 100).toFixed(0)}%)`} value={`−${BRL(circuit.loss_cap_brl ?? 0)}`} cls="text-rose-300"
+          sub={armed && circuit.armed_kind === "teto_perda" ? "atingido — entradas bloqueadas" : `faltam ${BRL(circuit.to_loss_brl ?? 0)}`} />
+        <Tile label="Estado" value={armed ? "TRAVADO" : on ? "vigiando" : "desligado"}
+          cls={armed ? "text-rose-300" : on ? "text-sky-200" : "text-muted-foreground"}
+          sub={armed ? (circuit.armed_at ? `desde ${hhmm(circuit.armed_at)}` : "hoje") : on ? "avalia a cada abertura real" : "ligue quando quiser"} />
+      </div>
+    </section>
+  );
+}
+
+
 
 function CockpitRealPage() {
   const apelidos = useModeApelidos();
