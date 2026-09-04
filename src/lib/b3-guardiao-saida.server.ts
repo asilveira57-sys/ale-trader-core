@@ -413,12 +413,15 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       try {
         const closed = await closeOrder(supabase, userId, run, m, open, exitAudit, motivo, marketHistory, asset, true);
         fechadas++;
+        if (motivo === "oposicao_prolongada") oposFechadas++;
         detalhes.push({
           order_id: open.id, symbol: asset.symbol, mode: open.mode, variant: run.variant ?? null,
           reason: motivo, level: nivel, executed_price: exitAudit.execution_price,
           beyond_pts: nivel === null ? null : Math.abs(markPrice - nivel),
           net_brl: closed?.net_brl ?? null,
+          oposicao_minutos: opos?.minutos ?? null, oposta_order_id: opos?.oposta_id ?? null,
         });
+
         try {
           await supabase.from("b3_simulation_orders").update({
             diagnostic_payload: {
