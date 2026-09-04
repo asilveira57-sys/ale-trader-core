@@ -4960,6 +4960,10 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           tick_size: Number(asset.tick_size),
           environment,
           enabled: enabledByMode[m] ?? true,
+          // Selo "REAL": este robô está autorizado e ligado no espelhamento de
+          // dinheiro de verdade, com o teto de contratos da autorização.
+          real_auth: authByKey.get(`${cockpitRootSymbol(run.symbol)}|${variant}|${m}`) ?? null,
+
           // entry_time viaja para a tela poder mostrar "desde HH:MM (N min)":
           // com dois robôs do mesmo ativo em lados opostos, a ordem de entrada
           // é a única forma de saber quem entrou primeiro.
