@@ -801,6 +801,51 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_cenario_horario: {
+        Row: {
+          aberto_brl: number | null
+          ativo: string
+          compras: number | null
+          dia: string
+          gravado_em: string
+          hora: number
+          pares_invertidos: number | null
+          posicionados: number | null
+          realizado_brl: number | null
+          total_brl: number | null
+          user_id: string
+          vendas: number | null
+        }
+        Insert: {
+          aberto_brl?: number | null
+          ativo: string
+          compras?: number | null
+          dia: string
+          gravado_em?: string
+          hora: number
+          pares_invertidos?: number | null
+          posicionados?: number | null
+          realizado_brl?: number | null
+          total_brl?: number | null
+          user_id: string
+          vendas?: number | null
+        }
+        Update: {
+          aberto_brl?: number | null
+          ativo?: string
+          compras?: number | null
+          dia?: string
+          gravado_em?: string
+          hora?: number
+          pares_invertidos?: number | null
+          posicionados?: number | null
+          realizado_brl?: number | null
+          total_brl?: number | null
+          user_id?: string
+          vendas?: number | null
+        }
+        Relationships: []
+      }
       b3_daily_protection_history: {
         Row: {
           block_at: string | null
@@ -7284,6 +7329,10 @@ export type Database = {
       }
       b3_diagnosticar_dia: { Args: { p_date: string }; Returns: number }
       b3_disparar_tique: { Args: never; Returns: string }
+      b3_gravar_cenario_horario: {
+        Args: { p_dia?: string; p_hora?: number }
+        Returns: number
+      }
       b3_m1_candles: {
         Args: { p_limit?: number; p_symbol: string; p_user_id: string }
         Returns: {
