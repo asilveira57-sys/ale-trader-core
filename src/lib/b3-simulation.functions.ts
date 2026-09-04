@@ -235,6 +235,12 @@ async function mirrorToReal(
       const { refreshAccountPeak } = await import("./b3-real-account-peak.server");
       const accountPeak = await refreshAccountPeak(supabase, userId, dayResult.total_brl);
 
+      // Disjuntor diário da CONTA real (meta de ganho / teto de perda sobre a
+      // base de MARGEM dos robôs reais habilitados). Desligado por padrão.
+      // Só a conta real: o simulado nunca é travado por ele.
+      const { refreshDailyCircuit } = await import("./b3-real-daily-circuit.server");
+      const circuit = await refreshDailyCircuit(supabase, userId);
+
       // "Parar novas entradas reais" (botão laranja): já bloqueia a ENTREGA no
       // hook do executor; aqui bloqueia também a ENFILEIRAÇÃO, para o comando
       // nem existir. Fechamento segue livre — este bloco só roda em 'open'.
@@ -246,9 +252,13 @@ async function mirrorToReal(
       let motivo: string | null = null;
       if (realParado) {
         motivo = `real PARADO pela tela${(execState as any)?.stopped_reason ? `: ${(execState as any).stopped_reason}` : ""}`;
+      } else if (circuit.armed) {
+        motivo = circuit.reason ?? `disjuntor diário da conta real armado (${circuit.armed_kind ?? "—"})`;
       } else if (accountPeak.armed) {
         motivo = accountPeak.reason
           ?? `freio de pico da conta real armado às ${accountPeak.armed_at ?? "—"} (pico R$ ${accountPeak.peak_brl.toFixed(2)})`;
+
+
 
       } else if (global.total_brl > 0 && perda >= global.total_brl) {
         motivo = `stop global real alcançado: perda R$ ${perda.toFixed(2)} ≥ global derivado R$ ${global.total_brl.toFixed(2)}`;
@@ -283,6 +293,18 @@ async function mirrorToReal(
                 tolerado_pct: accountPeak.peak_giveback_pct,
                 piso_brl: accountPeak.peak_min_brl,
               },
+              disjuntor_diario: {
+                ligado: circuit.enabled,
+                armado: circuit.armed,
+                trava: circuit.armed_kind,
+                base_brl: circuit.base_brl,
+                robos: circuit.robots_count,
+                realizado_brl: circuit.realized_brl,
+                meta_brl: circuit.gain_target_brl,
+                teto_brl: circuit.loss_cap_brl,
+                posicoes_abertas: circuit.open_positions,
+              },
+
             } as any,
 
           });
@@ -3858,8 +3880,51 @@ async function runB3SimulationTickInner(
             } catch { /* log nunca derruba o motor */ }
             const retry = await (supabase as any).from("b3_simulation_orders")
               .insert(orderPayload).select("id").single();
-            if (retry.error) throw retry.error;
+            if (retry.error) {
+              // Última linha de defesa de REGISTRO: se a validação de preço
+              // (trigger de auditoria de execução) recusar a linha, a ordem NÃO
+              // pode simplesmente desaparecer do banco — ordem que some não é
+              // auditável nem reconciliável depois. Grava com status
+              // 'rejected' (a trigger ignora 'rejected') e o erro anexado.
+              const rejeitada = await (supabase as any).from("b3_simulation_orders")
+                .insert({
+                  ...orderPayload,
+                  status: "rejected",
+                  close_reason: `rejected: ${retry.error.message}`.slice(0, 400),
+                  diagnostic_payload: {
+                    ...(orderPayload.diagnostic_payload ?? {}),
+                    rejected: {
+                      at: new Date().toISOString(),
+                      pg_code: (retry.error as any).code ?? null,
+                      pg_message: retry.error.message,
+                      first_error: res.error.message,
+                      instrumentation,
+                      payload: orderPayload,
+                    },
+                  },
+                }).select("id").single();
+              try {
+                await supabase.from("system_logs").insert({
+                  event_type: rejeitada.error ? "ordem_rejeitada_nao_registrada" : "ordem_rejeitada_registrada",
+                  source: `b3:${asset.symbol}:${mode}`,
+                  severity: rejeitada.error ? "critical" : "warning",
+                  message: rejeitada.error
+                    ? `Ordem recusada E não registrada: ${retry.error.message} / ${rejeitada.error.message}`
+                    : `Ordem recusada pela validação de preço e REGISTRADA como 'rejected': ${retry.error.message}`,
+                  technical_data: {
+                    run_id: runId, mode, symbol: asset.quote_symbol, side: effectiveSide,
+                    pg_code: (retry.error as any).code ?? null,
+                    order_id: rejeitada.data?.id ?? null,
+                    payload: orderPayload,
+                  } as any,
+                });
+              } catch { /* log nunca derruba o motor */ }
+              // Nada de espelhar real nem seguir como se a ordem existisse.
+              log.push({ mode, action: "blocked", reason: "order_rejected", message: retry.error.message });
+              continue;
+            }
             insertedOrder = retry.data;
+
           } else {
             insertedOrder = res.data;
           }

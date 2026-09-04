@@ -471,6 +471,36 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       });
     }
 
+    // ── 8b. Disjuntor diário da CONTA real (meta de ganho / teto de perda) ──
+    // Leitura pura: a trava só é armada pelo portão de abertura real.
+    const { readDailyCircuit } = await import("@/lib/b3-real-daily-circuit.server");
+    const dailyCircuit = await readDailyCircuit(supabase, userId, now);
+    if (dailyCircuit.armed) {
+      alerts.unshift({
+        kind: "disjuntor_diario_armado", severity: "critical",
+        title: dailyCircuit.armed_kind === "meta_ganho"
+          ? "Disjuntor diário: META DE GANHO atingida — dia travado"
+          : "Disjuntor diário: TETO DE PERDA atingido — novas entradas reais bloqueadas",
+        detail:
+          `Base R$ ${dailyCircuit.base_brl.toFixed(2)} · realizado R$ ${dailyCircuit.realized_brl.toFixed(2)} · ` +
+          `meta R$ ${dailyCircuit.gain_target_brl.toFixed(2)} · teto −R$ ${dailyCircuit.loss_cap_brl.toFixed(2)}. ` +
+          "Nenhum robô real abre até o próximo pregão. Fechamento e simulação seguem normais.",
+        at: dailyCircuit.armed_at,
+      });
+    } else if (dailyCircuit.enabled && dailyCircuit.gain_waiting_flat) {
+      alerts.unshift({
+        kind: "disjuntor_diario_esperando_conta_limpa", severity: "warning",
+        title: "Meta de ganho batida — esperando a conta ficar limpa",
+        detail:
+          `Realizado R$ ${dailyCircuit.realized_brl.toFixed(2)} ≥ meta R$ ${dailyCircuit.gain_target_brl.toFixed(2)}, ` +
+          `mas ainda há ${dailyCircuit.open_positions} posição(ões) real(is) aberta(s)` +
+          `${dailyCircuit.broker_stale ? " (ou o relatório da corretora está velho)" : ""}. ` +
+          "A trava do lucro só entra com a conta limpa, de propósito.",
+        at: now.toISOString(),
+      });
+    }
+
+
     return {
       server_time: now.toISOString(),
       session_date: sessionDate,
@@ -484,6 +514,8 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       today,
       robots,
       account_peak: accountPeak,
+      daily_circuit: dailyCircuit,
+
       enabled_count: robots.filter((r) => r.enabled).length,
       alerts: alerts.slice(0, 12),
     };
@@ -533,6 +565,54 @@ export const setRealAccountPeakConfig = createServerFn({ method: "POST" })
 
     return { ok: true as const, peak_giveback_pct: data.peak_giveback_pct, ...sync };
   });
+
+// ─── configuração do DISJUNTOR DIÁRIO da conta real (liga/desliga + %) ───
+// Só a conta real. Não toca em parâmetro de robô, comitê, classificador nem no
+// comportamento do simulado. Entregue DESLIGADO por padrão.
+export const setRealDailyCircuitConfig = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      enabled: z.boolean(),
+      /** meta de ganho como fração da base de margem (0,40 = 40%) */
+      gain_target_pct: z.number().min(0.01).max(5),
+      /** teto de perda como fração da base de margem (0,25 = 25%) */
+      loss_cap_pct: z.number().min(0.01).max(5),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const now = new Date().toISOString();
+    const { error } = await (supabase as any)
+      .from("b3_real_execution_state")
+      .upsert({
+        user_id: userId,
+        daily_circuit_enabled: data.enabled,
+        daily_gain_target_pct: data.gain_target_pct,
+        daily_loss_cap_pct: data.loss_cap_pct,
+        updated_at: now,
+      }, { onConflict: "user_id" });
+    if (error) throw error;
+
+    const { readDailyCircuit } = await import("@/lib/b3-real-daily-circuit.server");
+    const status = await readDailyCircuit(supabase, userId);
+
+    try {
+      await (supabase as any).from("system_logs").insert({
+        event_type: "config_disjuntor_diario_real",
+        source: "cockpit_real",
+        severity: "warning",
+        message:
+          `Disjuntor diário da conta real ${data.enabled ? "LIGADO" : "DESLIGADO"}: meta ` +
+          `${(data.gain_target_pct * 100).toFixed(0)}% e teto ${(data.loss_cap_pct * 100).toFixed(0)}% da base ` +
+          `(base agora R$ ${status.base_brl.toFixed(2)} com ${status.robots_count} robô(s) real(is)).`,
+        technical_data: { ...data, base_brl: status.base_brl, robos: status.robots } as any,
+      });
+    } catch { /* best-effort */ }
+
+    return { ok: true as const, ...status };
+  });
+
 
 
 
