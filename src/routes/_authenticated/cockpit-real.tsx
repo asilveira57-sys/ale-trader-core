@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
-  AlertTriangle, CheckCircle2, CircleSlash, Clock, Hand, KeyRound, LayoutDashboard,
+  AlertTriangle, Bell, BellOff, CheckCircle2, CircleSlash, Clock, Hand, KeyRound, LayoutDashboard,
   Play, RefreshCw, ShieldOff, XOctagon, Radio, GitCompareArrows, TrendingDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
