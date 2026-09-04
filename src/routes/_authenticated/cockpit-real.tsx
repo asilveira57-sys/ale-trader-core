@@ -580,7 +580,9 @@ function CockpitRealPage() {
           >
             {realEnabled ? "REAL OPERANDO" : "REAL PARADO"}
           </span>
+          <AlertToggle />
           <Button size="sm" variant="outline" onClick={() => q.refetch()}>
+
             <RefreshCw className={`mr-1 size-4 ${q.isFetching ? "animate-spin" : ""}`} /> Atualizar
           </Button>
           <Button size="sm" variant="outline" asChild>
