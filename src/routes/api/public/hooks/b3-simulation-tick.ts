@@ -208,11 +208,13 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
           await Promise.all(trabalhadores);
         };
 
+        let emVooNoEstouro: string[] = [];
         try {
           await comPrazo(corpo(), DEADLINE_MS, "passada do tique");
         } catch (e) {
           estourou = e instanceof TempoEsgotado;
           erroFatal = (e as Error).message;
+          emVooNoEstouro = [...emVoo];
         } finally {
           // Liberação otimista. A segurança real é o arrendamento acima: se este
           // ponto nunca for alcançado, a próxima passada assume depois de
