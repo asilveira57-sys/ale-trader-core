@@ -41,9 +41,12 @@ export interface GuardiaoResultado {
   ignoradas: number;
   erros: number;
   marcadas_a_mercado: number;
+  oposicoes_longas_detectadas: number;
+  oposicoes_longas_fechadas: number;
   janela_ms: number;
   detalhes: any[];
 }
+
 
 /** Config de saída de um robô, com defaults conservadores. */
 function saidaCfg(cfg: any) {
