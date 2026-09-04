@@ -463,7 +463,9 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   const janela_ms = Date.now() - t0;
   const res: GuardiaoResultado = {
     ordens_abertas: ordens.length, fechadas, ignoradas, erros,
-    marcadas_a_mercado: marcadas, janela_ms, detalhes,
+    marcadas_a_mercado: marcadas,
+    oposicoes_longas_detectadas: oposDetectadas, oposicoes_longas_fechadas: oposFechadas,
+    janela_ms, detalhes,
   };
 
   // LOG DE DURAÇÃO EM TODA PASSADA (não só quando fecha ordem).
@@ -474,10 +476,11 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       event_type: "b3_guardiao_summary",
       source: "b3-guardiao-saida",
       severity: erros > 0 ? "warning" : "info",
-      message: `Guardião avaliou ${ordens.length} posição(ões) em ${janela_ms} ms: ${fechadas} encerrada(s), ${ignoradas} sem gatilho, ${marcadas} marcada(s) a mercado, ${erros} erro(s).`,
+      message: `Guardião avaliou ${ordens.length} posição(ões) em ${janela_ms} ms: ${fechadas} encerrada(s), ${ignoradas} sem gatilho, ${marcadas} marcada(s) a mercado, ${oposDetectadas} oposição(ões) longa(s) detectada(s), ${oposFechadas} fechada(s) por oposição, ${erros} erro(s).`,
       technical_data: res,
     });
   } catch { /* log nunca derruba o guardião */ }
+
 
   return res;
 }
