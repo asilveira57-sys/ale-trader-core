@@ -13,7 +13,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { runB3GuardiaoSaida } from "@/lib/b3-guardiao-saida.server";
 import { b3WindowState } from "@/lib/b3-window.server";
 
-let running = false;
+// Trava por ARRENDAMENTO, não booleana: se a passada anterior for interrompida
+// no meio (limite de tempo do worker, isolate descartado), o `finally` não roda
+// e uma trava booleana ficaria presa até a publicação — foi o que travou o tique
+// de entradas em 04/09/2026. Aqui a passada perdida expira em LEASE_MS.
+let runningSince = 0;
+const LEASE_MS = 60_000;
 
 export const Route = createFileRoute("/api/public/hooks/b3-guardiao-saida")({
   server: {
