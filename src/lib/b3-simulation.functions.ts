@@ -2190,6 +2190,9 @@ async function runB3SimulationTickInner(
       lado_derivado: side, amplitude_dia_pts: Number(dayRange.toFixed(1)),
       limiar_afastamento_pts: Number(threshold.toFixed(1)),
       limiar_por_stop_pts: Number(minByStop.toFixed(1)), limiar_fracao_da_amplitude: rangeRatio,
+      limiar_multiplicador_do_stop: stopRatio,
+      limiar_fonte: "b3_asset_profiles.vwap_min_distance_stop_ratio / _range_ratio",
+
       lookback_candles: recent.length,
       extremo_do_afastamento: extreme, afastamento_maximo_pts: Number(maxDistAbs.toFixed(1)),
       voltando_ao_vwap: returning, fracao_de_retorno_max: returnRatio,
