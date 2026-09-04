@@ -431,7 +431,11 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
               executed_price: exitAudit.execution_price,
               overshoot_pts: nivel === null ? 0 : Math.abs(exitAudit.execution_price - nivel),
               quote_age_s: Number(info.quote_age_s ?? 0),
+              // Registro exigido para medir o efeito da regra depois.
+              oposicao_prolongada_minutos: opos?.minutos ?? null,
+              oposicao_prolongada_oposta_order_id: opos?.oposta_id ?? null,
               guardiao_debug: debug,
+
             },
           }).eq("id", open.id).eq("user_id", userId);
         } catch { /* diagnóstico nunca derruba o fechamento */ }
