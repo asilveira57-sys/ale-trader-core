@@ -207,7 +207,6 @@ function CockpitPage() {
   const patch = (p: Partial<SavedFilters>) => setSaved((s) => ({ ...s, ...p }));
   const setFilter = (v: Filter) => patch({ filter: v });
 
-  // Clique num item ISOLA aquele item (clico em WIN, vejo WIN). Ctrl/Shift/⌘
   // no clique soma ou remove da seleção — é o que se espera de uma lista.
   const FULL: Record<"symbols" | "variants" | "modes", string[]> = {
     symbols: [...B3_ASSETS], variants: [...VARIANT_LIST], modes: [...MODE_LIST],
@@ -481,7 +480,7 @@ function CockpitPage() {
           </Button>
         </div>
 
-        {/* Ativo (raiz do contrato: WIN, WDO...) — clique isola, Ctrl/Shift soma.
+        {/* Ativo (raiz do contrato: WIN, WDO...) — clique marca e desmarca.
             No celular cada faixa rola na horizontal: nada de texto cortado nem
             de filtro empurrando os cartões para fora da tela. */}
         <div className="grid gap-1 sm:flex sm:flex-wrap sm:items-center sm:gap-1.5">
@@ -492,7 +491,7 @@ function CockpitPage() {
               onClick={() => toggleAll("symbols", allSymbols)}>Todos</Button>
             {B3_ASSETS.map((s) => (
               <Button key={s} size="sm" variant={symbolsSel.includes(s) ? "default" : "outline"}
-                className="h-8 shrink-0 text-[11px] sm:h-7" title={`${assetLabel(s)} — clique isola; Ctrl/Shift soma`}
+                className="h-8 shrink-0 text-[11px] sm:h-7" title={`${assetLabel(s)} — clique marca e desmarca; os três recortes se combinam`}
                 onClick={(e) => clickItem("symbols", s, e)}>
                 {s}
               </Button>
@@ -509,7 +508,7 @@ function CockpitPage() {
               onClick={() => toggleAll("variants", allVariants)}>Todas</Button>
             {VARIANT_LIST.map((v) => (
               <Button key={v} size="sm" variant={variantsSel.includes(v) ? "default" : "outline"}
-                className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique isola; Ctrl/Shift soma"
+                className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique marca e desmarca; os três recortes se combinam"
                 onClick={(e) => clickItem("variants", v, e)}>
                 {variantLabel(v)}
               </Button>
@@ -526,7 +525,7 @@ function CockpitPage() {
               onClick={() => toggleAll("modes", allModes)}>Todos</Button>
             {apelidos.sortModes([...MODE_LIST] as string[]).map((m) => (
               <Button key={m} size="sm" variant={modesSel.includes(m) ? "default" : "outline"}
-                className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique isola; Ctrl/Shift soma"
+                className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique marca e desmarca; os três recortes se combinam"
                 onClick={(e) => clickItem("modes", m, e)}>
                 {apelidos.nick(m)}
               </Button>
