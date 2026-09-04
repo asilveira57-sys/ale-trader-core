@@ -336,17 +336,23 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   }
 
   const janela_ms = Date.now() - t0;
-  if (fechadas > 0 || erros > 0) {
-    try {
-      await supabase.from("system_logs").insert({
-        event_type: "b3_guardiao_saida",
-        source: "b3-guardiao-saida",
-        severity: erros > 0 ? "warning" : "info",
-        message: `Guardião avaliou ${ordens.length} posição(ões): ${fechadas} encerrada(s), ${ignoradas} sem gatilho, ${erros} erro(s) em ${janela_ms} ms.`,
-        technical_data: { ordens_abertas: ordens.length, fechadas, ignoradas, erros, janela_ms, detalhes },
-      });
-    } catch { /* log nunca derruba o guardião */ }
-  }
+  const res: GuardiaoResultado = {
+    ordens_abertas: ordens.length, fechadas, ignoradas, erros,
+    marcadas_a_mercado: marcadas, janela_ms, detalhes,
+  };
 
-  return { ordens_abertas: ordens.length, fechadas, ignoradas, erros, janela_ms, detalhes };
+  // LOG DE DURAÇÃO EM TODA PASSADA (não só quando fecha ordem).
+  // É a única forma de saber quanto custa uma passada com ~75 posições abertas
+  // antes de decidir se a cadência pode cair de 20 s para 10 s.
+  try {
+    await supabase.from("system_logs").insert({
+      event_type: "b3_guardiao_summary",
+      source: "b3-guardiao-saida",
+      severity: erros > 0 ? "warning" : "info",
+      message: `Guardião avaliou ${ordens.length} posição(ões) em ${janela_ms} ms: ${fechadas} encerrada(s), ${ignoradas} sem gatilho, ${marcadas} marcada(s) a mercado, ${erros} erro(s).`,
+      technical_data: res,
+    });
+  } catch { /* log nunca derruba o guardião */ }
+
+  return res;
 }
