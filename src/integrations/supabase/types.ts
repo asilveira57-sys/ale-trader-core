@@ -3023,6 +3023,12 @@ export type Database = {
           armed_giveback_pct: number | null
           armed_peak_brl: number | null
           armed_result_brl: number | null
+          circuit_armed: boolean
+          circuit_armed_at: string | null
+          circuit_base_brl: number | null
+          circuit_kind: string | null
+          circuit_result_brl: number | null
+          circuit_robots: number | null
           created_at: string
           id: string
           last_result_brl: number
@@ -3039,6 +3045,12 @@ export type Database = {
           armed_giveback_pct?: number | null
           armed_peak_brl?: number | null
           armed_result_brl?: number | null
+          circuit_armed?: boolean
+          circuit_armed_at?: string | null
+          circuit_base_brl?: number | null
+          circuit_kind?: string | null
+          circuit_result_brl?: number | null
+          circuit_robots?: number | null
           created_at?: string
           id?: string
           last_result_brl?: number
@@ -3055,6 +3067,12 @@ export type Database = {
           armed_giveback_pct?: number | null
           armed_peak_brl?: number | null
           armed_result_brl?: number | null
+          circuit_armed?: boolean
+          circuit_armed_at?: string | null
+          circuit_base_brl?: number | null
+          circuit_kind?: string | null
+          circuit_result_brl?: number | null
+          circuit_robots?: number | null
           created_at?: string
           id?: string
           last_result_brl?: number
@@ -3068,6 +3086,9 @@ export type Database = {
       }
       b3_real_execution_state: {
         Row: {
+          daily_circuit_enabled: boolean
+          daily_gain_target_pct: number
+          daily_loss_cap_pct: number
           peak_giveback_pct: number
           peak_min_brl: number
           peak_min_pct_of_global: number
@@ -3080,6 +3101,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          daily_circuit_enabled?: boolean
+          daily_gain_target_pct?: number
+          daily_loss_cap_pct?: number
           peak_giveback_pct?: number
           peak_min_brl?: number
           peak_min_pct_of_global?: number
@@ -3092,6 +3116,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          daily_circuit_enabled?: boolean
+          daily_gain_target_pct?: number
+          daily_loss_cap_pct?: number
           peak_giveback_pct?: number
           peak_min_brl?: number
           peak_min_pct_of_global?: number
