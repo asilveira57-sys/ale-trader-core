@@ -293,6 +293,18 @@ async function mirrorToReal(
                 tolerado_pct: accountPeak.peak_giveback_pct,
                 piso_brl: accountPeak.peak_min_brl,
               },
+              disjuntor_diario: {
+                ligado: circuit.enabled,
+                armado: circuit.armed,
+                trava: circuit.armed_kind,
+                base_brl: circuit.base_brl,
+                robos: circuit.robots_count,
+                realizado_brl: circuit.realized_brl,
+                meta_brl: circuit.gain_target_brl,
+                teto_brl: circuit.loss_cap_brl,
+                posicoes_abertas: circuit.open_positions,
+              },
+
             } as any,
 
           });
