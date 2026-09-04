@@ -809,11 +809,13 @@ export type Database = {
           dia: string
           gravado_em: string
           hora: number
+          mode: string
           pares_invertidos: number | null
           posicionados: number | null
           realizado_brl: number | null
           total_brl: number | null
           user_id: string
+          variant: string
           vendas: number | null
         }
         Insert: {
@@ -823,11 +825,13 @@ export type Database = {
           dia: string
           gravado_em?: string
           hora: number
+          mode?: string
           pares_invertidos?: number | null
           posicionados?: number | null
           realizado_brl?: number | null
           total_brl?: number | null
           user_id: string
+          variant?: string
           vendas?: number | null
         }
         Update: {
@@ -837,11 +841,13 @@ export type Database = {
           dia?: string
           gravado_em?: string
           hora?: number
+          mode?: string
           pares_invertidos?: number | null
           posicionados?: number | null
           realizado_brl?: number | null
           total_brl?: number | null
           user_id?: string
+          variant?: string
           vendas?: number | null
         }
         Relationships: []
@@ -1514,6 +1520,69 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      b3_livro_mudancas: {
+        Row: {
+          aplicada_em: string
+          autor: string
+          avaliado_em: string | null
+          avaliar_em: string | null
+          como_reverter: string | null
+          criado_em: string
+          escopo: string
+          evidencia: string | null
+          id: string
+          mode: string | null
+          o_que: string
+          por_que: string
+          resultado: string | null
+          status: string
+          symbol: string | null
+          valor_antes: string | null
+          valor_depois: string | null
+          variant: string | null
+        }
+        Insert: {
+          aplicada_em: string
+          autor: string
+          avaliado_em?: string | null
+          avaliar_em?: string | null
+          como_reverter?: string | null
+          criado_em?: string
+          escopo: string
+          evidencia?: string | null
+          id?: string
+          mode?: string | null
+          o_que: string
+          por_que: string
+          resultado?: string | null
+          status?: string
+          symbol?: string | null
+          valor_antes?: string | null
+          valor_depois?: string | null
+          variant?: string | null
+        }
+        Update: {
+          aplicada_em?: string
+          autor?: string
+          avaliado_em?: string | null
+          avaliar_em?: string | null
+          como_reverter?: string | null
+          criado_em?: string
+          escopo?: string
+          evidencia?: string | null
+          id?: string
+          mode?: string | null
+          o_que?: string
+          por_que?: string
+          resultado?: string | null
+          status?: string
+          symbol?: string | null
+          valor_antes?: string | null
+          valor_depois?: string | null
+          variant?: string | null
+        }
+        Relationships: []
       }
       b3_m1_candles_hist: {
         Row: {
@@ -7268,7 +7337,51 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      b3_livro_a_avaliar: {
+        Row: {
+          aplicada_em: string | null
+          ativo: string | null
+          autor: string | null
+          avaliar_em: string | null
+          dias_ate: number | null
+          escopo: string | null
+          evidencia: string | null
+          modalidade: string | null
+          modo: string | null
+          o_que: string | null
+          valor_antes: string | null
+          valor_depois: string | null
+        }
+        Insert: {
+          aplicada_em?: string | null
+          ativo?: never
+          autor?: string | null
+          avaliar_em?: string | null
+          dias_ate?: never
+          escopo?: string | null
+          evidencia?: string | null
+          modalidade?: never
+          modo?: never
+          o_que?: string | null
+          valor_antes?: string | null
+          valor_depois?: string | null
+        }
+        Update: {
+          aplicada_em?: string | null
+          ativo?: never
+          autor?: string | null
+          avaliar_em?: string | null
+          dias_ate?: never
+          escopo?: string | null
+          evidencia?: string | null
+          modalidade?: never
+          modo?: never
+          o_que?: string | null
+          valor_antes?: string | null
+          valor_depois?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       b3_atualizar_curadoria: {
@@ -7328,6 +7441,7 @@ export type Database = {
         }[]
       }
       b3_diagnosticar_dia: { Args: { p_date: string }; Returns: number }
+      b3_disparar_guardiao: { Args: never; Returns: string }
       b3_disparar_tique: { Args: never; Returns: string }
       b3_gravar_cenario_horario: {
         Args: { p_dia?: string; p_hora?: number }
