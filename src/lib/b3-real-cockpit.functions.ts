@@ -514,6 +514,8 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       today,
       robots,
       account_peak: accountPeak,
+      daily_circuit: dailyCircuit,
+
       enabled_count: robots.filter((r) => r.enabled).length,
       alerts: alerts.slice(0, 12),
     };
