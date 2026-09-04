@@ -61,7 +61,7 @@ function saidaCfg(cfg: any) {
 export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResultado> {
   const t0 = Date.now();
   const detalhes: any[] = [];
-  let fechadas = 0, ignoradas = 0, erros = 0;
+  let fechadas = 0, ignoradas = 0, erros = 0, marcadas = 0;
 
   // 1) Ordens abertas de todos os usuários. É a leitura mais barata do sistema:
   //    em pregão normal são poucas dezenas de linhas.
