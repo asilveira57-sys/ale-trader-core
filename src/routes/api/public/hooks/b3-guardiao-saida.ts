@@ -40,11 +40,15 @@ export const Route = createFileRoute("/api/public/hooks/b3-guardiao-saida")({
           });
         }
 
-        // Passada anterior ainda rodando: não empilha trabalho.
-        if (running) {
-          return Response.json({ skipped: true, reason: "guardiao_em_execucao" }, { status: 202 });
+        // Passada anterior ainda rodando: não empilha trabalho — salvo se o
+        // arrendamento dela já venceu (passada perdida).
+        if (runningSince && Date.now() - runningSince < LEASE_MS) {
+          return Response.json(
+            { skipped: true, reason: "guardiao_em_execucao", idade_ms: Date.now() - runningSince },
+            { status: 202 },
+          );
         }
-        running = true;
+        runningSince = Date.now();
         try {
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const res = await runB3GuardiaoSaida(supabaseAdmin);
@@ -52,7 +56,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-guardiao-saida")({
         } catch (e) {
           return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });
         } finally {
-          running = false;
+          runningSince = 0;
         }
       },
     },
