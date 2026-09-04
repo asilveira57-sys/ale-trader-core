@@ -2147,9 +2147,21 @@ async function runB3SimulationTickInner(
 
     // Limiar do afastamento: o maior entre uma fração do stop e uma fração da
     // amplitude do dia (em ativo parado o stop manda; em dia amplo, a amplitude).
-    const minByStop = Number((cfg as any).vwap_min_distance_pts ?? stopPtsCfg * 0.8);
-    const rangeRatio = Number((cfg as any).vwap_min_distance_range_ratio ?? 0.25);
+    //
+    // 05/09/2026 — os DOIS multiplicadores agora são colunas por ativo em
+    // `b3_asset_profiles` (`vwap_min_distance_stop_ratio`,
+    // `vwap_min_distance_range_ratio`). Precedência: config do modo (se
+    // existir) → coluna do ativo → padrão histórico (0,8 e 0,25). Como as
+    // colunas nascem com o padrão histórico, esta entrega não muda nada;
+    // é só o botão ficando acessível.
+    const stopRatioCfg = Number(asset?.vwap_min_distance_stop_ratio);
+    const stopRatio = Number.isFinite(stopRatioCfg) && stopRatioCfg > 0 ? stopRatioCfg : 0.8;
+    const rangeRatioAsset = Number(asset?.vwap_min_distance_range_ratio);
+    const minByStop = Number((cfg as any).vwap_min_distance_pts ?? stopPtsCfg * stopRatio);
+    const rangeRatio = Number((cfg as any).vwap_min_distance_range_ratio
+      ?? (Number.isFinite(rangeRatioAsset) && rangeRatioAsset > 0 ? rangeRatioAsset : 0.25));
     const threshold = Math.max(minByStop, dayRange * rangeRatio);
+
 
     // Afastamento máximo recente do MESMO lado em que o preço está agora.
     const win = Math.max(3, Math.min(30, Number((cfg as any).vwap_lookback_candles ?? 10)));
