@@ -261,6 +261,29 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       // Fica no tique completo; acelerá-lo não muda nada.
       if (cfg.trailing_mode === "structural") debug.trailing_structural_no_tique_completo = true;
 
+      // MARCAÇÃO A MERCADO (item 4 da leva de 02/09)
+      // `unrealized_points` / `unrealized_brl` existiam vazias. Aqui elas são
+      // preenchidas pelo MESMO Bid/Ask auditado que decide o fechamento — nunca
+      // por preço histórico de outro snapshot — então o valor em tela é o mesmo
+      // que o motor usaria se fechasse a posição naquele instante.
+      // Escrita econômica: só grava quando o número muda de fato (ponto inteiro
+      // e centavo), para não multiplicar I/O a cada 20 s por posição parada.
+      if (open.exit_time == null) {
+        const qty = Number(open.quantity) || 1;
+        const unrealPts = Math.round(movePts);
+        const unrealBrl = Number((movePts * Number(asset.tick_value_brl) * qty).toFixed(2));
+        const jaPts = open.unrealized_points == null ? null : Math.round(Number(open.unrealized_points));
+        const jaBrl = open.unrealized_brl == null ? null : Number(Number(open.unrealized_brl).toFixed(2));
+        if (jaPts !== unrealPts || jaBrl !== unrealBrl) {
+          try {
+            await supabase.from("b3_simulation_orders")
+              .update({ unrealized_points: unrealPts, unrealized_brl: unrealBrl })
+              .eq("id", open.id).eq("user_id", userId).eq("status", "open");
+            marcadas++;
+          } catch { /* marcação nunca derruba a gestão de risco */ }
+        }
+      }
+
       if (!motivo) { ignoradas++; continue; }
 
       const exitAudit: B3QuoteExecutionAudit = {
