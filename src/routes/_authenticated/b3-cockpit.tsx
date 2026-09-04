@@ -207,7 +207,7 @@ function CockpitPage() {
   const patch = (p: Partial<SavedFilters>) => setSaved((s) => ({ ...s, ...p }));
   const setFilter = (v: Filter) => patch({ filter: v });
 
-  // no clique soma ou remove da seleção — é o que se espera de uma lista.
+  // Recortes combináveis: ativo × modalidade × modo.
   const FULL: Record<"symbols" | "variants" | "modes", string[]> = {
     symbols: [...B3_ASSETS], variants: [...VARIANT_LIST], modes: [...MODE_LIST],
   };
