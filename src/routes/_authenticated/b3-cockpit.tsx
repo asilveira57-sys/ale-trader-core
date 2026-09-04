@@ -40,34 +40,41 @@ const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "curr
 // ── Indicador de pico e recuo ────────────────────────────────────────────────
 // Canal visual PRÓPRIO: a cor da linha do robô continua significando
 // constância (b3_cor_do_robo) e não é usada aqui.
+//
+// 04/09/2026 — A BOLINHA SAIU. Era um anel de 20px com o número do lado; nos
+// cards em 8 colunas o anel aparecia vazio e o número ficava solto, sem dizer
+// de que ele era. Agora é um selo escrito: sempre diz o que o número significa.
 function PeakRing({ peak, atual, limite }: { peak: number; atual: number; limite: number }) {
   if (!(peak > 0)) return null;
   const recuo = Math.min(1, Math.max(0, (peak - atual) / peak));
   const lim = limite > 0 ? limite : 0.4;
   const razao = recuo / lim;
-  const cor = razao >= 0.8 ? "text-rose-400" : razao >= 0.5 ? "text-amber-300" : "text-emerald-400";
+  const cor = razao >= 0.8
+    ? "border-rose-400/50 text-rose-300 bg-rose-500/10"
+    : razao >= 0.5
+      ? "border-amber-300/50 text-amber-200 bg-amber-500/10"
+      : "border-emerald-400/40 text-emerald-300 bg-emerald-500/10";
   const faltaPct = Math.max(0, lim - recuo) * 100;
-  const R = 9, C = 2 * Math.PI * R;
   const title = [
+    `Devolvido do pico do dia: ${(recuo * 100).toFixed(0)}%`,
     `Pico do dia: ${BRL(peak)}`,
     `Resultado agora: ${BRL(atual)}`,
-    `Recuo do pico: ${(recuo * 100).toFixed(0)}% (freio em ${(lim * 100).toFixed(0)}%)`,
+    `Freio de pico em ${(lim * 100).toFixed(0)}% de devolução`,
     recuo >= lim ? "Freio de pico no limite" : `Faltam ${faltaPct.toFixed(0)} pontos percentuais para o freio`,
   ].join(" · ");
   return (
-    <span className={`inline-flex items-center gap-1 ${cor}`} title={title} aria-label={title}>
-      <svg viewBox="0 0 24 24" className="w-5 h-5 -rotate-90">
-        <circle cx="12" cy="12" r={R} fill="none" strokeWidth="3" className="stroke-muted" opacity="0.4" />
-        <circle
-          cx="12" cy="12" r={R} fill="none" strokeWidth="3" strokeLinecap="round"
-          className="stroke-current"
-          strokeDasharray={`${C * Math.min(1, razao)} ${C}`}
-        />
-      </svg>
-      <span className="text-[10px] font-mono">{(recuo * 100).toFixed(0)}%</span>
+    <span
+      className={`inline-flex items-center gap-1 rounded border px-1 py-[1px] text-[10px] font-mono ${cor}`}
+      title={title}
+      aria-label={title}
+    >
+      <span aria-hidden>↓</span>
+      {(recuo * 100).toFixed(0)}%
+      <span className="opacity-70 font-sans">do pico</span>
     </span>
   );
 }
+
 
 
 
