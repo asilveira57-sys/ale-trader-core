@@ -3831,6 +3831,8 @@ export type Database = {
           id: string
           last_eval_minute_ts: string | null
           legacy_price_detected: boolean
+          mae_pts: number | null
+          mfe_pts: number | null
           mode: string
           net_result_brl: number
           provider_name: string
@@ -3875,6 +3877,8 @@ export type Database = {
           id?: string
           last_eval_minute_ts?: string | null
           legacy_price_detected?: boolean
+          mae_pts?: number | null
+          mfe_pts?: number | null
           mode: string
           net_result_brl?: number
           provider_name?: string
@@ -3919,6 +3923,8 @@ export type Database = {
           id?: string
           last_eval_minute_ts?: string | null
           legacy_price_detected?: boolean
+          mae_pts?: number | null
+          mfe_pts?: number | null
           mode?: string
           net_result_brl?: number
           provider_name?: string

@@ -4516,6 +4516,13 @@ export async function closeOrder(supabase: any, userId: string, run: any, mode: 
   }
   const durationS = entryTimeMs ? Math.max(0, Math.round((nowMs - entryTimeMs) / 1000)) : null;
 
+  // Extremos gravados na ordem: o maior entre o que o histórico mostra agora e o
+  // que o guardião já registrou a cada 20 s enquanto a posição estava aberta.
+  // `mae_pts` fica positivo (magnitude da excursão contrária). Coleta de dado —
+  // nenhuma decisão de entrada ou saída lê esses campos.
+  const mfeFinal = Math.round(Math.max(mfePts, Number(order.mfe_pts ?? 0), 0));
+  const maeFinal = Math.round(Math.max(-maePts, Number(order.mae_pts ?? 0), 0));
+
   let closeUpdate = supabase.from("b3_simulation_orders").update({
     exit_price: roundToTick(exitPrice, Number(assetProfile.tick_size)),
     exit_time: new Date().toISOString(),
@@ -4523,6 +4530,8 @@ export async function closeOrder(supabase: any, userId: string, run: any, mode: 
     gross_result_brl: grossBrl,
     fees, net_result_brl: netBrl,
     status: "closed", close_reason: reason,
+    mfe_pts: mfeFinal, mae_pts: maeFinal,
+
     quote_source: exitAudit.quote_source,
     quote_server: exitAudit.quote_server,
     quote_symbol: exitAudit.quote_symbol,

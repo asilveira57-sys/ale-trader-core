@@ -268,21 +268,50 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       // que o motor usaria se fechasse a posição naquele instante.
       // Escrita econômica: só grava quando o número muda de fato (ponto inteiro
       // e centavo), para não multiplicar I/O a cada 20 s por posição parada.
+      //
+      // EXCURSÃO MÁXIMA (mfe_pts / mae_pts) — pedido de 04/09.
+      // `mfe_pts` = melhor ponto que a posição chegou a ver a favor;
+      // `mae_pts` = pior ponto contra (guardado como número positivo).
+      // São apenas coleta de dado: nenhuma decisão de entrada ou saída lê esses
+      // campos. Servem para medir, depois, quantas ordens VENCEDORAS passaram
+      // por excursão contrária maior que o stop do modo — sem isso, avaliar um
+      // stop menor seria ajuste ao passado.
+      // Mesma escrita econômica: só grava quando um extremo é realmente superado.
       if (open.exit_time == null) {
         const qty = Number(open.quantity) || 1;
         const unrealPts = Math.round(movePts);
         const unrealBrl = Number((movePts * Number(asset.tick_value_brl) * qty).toFixed(2));
         const jaPts = open.unrealized_points == null ? null : Math.round(Number(open.unrealized_points));
         const jaBrl = open.unrealized_brl == null ? null : Number(Number(open.unrealized_brl).toFixed(2));
+
+        // Quando o trailing/zero a zero já varreu o histórico de tiques desta
+        // posição, `debug.peak_pts` traz o pico real desde a entrada — melhor
+        // que o instante corrente. Fora disso, vale a marcação a mercado.
+        const favorAgora = Math.max(Number(debug.peak_pts ?? movePts), movePts);
+        const contraAgora = Math.max(0, -movePts);
+        const jaMfe = open.mfe_pts == null ? null : Number(open.mfe_pts);
+        const jaMae = open.mae_pts == null ? null : Number(open.mae_pts);
+        const novoMfe = Math.round(Math.max(favorAgora, jaMfe ?? favorAgora, 0));
+        const novoMae = Math.round(Math.max(contraAgora, jaMae ?? contraAgora, 0));
+
+        const patch: Record<string, number> = {};
         if (jaPts !== unrealPts || jaBrl !== unrealBrl) {
+          patch.unrealized_points = unrealPts;
+          patch.unrealized_brl = unrealBrl;
+        }
+        if (jaMfe === null || novoMfe > Math.round(jaMfe)) patch.mfe_pts = novoMfe;
+        if (jaMae === null || novoMae > Math.round(jaMae)) patch.mae_pts = novoMae;
+
+        if (Object.keys(patch).length) {
           try {
             await supabase.from("b3_simulation_orders")
-              .update({ unrealized_points: unrealPts, unrealized_brl: unrealBrl })
+              .update(patch)
               .eq("id", open.id).eq("user_id", userId).eq("status", "open");
             marcadas++;
           } catch { /* marcação nunca derruba a gestão de risco */ }
         }
       }
+
 
       if (!motivo) { ignoradas++; continue; }
 

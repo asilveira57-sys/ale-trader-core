@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
-  AlertTriangle, CheckCircle2, CircleSlash, Clock, Hand, KeyRound, LayoutDashboard,
+  AlertTriangle, Bell, BellOff, CheckCircle2, CircleSlash, Clock, Hand, KeyRound, LayoutDashboard,
   Play, RefreshCw, ShieldOff, XOctagon, Radio, GitCompareArrows, TrendingDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
+import { useRealPositionAlerts } from "@/hooks/use-real-position-alerts";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
   getB3RealCockpit, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
@@ -417,6 +418,23 @@ function CockpitRealPage() {
   const reportAgeS = broker.report_age_s == null ? null : Math.round(Number(broker.report_age_s));
   const reportStale = !broker.reported || (reportAgeS != null && reportAgeS > 60);
 
+  // AVISO SONORO / NOTIFICAÇÃO de abertura e fechamento de posição REAL.
+  // Fonte: as posições reportadas pelo executor (verdade da corretora), nunca o
+  // momento em que o app manda espelhar. Só simulado nenhum: esta tela é real.
+  const alerta = useRealPositionAlerts(broker.reported ? brokerPositions : undefined, broker.reported_at ?? null);
+
+  const AlertToggle = () => (
+    <button
+      type="button"
+      onClick={() => alerta.setLigado(!alerta.ligado)}
+      className="flex h-9 shrink-0 items-center gap-1 rounded-lg border-2 border-border px-2 text-[11px] font-bold"
+      title={alerta.armado ? "Som liberado neste aparelho" : "Toque em qualquer lugar para liberar o som"}
+    >
+      {alerta.ligado ? <Bell className="size-4 text-emerald-400" /> : <BellOff className="size-4 text-muted-foreground" />}
+      <span className="hidden sm:inline">{alerta.ligado ? (alerta.armado ? "Aviso ligado" : "Aviso: toque p/ liberar som") : "Aviso mudo"}</span>
+    </button>
+  );
+
   const StaleBanner = () =>
     !reportStale ? null : (
       <div className="rounded-xl border-2 border-rose-300 bg-rose-600 px-3 py-2 text-white">
@@ -446,9 +464,13 @@ function CockpitRealPage() {
               {realEnabled ? "real operando" : "REAL PARADO"} · {d?.server_time ? hhmmss(d.server_time) : "—"}
             </p>
           </div>
-          <Button size="sm" variant="outline" className="h-9 shrink-0" onClick={() => q.refetch()}>
-            <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <AlertToggle />
+            <Button size="sm" variant="outline" className="h-9 shrink-0" onClick={() => q.refetch()}>
+              <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+
         </div>
 
         <StaleBanner />
@@ -558,7 +580,9 @@ function CockpitRealPage() {
           >
             {realEnabled ? "REAL OPERANDO" : "REAL PARADO"}
           </span>
+          <AlertToggle />
           <Button size="sm" variant="outline" onClick={() => q.refetch()}>
+
             <RefreshCw className={`mr-1 size-4 ${q.isFetching ? "animate-spin" : ""}`} /> Atualizar
           </Button>
           <Button size="sm" variant="outline" asChild>
