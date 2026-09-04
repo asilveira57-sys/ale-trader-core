@@ -240,7 +240,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
             stale_runs_stopped: staleIds.length,
             janela_ms,
             concorrencia: limite,
-            ...(erroFatal ? { erro: erroFatal, estourou, em_voo_no_estouro: leaseExpirado ? undefined : undefined } : {}),
+            ...(erroFatal ? { erro: erroFatal, estourou, em_voo_no_estouro: emVooNoEstouro } : {}),
             deadline_ms: DEADLINE_MS,
             run_deadline_ms: RUN_DEADLINE_MS,
             lease_ms: leaseMs,
