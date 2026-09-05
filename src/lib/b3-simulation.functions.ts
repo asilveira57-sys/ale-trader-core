@@ -663,6 +663,103 @@ function slimEngineAudit(tickAudit: any) {
   };
 }
 
+// ── RESUMO COMPACTO POR ROBÔ NO SNAPSHOT (05/09/2026) ──────────────────────
+// O snapshot é registro de MERCADO. Guardar o objeto de auditoria inteiro em
+// cada linha custava 5.612 bytes por linha (47% do campo) para um dado em que
+// só a última linha importa — e a última linha agora vive em b3_engine_state.
+//
+// O que sobra aqui é o mínimo que as telas de Diagnóstico e Funil percorrem ao
+// longo do tempo para contar ciclos, sinais, vereditos do comitê e categorias
+// de bloqueio. Sem frase repetida, sem votos em texto (já estão inteiros em
+// b3_simulation_agent_votes), sem config_loaded/config_saved.
+//
+// Chaves curtas de propósito: o nome da chave é gravado em TODA linha.
+//   m = robô · k = etapa que barrou · d = detalhe numérico dela
+//   s = score · c = confiança · u = setup · b/v = sinal compra/venda
+//   cm = veredito do comitê (a/r) · o = abriu ordem
+//   dc/te = contexto da decisão e evento de trade, só em tique com evento
+function buildEngineDigest(tickAudit: any, completo = false) {
+  return (tickAudit.modes ?? []).map((m: any) => {
+    const abriu = /ordem simulada aberta/i.test(m.last_refusal_reason ?? "");
+    const d: any = { m: m.mode };
+    if (m.first_stop) {
+      d.k = m.first_stop.key;
+      // Detalhe TRUNCADO: é dele que o funil extrai "observado × limite".
+      if (m.first_stop.detail) d.d = String(m.first_stop.detail).slice(0, 60);
+    }
+    if (m.last_score != null) d.s = Math.round(Number(m.last_score));
+    if (m.last_confidence != null) d.c = Math.round(Number(m.last_confidence));
+    if (m.last_setup) d.u = String(m.last_setup).slice(0, 40);
+    if (m.signals?.buy) d.b = 1;
+    if (m.signals?.sell) d.v = 1;
+    if (m.committee) d.cm = m.committee.final === "approved" ? "a" : "r";
+    if (abriu) d.o = 1;
+    if (m.last_refusal_reason) d.r = String(m.last_refusal_reason).slice(0, 90);
+    if (completo) {
+      if (m.decision_context) d.dc = m.decision_context;
+      if (m.trade_event) d.te = m.trade_event;
+    }
+    return d;
+  });
+}
+
+// Reconstrói, a partir do resumo compacto, a forma que os agregadores já
+// esperavam. Um único ponto de tradução: nenhum leitor precisa conhecer as
+// chaves curtas.
+const ENGINE_STEP_LABEL: Record<string, string> = {
+  tick_received: "Tick recebido", mt5_server: "Servidor MT5", mt5_symbol: "Símbolo",
+  market_open: "Mercado aberto", time_allowed: "Horário permitido",
+  operation_window: "Janela operacional", force_close_window: "Janela zeragem",
+  valid_quote: "Cotação válida", spread: "Spread", global_protection: "Proteção Global",
+  mode_enabled: "Robô habilitado", volatility: "Volatilidade", max_trades: "Máximo trades",
+  daily_loss: "Loss diário", daily_loss_aggregate: "Perda diária agregada (conta)",
+  daily_target: "Meta diária", position_open: "Posição aberta",
+  protection_engine: "Proteção diária", score: "Score", confidence: "Confiança",
+  committee: "Comitê", signal_buy: "Sinal BUY", signal_sell: "Sinal SELL",
+  setup: "Setup técnico", entry_style: "Modalidade de entrada",
+};
+
+export function engineAuditFromSnapshot(snap: any) {
+  const extra = snap?.extra ?? {};
+  const digest = extra.engine_digest;
+  // Linhas gravadas antes desta mudança seguem legíveis pelo caminho antigo.
+  if (!Array.isArray(digest)) return extra.engine_audit ?? null;
+  return {
+    snapshot_id: snap.id ?? null,
+    timestamp: snap.market_time ?? null,
+    global_protection: extra.global_protection
+      ? { ...extra.global_protection, status: extra.global_protection.active ? "Ativa" : "Inativa" }
+      : null,
+    tick_guard: { ok: extra.guard_ok !== false, first_block_reason: extra.guard_block_reason ?? null },
+    do_digest: true,
+    modes: digest.map((d: any) => ({
+      mode: d.m,
+      timestamp: snap.market_time ?? null,
+      last_refusal_reason: d.r ?? null,
+      first_stop: d.k ? { key: d.k, label: ENGINE_STEP_LABEL[d.k] ?? d.k, detail: d.d ?? null } : null,
+      last_score: d.s ?? null,
+      last_confidence: d.c ?? null,
+      last_setup: d.u ?? null,
+      signals: { buy: d.b === 1, sell: d.v === 1 },
+      committee: d.cm ? { final: d.cm === "a" ? "approved" : "rejected" } : null,
+      decision_context: d.dc ?? null,
+      trade_event: d.te ?? null,
+      checks: [],
+    })),
+  };
+}
+
+// Assinatura de escrita: só serve para comparar igualdade. Guardar o texto dos
+// votos do comitê inteiro (3.440 bytes por linha, 29% do campo) para depois
+// comparar strings é desperdício — os votos já estão em b3_simulation_agent_votes.
+export function engineSigHash(value: string) {
+  let h = 5381;
+  for (let i = 0; i < value.length; i++) h = ((h * 33) ^ value.charCodeAt(i)) >>> 0;
+  return `${h.toString(36)}:${value.length}`;
+}
+
+
+
 export async function runB3SimulationTick(
   supabase: any,
   userId: string,
@@ -2402,17 +2499,24 @@ async function runB3SimulationTickInner(
       provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
       mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls,
       global_protection: { active: globalProtectionActive, reason: globalProtectionReason },
-      tick_guard: priceSrc.guard_evaluation ? {
-        mode: priceSrc.guard.mode,
-        ok: priceSrc.guard_evaluation.ok,
-        first_block_reason: priceSrc.guard_evaluation.first_block_reason,
-        settings: priceSrc.guard_evaluation.settings,
-        spread_pts: priceSrc.guard_evaluation.spread_pts,
-        spread_ticks: priceSrc.guard_evaluation.spread_ticks,
-        tick_age_s: priceSrc.guard_evaluation.tick_age_s,
-        checks: priceSrc.guard_evaluation.checks,
-      } : null,
+      // ESTADO DO MOTOR SAIU DO SNAPSHOT (05/09/2026)
+      // `tick_guard` inteiro (rótulos e mensagens por extenso, ~1.970 bytes por
+      // linha) vive agora em b3_engine_state, uma linha por execução, ATUALIZADA.
+      // No snapshot fica só o veredito, que é o que os contadores usam.
+      guard_ok: priceSrc.guard_evaluation ? priceSrc.guard_evaluation.ok !== false : true,
+      guard_block_reason: priceSrc.guard_evaluation?.first_block_reason ?? null,
     };
+    const tickGuardFull = priceSrc.guard_evaluation ? {
+      mode: priceSrc.guard.mode,
+      ok: priceSrc.guard_evaluation.ok,
+      first_block_reason: priceSrc.guard_evaluation.first_block_reason,
+      settings: priceSrc.guard_evaluation.settings,
+      spread_pts: priceSrc.guard_evaluation.spread_pts,
+      spread_ticks: priceSrc.guard_evaluation.spread_ticks,
+      tick_age_s: priceSrc.guard_evaluation.tick_age_s,
+      checks: priceSrc.guard_evaluation.checks,
+    } : null;
+
     const snapPayload: any = {
       symbol: asset.quote_symbol,
       price: ctx.price, candle_open: ctx.open, candle_high: ctx.high, candle_low: ctx.low,
@@ -2463,7 +2567,7 @@ async function runB3SimulationTickInner(
         active: globalProtectionActive,
         reason: globalProtectionReason,
       },
-      tick_guard: snapshotExtra.tick_guard,
+      tick_guard: tickGuardFull,
       modes: [] as any[],
     };
 
@@ -4042,8 +4146,12 @@ async function runB3SimulationTickInner(
     const auditCompleto = auditEvents.length > 0;
     snapshotExtra.audit_level = auditCompleto ? "completo" : "resumido";
     snapshotExtra.audit_events = auditCompleto ? auditEvents.slice(0, 20) : [];
-    snapshotExtra.engine_audit = auditCompleto ? tickAudit : slimEngineAudit(tickAudit);
-    snapshotExtra.write_sigs = writeSigs;
+    // O objeto de auditoria e as assinaturas de escrita NÃO vão mais para o
+    // snapshot (eram 47% e 29% do campo `extra`). Aqui fica só o resumo
+    // compacto por robô, que é o que os contadores das telas de diagnóstico
+    // percorrem ao longo do tempo.
+    const engineAuditAtual = auditCompleto ? tickAudit : slimEngineAudit(tickAudit);
+    snapshotExtra.engine_digest = buildEngineDigest(tickAudit);
     // Persistência única: 1 INSERT a cada 10s. Fora da janela, nada é gravado
     // (sem INSERT, UPDATE ou UPSERT) — o estado corrente vive só em memória.
     if (persistSnapshot) {
@@ -4054,8 +4162,32 @@ async function runB3SimulationTickInner(
       memo.id = snapIns.id;
       memo.persisted_at = now.getTime();
       tickAudit.snapshot_id = snapIns.id;
+      engineAuditAtual.snapshot_id = snapIns.id;
+
+      // Estado CORRENTE do motor: uma linha por execução, atualizada no lugar.
+      // A tabela não cresce e o cockpit continua lendo exatamente o mesmo objeto.
+      // Falha aqui não derruba o motor — é registro de diagnóstico.
+      try {
+        await supabase.from("b3_engine_state").upsert({
+          user_id: userId,
+          simulation_run_id: runId,
+          symbol: run.symbol ?? asset.symbol ?? null,
+          variant: runVariant,
+          trade_date: new Date(now.getTime() - 3 * 3600_000).toISOString().slice(0, 10),
+          engine_audit: engineAuditAtual,
+          write_sigs: writeSigs,
+          tick_guard: tickGuardFull,
+          counters: { audit_level: snapshotExtra.audit_level, audit_events: snapshotExtra.audit_events, timings: snapshotExtra.timings },
+          last_snapshot_id: snapIns.id,
+          market_time: now.toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id,simulation_run_id" });
+      } catch (e: any) {
+        log.push({ action: "engine_state_erro", error: String(e?.message ?? e) });
+      }
     }
     log.push({ action: "engine_audit", audit_level: snapshotExtra.audit_level, audit_events: auditEvents, snapshot_id: memo.id, persisted: persistSnapshot, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+
 
 
   }
