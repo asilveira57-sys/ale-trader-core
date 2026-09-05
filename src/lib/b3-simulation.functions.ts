@@ -2402,17 +2402,24 @@ async function runB3SimulationTickInner(
       provider_name: priceSrc.provider_name, fallback_to_csv: priceSrc.fallback_to_csv,
       mt5_provider_calls: providerStats.mt5_provider_calls, legacy_provider_calls: providerStats.legacy_provider_calls,
       global_protection: { active: globalProtectionActive, reason: globalProtectionReason },
-      tick_guard: priceSrc.guard_evaluation ? {
-        mode: priceSrc.guard.mode,
-        ok: priceSrc.guard_evaluation.ok,
-        first_block_reason: priceSrc.guard_evaluation.first_block_reason,
-        settings: priceSrc.guard_evaluation.settings,
-        spread_pts: priceSrc.guard_evaluation.spread_pts,
-        spread_ticks: priceSrc.guard_evaluation.spread_ticks,
-        tick_age_s: priceSrc.guard_evaluation.tick_age_s,
-        checks: priceSrc.guard_evaluation.checks,
-      } : null,
+      // ESTADO DO MOTOR SAIU DO SNAPSHOT (05/09/2026)
+      // `tick_guard` inteiro (rótulos e mensagens por extenso, ~1.970 bytes por
+      // linha) vive agora em b3_engine_state, uma linha por execução, ATUALIZADA.
+      // No snapshot fica só o veredito, que é o que os contadores usam.
+      guard_ok: priceSrc.guard_evaluation ? priceSrc.guard_evaluation.ok !== false : true,
+      guard_block_reason: priceSrc.guard_evaluation?.first_block_reason ?? null,
     };
+    const tickGuardFull = priceSrc.guard_evaluation ? {
+      mode: priceSrc.guard.mode,
+      ok: priceSrc.guard_evaluation.ok,
+      first_block_reason: priceSrc.guard_evaluation.first_block_reason,
+      settings: priceSrc.guard_evaluation.settings,
+      spread_pts: priceSrc.guard_evaluation.spread_pts,
+      spread_ticks: priceSrc.guard_evaluation.spread_ticks,
+      tick_age_s: priceSrc.guard_evaluation.tick_age_s,
+      checks: priceSrc.guard_evaluation.checks,
+    } : null;
+
     const snapPayload: any = {
       symbol: asset.quote_symbol,
       price: ctx.price, candle_open: ctx.open, candle_high: ctx.high, candle_low: ctx.low,
