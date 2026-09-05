@@ -1041,6 +1041,65 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_engine_state: {
+        Row: {
+          counters: Json
+          created_at: string
+          engine_audit: Json
+          id: string
+          last_snapshot_id: string | null
+          market_time: string | null
+          simulation_run_id: string
+          symbol: string | null
+          tick_guard: Json | null
+          trade_date: string | null
+          updated_at: string
+          user_id: string
+          variant: string | null
+          write_sigs: Json
+        }
+        Insert: {
+          counters?: Json
+          created_at?: string
+          engine_audit?: Json
+          id?: string
+          last_snapshot_id?: string | null
+          market_time?: string | null
+          simulation_run_id: string
+          symbol?: string | null
+          tick_guard?: Json | null
+          trade_date?: string | null
+          updated_at?: string
+          user_id: string
+          variant?: string | null
+          write_sigs?: Json
+        }
+        Update: {
+          counters?: Json
+          created_at?: string
+          engine_audit?: Json
+          id?: string
+          last_snapshot_id?: string | null
+          market_time?: string | null
+          simulation_run_id?: string
+          symbol?: string | null
+          tick_guard?: Json | null
+          trade_date?: string | null
+          updated_at?: string
+          user_id?: string
+          variant?: string | null
+          write_sigs?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_engine_state_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "b3_simulation_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       b3_entry_decision_log: {
         Row: {
           approve_votes: number | null
