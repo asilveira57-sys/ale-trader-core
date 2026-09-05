@@ -4049,8 +4049,12 @@ async function runB3SimulationTickInner(
     const auditCompleto = auditEvents.length > 0;
     snapshotExtra.audit_level = auditCompleto ? "completo" : "resumido";
     snapshotExtra.audit_events = auditCompleto ? auditEvents.slice(0, 20) : [];
-    snapshotExtra.engine_audit = auditCompleto ? tickAudit : slimEngineAudit(tickAudit);
-    snapshotExtra.write_sigs = writeSigs;
+    // O objeto de auditoria e as assinaturas de escrita NÃO vão mais para o
+    // snapshot (eram 47% e 29% do campo `extra`). Aqui fica só o resumo
+    // compacto por robô, que é o que os contadores das telas de diagnóstico
+    // percorrem ao longo do tempo.
+    const engineAuditAtual = auditCompleto ? tickAudit : slimEngineAudit(tickAudit);
+    snapshotExtra.engine_digest = buildEngineDigest(tickAudit);
     // Persistência única: 1 INSERT a cada 10s. Fora da janela, nada é gravado
     // (sem INSERT, UPDATE ou UPSERT) — o estado corrente vive só em memória.
     if (persistSnapshot) {
@@ -4061,8 +4065,32 @@ async function runB3SimulationTickInner(
       memo.id = snapIns.id;
       memo.persisted_at = now.getTime();
       tickAudit.snapshot_id = snapIns.id;
+      engineAuditAtual.snapshot_id = snapIns.id;
+
+      // Estado CORRENTE do motor: uma linha por execução, atualizada no lugar.
+      // A tabela não cresce e o cockpit continua lendo exatamente o mesmo objeto.
+      // Falha aqui não derruba o motor — é registro de diagnóstico.
+      try {
+        await supabase.from("b3_engine_state").upsert({
+          user_id: userId,
+          simulation_run_id: runId,
+          symbol: run.symbol ?? asset.symbol ?? null,
+          variant: runVariant,
+          trade_date: new Date(now.getTime() - 3 * 3600_000).toISOString().slice(0, 10),
+          engine_audit: engineAuditAtual,
+          write_sigs: writeSigs,
+          tick_guard: tickGuardFull,
+          counters: { audit_level: snapshotExtra.audit_level, audit_events: snapshotExtra.audit_events, timings: snapshotExtra.timings },
+          last_snapshot_id: snapIns.id,
+          market_time: now.toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id,simulation_run_id" });
+      } catch (e: any) {
+        log.push({ action: "engine_state_erro", error: String(e?.message ?? e) });
+      }
     }
     log.push({ action: "engine_audit", audit_level: snapshotExtra.audit_level, audit_events: auditEvents, snapshot_id: memo.id, persisted: persistSnapshot, modes: tickAudit.modes.map((m: any) => ({ mode: m.mode, final_reason: m.last_refusal_reason, first_stop: m.first_stop?.label ?? null })) });
+
 
 
   }
