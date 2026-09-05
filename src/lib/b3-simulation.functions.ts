@@ -2470,7 +2470,7 @@ async function runB3SimulationTickInner(
         active: globalProtectionActive,
         reason: globalProtectionReason,
       },
-      tick_guard: snapshotExtra.tick_guard,
+      tick_guard: tickGuardFull,
       modes: [] as any[],
     };
 
