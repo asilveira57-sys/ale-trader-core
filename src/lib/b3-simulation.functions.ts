@@ -4266,7 +4266,7 @@ export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
     const scope = await resolveSessionScope(supabase as any, userId);
     if (!scope.latest) return { run: null, audit: null, snapshot: null, settings: [], price_source: null, executions: [], restart_count: 0, session_date: null };
     const activeRun = scope.runs.find((r) => r.status === "running" || r.status === "paused") ?? scope.latest;
-    const [{ data: snapshot }, { data: settings }, { data: tradeSettings }] = await Promise.all([
+    const [{ data: snapshot }, { data: settings }, { data: tradeSettings }, { data: engineState }] = await Promise.all([
       (supabase as any).from("b3_simulation_market_snapshots")
         .select("id, market_time, price, volume, vwap, source, quote_source, quote_server, quote_symbol, quote_tick_ts, quote_bid, quote_ask, quote_last, provider_name, extra")
         .in("simulation_run_id", scope.runIds).eq("user_id", userId)
@@ -4276,11 +4276,19 @@ export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
         .eq("simulation_run_id", activeRun.id).eq("user_id", userId),
       (supabase as any).from("b3_trading_settings").select("price_source")
         .eq("user_id", userId).maybeSingle(),
+      // Estado CORRENTE do motor: uma linha por execução, atualizada no lugar.
+      (supabase as any).from("b3_engine_state").select("engine_audit, tick_guard, market_time, updated_at")
+        .in("simulation_run_id", scope.runIds).eq("user_id", userId)
+        .order("market_time", { ascending: false }).limit(1).maybeSingle(),
     ]);
+    // Preferimos o estado corrente; snapshots antigos (antes da migração)
+    // seguem servindo de reserva para não deixar a tela vazia.
+    const audit = (engineState as any)?.engine_audit
+      ?? (snapshot ? engineAuditFromSnapshot(snapshot) : null);
     return {
       run: activeRun,
       snapshot: snapshot ?? null,
-      audit: (snapshot?.extra as any)?.engine_audit ?? null,
+      audit,
       settings: settings ?? [],
       price_source: tradeSettings?.price_source ?? "csv",
       executions: scope.executions,
@@ -4288,6 +4296,7 @@ export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
       session_date: scope.sessionDate,
     };
   });
+
 
 
 // ─────────────────── Pipeline de Diagnóstico (read-only) ───────────────────
