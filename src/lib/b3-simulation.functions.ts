@@ -905,20 +905,29 @@ async function runB3SimulationTickInner(
   const memoKey = `${userId}:${runId}:${asset.symbol}`;
   let memo = SNAP_MEMO.get(memoKey);
   if (!memo) {
-    const { data: lastSnapRow } = await supabase.from("b3_simulation_market_snapshots")
-      .select("id, market_time, quote_tick_ts, extra")
-      .eq("simulation_run_id", runId).eq("user_id", userId)
-      .order("market_time", { ascending: false }).limit(1).maybeSingle();
+    // Recuperação depois de um isolate novo: a data/hora e o tique vêm do
+    // snapshot (registro de mercado); as assinaturas de escrita vêm de
+    // b3_engine_state, que é onde o estado do motor mora agora. O `extra` do
+    // snapshot deixou de ser lido aqui de propósito — era o campo pesado.
+    const [{ data: lastSnapRow }, { data: stateRow }] = await Promise.all([
+      supabase.from("b3_simulation_market_snapshots")
+        .select("id, market_time, quote_tick_ts")
+        .eq("simulation_run_id", runId).eq("user_id", userId)
+        .order("market_time", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("b3_engine_state").select("write_sigs")
+        .eq("simulation_run_id", runId).eq("user_id", userId).maybeSingle(),
+    ]);
     memo = {
       id: lastSnapRow?.id ?? null,
       persisted_at: lastSnapRow?.market_time ? new Date(lastSnapRow.market_time).getTime() : 0,
       quote_tick_ts: lastSnapRow?.quote_tick_ts ?? null,
-      write_sigs: { ...(((lastSnapRow as any)?.extra?.write_sigs as any) ?? {}) },
+      write_sigs: { ...(((stateRow as any)?.write_sigs as any) ?? {}) },
       last_price: null,
       last_quote: null,
     };
     SNAP_MEMO.set(memoKey, memo);
   }
+
   const writeSigs: Record<string, string> = memo.write_sigs;
   function sigChanged(key: string, value: string) {
     // Guardamos o HASH, não o texto: a assinatura só serve para comparar
