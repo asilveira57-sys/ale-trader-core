@@ -4465,6 +4465,27 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
       b.trade_events = b.trade_events.slice(-20).reverse();
     }
 
+    // Última execução COMPLETA do pipeline (etapas com observado × limite):
+    // mora no estado corrente do motor, não mais em cada snapshot.
+    const { data: estados } = await (supabase as any).from("b3_engine_state")
+      .select("engine_audit, market_time")
+      .in("simulation_run_id", scope.runIds).eq("user_id", userId)
+      .order("market_time", { ascending: true });
+    for (const est of estados ?? []) {
+      for (const m of (est.engine_audit as any)?.modes ?? []) {
+        const b = perMode[m.mode];
+        if (!b || !(m.checks ?? []).length) continue;
+        const byKey: Record<string, any> = {};
+        for (const c of m.checks) byKey[c.key] = c;
+        b.last_pipeline = PIPELINE_STEP_ORDER.filter((k) => byKey[k]).map((k) => byKey[k]);
+        if (b.last_decision_context == null && m.decision_context) {
+          b.last_decision_context = m.decision_context;
+        }
+      }
+    }
+
+
+
 
     return {
       run,
