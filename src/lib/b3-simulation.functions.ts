@@ -921,8 +921,11 @@ async function runB3SimulationTickInner(
   }
   const writeSigs: Record<string, string> = memo.write_sigs;
   function sigChanged(key: string, value: string) {
-    if (writeSigs[key] === value) return false;
-    writeSigs[key] = value;
+    // Guardamos o HASH, não o texto: a assinatura só serve para comparar
+    // igualdade, e os votos do comitê em texto pesavam 29% do campo `extra`.
+    const h = engineSigHash(value);
+    if (writeSigs[key] === h || writeSigs[key] === value) return false;
+    writeSigs[key] = h;
     return true;
   }
 
@@ -4151,7 +4154,7 @@ async function runB3SimulationTickInner(
     // compacto por robô, que é o que os contadores das telas de diagnóstico
     // percorrem ao longo do tempo.
     const engineAuditAtual = auditCompleto ? tickAudit : slimEngineAudit(tickAudit);
-    snapshotExtra.engine_digest = buildEngineDigest(tickAudit);
+    snapshotExtra.engine_digest = buildEngineDigest(tickAudit, auditCompleto);
     // Persistência única: 1 INSERT a cada 10s. Fora da janela, nada é gravado
     // (sem INSERT, UPDATE ou UPSERT) — o estado corrente vive só em memória.
     if (persistSnapshot) {
