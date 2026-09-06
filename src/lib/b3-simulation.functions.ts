@@ -4344,7 +4344,11 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
       .order("market_time", { ascending: false })
       .limit(400);
 
-    const list = (snaps ?? []).filter((s: any) => s?.extra?.engine_audit);
+    // Estado do motor: o histórico vem do resumo compacto do snapshot, e a
+    // última execução completa do pipeline vem de b3_engine_state.
+    const list = (snaps ?? [])
+      .map((s: any) => ({ ...s, __audit: engineAuditFromSnapshot(s) }))
+      .filter((s: any) => s.__audit);
 
 
     // contadores por robô
@@ -4382,7 +4386,7 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
 
     // snapshots vêm em ordem decrescente; iterar reverso para popular "last_*" corretamente
     for (const s of [...list].reverse()) {
-      const audit = s.extra.engine_audit;
+      const audit = s.__audit;
       const tick = audit.last_tick ?? null;
       for (const m of audit.modes ?? []) {
         const bucket = perMode[m.mode];
@@ -4548,7 +4552,11 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
       b.total += 1; b.net += Number(o.net_result_brl ?? 0);
     }
 
-    const list = (snaps ?? []).filter((s: any) => s?.extra?.engine_audit);
+    // Estado do motor: o histórico vem do resumo compacto do snapshot, e a
+    // última execução completa do pipeline vem de b3_engine_state.
+    const list = (snaps ?? [])
+      .map((s: any) => ({ ...s, __audit: engineAuditFromSnapshot(s) }))
+      .filter((s: any) => s.__audit);
 
     // Estado para dedup por (mode|step_key). Um novo "grupo" começa quando muda step_key ou detail.
     type Group = { mode: string; category: string; step_key: string; label: string; detail: string; first_at: string; last_at: string; repetitions: number; observed_values: number[]; limit_values: number[] };
@@ -4588,7 +4596,7 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
     };
 
     for (const s of list) {
-      const audit = s.extra.engine_audit;
+      const audit = s.__audit;
       latestAt = s.market_time;
       if (Array.isArray(audit.config_mismatches) && audit.config_mismatches.length) {
         configMismatchesLatest = audit.config_mismatches;
