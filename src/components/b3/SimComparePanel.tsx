@@ -583,7 +583,7 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
 }
 
 export function EngineDiagnosticPanel({ detail }: { detail: any }) {
-  const audit = detail?.snapshots?.[0]?.extra?.engine_audit;
+  const audit = detail?.engine_state?.engine_audit ?? null;
   const modes = audit?.modes ?? [];
   const cfgLabels: Record<string, string> = {
     volatility: "Volatilidade",

@@ -5147,9 +5147,9 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, entry_time, created_at")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
-        // `extra` inteiro tem ~6 KB por linha; aqui só o bloco de auditoria é
-        // usado, então projetamos o caminho JSON para não puxar o payload todo.
-        (supabase as any).from("b3_simulation_market_snapshots").select("price, engine_modes:extra->engine_audit->modes")
+        // Só o resumo compacto por robô é usado aqui (score, confiança e a
+        // etapa que barrou), então projetamos esse caminho do JSON.
+        (supabase as any).from("b3_simulation_market_snapshots").select("price, engine_digest:extra->engine_digest, engine_modes:extra->engine_audit->modes")
           .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1),
         (supabase as any).from("b3_simulation_orders").select("mode, net_result_brl")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "closed")
@@ -5157,7 +5157,17 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       ]);
 
       const livePrice = Number(snaps?.[0]?.price ?? 0) || null;
-      const auditModes: any[] = snaps?.[0]?.engine_modes ?? [];
+      // Resumo compacto (chaves curtas) com reserva para linhas antigas.
+      const digest: any[] = snaps?.[0]?.engine_digest ?? [];
+      const auditModes: any[] = digest.length
+        ? digest.map((d: any) => ({
+            mode: d.m,
+            last_score: d.s ?? null,
+            last_confidence: d.c ?? null,
+            first_stop: d.k ? { label: ENGINE_STEP_LABEL[d.k] ?? d.k } : null,
+            last_refusal_reason: d.r ?? null,
+          }))
+        : (snaps?.[0]?.engine_modes ?? []);
       const enabledByMode: Record<string, boolean> = {};
       const lossLimitByMode: Record<string, number | null> = {};
       const givebackByMode: Record<string, number | null> = {};
