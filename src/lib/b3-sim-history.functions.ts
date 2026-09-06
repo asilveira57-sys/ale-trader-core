@@ -7,11 +7,13 @@ export const listAllB3SimOrders = createServerFn({ method: "POST" })
   .inputValidator((d: { run_id: string }) => d)
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const [runR, modesR, ordersR, settingsR] = await Promise.all([
+    const [runR, modesR, ordersR, settingsR, stateR] = await Promise.all([
       (supabase as any).from("b3_simulation_runs").select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle(),
       (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId),
       (supabase as any).from("b3_simulation_orders").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId).order("created_at", { ascending: false }).limit(5000),
       (supabase as any).from("b3_trading_settings").select("price_source").eq("user_id", userId).maybeSingle(),
+      // Auditoria do último tique — estado corrente do motor, fora do snapshot.
+      (supabase as any).from("b3_engine_state").select("engine_audit, tick_guard, market_time, updated_at").eq("simulation_run_id", data.run_id).eq("user_id", userId).maybeSingle(),
     ]);
     if (runR.error) throw runR.error;
     if (!runR.data) throw new Error("Run não encontrada");
@@ -30,6 +32,7 @@ export const listAllB3SimOrders = createServerFn({ method: "POST" })
       run: runR.data,
       modes: modesR.data ?? [],
       orders,
+      engine_state: stateR.data ?? null,
       price_source: settingsR.data?.price_source ?? "csv",
       legacy_orders_hidden: isMt5 ? allOrders.length - orders.length : 0,
     };
