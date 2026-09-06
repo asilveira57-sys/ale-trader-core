@@ -4693,6 +4693,24 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
       funnel[m].resultado_liquido_brl = Math.round(ordersByMode[m].net * 100) / 100;
     }
 
+    // Divergência entre configuração da tela e a lida pelo motor: é estado do
+    // AGORA e vem do estado corrente do motor (não é mais repetida por snapshot).
+    if (!configMismatchesLatest.length) {
+      const { data: estados } = await (supabase as any).from("b3_engine_state")
+        .select("engine_audit")
+        .in("simulation_run_id", scope.runIds).eq("user_id", userId);
+      const mism: any[] = [];
+      for (const est of estados ?? []) {
+        for (const m of (est.engine_audit as any)?.modes ?? []) {
+          for (const [field, v] of Object.entries<any>(m.config_comparison ?? {})) {
+            if (v && v.matches === false) mism.push({ mode: m.mode, field, screen: v.screen, motor: v.motor });
+          }
+        }
+      }
+      configMismatchesLatest = mism;
+    }
+
+
     // Ranking de motivos: agrupar por (mode, step_key), somando ocorrências únicas e repetições
     type ReasonAgg = { mode: string; category: string; category_label: string; step_key: string; label: string; occurrences: number; repetitions: number; first_at: string; last_at: string; avg_observed: number | null; avg_limit: number | null; avg_distance: number | null; last_detail: string };
     const rmap = new Map<string, ReasonAgg>();
