@@ -453,7 +453,7 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
 
       {/* Painel comparativo (período selecionado) */}
       {reportQ.data && (() => {
-        const auditModes: any[] = (detail?.snapshots?.[0] as any)?.extra?.engine_audit?.modes ?? [];
+        const auditModes: any[] = (detail?.engine_state as any)?.engine_audit?.modes ?? [];
         const auditByMode: Record<string, any> = Object.fromEntries(auditModes.map((a: any) => [a.mode, a]));
         const openByMode: Record<string, any> = {};
         for (const o of (detail?.orders ?? []) as any[]) {
@@ -583,7 +583,7 @@ export function SimComparePanel({ symbolPrefix, defaultSymbol }: { symbolPrefix?
 }
 
 export function EngineDiagnosticPanel({ detail }: { detail: any }) {
-  const audit = detail?.snapshots?.[0]?.extra?.engine_audit;
+  const audit = detail?.engine_state?.engine_audit ?? null;
   const modes = audit?.modes ?? [];
   const cfgLabels: Record<string, string> = {
     volatility: "Volatilidade",

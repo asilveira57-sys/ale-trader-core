@@ -553,7 +553,7 @@ export const getB3SimulationDetail = createServerFn({ method: "POST" })
     // I/O: sem select("*") em tabelas grandes e limites enxutos — a tela usa
     // no máximo 60 ordens e o último snapshot (engine_audit).
     const ORDER_COLS = "id, mode, side, status, symbol, contract_code, entry_price, exit_price, exit_time, created_at, quantity, fees, gross_result_brl, gross_result_points, net_result_brl, close_reason, quote_source, provider_name";
-    const [runR, modesR, settingsR, ordersR, snapsR] = await Promise.all([
+    const [runR, modesR, settingsR, ordersR, snapsR, stateR] = await Promise.all([
       (supabase as any).from("b3_simulation_runs").select("*").eq("id", data.run_id).eq("user_id", userId).maybeSingle(),
       (supabase as any).from("b3_simulation_modes").select("*").eq("simulation_run_id", data.run_id).eq("user_id", userId),
       (supabase as any).from("b3_trading_settings").select("price_source").eq("user_id", userId).maybeSingle(),
@@ -561,6 +561,10 @@ export const getB3SimulationDetail = createServerFn({ method: "POST" })
       (supabase as any).from("b3_simulation_market_snapshots")
         .select("id, market_time, price, quote_source, quote_server, quote_symbol, quote_tick_ts, quote_bid, quote_ask, quote_last, provider_name, extra")
         .eq("simulation_run_id", data.run_id).eq("user_id", userId).order("market_time", { ascending: false }).limit(3),
+      // Auditoria do último tique: estado corrente do motor, uma linha por
+      // execução, atualizada no lugar (não mais repetida dentro do snapshot).
+      (supabase as any).from("b3_engine_state").select("engine_audit, tick_guard, market_time, updated_at")
+        .eq("simulation_run_id", data.run_id).eq("user_id", userId).maybeSingle(),
     ]);
 
     if (runR.error) throw runR.error;
@@ -615,6 +619,7 @@ export const getB3SimulationDetail = createServerFn({ method: "POST" })
       price_source: settingsR.data?.price_source ?? "csv",
       orders: visibleOrders,
       legacy_orders_hidden: hiddenLegacyCount,
+      engine_state: stateR.data ?? null,
       snapshots: snapsR.data ?? [],
     };
   });
@@ -905,24 +910,36 @@ async function runB3SimulationTickInner(
   const memoKey = `${userId}:${runId}:${asset.symbol}`;
   let memo = SNAP_MEMO.get(memoKey);
   if (!memo) {
-    const { data: lastSnapRow } = await supabase.from("b3_simulation_market_snapshots")
-      .select("id, market_time, quote_tick_ts, extra")
-      .eq("simulation_run_id", runId).eq("user_id", userId)
-      .order("market_time", { ascending: false }).limit(1).maybeSingle();
+    // Recuperação depois de um isolate novo: a data/hora e o tique vêm do
+    // snapshot (registro de mercado); as assinaturas de escrita vêm de
+    // b3_engine_state, que é onde o estado do motor mora agora. O `extra` do
+    // snapshot deixou de ser lido aqui de propósito — era o campo pesado.
+    const [{ data: lastSnapRow }, { data: stateRow }] = await Promise.all([
+      supabase.from("b3_simulation_market_snapshots")
+        .select("id, market_time, quote_tick_ts")
+        .eq("simulation_run_id", runId).eq("user_id", userId)
+        .order("market_time", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("b3_engine_state").select("write_sigs")
+        .eq("simulation_run_id", runId).eq("user_id", userId).maybeSingle(),
+    ]);
     memo = {
       id: lastSnapRow?.id ?? null,
       persisted_at: lastSnapRow?.market_time ? new Date(lastSnapRow.market_time).getTime() : 0,
       quote_tick_ts: lastSnapRow?.quote_tick_ts ?? null,
-      write_sigs: { ...(((lastSnapRow as any)?.extra?.write_sigs as any) ?? {}) },
+      write_sigs: { ...(((stateRow as any)?.write_sigs as any) ?? {}) },
       last_price: null,
       last_quote: null,
     };
     SNAP_MEMO.set(memoKey, memo);
   }
+
   const writeSigs: Record<string, string> = memo.write_sigs;
   function sigChanged(key: string, value: string) {
-    if (writeSigs[key] === value) return false;
-    writeSigs[key] = value;
+    // Guardamos o HASH, não o texto: a assinatura só serve para comparar
+    // igualdade, e os votos do comitê em texto pesavam 29% do campo `extra`.
+    const h = engineSigHash(value);
+    if (writeSigs[key] === h || writeSigs[key] === value) return false;
+    writeSigs[key] = h;
     return true;
   }
 
@@ -4151,7 +4168,7 @@ async function runB3SimulationTickInner(
     // compacto por robô, que é o que os contadores das telas de diagnóstico
     // percorrem ao longo do tempo.
     const engineAuditAtual = auditCompleto ? tickAudit : slimEngineAudit(tickAudit);
-    snapshotExtra.engine_digest = buildEngineDigest(tickAudit);
+    snapshotExtra.engine_digest = buildEngineDigest(tickAudit, auditCompleto);
     // Persistência única: 1 INSERT a cada 10s. Fora da janela, nada é gravado
     // (sem INSERT, UPDATE ou UPSERT) — o estado corrente vive só em memória.
     if (persistSnapshot) {
@@ -4254,7 +4271,7 @@ export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
     const scope = await resolveSessionScope(supabase as any, userId);
     if (!scope.latest) return { run: null, audit: null, snapshot: null, settings: [], price_source: null, executions: [], restart_count: 0, session_date: null };
     const activeRun = scope.runs.find((r) => r.status === "running" || r.status === "paused") ?? scope.latest;
-    const [{ data: snapshot }, { data: settings }, { data: tradeSettings }] = await Promise.all([
+    const [{ data: snapshot }, { data: settings }, { data: tradeSettings }, { data: engineState }] = await Promise.all([
       (supabase as any).from("b3_simulation_market_snapshots")
         .select("id, market_time, price, volume, vwap, source, quote_source, quote_server, quote_symbol, quote_tick_ts, quote_bid, quote_ask, quote_last, provider_name, extra")
         .in("simulation_run_id", scope.runIds).eq("user_id", userId)
@@ -4264,11 +4281,19 @@ export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
         .eq("simulation_run_id", activeRun.id).eq("user_id", userId),
       (supabase as any).from("b3_trading_settings").select("price_source")
         .eq("user_id", userId).maybeSingle(),
+      // Estado CORRENTE do motor: uma linha por execução, atualizada no lugar.
+      (supabase as any).from("b3_engine_state").select("engine_audit, tick_guard, market_time, updated_at")
+        .in("simulation_run_id", scope.runIds).eq("user_id", userId)
+        .order("market_time", { ascending: false }).limit(1).maybeSingle(),
     ]);
+    // Preferimos o estado corrente; snapshots antigos (antes da migração)
+    // seguem servindo de reserva para não deixar a tela vazia.
+    const audit = (engineState as any)?.engine_audit
+      ?? (snapshot ? engineAuditFromSnapshot(snapshot) : null);
     return {
       run: activeRun,
       snapshot: snapshot ?? null,
-      audit: (snapshot?.extra as any)?.engine_audit ?? null,
+      audit,
       settings: settings ?? [],
       price_source: tradeSettings?.price_source ?? "csv",
       executions: scope.executions,
@@ -4276,6 +4301,7 @@ export const getB3EngineDiagnostic = createServerFn({ method: "GET" })
       session_date: scope.sessionDate,
     };
   });
+
 
 
 // ─────────────────── Pipeline de Diagnóstico (read-only) ───────────────────
@@ -4323,7 +4349,11 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
       .order("market_time", { ascending: false })
       .limit(400);
 
-    const list = (snaps ?? []).filter((s: any) => s?.extra?.engine_audit);
+    // Estado do motor: o histórico vem do resumo compacto do snapshot, e a
+    // última execução completa do pipeline vem de b3_engine_state.
+    const list = (snaps ?? [])
+      .map((s: any) => ({ ...s, __audit: engineAuditFromSnapshot(s) }))
+      .filter((s: any) => s.__audit);
 
 
     // contadores por robô
@@ -4361,7 +4391,7 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
 
     // snapshots vêm em ordem decrescente; iterar reverso para popular "last_*" corretamente
     for (const s of [...list].reverse()) {
-      const audit = s.extra.engine_audit;
+      const audit = s.__audit;
       const tick = audit.last_tick ?? null;
       for (const m of audit.modes ?? []) {
         const bucket = perMode[m.mode];
@@ -4439,6 +4469,27 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
       b.decisions = b.decisions.slice(-50).reverse();
       b.trade_events = b.trade_events.slice(-20).reverse();
     }
+
+    // Última execução COMPLETA do pipeline (etapas com observado × limite):
+    // mora no estado corrente do motor, não mais em cada snapshot.
+    const { data: estados } = await (supabase as any).from("b3_engine_state")
+      .select("engine_audit, market_time")
+      .in("simulation_run_id", scope.runIds).eq("user_id", userId)
+      .order("market_time", { ascending: true });
+    for (const est of estados ?? []) {
+      for (const m of (est.engine_audit as any)?.modes ?? []) {
+        const b = perMode[m.mode];
+        if (!b || !(m.checks ?? []).length) continue;
+        const byKey: Record<string, any> = {};
+        for (const c of m.checks) byKey[c.key] = c;
+        b.last_pipeline = PIPELINE_STEP_ORDER.filter((k) => byKey[k]).map((k) => byKey[k]);
+        if (b.last_decision_context == null && m.decision_context) {
+          b.last_decision_context = m.decision_context;
+        }
+      }
+    }
+
+
 
 
     return {
@@ -4527,7 +4578,11 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
       b.total += 1; b.net += Number(o.net_result_brl ?? 0);
     }
 
-    const list = (snaps ?? []).filter((s: any) => s?.extra?.engine_audit);
+    // Estado do motor: o histórico vem do resumo compacto do snapshot, e a
+    // última execução completa do pipeline vem de b3_engine_state.
+    const list = (snaps ?? [])
+      .map((s: any) => ({ ...s, __audit: engineAuditFromSnapshot(s) }))
+      .filter((s: any) => s.__audit);
 
     // Estado para dedup por (mode|step_key). Um novo "grupo" começa quando muda step_key ou detail.
     type Group = { mode: string; category: string; step_key: string; label: string; detail: string; first_at: string; last_at: string; repetitions: number; observed_values: number[]; limit_values: number[] };
@@ -4567,7 +4622,7 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
     };
 
     for (const s of list) {
-      const audit = s.extra.engine_audit;
+      const audit = s.__audit;
       latestAt = s.market_time;
       if (Array.isArray(audit.config_mismatches) && audit.config_mismatches.length) {
         configMismatchesLatest = audit.config_mismatches;
@@ -4642,6 +4697,24 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
       funnel[m].entradas_executadas = ordersByMode[m].total;
       funnel[m].resultado_liquido_brl = Math.round(ordersByMode[m].net * 100) / 100;
     }
+
+    // Divergência entre configuração da tela e a lida pelo motor: é estado do
+    // AGORA e vem do estado corrente do motor (não é mais repetida por snapshot).
+    if (!configMismatchesLatest.length) {
+      const { data: estados } = await (supabase as any).from("b3_engine_state")
+        .select("engine_audit")
+        .in("simulation_run_id", scope.runIds).eq("user_id", userId);
+      const mism: any[] = [];
+      for (const est of estados ?? []) {
+        for (const m of (est.engine_audit as any)?.modes ?? []) {
+          for (const [field, v] of Object.entries<any>(m.config_comparison ?? {})) {
+            if (v && v.matches === false) mism.push({ mode: m.mode, field, screen: v.screen, motor: v.motor });
+          }
+        }
+      }
+      configMismatchesLatest = mism;
+    }
+
 
     // Ranking de motivos: agrupar por (mode, step_key), somando ocorrências únicas e repetições
     type ReasonAgg = { mode: string; category: string; category_label: string; step_key: string; label: string; occurrences: number; repetitions: number; first_at: string; last_at: string; avg_observed: number | null; avg_limit: number | null; avg_distance: number | null; last_detail: string };
@@ -5079,9 +5152,9 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, entry_time, created_at")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
-        // `extra` inteiro tem ~6 KB por linha; aqui só o bloco de auditoria é
-        // usado, então projetamos o caminho JSON para não puxar o payload todo.
-        (supabase as any).from("b3_simulation_market_snapshots").select("price, engine_modes:extra->engine_audit->modes")
+        // Só o resumo compacto por robô é usado aqui (score, confiança e a
+        // etapa que barrou), então projetamos esse caminho do JSON.
+        (supabase as any).from("b3_simulation_market_snapshots").select("price, engine_digest:extra->engine_digest, engine_modes:extra->engine_audit->modes")
           .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1),
         (supabase as any).from("b3_simulation_orders").select("mode, net_result_brl")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "closed")
@@ -5089,7 +5162,17 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       ]);
 
       const livePrice = Number(snaps?.[0]?.price ?? 0) || null;
-      const auditModes: any[] = snaps?.[0]?.engine_modes ?? [];
+      // Resumo compacto (chaves curtas) com reserva para linhas antigas.
+      const digest: any[] = snaps?.[0]?.engine_digest ?? [];
+      const auditModes: any[] = digest.length
+        ? digest.map((d: any) => ({
+            mode: d.m,
+            last_score: d.s ?? null,
+            last_confidence: d.c ?? null,
+            first_stop: d.k ? { label: ENGINE_STEP_LABEL[d.k] ?? d.k } : null,
+            last_refusal_reason: d.r ?? null,
+          }))
+        : (snaps?.[0]?.engine_modes ?? []);
       const enabledByMode: Record<string, boolean> = {};
       const lossLimitByMode: Record<string, number | null> = {};
       const givebackByMode: Record<string, number | null> = {};
