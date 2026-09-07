@@ -1,10 +1,14 @@
 # Fila de trabalho
 
 ## Em andamento
-- [ ] Estado do motor fora de `b3_simulation_market_snapshots` (tabela `b3_engine_state` + resumo compacto no snapshot). Falta: adaptar leitores, typecheck, teste.
+- (nada)
+
+## Concluído
+- [x] Estado do motor fora de `b3_simulation_market_snapshots` (tabela `b3_engine_state` + resumo compacto no snapshot).
+- [x] Disjuntor diário real de mão única: arma ao encostar na meta (`circuit_gain_latched`, irreversível no dia), dispara na primeira conta limpa com o realizado do momento; teto de perda irreversível; `system_logs` ao armar (`disjuntor_diario_meta_armada`) e ao disparar.
 
 ## Fila (ordem pedida em 06/09)
-- [ ] 1. Disjuntor diário real: armar ao encostar na meta (porta de mão única) e disparar na primeira conta limpa; teto de perda também não desarma; log ao armar e ao disparar. Sem usar `unrealized_brl` na avaliação da meta.
+
 - [ ] 2. Tela do simulado:
   - [ ] a) selo/bola verde de robô ativo no real com quantidade de contratos (cruzar pela raiz do ativo)
   - [ ] b) percentual dentro da bolinha de devolução do pico (ou cor no texto), com rótulo "devolvido do pico do dia"
