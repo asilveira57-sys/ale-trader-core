@@ -260,7 +260,7 @@ async function loadState(supabase: SupabaseClient, userId: string, sessionDate: 
       .select("daily_circuit_enabled, daily_gain_target_pct, daily_loss_cap_pct")
       .eq("user_id", userId).maybeSingle(),
     supabase.from("b3_real_account_peak")
-      .select("circuit_armed, circuit_kind, circuit_armed_at, circuit_base_brl, circuit_result_brl, circuit_robots")
+      .select("circuit_armed, circuit_kind, circuit_armed_at, circuit_base_brl, circuit_result_brl, circuit_robots, circuit_gain_latched, circuit_gain_latched_at, circuit_gain_latched_result_brl, circuit_gain_latched_open")
       .eq("user_id", userId).eq("session_date", sessionDate).maybeSingle(),
   ]);
   return { stateRow, dayRow: dayRow as any };
@@ -272,6 +272,8 @@ function toStatus(args: {
   live: Awaited<ReturnType<typeof loadRealizedAndOpen>>;
   ev: ReturnType<typeof evaluateDailyCircuit>;
   armedAt: string | null;
+  latchedAt?: string | null;
+  latchedResult?: number | null;
 }): DailyCircuitStatus {
   const { config, base, live, ev } = args;
   return {
@@ -288,8 +290,12 @@ function toStatus(args: {
     open_positions: live.open_positions,
     broker_stale: live.broker_stale,
     gain_waiting_flat: ev.gain_waiting_flat,
+    gain_latched: ev.gain_latched,
+    gain_latched_at: args.latchedAt ?? null,
+    gain_latched_result_brl: args.latchedResult ?? null,
     armed: ev.should_arm,
     armed_kind: ev.kind,
+
     armed_at: args.armedAt,
     reason: ev.reason,
   };
