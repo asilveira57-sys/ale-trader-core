@@ -3091,6 +3091,10 @@ export type Database = {
           circuit_armed: boolean
           circuit_armed_at: string | null
           circuit_base_brl: number | null
+          circuit_gain_latched: boolean
+          circuit_gain_latched_at: string | null
+          circuit_gain_latched_open: number | null
+          circuit_gain_latched_result_brl: number | null
           circuit_kind: string | null
           circuit_result_brl: number | null
           circuit_robots: number | null
@@ -3113,6 +3117,10 @@ export type Database = {
           circuit_armed?: boolean
           circuit_armed_at?: string | null
           circuit_base_brl?: number | null
+          circuit_gain_latched?: boolean
+          circuit_gain_latched_at?: string | null
+          circuit_gain_latched_open?: number | null
+          circuit_gain_latched_result_brl?: number | null
           circuit_kind?: string | null
           circuit_result_brl?: number | null
           circuit_robots?: number | null
@@ -3135,6 +3143,10 @@ export type Database = {
           circuit_armed?: boolean
           circuit_armed_at?: string | null
           circuit_base_brl?: number | null
+          circuit_gain_latched?: boolean
+          circuit_gain_latched_at?: string | null
+          circuit_gain_latched_open?: number | null
+          circuit_gain_latched_result_brl?: number | null
           circuit_kind?: string | null
           circuit_result_brl?: number | null
           circuit_robots?: number | null

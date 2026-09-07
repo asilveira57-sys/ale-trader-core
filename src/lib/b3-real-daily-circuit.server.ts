@@ -63,11 +63,16 @@ export interface DailyCircuitStatus extends DailyCircuitConfig {
   broker_stale: boolean;
   /** meta batida, mas ainda tem posição aberta → espera a conta limpar */
   gain_waiting_flat: boolean;
+  /** meta já ENCOSTADA hoje: porta de mão única, não desarma no pregão */
+  gain_latched: boolean;
+  gain_latched_at: string | null;
+  gain_latched_result_brl: number | null;
   armed: boolean;
   armed_kind: "meta_ganho" | "teto_perda" | null;
   armed_at: string | null;
   reason: string | null;
 }
+
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
@@ -83,7 +88,13 @@ export function normalizeCircuitConfig(row: any): DailyCircuitConfig {
 
 /**
  * Decisão pura (sem I/O) — é o núcleo testável.
- * Uma vez armado no dia, fica armado até o próximo pregão.
+ *
+ * Porta de mão única (07/09/2026): assim que o realizado ENCOSTA na meta, o
+ * disjuntor fica ARMADO no pregão de forma irreversível (`gain_latched`), mesmo
+ * que o resultado recue depois. O disparo espera a PRIMEIRA conta limpa e trava
+ * com o realizado disponível naquele instante. Nada aqui olha resultado de
+ * posição aberta — só realizado.
+ * Teto de perda também é irreversível: uma vez tocado, não desarma.
  */
 export function evaluateDailyCircuit(input: {
   config: DailyCircuitConfig;
@@ -92,21 +103,30 @@ export function evaluateDailyCircuit(input: {
   open_positions: number;
   broker_stale: boolean;
   already_armed_kind?: "meta_ganho" | "teto_perda" | null;
+  /** meta já encostada em algum momento de hoje (persistido) */
+  gain_latched?: boolean;
 }): {
   gain_target_brl: number; loss_cap_brl: number;
   should_arm: boolean; kind: "meta_ganho" | "teto_perda" | null;
-  gain_waiting_flat: boolean; reason: string | null;
+  gain_waiting_flat: boolean;
+  /** estado da porta de mão única depois desta avaliação */
+  gain_latched: boolean;
+  /** true só na avaliação em que a meta foi encostada pela primeira vez */
+  gain_latch_now: boolean;
+  reason: string | null;
 } {
   const cfg = input.config;
   const base = Math.max(0, r2(input.base_brl));
   const gainTarget = r2(base * cfg.gain_target_pct);
   const lossCap = r2(base * cfg.loss_cap_pct);
+  const wasLatched = input.gain_latched === true;
 
   if (input.already_armed_kind) {
     const k = input.already_armed_kind;
     return {
       gain_target_brl: gainTarget, loss_cap_brl: lossCap,
       should_arm: true, kind: k, gain_waiting_flat: false,
+      gain_latched: wasLatched || k === "meta_ganho", gain_latch_now: false,
       reason: k === "meta_ganho"
         ? `disjuntor diário: META DE GANHO já atingida hoje (dia travado até o próximo pregão)`
         : `disjuntor diário: TETO DE PERDA já atingido hoje (novas aberturas reais bloqueadas)`,
@@ -114,7 +134,10 @@ export function evaluateDailyCircuit(input: {
   }
 
   if (!cfg.enabled || base <= 0) {
-    return { gain_target_brl: gainTarget, loss_cap_brl: lossCap, should_arm: false, kind: null, gain_waiting_flat: false, reason: null };
+    return {
+      gain_target_brl: gainTarget, loss_cap_brl: lossCap, should_arm: false, kind: null,
+      gain_waiting_flat: false, gain_latched: wasLatched, gain_latch_now: false, reason: null,
+    };
   }
 
   const realized = r2(input.realized_brl);
@@ -123,30 +146,40 @@ export function evaluateDailyCircuit(input: {
   if (lossCap > 0 && realized <= -lossCap) {
     return {
       gain_target_brl: gainTarget, loss_cap_brl: lossCap, should_arm: true, kind: "teto_perda",
-      gain_waiting_flat: false,
+      gain_waiting_flat: false, gain_latched: wasLatched, gain_latch_now: false,
       reason: `disjuntor diário: TETO DE PERDA atingido — realizado R$ ${realized.toFixed(2)} ≤ −R$ ${lossCap.toFixed(2)} ` +
         `(${(cfg.loss_cap_pct * 100).toFixed(0)}% da base R$ ${base.toFixed(2)}). Novas aberturas reais bloqueadas; posições abertas seguem até o próprio stop.`,
     };
   }
 
-  // Ganho: só arma com a conta LIMPA (nenhuma posição real aberta) e com
-  // relatório da corretora confiável — sem relatório fresco não se pode
-  // afirmar que não há posição aberta.
-  if (gainTarget > 0 && realized >= gainTarget) {
+  // Ganho: encosta → arma (irreversível). Dispara na primeira conta limpa,
+  // com relatório da corretora confiável (sem relatório fresco não se pode
+  // afirmar que não há posição aberta).
+  const touched = gainTarget > 0 && realized >= gainTarget;
+  const latched = wasLatched || touched;
+  if (latched) {
     const flat = input.open_positions === 0 && !input.broker_stale;
     if (flat) {
       return {
         gain_target_brl: gainTarget, loss_cap_brl: lossCap, should_arm: true, kind: "meta_ganho",
-        gain_waiting_flat: false,
-        reason: `disjuntor diário: META DE GANHO atingida com a conta limpa — realizado R$ ${realized.toFixed(2)} ≥ R$ ${gainTarget.toFixed(2)} ` +
-          `(${(cfg.gain_target_pct * 100).toFixed(0)}% da base R$ ${base.toFixed(2)}). Dia travado: nenhum robô real abre até o próximo pregão.`,
+        gain_waiting_flat: false, gain_latched: true, gain_latch_now: touched && !wasLatched,
+        reason: `disjuntor diário: META DE GANHO atingida e conta limpa — travado com realizado R$ ${realized.toFixed(2)} ` +
+          `(meta R$ ${gainTarget.toFixed(2)}, ${(cfg.gain_target_pct * 100).toFixed(0)}% da base R$ ${base.toFixed(2)}). ` +
+          `Dia travado: nenhum robô real abre até o próximo pregão.`,
       };
     }
-    return { gain_target_brl: gainTarget, loss_cap_brl: lossCap, should_arm: false, kind: null, gain_waiting_flat: true, reason: null };
+    return {
+      gain_target_brl: gainTarget, loss_cap_brl: lossCap, should_arm: false, kind: null,
+      gain_waiting_flat: true, gain_latched: true, gain_latch_now: touched && !wasLatched, reason: null,
+    };
   }
 
-  return { gain_target_brl: gainTarget, loss_cap_brl: lossCap, should_arm: false, kind: null, gain_waiting_flat: false, reason: null };
+  return {
+    gain_target_brl: gainTarget, loss_cap_brl: lossCap, should_arm: false, kind: null,
+    gain_waiting_flat: false, gain_latched: false, gain_latch_now: false, reason: null,
+  };
 }
+
 
 /** Base = Σ max_qty × margem por contrato dos robôs reais habilitados. */
 export async function loadCircuitBase(supabase: SupabaseClient, userId: string) {
@@ -227,7 +260,7 @@ async function loadState(supabase: SupabaseClient, userId: string, sessionDate: 
       .select("daily_circuit_enabled, daily_gain_target_pct, daily_loss_cap_pct")
       .eq("user_id", userId).maybeSingle(),
     supabase.from("b3_real_account_peak")
-      .select("circuit_armed, circuit_kind, circuit_armed_at, circuit_base_brl, circuit_result_brl, circuit_robots")
+      .select("circuit_armed, circuit_kind, circuit_armed_at, circuit_base_brl, circuit_result_brl, circuit_robots, circuit_gain_latched, circuit_gain_latched_at, circuit_gain_latched_result_brl, circuit_gain_latched_open")
       .eq("user_id", userId).eq("session_date", sessionDate).maybeSingle(),
   ]);
   return { stateRow, dayRow: dayRow as any };
@@ -239,6 +272,8 @@ function toStatus(args: {
   live: Awaited<ReturnType<typeof loadRealizedAndOpen>>;
   ev: ReturnType<typeof evaluateDailyCircuit>;
   armedAt: string | null;
+  latchedAt?: string | null;
+  latchedResult?: number | null;
 }): DailyCircuitStatus {
   const { config, base, live, ev } = args;
   return {
@@ -255,8 +290,12 @@ function toStatus(args: {
     open_positions: live.open_positions,
     broker_stale: live.broker_stale,
     gain_waiting_flat: ev.gain_waiting_flat,
+    gain_latched: ev.gain_latched,
+    gain_latched_at: args.latchedAt ?? null,
+    gain_latched_result_brl: args.latchedResult ?? null,
     armed: ev.should_arm,
     armed_kind: ev.kind,
+
     armed_at: args.armedAt,
     reason: ev.reason,
   };
@@ -282,11 +321,55 @@ export async function refreshDailyCircuit(
   ]);
 
   const alreadyKind = dayRow?.circuit_armed === true ? (dayRow.circuit_kind as "meta_ganho" | "teto_perda" | null) ?? "teto_perda" : null;
+  const wasLatched = dayRow?.circuit_gain_latched === true;
   const ev = evaluateDailyCircuit({
     config, base_brl: base.base_brl, realized_brl: live.realized_brl,
     open_positions: live.open_positions, broker_stale: live.broker_stale,
-    already_armed_kind: alreadyKind,
+    already_armed_kind: alreadyKind, gain_latched: wasLatched,
   });
+
+  // ── ARMAR (porta de mão única): a meta foi ENCOSTADA. Grava antes de qualquer
+  // disparo, para que uma queda de resultado depois não desfaça o dia.
+  const latchingNow = ev.gain_latch_now && !wasLatched;
+  if (latchingNow) {
+    try {
+      await (supabase as any).from("b3_real_account_peak").upsert({
+        user_id: userId,
+        session_date: sessionDate,
+        circuit_gain_latched: true,
+        circuit_gain_latched_at: nowIso,
+        circuit_gain_latched_result_brl: live.realized_brl,
+        circuit_gain_latched_open: live.open_positions,
+        updated_at: nowIso,
+      }, { onConflict: "user_id,session_date" });
+    } catch (e) {
+      console.error("[disjuntor] falha ao armar meta do dia:", (e as Error).message);
+    }
+    try {
+      await (supabase as any).from("system_logs").insert({
+        event_type: "disjuntor_diario_meta_armada",
+        source: "b3_real_daily_circuit",
+        severity: "warning",
+        message:
+          `Disjuntor diário da CONTA real ARMADO na meta (porta de mão única) às ${nowIso}: ` +
+          `realizado do dia R$ ${live.realized_brl.toFixed(2)} ≥ meta R$ ${ev.gain_target_brl.toFixed(2)} ` +
+          `(base R$ ${base.base_brl.toFixed(2)}), ${live.open_positions} posição(ões) real(is) aberta(s). ` +
+          `Dispara na primeira conta limpa e não desarma até o próximo pregão.`,
+        technical_data: {
+          etapa: "armado",
+          armado_em: nowIso,
+          realizado_brl: live.realized_brl,
+          posicoes_abertas: live.open_positions,
+          relatorio_corretora_velho: live.broker_stale,
+          meta_brl: ev.gain_target_brl,
+          teto_brl: ev.loss_cap_brl,
+          base_brl: base.base_brl,
+          robos: base.robots,
+          session_date: sessionDate,
+        } as any,
+      });
+    } catch { /* log best-effort */ }
+  }
 
   const armingNow = ev.should_arm && !alreadyKind;
   if (armingNow) {
@@ -300,6 +383,14 @@ export async function refreshDailyCircuit(
         circuit_base_brl: base.base_brl,
         circuit_result_brl: live.realized_brl,
         circuit_robots: base.robots.length,
+        ...(ev.kind === "meta_ganho"
+          ? {
+              circuit_gain_latched: true,
+              circuit_gain_latched_at: dayRow?.circuit_gain_latched_at ?? nowIso,
+              circuit_gain_latched_result_brl: dayRow?.circuit_gain_latched_result_brl ?? live.realized_brl,
+              circuit_gain_latched_open: dayRow?.circuit_gain_latched_open ?? live.open_positions,
+            }
+          : {}),
         updated_at: nowIso,
       }, { onConflict: "user_id,session_date" });
     } catch (e) {
@@ -311,17 +402,21 @@ export async function refreshDailyCircuit(
         source: "b3_real_daily_circuit",
         severity: "critical",
         message:
-          `Disjuntor diário da CONTA real ARMADO (${ev.kind === "meta_ganho" ? "META DE GANHO" : "TETO DE PERDA"}): ` +
+          `Disjuntor diário da CONTA real DISPARADO (${ev.kind === "meta_ganho" ? "META DE GANHO" : "TETO DE PERDA"}) às ${nowIso}: ` +
           `base R$ ${base.base_brl.toFixed(2)} (${base.robots.length} robô(s) real(is) habilitado(s)), ` +
-          `realizado do dia R$ ${live.realized_brl.toFixed(2)}, ` +
+          `resultado travado R$ ${live.realized_brl.toFixed(2)}, ` +
           `meta R$ ${ev.gain_target_brl.toFixed(2)} / teto −R$ ${ev.loss_cap_brl.toFixed(2)}. ` +
           `Nenhum robô real abre nova posição até o próximo pregão. Fechamento e simulado seguem normais.`,
         technical_data: {
+          etapa: "disparado",
+          disparado_em: nowIso,
           trava: ev.kind,
           base_brl: base.base_brl,
           robos_travados: base.robots.length,
           robos: base.robots,
-          realizado_brl: live.realized_brl,
+          resultado_travado_brl: live.realized_brl,
+          armado_em: dayRow?.circuit_gain_latched_at ?? (latchingNow ? nowIso : null),
+          realizado_ao_armar_brl: dayRow?.circuit_gain_latched_result_brl ?? (latchingNow ? live.realized_brl : null),
           meta_brl: ev.gain_target_brl,
           teto_brl: ev.loss_cap_brl,
           meta_pct: config.gain_target_pct,
@@ -337,6 +432,8 @@ export async function refreshDailyCircuit(
   return toStatus({
     config, sessionDate, base, live, ev,
     armedAt: armingNow ? nowIso : (dayRow?.circuit_armed_at ?? null),
+    latchedAt: dayRow?.circuit_gain_latched_at ?? (latchingNow ? nowIso : null),
+    latchedResult: dayRow?.circuit_gain_latched_result_brl ?? (latchingNow ? live.realized_brl : null),
   });
 }
 
@@ -357,7 +454,13 @@ export async function readDailyCircuit(
   const ev = evaluateDailyCircuit({
     config, base_brl: base.base_brl, realized_brl: live.realized_brl,
     open_positions: live.open_positions, broker_stale: live.broker_stale,
-    already_armed_kind: alreadyKind,
+    already_armed_kind: alreadyKind, gain_latched: dayRow?.circuit_gain_latched === true,
   });
-  return toStatus({ config, sessionDate, base, live, ev, armedAt: dayRow?.circuit_armed_at ?? null });
+  return toStatus({
+    config, sessionDate, base, live, ev,
+    armedAt: dayRow?.circuit_armed_at ?? null,
+    latchedAt: dayRow?.circuit_gain_latched_at ?? null,
+    latchedResult: dayRow?.circuit_gain_latched_result_brl ?? null,
+  });
 }
+

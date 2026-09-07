@@ -490,12 +490,15 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     } else if (dailyCircuit.enabled && dailyCircuit.gain_waiting_flat) {
       alerts.unshift({
         kind: "disjuntor_diario_esperando_conta_limpa", severity: "warning",
-        title: "Meta de ganho batida — esperando a conta ficar limpa",
+        title: "Disjuntor ARMADO na meta — dispara na primeira conta limpa",
         detail:
-          `Realizado R$ ${dailyCircuit.realized_brl.toFixed(2)} ≥ meta R$ ${dailyCircuit.gain_target_brl.toFixed(2)}, ` +
-          `mas ainda há ${dailyCircuit.open_positions} posição(ões) real(is) aberta(s)` +
+          `Meta encostada${dailyCircuit.gain_latched_at ? ` às ${dailyCircuit.gain_latched_at}` : ""}` +
+          `${dailyCircuit.gain_latched_result_brl != null ? ` com R$ ${Number(dailyCircuit.gain_latched_result_brl).toFixed(2)}` : ""}; ` +
+          `realizado agora R$ ${dailyCircuit.realized_brl.toFixed(2)} (meta R$ ${dailyCircuit.gain_target_brl.toFixed(2)}), ` +
+          `ainda há ${dailyCircuit.open_positions} posição(ões) real(is) aberta(s)` +
           `${dailyCircuit.broker_stale ? " (ou o relatório da corretora está velho)" : ""}. ` +
-          "A trava do lucro só entra com a conta limpa, de propósito.",
+          "A trava não desarma hoje, mesmo se o resultado recuar.",
+
         at: now.toISOString(),
       });
     }
