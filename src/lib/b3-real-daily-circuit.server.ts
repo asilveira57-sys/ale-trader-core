@@ -63,11 +63,16 @@ export interface DailyCircuitStatus extends DailyCircuitConfig {
   broker_stale: boolean;
   /** meta batida, mas ainda tem posição aberta → espera a conta limpar */
   gain_waiting_flat: boolean;
+  /** meta já ENCOSTADA hoje: porta de mão única, não desarma no pregão */
+  gain_latched: boolean;
+  gain_latched_at: string | null;
+  gain_latched_result_brl: number | null;
   armed: boolean;
   armed_kind: "meta_ganho" | "teto_perda" | null;
   armed_at: string | null;
   reason: string | null;
 }
+
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
