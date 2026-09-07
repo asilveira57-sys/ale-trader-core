@@ -358,12 +358,21 @@ function DailyCircuitPanel({ circuit, onSaved }: { circuit: any | null; onSaved:
         <Tile label="Base (margem)" value={BRL(base)} sub={`${circuit.robots_count} robô(s) real(is)`} />
         <Tile label="Realizado do dia" value={SIGNED_BRL(circuit.realized_brl ?? 0)} cls={money(circuit.realized_brl)} sub={`${circuit.open_positions} posição(ões) aberta(s)`} />
         <Tile label={`Meta (${(gainCfg * 100).toFixed(0)}%)`} value={BRL(circuit.gain_target_brl ?? 0)} cls="text-emerald-300"
-          sub={armed && circuit.armed_kind === "meta_ganho" ? "atingida — dia travado" : circuit.gain_waiting_flat ? "batida, esperando conta limpa" : `faltam ${BRL(circuit.to_gain_brl ?? 0)}`} />
+          sub={armed && circuit.armed_kind === "meta_ganho"
+            ? "atingida — dia travado"
+            : circuit.gain_latched
+              ? `armada${circuit.gain_latched_at ? ` às ${hhmm(circuit.gain_latched_at)}` : ""} — dispara na primeira conta limpa`
+              : `faltam ${BRL(circuit.to_gain_brl ?? 0)}`} />
         <Tile label={`Teto (${(lossCfg * 100).toFixed(0)}%)`} value={`−${BRL(circuit.loss_cap_brl ?? 0)}`} cls="text-rose-300"
           sub={armed && circuit.armed_kind === "teto_perda" ? "atingido — entradas bloqueadas" : `faltam ${BRL(circuit.to_loss_brl ?? 0)}`} />
-        <Tile label="Estado" value={armed ? "TRAVADO" : on ? "vigiando" : "desligado"}
-          cls={armed ? "text-rose-300" : on ? "text-sky-200" : "text-muted-foreground"}
-          sub={armed ? (circuit.armed_at ? `desde ${hhmm(circuit.armed_at)}` : "hoje") : on ? "avalia a cada abertura real" : "ligue quando quiser"} />
+        <Tile label="Estado" value={armed ? "TRAVADO" : circuit.gain_latched ? "ARMADO" : on ? "vigiando" : "desligado"}
+          cls={armed ? "text-rose-300" : circuit.gain_latched ? "text-amber-300" : on ? "text-sky-200" : "text-muted-foreground"}
+          sub={armed
+            ? (circuit.armed_at ? `desde ${hhmm(circuit.armed_at)}` : "hoje")
+            : circuit.gain_latched
+              ? "meta encostada; espera a conta limpar"
+              : on ? "avalia a cada abertura real" : "ligue quando quiser"} />
+
       </div>
     </section>
   );
