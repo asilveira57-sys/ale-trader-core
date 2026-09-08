@@ -95,8 +95,17 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   const t0 = Date.now();
   const detalhes: any[] = [];
   let fechadas = 0, ignoradas = 0, erros = 0, marcadas = 0;
-  let oposDetectadas = 0, oposFechadas = 0;
+  let oposDetectadas = 0, oposFechadas = 0, stopsAtrasados = 0;
 
+  // 0) LACUNA DESDE A PASSADA ANTERIOR (08/09/2026)
+  // Em 02/09 treze posições rodaram 53 min sem ninguém gerindo e saíram todas
+  // juntas com 7 a 9 vezes o stop. A indisponibilidade não deixava rastro: é o
+  // que este bloco resolve. Acima de 5 min a primeira passada trata posição
+  // aberta como prioridade absoluta e encerra quem já passou do stop GRAVADO,
+  // com rótulo próprio (`stop_atrasado`) — não `grupo_freio_lock`.
+  const anterior = await ultimaPassadaMs(supabase);
+  const lacunaMs = anterior === null ? null : Math.max(0, t0 - anterior);
+  const retomadaEmergencia = lacunaMs !== null && lacunaMs > LACUNA_EMERGENCIA_MS;
 
   // 1) Ordens abertas de todos os usuários. É a leitura mais barata do sistema:
   //    em pregão normal são poucas dezenas de linhas.
@@ -106,10 +115,30 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
     .eq("status", "open");
   if (errAbertas) throw new Error(`guardião: falha ao ler ordens abertas — ${errAbertas.message}`);
   const ordens = abertas ?? [];
+
+  if (lacunaMs !== null && lacunaMs > LACUNA_AVISO_MS) {
+    try {
+      await supabase.from("system_logs").insert({
+        event_type: "b3_guardiao_lacuna",
+        source: "b3-guardiao-saida",
+        severity: "warning",
+        message: `Guardião ficou ${Math.round(lacunaMs / 1000)} s sem rodar com ${ordens.length} posição(ões) aberta(s).`,
+        technical_data: {
+          lacuna_ms: lacunaMs,
+          lacuna_s: Math.round(lacunaMs / 1000),
+          passada_anterior: new Date(anterior!).toISOString(),
+          posicoes_abertas: ordens.length,
+          retomada_emergencia: retomadaEmergencia,
+        },
+      });
+    } catch { /* log nunca derruba o guardião */ }
+  }
+
   if (!ordens.length) {
     const vazio: GuardiaoResultado = {
       ordens_abertas: 0, fechadas: 0, ignoradas: 0, erros: 0, marcadas_a_mercado: 0,
       oposicoes_longas_detectadas: 0, oposicoes_longas_fechadas: 0,
+      lacuna_ms: lacunaMs, retomada_emergencia: retomadaEmergencia, stops_atrasados_fechados: 0,
       janela_ms: Date.now() - t0, detalhes,
     };
 
