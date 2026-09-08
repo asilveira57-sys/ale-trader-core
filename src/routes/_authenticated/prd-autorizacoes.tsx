@@ -430,7 +430,6 @@ function PrdAuthorizationsPage() {
           </button>
           {open && (
           <table className="w-full text-sm">
-          <table className="w-full text-sm">
             <thead className="text-xs uppercase text-muted-foreground border-b border-border">
               <tr>
                 <th className="text-left py-2">Modo</th>
