@@ -46,7 +46,35 @@ export interface GuardiaoResultado {
   oposicoes_longas_detectadas: number;
   oposicoes_longas_fechadas: number;
   janela_ms: number;
+  /** ms desde a passada anterior (null quando não há registro). */
+  lacuna_ms?: number | null;
+  /** true quando a lacuna passou de 5 min: primeira passada é de emergência. */
+  retomada_emergencia?: boolean;
+  stops_atrasados_fechados?: number;
   detalhes: any[];
+}
+
+/** Lacuna acima disto é registrada como aviso. */
+const LACUNA_AVISO_MS = 2 * 60_000;
+/** Lacuna acima disto liga a zeragem de emergência da primeira passada. */
+const LACUNA_EMERGENCIA_MS = 5 * 60_000;
+
+/** Quando foi a passada anterior do guardião (pelo próprio registro de resumo). */
+async function ultimaPassadaMs(supabase: any): Promise<number | null> {
+  try {
+    const { data } = await supabase
+      .from("system_logs")
+      .select("created_at")
+      .eq("event_type", "b3_guardiao_summary")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!data?.created_at) return null;
+    const t = new Date(data.created_at).getTime();
+    return Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
+  }
 }
 
 
