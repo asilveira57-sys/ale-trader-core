@@ -146,6 +146,11 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-ack")({
             entry_price: payload.filled_price ?? null,
             entry_time: nowIso,
             status: "open",
+            // Contrato de saída congelado na abertura, copiado do comando.
+            stop_pts: cmd.stop_pts ?? null,
+            gain_pts: cmd.gain_pts ?? null,
+            stop_price: cmd.stop_price ?? null,
+            target_price: cmd.target_price ?? null,
           });
           if (insErr) return json({ ok: false, error: insErr.message }, 500);
         } else {
