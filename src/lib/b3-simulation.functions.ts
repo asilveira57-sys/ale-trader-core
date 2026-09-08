@@ -375,6 +375,10 @@ async function mirrorToReal(
       action, side, symbol, quantity,
       magic_number: magic, idempotency_key: idempotencyKey,
       requested_by: requestedBy,
+      stop_pts: levels?.stop_pts ?? null,
+      gain_pts: levels?.gain_pts ?? null,
+      stop_price: levels?.stop_price ?? null,
+      target_price: levels?.target_price ?? null,
     });
   } catch (e) {
     // Espelhamento nunca pode derrubar o motor de simulação — só loga.
@@ -4176,7 +4180,12 @@ async function runB3SimulationTickInner(
         if (!insertedOrder) throw new Error("Falha ao criar ordem simulada");
 
         markAuditEvent(`abertura:${mode}:${effectiveSide}`);
-        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant);
+        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant, {
+          stop_pts: stopPtsFrozen > 0 ? stopPtsFrozen : null,
+          gain_pts: gainPtsFrozen > 0 ? gainPtsFrozen : null,
+          stop_price: stopPriceFrozen,
+          target_price: targetPriceFrozen,
+        });
         providerStats.last_entry_price = entry;
         openOrdersCache = null;
         await supabase.from("b3_simulation_modes")
