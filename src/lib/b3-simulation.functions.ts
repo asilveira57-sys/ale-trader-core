@@ -5373,7 +5373,16 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           blocked_reason: open ? null : (audit?.first_stop?.label ?? audit?.last_refusal_reason ?? null),
           pending_stop: open ? (pendingByMode[m] ?? null) : null,
           grupo: (() => {
-            const g = grupoByKey[`${run.symbol}|${variant}`];
+            const chaveGrupo = `${rootSymbol(run.symbol)}|${variant}`;
+            // Grupo sem configuração: opera sem freio e a tela precisa dizer.
+            if (!grupoComFreio.has(chaveGrupo)) {
+              return {
+                nivel: 0, multiplicador: 1, travado: false, desde: null,
+                resultado_brl: 0, sem_limite: true,
+                texto: "sem freio de grupo configurado",
+              };
+            }
+            const g = grupoByKey[chaveGrupo];
             const nivel = Number(g?.nivel_atual ?? 0);
             if (!g || nivel <= 0) return null;
             const mult = Number(g.multiplicador ?? 1);
