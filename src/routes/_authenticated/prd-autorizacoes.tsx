@@ -223,16 +223,45 @@ function PrdAuthorizationsPage() {
   const sizingFor = (r: Row) =>
     sizing.find((s) => s.symbol === rootSymbol(r.symbol) && s.variant === (r.variant ?? "indicador") && s.mode === r.mode);
   const focused = !!(focus.symbol || focus.variant || focus.mode);
-  const rows = allRows.filter((r) =>
-    (!focus.symbol || r.symbol === focus.symbol)
-    && (!focus.variant || (r.variant ?? "indicador") === focus.variant)
-    && (!focus.mode || r.mode === focus.mode));
-  // Agrupa por ativo + modalidade: o par autorizado é (ativo, modalidade, modo).
-  const grouped = rows.reduce<Record<string, Row[]>>((acc, r) => {
-    (acc[`${r.symbol}||${r.variant ?? "indicador"}`] ??= []).push(r);
+  const q = norm(search.trim());
+  const rows = allRows.filter((r) => {
+    if (focus.symbol && r.symbol !== focus.symbol) return false;
+    if (focus.variant && (r.variant ?? "indicador") !== focus.variant) return false;
+    if (focus.mode && r.mode !== focus.mode) return false;
+    if (quick === "ligados" && !r.enabled) return false;
+    if (quick === "desligados" && r.enabled) return false;
+    if (q) {
+      const hay = [r.symbol, r.variant, VARIANT_LABEL[r.variant ?? ""] ?? "", r.mode,
+        apelidos.nick(r.mode), apelidos.tech(r.mode), r.magic_number == null ? "" : String(r.magic_number)]
+        .map(norm).join(" ");
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  // Ordenação: ligados primeiro, depois ativo na ordem ASSET_ORDER,
+  // depois modalidade, depois modo pela coluna `ordem` dos apelidos.
+  const sortedRows = [...rows].sort((a, b) => {
+    const e = Number(b.enabled) - Number(a.enabled);
+    if (e !== 0) return e;
+    const sa = assetRank(a.symbol) - assetRank(b.symbol);
+    if (sa !== 0) return sa;
+    const sName = String(a.symbol).localeCompare(String(b.symbol));
+    if (assetRank(a.symbol) >= ASSET_ORDER.length && sName !== 0) return sName;
+    const v = String(a.variant ?? "indicador").localeCompare(String(b.variant ?? "indicador"));
+    if (v !== 0) return v;
+    return apelidos.ordem(a.mode) - apelidos.ordem(b.mode);
+  });
+  // Grupo = ativo. Cabeçalho mostra "WIN — 7 de 56 ligados".
+  const grouped = sortedRows.reduce<[string, Row[]][]>((acc, r) => {
+    const sym = String(r.symbol);
+    const last = acc[acc.length - 1];
+    if (last && last[0] === sym) last[1].push(r);
+    else acc.push([sym, [r]]);
     return acc;
-  }, {});
+  }, []);
   const enabledCount = data.enabled_count ?? 0;
+  const disabledCount = allRows.length - enabledCount;
+  const searching = q.length > 0;
 
 
   function openDialog(row: Row, enabling: boolean) {
