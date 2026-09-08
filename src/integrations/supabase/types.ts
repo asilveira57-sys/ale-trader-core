@@ -1244,6 +1244,51 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_grupo_sombra_dia: {
+        Row: {
+          created_at: string
+          diferenca_brl: number
+          id: string
+          ops_livre: number
+          ops_sombra: number
+          resultado_livre_brl: number
+          resultado_sombra_brl: number
+          symbol: string
+          trade_date: string
+          updated_at: string
+          user_id: string
+          variant: string
+        }
+        Insert: {
+          created_at?: string
+          diferenca_brl?: number
+          id?: string
+          ops_livre?: number
+          ops_sombra?: number
+          resultado_livre_brl?: number
+          resultado_sombra_brl?: number
+          symbol: string
+          trade_date: string
+          updated_at?: string
+          user_id: string
+          variant: string
+        }
+        Update: {
+          created_at?: string
+          diferenca_brl?: number
+          id?: string
+          ops_livre?: number
+          ops_sombra?: number
+          resultado_livre_brl?: number
+          resultado_sombra_brl?: number
+          symbol?: string
+          trade_date?: string
+          updated_at?: string
+          user_id?: string
+          variant?: string
+        }
+        Relationships: []
+      }
       b3_intervencoes: {
         Row: {
           acao: string
@@ -3380,6 +3425,7 @@ export type Database = {
           motivo_intervencao: string | null
           net_brl: number
           net_brl_com_violacao: number | null
+          net_brl_livre: number | null
           pico_contratos: number | null
           pico_hora: string | null
           pico_margem_brl: number | null
@@ -3393,6 +3439,7 @@ export type Database = {
           symbol: string
           trade_date: string
           trades: number
+          trades_bloqueado_sombra: number
           trades_stop_violado: number
           user_id: string
           variant: string
@@ -3407,6 +3454,7 @@ export type Database = {
           motivo_intervencao?: string | null
           net_brl?: number
           net_brl_com_violacao?: number | null
+          net_brl_livre?: number | null
           pico_contratos?: number | null
           pico_hora?: string | null
           pico_margem_brl?: number | null
@@ -3420,6 +3468,7 @@ export type Database = {
           symbol: string
           trade_date: string
           trades?: number
+          trades_bloqueado_sombra?: number
           trades_stop_violado?: number
           user_id: string
           variant?: string
@@ -3434,6 +3483,7 @@ export type Database = {
           motivo_intervencao?: string | null
           net_brl?: number
           net_brl_com_violacao?: number | null
+          net_brl_livre?: number | null
           pico_contratos?: number | null
           pico_hora?: string | null
           pico_margem_brl?: number | null
@@ -3447,6 +3497,7 @@ export type Database = {
           symbol?: string
           trade_date?: string
           trades?: number
+          trades_bloqueado_sombra?: number
           trades_stop_violado?: number
           user_id?: string
           variant?: string
@@ -3956,6 +4007,7 @@ export type Database = {
       }
       b3_simulation_orders: {
         Row: {
+          bloqueado_na_sombra: boolean
           close_reason: string | null
           contract_code: string
           created_at: string
@@ -3981,6 +4033,7 @@ export type Database = {
           mfe_pts: number | null
           mode: string
           net_result_brl: number
+          nivel_freio_na_abertura: number | null
           provider_name: string
           quantity: number
           quote_ask: number | null
@@ -4006,6 +4059,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          bloqueado_na_sombra?: boolean
           close_reason?: string | null
           contract_code?: string
           created_at?: string
@@ -4031,6 +4085,7 @@ export type Database = {
           mfe_pts?: number | null
           mode: string
           net_result_brl?: number
+          nivel_freio_na_abertura?: number | null
           provider_name?: string
           quantity?: number
           quote_ask?: number | null
@@ -4056,6 +4111,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          bloqueado_na_sombra?: boolean
           close_reason?: string | null
           contract_code?: string
           created_at?: string
@@ -4081,6 +4137,7 @@ export type Database = {
           mfe_pts?: number | null
           mode?: string
           net_result_brl?: number
+          nivel_freio_na_abertura?: number | null
           provider_name?: string
           quantity?: number
           quote_ask?: number | null
