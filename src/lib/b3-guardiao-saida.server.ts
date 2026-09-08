@@ -487,6 +487,7 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
         const closed = await closeOrder(supabase, userId, run, m, open, exitAudit, motivo, marketHistory, asset, true);
         fechadas++;
         if (motivo === "oposicao_prolongada") oposFechadas++;
+        if (motivo === "stop_atrasado") stopsAtrasados++;
         detalhes.push({
           order_id: open.id, symbol: asset.symbol, mode: open.mode, variant: run.variant ?? null,
           reason: motivo, level: nivel, executed_price: exitAudit.execution_price,
@@ -536,6 +537,8 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   const janela_ms = Date.now() - t0;
   const res: GuardiaoResultado = {
     ordens_abertas: ordens.length, fechadas, ignoradas, erros,
+    lacuna_ms: lacunaMs, retomada_emergencia: retomadaEmergencia,
+    stops_atrasados_fechados: stopsAtrasados,
     marcadas_a_mercado: marcadas,
     oposicoes_longas_detectadas: oposDetectadas, oposicoes_longas_fechadas: oposFechadas,
     janela_ms, detalhes,
