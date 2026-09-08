@@ -333,6 +333,14 @@ function PrdAuthorizationsPage() {
             <tbody>
               {list.map((r) => {
                 const s = sizingFor(r);
+                const dkey = `${r.symbol}||${r.variant ?? "indicador"}||${r.mode}`;
+                const d = draft[dkey];
+                const curQty = d?.qty ?? Number(r.max_qty ?? 1);
+                const curMult = d?.mult ?? Number(r.max_daily_loss_mult ?? s?.manual_daily_loss_mult ?? 2.5);
+                const dirty = !!d && (curQty !== Number(r.max_qty ?? 1) || curMult !== Number(r.max_daily_loss_mult ?? s?.manual_daily_loss_mult ?? 2.5));
+                const abertoReal = Number(((data as any).posicao_aberta_por_magic ?? {})[String(r.magic_number ?? "")] ?? 0);
+                const setD = (patch: { qty?: number; mult?: number }) =>
+                  setDraft((prev) => ({ ...prev, [dkey]: { qty: patch.qty ?? curQty, mult: patch.mult ?? curMult } }));
                 return (
                 <tr key={r.id} className="border-b border-border/40">
                   <td className="py-2"><ModeName mode={r.mode} api={apelidos} stacked /></td>
@@ -342,10 +350,29 @@ function PrdAuthorizationsPage() {
                       ? <Badge className="bg-orange-500 text-white">LIBERADO</Badge>
                       : <Badge variant="secondary">bloqueado</Badge>}
                   </td>
-                  <td className="text-right font-mono">{r.max_qty}</td>
                   <td className="text-right font-mono">
-                    {mult(r.max_daily_loss_mult ?? s?.manual_daily_loss_mult ?? null)}
-                    <span className="ml-1 text-[10px] text-muted-foreground">{brl(r.max_daily_loss_brl)}</span>
+                    {sessionActive ? (
+                      <Input type="number" min={1} max={100} value={curQty} aria-label={`Quantidade ${r.symbol} ${r.mode}`}
+                        className="h-8 w-20 ml-auto text-right font-mono"
+                        onChange={(e) => setD({ qty: Number(e.target.value) })} />
+                    ) : r.max_qty}
+                    {sessionActive && abertoReal > 0 ? (
+                      <div className="text-[10px] text-amber-300 whitespace-nowrap">
+                        {abertoReal} aberto(s) agora — fecha nesse tamanho
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="text-right font-mono">
+                    {sessionActive ? (
+                      <Input type="number" min={0} step={0.05} value={curMult} aria-label={`Perda diária ${r.symbol} ${r.mode}`}
+                        className="h-8 w-24 ml-auto text-right font-mono"
+                        onChange={(e) => setD({ mult: Number(e.target.value) })} />
+                    ) : (
+                      <>
+                        {mult(r.max_daily_loss_mult ?? s?.manual_daily_loss_mult ?? null)}
+                        <span className="ml-1 text-[10px] text-muted-foreground">{brl(r.max_daily_loss_brl)}</span>
+                      </>
+                    )}
                   </td>
                   <td className="text-right font-mono text-muted-foreground">
                     {s ? brl(s.three_stops_brl) : "—"}
@@ -358,7 +385,13 @@ function PrdAuthorizationsPage() {
                   <td className="pl-4 text-muted-foreground">
                     {r.authorized_at ? new Date(r.authorized_at).toLocaleString("pt-BR") : "—"}
                   </td>
-                  <td className="text-right">
+                  <td className="text-right whitespace-nowrap">
+                    {sessionActive && dirty ? (
+                      <Button size="sm" className="mr-2" disabled={mParams.isPending}
+                        onClick={() => mParams.mutate({ row: r, max_qty: curQty, max_daily_loss_mult: curMult })}>
+                        <Save className="size-3.5 mr-1" /> Salvar
+                      </Button>
+                    ) : null}
                     <Button size="sm" variant={r.enabled ? "outline" : "default"} onClick={() => openDialog(r, !r.enabled)}>
                       {r.enabled ? <><Lock className="size-3.5 mr-1" /> Desligar</> : <><Unlock className="size-3.5 mr-1" /> Ligar</>}
                     </Button>
@@ -366,6 +399,7 @@ function PrdAuthorizationsPage() {
                 </tr>
                 );
               })}
+
             </tbody>
 
           </table>
