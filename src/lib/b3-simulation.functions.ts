@@ -4914,6 +4914,16 @@ export async function closeOrder(supabase: any, userId: string, run: any, mode: 
   const mfeFinal = Math.round(Math.max(mfePts, Number(order.mfe_pts ?? 0), 0));
   const maeFinal = Math.round(Math.max(-maePts, Number(order.mae_pts ?? 0), 0));
 
+  // ── MARCAÇÃO DE STOP FURADO (08/09/2026) ──
+  // Compara a perda em pontos com o stop CONGELADO NA ORDEM (não com a
+  // configuração de agora). Folga de 20% para deslizamento normal. Sem
+  // `stop_pts` gravado (ordens antigas) nada é marcado — não há número contra
+  // o qual comparar e nada é recalculado retroativamente.
+  const stopPtsOrdem = Number(order.stop_pts ?? 0);
+  const perdaPts = -grossPts;
+  const stopViolado = stopPtsOrdem > 0 && perdaPts > stopPtsOrdem * 1.2;
+  const stopExcedidoPts = stopViolado ? Math.round(perdaPts - stopPtsOrdem) : null;
+
   let closeUpdate = supabase.from("b3_simulation_orders").update({
     exit_price: roundToTick(exitPrice, Number(assetProfile.tick_size)),
     exit_time: new Date().toISOString(),
@@ -4922,6 +4932,7 @@ export async function closeOrder(supabase: any, userId: string, run: any, mode: 
     fees, net_result_brl: netBrl,
     status: "closed", close_reason: reason,
     mfe_pts: mfeFinal, mae_pts: maeFinal,
+    stop_violado: stopViolado, stop_excedido_pts: stopExcedidoPts,
 
     quote_source: exitAudit.quote_source,
     quote_server: exitAudit.quote_server,
