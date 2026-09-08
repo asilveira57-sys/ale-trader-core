@@ -241,10 +241,25 @@ function PrdAuthorizationsPage() {
           <div className={`panel px-4 py-2 text-sm ${enabledCount > 0 ? "border-orange-500/50 bg-orange-500/10 text-orange-300" : "text-muted-foreground"}`}>
             <span className="font-mono text-lg font-semibold">{enabledCount}</span> / {allRows.length} pares ligados
           </div>
+          {sessionActive ? (
+            <div className="flex items-center gap-2">
+              <div className="panel px-3 py-2 text-sm border-emerald-500/50 bg-emerald-500/10 text-emerald-300">
+                <PencilLine className="size-4 inline mr-1" /> Edição liberada · <span className="font-mono">{restanteLabel}</span>
+              </div>
+              <Button variant="outline" onClick={() => { setSession(null); setDraft({}); toast.success("Edição travada"); }}>
+                <Lock className="size-4 mr-1" /> Travar agora
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" onClick={() => setUnlockOpen(true)}>
+              <PencilLine className="size-4 mr-1" /> Destravar edição
+            </Button>
+          )}
           <Button variant="destructive" onClick={() => setKillStep(1)}>
             <AlertTriangle className="size-4 mr-1" /> Desligar tudo
           </Button>
         </div>
+
       </header>
 
       {focused && (
