@@ -4049,17 +4049,32 @@ async function runB3SimulationTickInner(
         // baixo, piso de 1). Vale só para ENTRADA NOVA.
         const qty = grupoNivel >= 1 ? aplicarFatorContratos(qtyProt, grupoMultiplicador) : qtyProt;
 
+        // ── CONTRATO DE SAÍDA CONGELADO NA ABERTURA (08/09/2026) ──
+        // `stop_pts` estava NULO em 100% das ordens: o nível só existia na
+        // configuração do modo, então o guardião o recalculava a cada passada
+        // e uma mudança de configuração alterava o stop de posição já aberta.
+        // Agora o nível efetivo (override da modalidade OU configuração
+        // vigente neste instante) é gravado NA ORDEM, em pontos e em preço
+        // absoluto. Mudar a configuração depois não muda mais nada aqui.
+        const entryRounded = roundToTick(entry, Number(asset.tick_size));
+        const dirSignEntry = effectiveSide === "buy" ? 1 : -1;
+        const stopPtsFrozen = Math.max(0, Number(setupInfo.stop_pts_override ?? cfg.stop_pts ?? 0) || 0);
+        const gainPtsFrozen = Math.max(0, Number(setupInfo.gain_pts_override ?? cfg.gain_pts ?? 0) || 0);
+        const stopPriceFrozen = stopPtsFrozen > 0
+          ? roundToTick(entryRounded - dirSignEntry * stopPtsFrozen, Number(asset.tick_size)) : null;
+        const targetPriceFrozen = gainPtsFrozen > 0
+          ? roundToTick(entryRounded + dirSignEntry * gainPtsFrozen, Number(asset.tick_size)) : null;
+
         const orderPayload: any = {
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: effectiveSide,
-          entry_price: roundToTick(entry, Number(asset.tick_size)), quantity: qty,
+          entry_price: entryRounded, quantity: qty,
           // taxa da ponta de entrada, derivada do perfil do ativo
           fees: computeB3Fees({ assetProfile: asset, quantity: qty, entryPrice: entry }), status: "open",
-          // Níveis dinâmicos por ordem (rompimento = frações da altura do
-          // canal). NULL = a gestão de posição usa stop_pts/gain_pts da
-          // configuração do modo, como sempre foi nas outras modalidades.
-          stop_pts: setupInfo.stop_pts_override ?? null,
-          gain_pts: setupInfo.gain_pts_override ?? null,
+          stop_pts: stopPtsFrozen > 0 ? stopPtsFrozen : null,
+          gain_pts: gainPtsFrozen > 0 ? gainPtsFrozen : null,
+          stop_price: stopPriceFrozen,
+          target_price: targetPriceFrozen,
           ...orderAuditPatch(entryAudit),
         };
         // Instrumentação permanente do veredito do comitê na própria ordem.
