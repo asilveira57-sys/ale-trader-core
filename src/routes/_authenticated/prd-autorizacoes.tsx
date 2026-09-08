@@ -119,6 +119,12 @@ function PrdAuthorizationsPage() {
   // Rascunho da linha em edição: chave `${symbol}||${variant}||${mode}`.
   const [draft, setDraft] = useState<Record<string, { qty: number; mult: number }>>({});
 
+  // Busca e filtro rápido — só apresentação (08/09/2026).
+  const [search, setSearch] = useState("");
+  const [quick, setQuick] = useState<"ligados" | "todos" | "desligados">("ligados");
+  // Símbolos que o usuário abriu/fechou manualmente (sobrepõe o padrão).
+  const [toggleManual, setToggleManual] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     if (!session) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
