@@ -1410,9 +1410,22 @@ function ModeReportCard({ mm, period, runId, isWinner, onPick, audit, openOrder,
         <Row k="Saldo inicial (período)" v={BRL(mm.saldo_inicial_periodo)} />
         <Row k="Saldo final (período)" v={BRL(mm.saldo_final_periodo)} />
         <Row k="PnL do período" v={BRL(pnl)} accent={pnl > 0 ? "pos" : pnl < 0 ? "neg" : undefined} />
+        {Number(mm.trades_stop_violado ?? 0) > 0 && (
+          <>
+            <Row
+              k="PnL sem stop furado"
+              v={BRL(mm.pnl_periodo_limpo)}
+              accent={Number(mm.pnl_periodo_limpo) > 0 ? "pos" : Number(mm.pnl_periodo_limpo) < 0 ? "neg" : undefined}
+            />
+            <Row k="Ordens com stop furado" v={`${mm.trades_stop_violado} (${BRL(mm.pnl_stop_violado)})`} />
+          </>
+        )}
         <Row k="Taxas" v={BRL(mm.taxas)} />
         <Row k="Trades" v={`${mm.trades} (${mm.vitorias}V / ${mm.perdas}P)`} />
         <Row k="Taxa de acerto" v={`${NUM(mm.taxa_acerto, 1)}%`} />
+        {Number(mm.trades_stop_violado ?? 0) > 0 && (
+          <Row k="Acerto sem stop furado" v={`${NUM(mm.taxa_acerto_limpo, 1)}% em ${mm.trades_limpo} ops`} />
+        )}
         <Row k="Maior ganho" v={BRL(mm.maior_ganho)} />
         <Row k="Maior perda" v={BRL(mm.maior_perda)} />
         <Row k="Drawdown máx." v={BRL(mm.drawdown_maximo)} />
