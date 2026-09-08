@@ -537,6 +537,33 @@ function PrdAuthorizationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={unlockOpen} onOpenChange={(o) => { if (!o) { setUnlockOpen(false); setUnlockPassword(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Destravar edição por 15 minutos</DialogTitle>
+            <DialogDescription>
+              A senha é pedida uma vez. Durante a janela você altera quantidade e limite de perda direto na linha,
+              sem digitar senha de novo. Ligar e desligar a conta real continua exigindo a senha. Fechar ou recarregar
+              a aba encerra a liberação. A nova quantidade vale da próxima entrada — posição já aberta é encerrada no
+              tamanho em que entrou.
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label>Senha mestra</Label>
+            <Input type="password" autoComplete="current-password" value={unlockPassword}
+              onChange={(e) => setUnlockPassword(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && unlockPassword) mUnlock.mutate(); }} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setUnlockOpen(false); setUnlockPassword(""); }}>Cancelar</Button>
+            <Button disabled={!unlockPassword || mUnlock.isPending} onClick={() => mUnlock.mutate()}>
+              <Unlock className="size-4 mr-1" /> Destravar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
