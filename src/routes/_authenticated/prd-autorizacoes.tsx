@@ -445,7 +445,7 @@ function PrdAuthorizationsPage() {
               </tr>
             </thead>
             <tbody>
-              {list.map((r) => {
+              {group.map((r) => {
                 const s = sizingFor(r);
                 const dkey = `${r.symbol}||${r.variant ?? "indicador"}||${r.mode}`;
                 const d = draft[dkey];
@@ -517,6 +517,7 @@ function PrdAuthorizationsPage() {
             </tbody>
 
           </table>
+          )}
         </section>
         );
       })}
