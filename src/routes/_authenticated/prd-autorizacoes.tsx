@@ -16,7 +16,19 @@ import { rootSymbol } from "@/lib/b3-format";
 import { computeGlobalRealStop, brlFromMult, STOPS_POR_DIA } from "@/lib/b3-real-sizing";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { ModeName } from "@/components/b3/ModeName";
-import { ShieldAlert, AlertTriangle, Lock, Unlock, Save, PencilLine } from "lucide-react";
+import { ShieldAlert, AlertTriangle, Lock, Unlock, Save, PencilLine, Search, X, ChevronDown, ChevronRight } from "lucide-react";
+
+// Ordem de ativos definida pelo usuário (08/09/2026). Ativo fora da lista
+// vai para o fim, em ordem alfabética. Só apresentação.
+const ASSET_ORDER = ["WIN", "WDO", "BIT", "ETR", "SOL", "WEU", "PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "PRIO3"];
+const assetRank = (s: string) => {
+  const i = ASSET_ORDER.indexOf(String(s ?? "").toUpperCase());
+  return i >= 0 ? i : ASSET_ORDER.length;
+};
+
+// Busca sem acento e sem maiúscula/minúscula.
+const norm = (v: string | null | undefined) =>
+  String(v ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 
 type SizingRow = {
@@ -106,6 +118,12 @@ function PrdAuthorizationsPage() {
   const [now, setNow] = useState(() => Date.now());
   // Rascunho da linha em edição: chave `${symbol}||${variant}||${mode}`.
   const [draft, setDraft] = useState<Record<string, { qty: number; mult: number }>>({});
+
+  // Busca e filtro rápido — só apresentação (08/09/2026).
+  const [search, setSearch] = useState("");
+  const [quick, setQuick] = useState<"ligados" | "todos" | "desligados">("ligados");
+  // Símbolos que o usuário abriu/fechou manualmente (sobrepõe o padrão).
+  const [toggleManual, setToggleManual] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!session) return;
@@ -205,16 +223,45 @@ function PrdAuthorizationsPage() {
   const sizingFor = (r: Row) =>
     sizing.find((s) => s.symbol === rootSymbol(r.symbol) && s.variant === (r.variant ?? "indicador") && s.mode === r.mode);
   const focused = !!(focus.symbol || focus.variant || focus.mode);
-  const rows = allRows.filter((r) =>
-    (!focus.symbol || r.symbol === focus.symbol)
-    && (!focus.variant || (r.variant ?? "indicador") === focus.variant)
-    && (!focus.mode || r.mode === focus.mode));
-  // Agrupa por ativo + modalidade: o par autorizado é (ativo, modalidade, modo).
-  const grouped = rows.reduce<Record<string, Row[]>>((acc, r) => {
-    (acc[`${r.symbol}||${r.variant ?? "indicador"}`] ??= []).push(r);
+  const q = norm(search.trim());
+  const rows = allRows.filter((r) => {
+    if (focus.symbol && r.symbol !== focus.symbol) return false;
+    if (focus.variant && (r.variant ?? "indicador") !== focus.variant) return false;
+    if (focus.mode && r.mode !== focus.mode) return false;
+    if (quick === "ligados" && !r.enabled) return false;
+    if (quick === "desligados" && r.enabled) return false;
+    if (q) {
+      const hay = [r.symbol, r.variant, VARIANT_LABEL[r.variant ?? ""] ?? "", r.mode,
+        apelidos.nick(r.mode), apelidos.tech(r.mode), r.magic_number == null ? "" : String(r.magic_number)]
+        .map(norm).join(" ");
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  // Ordenação: ligados primeiro, depois ativo na ordem ASSET_ORDER,
+  // depois modalidade, depois modo pela coluna `ordem` dos apelidos.
+  const sortedRows = [...rows].sort((a, b) => {
+    const e = Number(b.enabled) - Number(a.enabled);
+    if (e !== 0) return e;
+    const sa = assetRank(a.symbol) - assetRank(b.symbol);
+    if (sa !== 0) return sa;
+    const sName = String(a.symbol).localeCompare(String(b.symbol));
+    if (assetRank(a.symbol) >= ASSET_ORDER.length && sName !== 0) return sName;
+    const v = String(a.variant ?? "indicador").localeCompare(String(b.variant ?? "indicador"));
+    if (v !== 0) return v;
+    return apelidos.ordem(a.mode) - apelidos.ordem(b.mode);
+  });
+  // Grupo = ativo. Cabeçalho mostra "WIN — 7 de 56 ligados".
+  const grouped = sortedRows.reduce<[string, Row[]][]>((acc, r) => {
+    const sym = String(r.symbol);
+    const last = acc[acc.length - 1];
+    if (last && last[0] === sym) last[1].push(r);
+    else acc.push([sym, [r]]);
     return acc;
-  }, {});
+  }, []);
   const enabledCount = data.enabled_count ?? 0;
+  const disabledCount = allRows.length - enabledCount;
+  const searching = q.length > 0;
 
 
   function openDialog(row: Row, enabling: boolean) {
@@ -321,16 +368,67 @@ function PrdAuthorizationsPage() {
       </section>
 
 
-      {Object.entries(grouped).map(([key, group]) => {
-        const [symbol, variant] = key.split("||");
-        // Ordenação pela coluna `ordem` da tabela de apelidos (1..8), não alfabética.
-        const list = apelidos.sortModes(group, (r) => r.mode);
+      {/* Busca, filtro rápido e contador — fixos no topo ao rolar. */}
+      <div className="sticky top-0 z-20 -mx-8 px-8 py-3 bg-background/95 backdrop-blur border-b border-border space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-64 max-w-md">
+            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") setSearch(""); }}
+              placeholder="Buscar por ativo, modalidade, modo, apelido ou magic…"
+              aria-label="Buscar robô"
+              className="pl-9 pr-9"
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="Limpar busca"
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            {([["ligados", "Ligados"], ["todos", "Todos"], ["desligados", "Desligados"]] as const).map(([k, label]) => (
+              <Button
+                key={k}
+                size="sm"
+                variant={quick === k ? "default" : "outline"}
+                onClick={() => setQuick(k)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground font-mono">
+          {enabledCount} robôs ligados · {disabledCount} desligados · mostrando {rows.length}
+        </p>
+      </div>
+
+      {grouped.map(([symbol, group]) => {
+        const ligados = group.filter((r) => r.enabled).length;
+        // Busca ativa: grupo com resultado sempre aberto. Sem busca: aberto se
+        // tem ligado, recolhido se zero — a menos que o usuário tenha clicado.
+        const open = searching ? true : (toggleManual[symbol] ?? ligados > 0);
         return (
-        <section key={key} className="panel p-5 space-y-3">
-          <h2 className="font-medium flex items-center gap-2">
+        <section key={symbol} className="panel p-5 space-y-3">
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 font-medium text-left"
+            onClick={() => setToggleManual((prev) => ({ ...prev, [symbol]: !(prev[symbol] ?? ligados > 0) }))}
+            aria-expanded={open}
+          >
+            {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
             {symbol}
-            <Badge variant="outline">{VARIANT_LABEL[variant ?? ""] ?? variant}</Badge>
-          </h2>
+            <span className="text-sm text-muted-foreground font-normal">— {ligados} de {group.length} ligados</span>
+          </button>
+          {open && (
           <table className="w-full text-sm">
             <thead className="text-xs uppercase text-muted-foreground border-b border-border">
               <tr>
@@ -346,7 +444,7 @@ function PrdAuthorizationsPage() {
               </tr>
             </thead>
             <tbody>
-              {list.map((r) => {
+              {group.map((r) => {
                 const s = sizingFor(r);
                 const dkey = `${r.symbol}||${r.variant ?? "indicador"}||${r.mode}`;
                 const d = draft[dkey];
@@ -418,6 +516,7 @@ function PrdAuthorizationsPage() {
             </tbody>
 
           </table>
+          )}
         </section>
         );
       })}
