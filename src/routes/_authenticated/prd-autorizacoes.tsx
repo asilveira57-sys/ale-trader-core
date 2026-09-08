@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   listPrdAuthorizations, setPrdAuthorization, revokeAllPrdAuthorizations,
   openPrdEditSession, updatePrdAuthorizationParams,
@@ -16,7 +16,19 @@ import { rootSymbol } from "@/lib/b3-format";
 import { computeGlobalRealStop, brlFromMult, STOPS_POR_DIA } from "@/lib/b3-real-sizing";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { ModeName } from "@/components/b3/ModeName";
-import { ShieldAlert, AlertTriangle, Lock, Unlock, Save, PencilLine } from "lucide-react";
+import { ShieldAlert, AlertTriangle, Lock, Unlock, Save, PencilLine, Search, X, ChevronDown, ChevronRight } from "lucide-react";
+
+// Ordem de ativos definida pelo usuário (08/09/2026). Ativo fora da lista
+// vai para o fim, em ordem alfabética. Só apresentação.
+const ASSET_ORDER = ["WIN", "WDO", "BIT", "ETR", "SOL", "WEU", "PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "PRIO3"];
+const assetRank = (s: string) => {
+  const i = ASSET_ORDER.indexOf(String(s ?? "").toUpperCase());
+  return i >= 0 ? i : ASSET_ORDER.length;
+};
+
+// Busca sem acento e sem maiúscula/minúscula.
+const norm = (v: string | null | undefined) =>
+  String(v ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 
 type SizingRow = {
