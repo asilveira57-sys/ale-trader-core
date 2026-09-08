@@ -1122,7 +1122,7 @@ async function runB3SimulationTickInner(
     const dec = decideB3Grupo({ limites: grupoLimites, estado: grupoEstado, resultadoPorModo: porModo, R, nowIso });
 
     await supabase.from("b3_grupo_estado_dia").upsert({
-      user_id: userId, symbol: run.symbol, variant: runVariant, trade_date: grupoDia,
+      user_id: userId, symbol: grupoRoot, variant: runVariant, trade_date: grupoDia,
       resultado_brl: Number(dec.resultado_brl.toFixed(2)),
       pior_do_dia_brl: Number(dec.pior_do_dia_brl.toFixed(2)),
       nivel_atual: dec.nivel, multiplicador: dec.multiplicador,
