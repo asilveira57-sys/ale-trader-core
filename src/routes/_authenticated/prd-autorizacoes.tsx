@@ -86,6 +86,8 @@ function PrdAuthorizationsPage() {
   const list = useServerFn(listPrdAuthorizations);
   const setAuth = useServerFn(setPrdAuthorization);
   const revokeAll = useServerFn(revokeAllPrdAuthorizations);
+  const openSession = useServerFn(openPrdEditSession);
+  const updateParams = useServerFn(updatePrdAuthorizationParams);
 
   const { data, isLoading } = useQuery({ queryKey: ["prd-auth"], queryFn: () => list({}) });
 
@@ -95,6 +97,64 @@ function PrdAuthorizationsPage() {
   const [lossMult, setLossMult] = useState(2.5);
   const [killStep, setKillStep] = useState<0 | 1 | 2>(0);
   const [killPassword, setKillPassword] = useState("");
+
+  // Sessão de edição de PARÂMETRO (15 min). Só em memória: recarregar ou
+  // fechar a aba encerra. Ligar/desligar o real continua pedindo senha.
+  const [session, setSession] = useState<{ id: string; token: string; expiresAt: number } | null>(null);
+  const [unlockOpen, setUnlockOpen] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  // Rascunho da linha em edição: chave `${symbol}||${variant}||${mode}`.
+  const [draft, setDraft] = useState<Record<string, { qty: number; mult: number }>>({});
+
+  useEffect(() => {
+    if (!session) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [session]);
+  useEffect(() => {
+    if (session && now >= session.expiresAt) {
+      setSession(null); setDraft({});
+      toast.info("Sessão de edição expirada — os campos voltaram a ficar travados.");
+    }
+  }, [session, now]);
+  const sessionActive = !!session && now < session.expiresAt;
+  const restante = sessionActive ? Math.max(0, session!.expiresAt - now) : 0;
+  const restanteLabel = `${String(Math.floor(restante / 60000)).padStart(2, "0")}:${String(Math.floor((restante % 60000) / 1000)).padStart(2, "0")}`;
+
+  const mUnlock = useMutation({
+    mutationFn: () => openSession({ data: { password: unlockPassword } }),
+    onSuccess: (r: { session_id: string; token: string; expires_at: string }) => {
+      setSession({ id: r.session_id, token: r.token, expiresAt: new Date(r.expires_at).getTime() });
+      setNow(Date.now());
+      setUnlockOpen(false); setUnlockPassword("");
+      toast.success("Edição liberada por 15 minutos");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const mParams = useMutation({
+    mutationFn: (p: { row: Row; max_qty: number; max_daily_loss_mult: number }) =>
+      updateParams({
+        data: {
+          symbol: p.row.symbol as never, variant: (p.row.variant ?? "indicador") as never,
+          mode: p.row.mode as never, max_qty: p.max_qty,
+          max_daily_loss_mult: p.max_daily_loss_mult, session_token: session?.token ?? "",
+        },
+      }),
+    onSuccess: (_r, p) => {
+      toast.success(`${p.row.symbol} · ${p.row.mode}: quantidade ${p.max_qty} contrato(s) — vale da próxima entrada`);
+      setDraft((d) => {
+        const c = { ...d };
+        delete c[`${p.row.symbol}||${p.row.variant ?? "indicador"}||${p.row.mode}`];
+        return c;
+      });
+      qc.invalidateQueries({ queryKey: ["prd-auth"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+
 
   const mSet = useMutation({
     mutationFn: (p: { row: Row; enabled: boolean; password: string; max_qty: number; max_daily_loss_mult: number }) =>
