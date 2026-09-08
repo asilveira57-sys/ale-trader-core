@@ -435,6 +435,8 @@ function PrdAuthorizationsPage() {
                   {String(l.de_enabled)} → {String(l.para_enabled)}
                 </span>{" "}
                 · qty {l.de_max_qty} → {l.para_max_qty} · origem {l.origem ?? "—"}
+                {l.sessao_id ? <> · sessão {String(l.sessao_id).slice(0, 8)}</> : null}
+
               </li>
             ))}
           </ul>
