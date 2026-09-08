@@ -138,6 +138,10 @@ async function mirrorToReal(
   requestedBy: "engine_auto" | "user_manual_close" | "user_close_all",
   symbol: string = "WIN",
   variant: string = "indicador",
+  // Contrato de saída congelado da ordem simulada correspondente. Vai no
+  // comando e é copiado para b3_live_orders na confirmação do executor —
+  // registro, não instrução: o executor ignora campos que não conhece.
+  levels: { stop_pts?: number | null; gain_pts?: number | null; stop_price?: number | null; target_price?: number | null } | null = null,
 ) {
   if (!REAL_MIRROR_ENABLED) return;
 
