@@ -1,8 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
-import { listPrdAuthorizations, setPrdAuthorization, revokeAllPrdAuthorizations } from "@/lib/prd-authorization.functions";
+import { useEffect, useState } from "react";
+import {
+  listPrdAuthorizations, setPrdAuthorization, revokeAllPrdAuthorizations,
+  openPrdEditSession, updatePrdAuthorizationParams,
+} from "@/lib/prd-authorization.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -13,7 +16,8 @@ import { rootSymbol } from "@/lib/b3-format";
 import { computeGlobalRealStop, brlFromMult, STOPS_POR_DIA } from "@/lib/b3-real-sizing";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { ModeName } from "@/components/b3/ModeName";
-import { ShieldAlert, AlertTriangle, Lock, Unlock } from "lucide-react";
+import { ShieldAlert, AlertTriangle, Lock, Unlock, Save, PencilLine } from "lucide-react";
+
 
 type SizingRow = {
   symbol: string; variant: string; mode: string; enabled: boolean;
