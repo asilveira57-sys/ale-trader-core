@@ -138,6 +138,10 @@ async function mirrorToReal(
   requestedBy: "engine_auto" | "user_manual_close" | "user_close_all",
   symbol: string = "WIN",
   variant: string = "indicador",
+  // Contrato de saída congelado da ordem simulada correspondente. Vai no
+  // comando e é copiado para b3_live_orders na confirmação do executor —
+  // registro, não instrução: o executor ignora campos que não conhece.
+  levels: { stop_pts?: number | null; gain_pts?: number | null; stop_price?: number | null; target_price?: number | null } | null = null,
 ) {
   if (!REAL_MIRROR_ENABLED) return;
 
@@ -371,6 +375,10 @@ async function mirrorToReal(
       action, side, symbol, quantity,
       magic_number: magic, idempotency_key: idempotencyKey,
       requested_by: requestedBy,
+      stop_pts: levels?.stop_pts ?? null,
+      gain_pts: levels?.gain_pts ?? null,
+      stop_price: levels?.stop_price ?? null,
+      target_price: levels?.target_price ?? null,
     });
   } catch (e) {
     // Espelhamento nunca pode derrubar o motor de simulação — só loga.
@@ -4049,17 +4057,32 @@ async function runB3SimulationTickInner(
         // baixo, piso de 1). Vale só para ENTRADA NOVA.
         const qty = grupoNivel >= 1 ? aplicarFatorContratos(qtyProt, grupoMultiplicador) : qtyProt;
 
+        // ── CONTRATO DE SAÍDA CONGELADO NA ABERTURA (08/09/2026) ──
+        // `stop_pts` estava NULO em 100% das ordens: o nível só existia na
+        // configuração do modo, então o guardião o recalculava a cada passada
+        // e uma mudança de configuração alterava o stop de posição já aberta.
+        // Agora o nível efetivo (override da modalidade OU configuração
+        // vigente neste instante) é gravado NA ORDEM, em pontos e em preço
+        // absoluto. Mudar a configuração depois não muda mais nada aqui.
+        const entryRounded = roundToTick(entry, Number(asset.tick_size));
+        const dirSignEntry = effectiveSide === "buy" ? 1 : -1;
+        const stopPtsFrozen = Math.max(0, Number(setupInfo.stop_pts_override ?? cfg.stop_pts ?? 0) || 0);
+        const gainPtsFrozen = Math.max(0, Number(setupInfo.gain_pts_override ?? cfg.gain_pts ?? 0) || 0);
+        const stopPriceFrozen = stopPtsFrozen > 0
+          ? roundToTick(entryRounded - dirSignEntry * stopPtsFrozen, Number(asset.tick_size)) : null;
+        const targetPriceFrozen = gainPtsFrozen > 0
+          ? roundToTick(entryRounded + dirSignEntry * gainPtsFrozen, Number(asset.tick_size)) : null;
+
         const orderPayload: any = {
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, symbol: asset.quote_symbol, contract_code: asset.contract_code, side: effectiveSide,
-          entry_price: roundToTick(entry, Number(asset.tick_size)), quantity: qty,
+          entry_price: entryRounded, quantity: qty,
           // taxa da ponta de entrada, derivada do perfil do ativo
           fees: computeB3Fees({ assetProfile: asset, quantity: qty, entryPrice: entry }), status: "open",
-          // Níveis dinâmicos por ordem (rompimento = frações da altura do
-          // canal). NULL = a gestão de posição usa stop_pts/gain_pts da
-          // configuração do modo, como sempre foi nas outras modalidades.
-          stop_pts: setupInfo.stop_pts_override ?? null,
-          gain_pts: setupInfo.gain_pts_override ?? null,
+          stop_pts: stopPtsFrozen > 0 ? stopPtsFrozen : null,
+          gain_pts: gainPtsFrozen > 0 ? gainPtsFrozen : null,
+          stop_price: stopPriceFrozen,
+          target_price: targetPriceFrozen,
           ...orderAuditPatch(entryAudit),
         };
         // Instrumentação permanente do veredito do comitê na própria ordem.
@@ -4157,7 +4180,12 @@ async function runB3SimulationTickInner(
         if (!insertedOrder) throw new Error("Falha ao criar ordem simulada");
 
         markAuditEvent(`abertura:${mode}:${effectiveSide}`);
-        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant);
+        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant, {
+          stop_pts: stopPtsFrozen > 0 ? stopPtsFrozen : null,
+          gain_pts: gainPtsFrozen > 0 ? gainPtsFrozen : null,
+          stop_price: stopPriceFrozen,
+          target_price: targetPriceFrozen,
+        });
         providerStats.last_entry_price = entry;
         openOrdersCache = null;
         await supabase.from("b3_simulation_modes")
@@ -4886,6 +4914,16 @@ export async function closeOrder(supabase: any, userId: string, run: any, mode: 
   const mfeFinal = Math.round(Math.max(mfePts, Number(order.mfe_pts ?? 0), 0));
   const maeFinal = Math.round(Math.max(-maePts, Number(order.mae_pts ?? 0), 0));
 
+  // ── MARCAÇÃO DE STOP FURADO (08/09/2026) ──
+  // Compara a perda em pontos com o stop CONGELADO NA ORDEM (não com a
+  // configuração de agora). Folga de 20% para deslizamento normal. Sem
+  // `stop_pts` gravado (ordens antigas) nada é marcado — não há número contra
+  // o qual comparar e nada é recalculado retroativamente.
+  const stopPtsOrdem = Number(order.stop_pts ?? 0);
+  const perdaPts = -grossPts;
+  const stopViolado = stopPtsOrdem > 0 && perdaPts > stopPtsOrdem * 1.2;
+  const stopExcedidoPts = stopViolado ? Math.round(perdaPts - stopPtsOrdem) : null;
+
   let closeUpdate = supabase.from("b3_simulation_orders").update({
     exit_price: roundToTick(exitPrice, Number(assetProfile.tick_size)),
     exit_time: new Date().toISOString(),
@@ -4894,6 +4932,7 @@ export async function closeOrder(supabase: any, userId: string, run: any, mode: 
     fees, net_result_brl: netBrl,
     status: "closed", close_reason: reason,
     mfe_pts: mfeFinal, mae_pts: maeFinal,
+    stop_violado: stopViolado, stop_excedido_pts: stopExcedidoPts,
 
     quote_source: exitAudit.quote_source,
     quote_server: exitAudit.quote_server,

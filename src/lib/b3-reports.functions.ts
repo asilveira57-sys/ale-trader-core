@@ -90,6 +90,17 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
       const maxGain = ords.reduce((m: number, o: any) => Math.max(m, Number(o.net_result_brl ?? 0)), 0);
       const maxLoss = ords.reduce((m: number, o: any) => Math.min(m, Number(o.net_result_brl ?? 0)), 0);
 
+      // ── STOP FURADO (08/09/2026) ──
+      // Ordem marcada `stop_violado` mede queda de infraestrutura, não decisão
+      // do robô. O prejuízo dela é real e continua no resultado do período; ela
+      // apenas sai da linha "limpa", que é a que julga a estratégia.
+      const violadas = ords.filter((o: any) => o.stop_violado === true);
+      const limpas = ords.filter((o: any) => o.stop_violado !== true);
+      const winsLimpas = limpas.filter((o: any) => Number(o.net_result_brl) > 0).length;
+      const liquidoLimpo = limpas.reduce((s: number, o: any) => s + Number(o.net_result_brl ?? 0), 0);
+      const pontosLimpos = limpas.reduce((s: number, o: any) => s + Number(o.gross_result_points ?? 0), 0);
+      const prejuizoViolado = violadas.reduce((s: number, o: any) => s + Number(o.net_result_brl ?? 0), 0);
+
       // saldo inicial do período = current_balance - liquido (estimativa baseada nos fechamentos no período)
       const initialBalance = Number(mRow?.initial_balance ?? 0);
       const saldoFinal = isMt5
@@ -146,6 +157,14 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
         comite_aprovou: approvals,
         comite_rejeitou: rejections,
         bloqueios_risco: blocksThisPeriod,
+        // Linha limpa: mesma conta sem as ordens com stop furado.
+        trades_stop_violado: violadas.length,
+        pnl_stop_violado: prejuizoViolado,
+        pnl_periodo_limpo: liquidoLimpo,
+        pontos_liquidos_limpo: pontosLimpos,
+        trades_limpo: limpas.length,
+        vitorias_limpo: winsLimpas,
+        taxa_acerto_limpo: limpas.length > 0 ? (winsLimpas / limpas.length) * 100 : 0,
         // legado / cumulativo
         cumulative: {
           initial_balance: Number(mRow?.initial_balance ?? 0),

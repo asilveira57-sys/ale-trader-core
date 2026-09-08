@@ -46,7 +46,35 @@ export interface GuardiaoResultado {
   oposicoes_longas_detectadas: number;
   oposicoes_longas_fechadas: number;
   janela_ms: number;
+  /** ms desde a passada anterior (null quando não há registro). */
+  lacuna_ms?: number | null;
+  /** true quando a lacuna passou de 5 min: primeira passada é de emergência. */
+  retomada_emergencia?: boolean;
+  stops_atrasados_fechados?: number;
   detalhes: any[];
+}
+
+/** Lacuna acima disto é registrada como aviso. */
+const LACUNA_AVISO_MS = 2 * 60_000;
+/** Lacuna acima disto liga a zeragem de emergência da primeira passada. */
+const LACUNA_EMERGENCIA_MS = 5 * 60_000;
+
+/** Quando foi a passada anterior do guardião (pelo próprio registro de resumo). */
+async function ultimaPassadaMs(supabase: any): Promise<number | null> {
+  try {
+    const { data } = await supabase
+      .from("system_logs")
+      .select("created_at")
+      .eq("event_type", "b3_guardiao_summary")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!data?.created_at) return null;
+    const t = new Date(data.created_at).getTime();
+    return Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
+  }
 }
 
 
@@ -67,8 +95,17 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   const t0 = Date.now();
   const detalhes: any[] = [];
   let fechadas = 0, ignoradas = 0, erros = 0, marcadas = 0;
-  let oposDetectadas = 0, oposFechadas = 0;
+  let oposDetectadas = 0, oposFechadas = 0, stopsAtrasados = 0;
 
+  // 0) LACUNA DESDE A PASSADA ANTERIOR (08/09/2026)
+  // Em 02/09 treze posições rodaram 53 min sem ninguém gerindo e saíram todas
+  // juntas com 7 a 9 vezes o stop. A indisponibilidade não deixava rastro: é o
+  // que este bloco resolve. Acima de 5 min a primeira passada trata posição
+  // aberta como prioridade absoluta e encerra quem já passou do stop GRAVADO,
+  // com rótulo próprio (`stop_atrasado`) — não `grupo_freio_lock`.
+  const anterior = await ultimaPassadaMs(supabase);
+  const lacunaMs = anterior === null ? null : Math.max(0, t0 - anterior);
+  const retomadaEmergencia = lacunaMs !== null && lacunaMs > LACUNA_EMERGENCIA_MS;
 
   // 1) Ordens abertas de todos os usuários. É a leitura mais barata do sistema:
   //    em pregão normal são poucas dezenas de linhas.
@@ -78,10 +115,30 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
     .eq("status", "open");
   if (errAbertas) throw new Error(`guardião: falha ao ler ordens abertas — ${errAbertas.message}`);
   const ordens = abertas ?? [];
+
+  if (lacunaMs !== null && lacunaMs > LACUNA_AVISO_MS) {
+    try {
+      await supabase.from("system_logs").insert({
+        event_type: "b3_guardiao_lacuna",
+        source: "b3-guardiao-saida",
+        severity: "warning",
+        message: `Guardião ficou ${Math.round(lacunaMs / 1000)} s sem rodar com ${ordens.length} posição(ões) aberta(s).`,
+        technical_data: {
+          lacuna_ms: lacunaMs,
+          lacuna_s: Math.round(lacunaMs / 1000),
+          passada_anterior: new Date(anterior!).toISOString(),
+          posicoes_abertas: ordens.length,
+          retomada_emergencia: retomadaEmergencia,
+        },
+      });
+    } catch { /* log nunca derruba o guardião */ }
+  }
+
   if (!ordens.length) {
     const vazio: GuardiaoResultado = {
       ordens_abertas: 0, fechadas: 0, ignoradas: 0, erros: 0, marcadas_a_mercado: 0,
       oposicoes_longas_detectadas: 0, oposicoes_longas_fechadas: 0,
+      lacuna_ms: lacunaMs, retomada_emergencia: retomadaEmergencia, stops_atrasados_fechados: 0,
       janela_ms: Date.now() - t0, detalhes,
     };
 
@@ -271,18 +328,34 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       let nivel: number | null = null;
       const debug: any = { move_pts: movePts, mark_price: markPrice };
 
-      if (Number.isFinite(stopPts) && stopPts > 0) {
-        const stopLevel = entry - dirSign * stopPts;
-        debug.stop_level = stopLevel;
-        if (dirSign === 1 ? markPrice <= stopLevel : markPrice >= stopLevel) {
-          motivo = "stop"; nivel = stopLevel;
+      // Nível de stop: o PREÇO GRAVADO NA ORDEM manda. Ele é o contrato do robô
+      // no momento em que ele entrou; a configuração de agora é só fallback para
+      // ordens antigas, que nasceram sem o campo.
+      const stopPriceOrdem = open.stop_price == null ? null : Number(open.stop_price);
+      const targetPriceOrdem = open.target_price == null ? null : Number(open.target_price);
+      const stopLevelEfetivo = stopPriceOrdem !== null && Number.isFinite(stopPriceOrdem) && stopPriceOrdem > 0
+        ? stopPriceOrdem
+        : (Number.isFinite(stopPts) && stopPts > 0 ? entry - dirSign * stopPts : null);
+      const gainLevelEfetivo = targetPriceOrdem !== null && Number.isFinite(targetPriceOrdem) && targetPriceOrdem > 0
+        ? targetPriceOrdem
+        : (Number.isFinite(gainPts) && gainPts > 0 ? entry + dirSign * gainPts : null);
+      debug.stop_price_gravado = stopPriceOrdem;
+      debug.target_price_gravado = targetPriceOrdem;
+
+      if (stopLevelEfetivo !== null) {
+        debug.stop_level = stopLevelEfetivo;
+        if (dirSign === 1 ? markPrice <= stopLevelEfetivo : markPrice >= stopLevelEfetivo) {
+          // Retomada depois de parada > 5 min: o rótulo diz a verdade sobre a
+          // causa. `grupo_freio_lock` num prejuízo de 9x o stop mente.
+          motivo = retomadaEmergencia ? "stop_atrasado" : "stop";
+          nivel = stopLevelEfetivo;
+          if (retomadaEmergencia) debug.retomada_lacuna_ms = lacunaMs;
         }
       }
-      if (!motivo && Number.isFinite(gainPts) && gainPts > 0) {
-        const gainLevel = entry + dirSign * gainPts;
-        debug.gain_level = gainLevel;
-        if (dirSign === 1 ? markPrice >= gainLevel : markPrice <= gainLevel) {
-          motivo = "gain"; nivel = gainLevel;
+      if (!motivo && gainLevelEfetivo !== null) {
+        debug.gain_level = gainLevelEfetivo;
+        if (dirSign === 1 ? markPrice >= gainLevelEfetivo : markPrice <= gainLevelEfetivo) {
+          motivo = "gain"; nivel = gainLevelEfetivo;
         }
       }
 
@@ -414,6 +487,7 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
         const closed = await closeOrder(supabase, userId, run, m, open, exitAudit, motivo, marketHistory, asset, true);
         fechadas++;
         if (motivo === "oposicao_prolongada") oposFechadas++;
+        if (motivo === "stop_atrasado") stopsAtrasados++;
         detalhes.push({
           order_id: open.id, symbol: asset.symbol, mode: open.mode, variant: run.variant ?? null,
           reason: motivo, level: nivel, executed_price: exitAudit.execution_price,
@@ -463,6 +537,8 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   const janela_ms = Date.now() - t0;
   const res: GuardiaoResultado = {
     ordens_abertas: ordens.length, fechadas, ignoradas, erros,
+    lacuna_ms: lacunaMs, retomada_emergencia: retomadaEmergencia,
+    stops_atrasados_fechados: stopsAtrasados,
     marcadas_a_mercado: marcadas,
     oposicoes_longas_detectadas: oposDetectadas, oposicoes_longas_fechadas: oposFechadas,
     janela_ms, detalhes,
