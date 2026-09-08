@@ -328,18 +328,34 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       let nivel: number | null = null;
       const debug: any = { move_pts: movePts, mark_price: markPrice };
 
-      if (Number.isFinite(stopPts) && stopPts > 0) {
-        const stopLevel = entry - dirSign * stopPts;
-        debug.stop_level = stopLevel;
-        if (dirSign === 1 ? markPrice <= stopLevel : markPrice >= stopLevel) {
-          motivo = "stop"; nivel = stopLevel;
+      // Nível de stop: o PREÇO GRAVADO NA ORDEM manda. Ele é o contrato do robô
+      // no momento em que ele entrou; a configuração de agora é só fallback para
+      // ordens antigas, que nasceram sem o campo.
+      const stopPriceOrdem = open.stop_price == null ? null : Number(open.stop_price);
+      const targetPriceOrdem = open.target_price == null ? null : Number(open.target_price);
+      const stopLevelEfetivo = stopPriceOrdem !== null && Number.isFinite(stopPriceOrdem) && stopPriceOrdem > 0
+        ? stopPriceOrdem
+        : (Number.isFinite(stopPts) && stopPts > 0 ? entry - dirSign * stopPts : null);
+      const gainLevelEfetivo = targetPriceOrdem !== null && Number.isFinite(targetPriceOrdem) && targetPriceOrdem > 0
+        ? targetPriceOrdem
+        : (Number.isFinite(gainPts) && gainPts > 0 ? entry + dirSign * gainPts : null);
+      debug.stop_price_gravado = stopPriceOrdem;
+      debug.target_price_gravado = targetPriceOrdem;
+
+      if (stopLevelEfetivo !== null) {
+        debug.stop_level = stopLevelEfetivo;
+        if (dirSign === 1 ? markPrice <= stopLevelEfetivo : markPrice >= stopLevelEfetivo) {
+          // Retomada depois de parada > 5 min: o rótulo diz a verdade sobre a
+          // causa. `grupo_freio_lock` num prejuízo de 9x o stop mente.
+          motivo = retomadaEmergencia ? "stop_atrasado" : "stop";
+          nivel = stopLevelEfetivo;
+          if (retomadaEmergencia) debug.retomada_lacuna_ms = lacunaMs;
         }
       }
-      if (!motivo && Number.isFinite(gainPts) && gainPts > 0) {
-        const gainLevel = entry + dirSign * gainPts;
-        debug.gain_level = gainLevel;
-        if (dirSign === 1 ? markPrice >= gainLevel : markPrice <= gainLevel) {
-          motivo = "gain"; nivel = gainLevel;
+      if (!motivo && gainLevelEfetivo !== null) {
+        debug.gain_level = gainLevelEfetivo;
+        if (dirSign === 1 ? markPrice >= gainLevelEfetivo : markPrice <= gainLevelEfetivo) {
+          motivo = "gain"; nivel = gainLevelEfetivo;
         }
       }
 
