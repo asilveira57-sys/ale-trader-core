@@ -10,6 +10,13 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
     if (error != null && typeof error === "object" && "statusCode" in error) {
       throw error;
     }
+    // Server functions precisam serializar seus próprios erros. Transformar um
+    // erro de autenticação em uma página HTML 500 corrompe a resposta RPC e pode
+    // aparecer no navegador como `Uncaught undefined`/tela branca.
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    if (/^Unauthorized:/i.test(message)) {
+      throw error;
+    }
     console.error(error);
     return new Response(renderErrorPage(), {
       status: 500,
