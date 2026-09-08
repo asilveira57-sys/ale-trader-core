@@ -2936,6 +2936,13 @@ async function runB3SimulationTickInner(
       addCheck("mt5_symbol", `Símbolo ${asset.symbol}`, priceSrc.source !== "mt5_xp_demo" || priceSrc.quote_symbol === asset.symbol, priceSrc.quote_symbol ? `recebido ${priceSrc.quote_symbol}` : "sem símbolo");
       addCheck("market_open", "Mercado aberto", ctx.session_phase !== "fora", `fase ${ctx.session_phase}`);
       addCheck("time_allowed", "Horário permitido", insideHours, `${cfg.trading_start_time}–${cfg.entry_cutoff_time}`);
+      // Não bloqueia entrada: é sinalização. Um robô sem freio de grupo não
+      // pode continuar visualmente idêntico a um robô protegido.
+      addCheck("grupo_limite", "Freio de grupo", Boolean(grupoLimites),
+        grupoLimites
+          ? `${grupoRoot}/${runVariant} · teto ${grupoLimites.teto_brl.toFixed(0)} BRL`
+          : `sem freio de grupo configurado (${grupoRoot}/${runVariant})`,
+        false);
       addCheck("operation_window", "Janela operacional", insideHours, `${cfg.trading_start_time}–${cfg.entry_cutoff_time}`);
       addCheck("force_close_window", "Janela zeragem", !forceClose, `zeragem ${cfg.force_close_time}`);
       addCheck("valid_quote", "Cotação válida", !invalidMt5, invalidMt5 ?? `bid ${priceSrc.raw?.bid ?? "—"} · ask ${priceSrc.raw?.ask ?? "—"}`);
