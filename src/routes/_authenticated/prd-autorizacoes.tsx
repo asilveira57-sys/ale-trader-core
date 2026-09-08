@@ -368,16 +368,68 @@ function PrdAuthorizationsPage() {
       </section>
 
 
-      {Object.entries(grouped).map(([key, group]) => {
-        const [symbol, variant] = key.split("||");
-        // Ordenação pela coluna `ordem` da tabela de apelidos (1..8), não alfabética.
-        const list = apelidos.sortModes(group, (r) => r.mode);
+      {/* Busca, filtro rápido e contador — fixos no topo ao rolar. */}
+      <div className="sticky top-0 z-20 -mx-8 px-8 py-3 bg-background/95 backdrop-blur border-b border-border space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-64 max-w-md">
+            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") setSearch(""); }}
+              placeholder="Buscar por ativo, modalidade, modo, apelido ou magic…"
+              aria-label="Buscar robô"
+              className="pl-9 pr-9"
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="Limpar busca"
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            {([["ligados", "Ligados"], ["todos", "Todos"], ["desligados", "Desligados"]] as const).map(([k, label]) => (
+              <Button
+                key={k}
+                size="sm"
+                variant={quick === k ? "default" : "outline"}
+                onClick={() => setQuick(k)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground font-mono">
+          {enabledCount} robôs ligados · {disabledCount} desligados · mostrando {rows.length}
+        </p>
+      </div>
+
+      {grouped.map(([symbol, group]) => {
+        const ligados = group.filter((r) => r.enabled).length;
+        // Busca ativa: grupo com resultado sempre aberto. Sem busca: aberto se
+        // tem ligado, recolhido se zero — a menos que o usuário tenha clicado.
+        const open = searching ? true : (toggleManual[symbol] ?? ligados > 0);
         return (
-        <section key={key} className="panel p-5 space-y-3">
-          <h2 className="font-medium flex items-center gap-2">
+        <section key={symbol} className="panel p-5 space-y-3">
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 font-medium text-left"
+            onClick={() => setToggleManual((prev) => ({ ...prev, [symbol]: !(prev[symbol] ?? ligados > 0) }))}
+            aria-expanded={open}
+          >
+            {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
             {symbol}
-            <Badge variant="outline">{VARIANT_LABEL[variant ?? ""] ?? variant}</Badge>
-          </h2>
+            <span className="text-sm text-muted-foreground font-normal">— {ligados} de {group.length} ligados</span>
+          </button>
+          {open && (
+          <table className="w-full text-sm">
           <table className="w-full text-sm">
             <thead className="text-xs uppercase text-muted-foreground border-b border-border">
               <tr>
