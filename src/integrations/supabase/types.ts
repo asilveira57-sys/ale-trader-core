@@ -2927,13 +2927,16 @@ export type Database = {
       b3_prd_authorization_log: {
         Row: {
           de_enabled: boolean | null
+          de_max_daily_loss_brl: number | null
           de_max_qty: number | null
           id: string
           mode: string
           motivo: string | null
           origem: string | null
           para_enabled: boolean | null
+          para_max_daily_loss_brl: number | null
           para_max_qty: number | null
+          sessao_id: string | null
           symbol: string
           ts: string
           user_id: string
@@ -2941,13 +2944,16 @@ export type Database = {
         }
         Insert: {
           de_enabled?: boolean | null
+          de_max_daily_loss_brl?: number | null
           de_max_qty?: number | null
           id?: string
           mode: string
           motivo?: string | null
           origem?: string | null
           para_enabled?: boolean | null
+          para_max_daily_loss_brl?: number | null
           para_max_qty?: number | null
+          sessao_id?: string | null
           symbol: string
           ts?: string
           user_id: string
@@ -2955,13 +2961,16 @@ export type Database = {
         }
         Update: {
           de_enabled?: boolean | null
+          de_max_daily_loss_brl?: number | null
           de_max_qty?: number | null
           id?: string
           mode?: string
           motivo?: string | null
           origem?: string | null
           para_enabled?: boolean | null
+          para_max_daily_loss_brl?: number | null
           para_max_qty?: number | null
+          sessao_id?: string | null
           symbol?: string
           ts?: string
           user_id?: string
@@ -2976,6 +2985,7 @@ export type Database = {
           created_at: string
           enabled: boolean
           id: string
+          magic_number: number | null
           max_daily_loss_brl: number
           max_daily_loss_mult: number | null
           max_qty: number
@@ -2993,6 +3003,7 @@ export type Database = {
           created_at?: string
           enabled?: boolean
           id?: string
+          magic_number?: number | null
           max_daily_loss_brl?: number
           max_daily_loss_mult?: number | null
           max_qty?: number
@@ -3010,6 +3021,7 @@ export type Database = {
           created_at?: string
           enabled?: boolean
           id?: string
+          magic_number?: number | null
           max_daily_loss_brl?: number
           max_daily_loss_mult?: number | null
           max_qty?: number
