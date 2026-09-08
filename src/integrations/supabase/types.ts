@@ -1504,6 +1504,7 @@ export type Database = {
           exit_price: number | null
           exit_time: string | null
           fees_brl: number | null
+          gain_pts: number | null
           gross_result_brl: number | null
           id: string
           instance_id: string | null
@@ -1514,7 +1515,10 @@ export type Database = {
           side: string
           simulation_run_id: string | null
           status: string
+          stop_price: number | null
+          stop_pts: number | null
           symbol: string
+          target_price: number | null
           updated_at: string
           user_id: string
           variant: string
@@ -1529,6 +1533,7 @@ export type Database = {
           exit_price?: number | null
           exit_time?: string | null
           fees_brl?: number | null
+          gain_pts?: number | null
           gross_result_brl?: number | null
           id?: string
           instance_id?: string | null
@@ -1539,7 +1544,10 @@ export type Database = {
           side: string
           simulation_run_id?: string | null
           status?: string
+          stop_price?: number | null
+          stop_pts?: number | null
           symbol: string
+          target_price?: number | null
           updated_at?: string
           user_id: string
           variant?: string
@@ -1554,6 +1562,7 @@ export type Database = {
           exit_price?: number | null
           exit_time?: string | null
           fees_brl?: number | null
+          gain_pts?: number | null
           gross_result_brl?: number | null
           id?: string
           instance_id?: string | null
@@ -1564,7 +1573,10 @@ export type Database = {
           side?: string
           simulation_run_id?: string | null
           status?: string
+          stop_price?: number | null
+          stop_pts?: number | null
           symbol?: string
+          target_price?: number | null
           updated_at?: string
           user_id?: string
           variant?: string
@@ -1892,6 +1904,7 @@ export type Database = {
           expires_at: string
           filled_at: string | null
           filled_price: number | null
+          gain_pts: number | null
           id: string
           idempotency_key: string
           instance_id: string | null
@@ -1902,7 +1915,10 @@ export type Database = {
           side: string | null
           simulation_run_id: string | null
           status: string
+          stop_price: number | null
+          stop_pts: number | null
           symbol: string
+          target_price: number | null
           user_id: string
           variant: string
         }
@@ -1917,6 +1933,7 @@ export type Database = {
           expires_at?: string
           filled_at?: string | null
           filled_price?: number | null
+          gain_pts?: number | null
           id?: string
           idempotency_key: string
           instance_id?: string | null
@@ -1927,7 +1944,10 @@ export type Database = {
           side?: string | null
           simulation_run_id?: string | null
           status?: string
+          stop_price?: number | null
+          stop_pts?: number | null
           symbol: string
+          target_price?: number | null
           user_id: string
           variant?: string
         }
@@ -1942,6 +1962,7 @@ export type Database = {
           expires_at?: string
           filled_at?: string | null
           filled_price?: number | null
+          gain_pts?: number | null
           id?: string
           idempotency_key?: string
           instance_id?: string | null
@@ -1952,7 +1973,10 @@ export type Database = {
           side?: string | null
           simulation_run_id?: string | null
           status?: string
+          stop_price?: number | null
+          stop_pts?: number | null
           symbol?: string
+          target_price?: number | null
           user_id?: string
           variant?: string
         }
@@ -3355,6 +3379,7 @@ export type Database = {
           mode: string
           motivo_intervencao: string | null
           net_brl: number
+          net_brl_com_violacao: number | null
           pico_contratos: number | null
           pico_hora: string | null
           pico_margem_brl: number | null
@@ -3368,6 +3393,7 @@ export type Database = {
           symbol: string
           trade_date: string
           trades: number
+          trades_stop_violado: number
           user_id: string
           variant: string
           win_rate: number
@@ -3380,6 +3406,7 @@ export type Database = {
           mode: string
           motivo_intervencao?: string | null
           net_brl?: number
+          net_brl_com_violacao?: number | null
           pico_contratos?: number | null
           pico_hora?: string | null
           pico_margem_brl?: number | null
@@ -3393,6 +3420,7 @@ export type Database = {
           symbol: string
           trade_date: string
           trades?: number
+          trades_stop_violado?: number
           user_id: string
           variant?: string
           win_rate?: number
@@ -3405,6 +3433,7 @@ export type Database = {
           mode?: string
           motivo_intervencao?: string | null
           net_brl?: number
+          net_brl_com_violacao?: number | null
           pico_contratos?: number | null
           pico_hora?: string | null
           pico_margem_brl?: number | null
@@ -3418,6 +3447,7 @@ export type Database = {
           symbol?: string
           trade_date?: string
           trades?: number
+          trades_stop_violado?: number
           user_id?: string
           variant?: string
           win_rate?: number
@@ -3964,8 +3994,12 @@ export type Database = {
           simulation_mode_id: string
           simulation_run_id: string
           status: string
+          stop_excedido_pts: number | null
+          stop_price: number | null
           stop_pts: number | null
+          stop_violado: boolean
           symbol: string
+          target_price: number | null
           unrealized_brl: number | null
           unrealized_points: number | null
           updated_at: string
@@ -4010,8 +4044,12 @@ export type Database = {
           simulation_mode_id: string
           simulation_run_id: string
           status?: string
+          stop_excedido_pts?: number | null
+          stop_price?: number | null
           stop_pts?: number | null
+          stop_violado?: boolean
           symbol?: string
+          target_price?: number | null
           unrealized_brl?: number | null
           unrealized_points?: number | null
           updated_at?: string
@@ -4056,8 +4094,12 @@ export type Database = {
           simulation_mode_id?: string
           simulation_run_id?: string
           status?: string
+          stop_excedido_pts?: number | null
+          stop_price?: number | null
           stop_pts?: number | null
+          stop_violado?: boolean
           symbol?: string
+          target_price?: number | null
           unrealized_brl?: number | null
           unrealized_points?: number | null
           updated_at?: string
