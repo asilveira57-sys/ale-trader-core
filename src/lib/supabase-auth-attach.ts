@@ -6,6 +6,35 @@ import { createMiddleware } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 
 const SKEW_S = 60;
+const RETURN_TO_KEY = "aletrader:return-to";
+
+function isRejectedSession(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /unauthorized|invalid token|invalid jwt|jwt.*invalid|token.*revoked|no authorization header/i.test(message);
+}
+
+async function leaveInvalidSession(): Promise<never> {
+  try {
+    const path = window.location.pathname + window.location.search;
+    if (!path.startsWith("/auth")) window.sessionStorage.setItem(RETURN_TO_KEY, path);
+  } catch {
+    // Storage can be unavailable in private browsing; redirect still works.
+  }
+
+  // Local scope is intentional: an invalid token cannot complete a remote
+  // sign-out, especially while auth is unavailable. Clearing it locally stops
+  // every subsequent serverFn from resending the same rejected credential.
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch {
+    // The redirect below is the final recovery path.
+  }
+
+  window.location.replace("/auth");
+  // Keep the rejected RPC from becoming an unhandled promise while navigation
+  // unloads this document. This prevents the blank-screen error boundary path.
+  return new Promise<never>(() => {});
+}
 
 // Na primeira renderização o storage brokered do preview pode ainda não ter
 // devolvido a sessão. Sem token o serverFn responde "Unauthorized: No
@@ -40,7 +69,12 @@ export const attachSupabaseAuthFresh = createMiddleware({ type: "function" }).cl
     } catch {
       token = undefined;
     }
-    return next({ headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    try {
+      return await next({ headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    } catch (error) {
+      if (isRejectedSession(error)) return leaveInvalidSession();
+      throw error;
+    }
   },
 );
 
