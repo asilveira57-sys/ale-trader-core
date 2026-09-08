@@ -5185,12 +5185,22 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
 
     // Freio escalonado por grupo (somente leitura): o card precisa explicar por
     // que o robô está operando com 2 contratos em vez de 5, ou por que não entra.
+    // Chaveado pela RAIZ do ativo — contrato vencido não pode perder a linha.
     const { data: grupoEstados } = await (supabase as any).from("b3_grupo_estado_dia")
       .select("symbol, variant, nivel_atual, multiplicador, ultima_mudanca_ts, robos_travados, resultado_brl")
       .eq("user_id", userId).eq("trade_date", sessionDate);
     const grupoByKey: Record<string, any> = {};
     for (const g of (grupoEstados ?? []) as any[]) {
-      grupoByKey[`${g.symbol}|${g.variant}`] = g;
+      grupoByKey[`${rootSymbol(g.symbol)}|${g.variant}`] = g;
+    }
+    // Quais grupos TÊM freio configurado. Sem linha aqui, o card avisa.
+    const { data: grupoLimitesRows } = await (supabase as any).from("b3_grupo_limites")
+      .select("symbol, variant, ativo, teto_brl").eq("user_id", userId);
+    const grupoComFreio = new Set<string>();
+    for (const g of (grupoLimitesRows ?? []) as any[]) {
+      if (g.ativo !== false && Number(g.teto_brl) > 0) {
+        grupoComFreio.add(`${rootSymbol(g.symbol)}|${g.variant ?? "indicador"}`);
+      }
     }
 
     // AUTORIZAÇÃO REAL (04/09/2026): quais robôs desta lista simulada estão
