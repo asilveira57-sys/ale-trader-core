@@ -7591,6 +7591,30 @@ export type Database = {
         Returns: number
       }
       b3_materializar_m1: { Args: { p_date?: string }; Returns: number }
+      b3_prd_atualizar_parametros: {
+        Args: {
+          p_max_daily_loss_brl: number
+          p_max_daily_loss_mult: number
+          p_max_qty: number
+          p_mode: string
+          p_origem: string
+          p_sessao_id: string
+          p_symbol: string
+          p_user_id: string
+          p_variant: string
+        }
+        Returns: {
+          enabled: boolean
+          id: string
+          magic_number: number
+          max_daily_loss_brl: number
+          max_daily_loss_mult: number
+          max_qty: number
+          mode: string
+          symbol: string
+          variant: string
+        }[]
+      }
       b3_ranking_medalhados: {
         Args: { p_criterio?: string }
         Returns: {
