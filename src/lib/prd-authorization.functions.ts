@@ -53,17 +53,17 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
 
     const { loadRealSizing, globalStopFromSizing } = await import("@/lib/b3-real-stop.server");
 
-    const [rows, logs, sizing, estado] = await Promise.all([
+    const [rows, logs, sizing, estado, cmds] = await Promise.all([
       supabase
         .from("b3_prd_authorizations")
-        .select("id, symbol, variant, mode, enabled, max_qty, max_daily_loss_brl, max_daily_loss_mult, authorized_at, authorized_by, revoked_at, notes, updated_at")
+        .select("id, symbol, variant, mode, enabled, max_qty, max_daily_loss_brl, max_daily_loss_mult, magic_number, authorized_at, authorized_by, revoked_at, notes, updated_at")
         .eq("user_id", userId)
         .order("symbol", { ascending: true })
         .order("variant", { ascending: true })
         .order("mode", { ascending: true }),
       supabase
         .from("b3_prd_authorization_log")
-        .select("id, symbol, variant, mode, de_enabled, para_enabled, de_max_qty, para_max_qty, motivo, origem, ts")
+        .select("id, symbol, variant, mode, de_enabled, para_enabled, de_max_qty, para_max_qty, motivo, origem, sessao_id, ts")
         .eq("user_id", userId)
         .order("ts", { ascending: false })
         .limit(20),
@@ -73,16 +73,34 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
         .select("saldo, capital_liquido, reportado_em")
         .eq("user_id", userId)
         .maybeSingle(),
+      // Posição real aberta por magic (comandos preenchidos dos últimos 5 dias):
+      // a tela avisa que a nova quantidade só vale da PRÓXIMA entrada em diante.
+      supabase
+        .from("b3_mt5_commands")
+        .select("action, quantity, magic_number")
+        .eq("user_id", userId).eq("env", "real").eq("status", "filled")
+        .gte("created_at", new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()),
     ]);
 
     if (rows.error) throw rows.error;
     if (logs.error) throw logs.error;
+
+    const abertoPorMagic: Record<string, number> = {};
+    for (const c of ((cmds as any)?.data ?? []) as any[]) {
+      const m = String(c.magic_number ?? 0);
+      const q = Math.abs(Number(c.quantity ?? 0));
+      abertoPorMagic[m] = (abertoPorMagic[m] ?? 0) + (c.action === "open" ? q : -q);
+    }
+    for (const k of Object.keys(abertoPorMagic)) {
+      if (!(abertoPorMagic[k]! > 0)) delete abertoPorMagic[k];
+    }
 
     const list = rows.data ?? [];
     return {
       authorizations: list,
       log: logs.data ?? [],
       enabled_count: list.filter((r: any) => r.enabled).length,
+      posicao_aberta_por_magic: abertoPorMagic,
       // MUDANÇA 2/3 — stop global DERIVADO (nunca digitado) + insumos para a tela
       // recalcular ao vivo quando o usuário mexe em max_qty ou liga/desliga.
       sizing,
@@ -92,6 +110,113 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
       estado_reportado_em: (estado.data as any)?.reportado_em ?? null,
     };
   });
+
+// ─────────── SESSÃO DE EDIÇÃO (15 min, uma senha só) ───────────
+// A sessão libera EDIÇÃO DE PARÂMETRO (quantidade e limite de perda).
+// Ligar/desligar o real continua pedindo senha sempre — fica fora disto.
+// Nada é guardado no servidor: o token é assinado (HMAC) e carrega o id da
+// sessão e o vencimento. Fechar a aba perde o token e encerra a sessão.
+const EDIT_SESSION_MS = 15 * 60 * 1000;
+
+async function signSession(userId: string, sessionId: string, exp: number) {
+  const key = process.env["B3_PRD_MASTER_PASSWORD_HASH"];
+  if (!key) throw new Error("Senha mestra não configurada. Nenhuma sessão de edição foi aberta.");
+  const { createHmac } = await import("node:crypto");
+  return createHmac("sha256", key).update(`${userId}.${sessionId}.${exp}`).digest("hex");
+}
+
+/** Valida o token e devolve o id da sessão; lança se inválido ou vencido. */
+async function assertEditSession(userId: string, token: string) {
+  const parts = token.split(".");
+  if (parts.length !== 3) throw new Error("sessão de edição inválida");
+  const [sessionId, expStr, mac] = parts as [string, string, string];
+  const exp = Number(expStr);
+  if (!Number.isFinite(exp) || Date.now() > exp) throw new Error("sessão de edição expirada — destrave novamente");
+  const expected = await signSession(userId, sessionId, exp);
+  const { timingSafeEqual } = await import("node:crypto");
+  const a = Buffer.from(mac);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error("sessão de edição inválida");
+  return sessionId;
+}
+
+export const openPrdEditSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ password: z.string().min(1) }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertMasterPassword(data.password);
+    const { randomUUID } = await import("node:crypto");
+    const sessionId = randomUUID();
+    const exp = Date.now() + EDIT_SESSION_MS;
+    const mac = await signSession(context.userId, sessionId, exp);
+    return {
+      ok: true as const,
+      session_id: sessionId,
+      token: `${sessionId}.${exp}.${mac}`,
+      expires_at: new Date(exp).toISOString(),
+    };
+  });
+
+/** Altera SÓ quantidade e limite de perda, com o robô ligado ou desligado.
+ *  Vale da PRÓXIMA abertura em diante: posição aberta é encerrada no tamanho
+ *  em que entrou (o fechamento não consulta max_qty). */
+export const updatePrdAuthorizationParams = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        symbol: z.enum(SYMBOLS),
+        variant: z.enum(VARIANTS),
+        mode: z.enum(MODES),
+        max_qty: z.number().int().min(1).max(100),
+        max_daily_loss_mult: z.number().min(0).max(50),
+        session_token: z.string().min(1),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const sessionId = await assertEditSession(userId, data.session_token);
+
+    const { loadRealSizing } = await import("@/lib/b3-real-stop.server");
+    const { brlFromMult } = await import("@/lib/b3-real-sizing");
+    const { rootSymbol } = await import("@/lib/b3-format");
+    const sizing = await loadRealSizing(supabase, userId);
+    const robot = sizing.find(
+      (s) => s.symbol === rootSymbol(data.symbol) && s.variant === data.variant && s.mode === data.mode,
+    );
+    if (!robot || !(robot.stop_pts > 0) || !(robot.point_value_brl > 0)) {
+      throw new Error(
+        "Não foi possível ler o stop em pontos deste robô, então a perda diária em reais não pode ser derivada do multiplicador. Nada foi alterado.",
+      );
+    }
+    const lossBrl = brlFromMult(data.max_daily_loss_mult, robot.stop_pts, robot.point_value_brl, data.max_qty);
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: updated, error } = await (supabaseAdmin as any).rpc("b3_prd_atualizar_parametros", {
+      p_user_id: userId,
+      p_symbol: data.symbol,
+      p_variant: data.variant,
+      p_mode: data.mode,
+      p_max_qty: data.max_qty,
+      p_max_daily_loss_brl: lossBrl,
+      p_max_daily_loss_mult: data.max_daily_loss_mult,
+      p_origem: "painel_sessao_edicao",
+      p_sessao_id: sessionId,
+    });
+    if (error) throw error;
+    const row = Array.isArray(updated) ? updated[0] : updated;
+    if (!row) throw new Error("Combinação ativo/modalidade/modo não encontrada para este usuário.");
+
+    // Mudar a quantidade muda o stop global derivado — e o piso do freio de
+    // pico da conta é percentual dele. Recalcula agora, como no ligar/desligar.
+    const { syncPeakFloorFromGlobalStop } = await import("@/lib/b3-real-stop.server");
+    const piso = await syncPeakFloorFromGlobalStop(supabase, userId);
+
+    return { ok: true as const, row, sessao_id: sessionId, piso_pico_conta: piso };
+  });
+
+
 
 
 export const setPrdAuthorization = createServerFn({ method: "POST" })
