@@ -221,6 +221,35 @@ async function mirrorToReal(
     return;
   }
 
+  // ── FECHAMENTO: quantidade = o que está REALMENTE aberto naquele magic ──
+  // Soma dos 'open' preenchidos menos os 'close' preenchidos (últimos 5 dias).
+  // Assim uma posição de 2 contratos é encerrada com 2 mesmo depois de a tela
+  // baixar max_qty para 1. Sem posição aberta, nada é enfileirado.
+  if (action === "close") {
+    try {
+      const desde = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: hist, error: histErr } = await supabase
+        .from("b3_mt5_commands")
+        .select("action, quantity")
+        .eq("user_id", userId).eq("env", "real").eq("magic_number", magic)
+        .eq("status", "filled")
+        .gte("created_at", desde);
+      if (histErr) throw histErr;
+      let aberto = 0;
+      for (const c of (hist ?? []) as any[]) {
+        const q = Math.abs(Number(c.quantity ?? 0));
+        if (c.action === "open") aberto += q;
+        else if (c.action === "close") aberto -= q;
+      }
+      if (aberto <= 0) return; // nada aberto no real para este robô
+      quantity = aberto;
+    } catch (e) {
+      // Falha ao medir o aberto não pode impedir a saída: mantém o max_qty
+      // vigente como melhor estimativa e segue com o fechamento.
+      console.error("[mirror] não foi possível medir a posição real aberta:", (e as Error).message);
+    }
+  }
+
 
   // ── PORTÃO DE PERDA REAL (só ABERTURA; fechamento nunca é bloqueado) ──
   // Dois freios, ambos em R$ já no tamanho REAL:
