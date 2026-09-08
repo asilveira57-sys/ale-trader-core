@@ -3769,16 +3769,37 @@ async function runB3SimulationTickInner(
         continue;
       }
 
-      // Freio de grupo: nível >= 2 trava ENTRADA NOVA dos robôs listados.
-      // A gestão da posição aberta deste modo já rodou acima — nenhum nível
-      // pode pular stop, alvo, trailing ou zeragem.
-      if (grupoNivel >= 2 && grupoTravados.includes(mode)) {
-        const msg = `Freio de grupo ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; entrada nova bloqueada (resultado do grupo ${Number(grupo?.resultado_brl ?? 0).toFixed(2)} BRL).`;
-        await recordStatusIfChanged(mode, m, "bloqueado_grupo", `grupo_nivel_${grupoNivel}`,
+      // ── FREIO DE GRUPO NO SIMULADO: SOMBRA, NÃO BLOQUEIO (08/09/2026) ──
+      // Em 08/09 o freio travou 13 dos 16 robôs de WIN e treze deles
+      // produziram UMA observação no dia inteiro. O simulado não tem capital
+      // para proteger; ele existe para produzir informação — e não é possível
+      // calibrar o freio com dados gerados sob o freio, porque bloquear destrói
+      // justamente o contrafactual que justificaria bloquear.
+      //
+      // A DECISÃO não muda: `decideB3Grupo` segue calculando nível,
+      // multiplicador e lista de travados, e segue gravando em
+      // b3_grupo_estado_dia. Muda só o EFEITO aqui: a entrada sai, marcada como
+      // sombra na ordem, e o espelho para o real é recusado (com registro).
+      // O freio de pico e o disjuntor diário continuam bloqueando de verdade.
+      const sombraFreioGrupo = grupoNivel >= 2 && grupoTravados.includes(mode);
+      if (sombraFreioGrupo) {
+        const msg = `Freio de grupo nível ${grupoNivel} (SOMBRA — entrada liberada no simulado) ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; resultado do grupo ${Number(grupo?.resultado_brl ?? 0).toFixed(2)} BRL. Nenhum comando real será enfileirado.`;
+        await recordStatusIfChanged(mode, m, "sombra_grupo", `grupo_nivel_${grupoNivel}_sombra`,
           { observed: Number(grupo?.resultado_brl ?? 0), pnl: realizedToday, message: msg });
-        log.push({ mode, action: "skip", reason: `grupo_nivel_${grupoNivel}` });
-        finalizeAudit(msg);
-        continue;
+        log.push({ mode, action: "sombra_grupo", nivel: grupoNivel });
+        // Linha própria no log de decisão: contável e distinguível do bloqueio
+        // real, gravada mesmo quando a assinatura do motivo não mudou.
+        entryStageRows.push({
+          user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+          symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+          estagio: "freio_grupo_sombra",
+          motivo: msg.slice(0, 500),
+          detalhe: {
+            sombra: true, grupo_nivel: grupoNivel, grupo_multiplicador: grupoMultiplicador,
+            grupo_resultado_brl: Number(grupo?.resultado_brl ?? 0),
+            travados: grupoTravados, espelho_real: "barrado",
+          },
+        });
       }
 
 
@@ -4053,9 +4074,12 @@ async function runB3SimulationTickInner(
         // agora reduz a partir da base certa, em vez de reduzir 1 contrato.
         const baseQty = Number(cfg.max_contracts) || 1;
         const qtyProt = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
-        // Freio de grupo nível 1: corta contratos pela metade (arredonda para
-        // baixo, piso de 1). Vale só para ENTRADA NOVA.
-        const qty = grupoNivel >= 1 ? aplicarFatorContratos(qtyProt, grupoMultiplicador) : qtyProt;
+        // Freio de grupo no simulado não reduz contratos (é sombra, item 1 de
+        // 08/09/2026): a amostra tem de sair no tamanho do robô, senão o
+        // resultado livre não é comparável ao sombra. `aplicarFatorContratos`
+        // segue existindo e valendo para o caminho real.
+        const qty = qtyProt;
+        const qtySeFreioValesse = grupoNivel >= 1 ? aplicarFatorContratos(qtyProt, grupoMultiplicador) : qtyProt;
 
         // ── CONTRATO DE SAÍDA CONGELADO NA ABERTURA (08/09/2026) ──
         // `stop_pts` estava NULO em 100% das ordens: o nível só existia na
@@ -4083,6 +4107,11 @@ async function runB3SimulationTickInner(
           gain_pts: gainPtsFrozen > 0 ? gainPtsFrozen : null,
           stop_price: stopPriceFrozen,
           target_price: targetPriceFrozen,
+          // Sombra do freio de grupo: esta ordem existiria no simulado mas não
+          // no real. É o que separa resultado livre de resultado sombra e o que
+          // mantém a curadoria fiel ao que o dinheiro real faria.
+          bloqueado_na_sombra: sombraFreioGrupo,
+          nivel_freio_na_abertura: grupoNivel,
           ...orderAuditPatch(entryAudit),
         };
         // Instrumentação permanente do veredito do comitê na própria ordem.
@@ -4180,12 +4209,42 @@ async function runB3SimulationTickInner(
         if (!insertedOrder) throw new Error("Falha ao criar ordem simulada");
 
         markAuditEvent(`abertura:${mode}:${effectiveSide}`);
-        await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant, {
-          stop_pts: stopPtsFrozen > 0 ? stopPtsFrozen : null,
-          gain_pts: gainPtsFrozen > 0 ? gainPtsFrozen : null,
-          stop_price: stopPriceFrozen,
-          target_price: targetPriceFrozen,
-        });
+        if (sombraFreioGrupo) {
+          // NO REAL, NADA MUDA: o espelho recusa a abertura quando o freio de
+          // grupo está acionado. A recusa é registrada — sem isso não há como
+          // contar quantas entradas reais foram puladas, e a diferença entre o
+          // resultado simulado e o real pareceria erro de conciliação.
+          markAuditEvent(`espelho_barrado:${mode}:freio_grupo`);
+          try {
+            await supabase.from("system_logs").insert({
+              event_type: "b3_espelho_barrado_freio",
+              source: "b3-simulation-tick",
+              severity: "warning",
+              message: `[${asset.quote_symbol}/${runVariant}/${mode}] abertura ${effectiveSide.toUpperCase()} liberada no simulado e RECUSADA no real — freio de grupo nível ${grupoNivel}.`,
+              technical_data: {
+                // Magic vem do banco (única fonte da fórmula). Aqui é registro:
+                // se a RPC falhar, fica nulo e o resto do log continua valendo.
+                magic: (await supabase.rpc("b3_magic", {
+                  p_symbol: rootSymbol(asset.quote_symbol), p_variant: runVariant, p_mode: mode,
+                }).then((r: any) => r?.data ?? null).catch(() => null)),
+                symbol: rootSymbol(asset.quote_symbol), quote_symbol: asset.quote_symbol,
+                variant: runVariant, mode, grupo_nivel: grupoNivel,
+                grupo_multiplicador: grupoMultiplicador,
+                grupo_resultado_brl: Number(grupo?.resultado_brl ?? 0),
+                simulation_order_id: insertedOrder.id,
+                quantidade_simulada: qty, quantidade_se_freio_valesse: qtySeFreioValesse,
+                side: effectiveSide,
+              },
+            });
+          } catch { /* registro nunca derruba o motor */ }
+        } else {
+          await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant, {
+            stop_pts: stopPtsFrozen > 0 ? stopPtsFrozen : null,
+            gain_pts: gainPtsFrozen > 0 ? gainPtsFrozen : null,
+            stop_price: stopPriceFrozen,
+            target_price: targetPriceFrozen,
+          });
+        }
         providerStats.last_entry_price = entry;
         openOrdersCache = null;
         await supabase.from("b3_simulation_modes")
@@ -4257,6 +4316,18 @@ async function runB3SimulationTickInner(
       } catch (e: any) {
         log.push({ action: "entry_stage_log_erro", error: String(e?.message ?? e) });
       }
+    }
+
+    // MEDIÇÃO DIÁRIA DO FREIO DE GRUPO: os dois caminhos, todo dia.
+    // Uma leitura por tique por execução; falha em silêncio.
+    try {
+      const { atualizarGrupoSombraDia } = await import("./b3-grupo-sombra.server");
+      const sombra = await atualizarGrupoSombraDia(
+        supabase, userId, runId, rootSymbol(run.symbol), runVariant, b3DayKeyBRT(new Date()),
+      );
+      if (sombra) log.push({ action: "grupo_sombra_dia", ...sombra });
+    } catch (e: any) {
+      log.push({ action: "grupo_sombra_dia_erro", error: String(e?.message ?? e) });
     }
     snapshotExtra.timings = {
       total_ms: Date.now() - runT0,
@@ -5241,6 +5312,16 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         grupoComFreio.add(`${rootSymbol(g.symbol)}|${g.variant ?? "indicador"}`);
       }
     }
+    // Livre × sombra do dia por grupo: desde 08/09/2026 o freio de grupo só
+    // registra no simulado, então o card precisa mostrar o resultado real e o
+    // que existiria com o freio ligado — e a diferença, que é a medição.
+    const { data: sombraRows } = await (supabase as any).from("b3_grupo_sombra_dia")
+      .select("symbol, variant, resultado_livre_brl, resultado_sombra_brl, ops_livre, ops_sombra, diferenca_brl")
+      .eq("user_id", userId).eq("trade_date", sessionDate);
+    const sombraByKey: Record<string, any> = {};
+    for (const s of (sombraRows ?? []) as any[]) {
+      sombraByKey[`${rootSymbol(s.symbol)}|${s.variant}`] = s;
+    }
 
     // AUTORIZAÇÃO REAL (04/09/2026): quais robôs desta lista simulada estão
     // realmente espelhando dinheiro. Cruzamento pela RAIZ do ativo — a
@@ -5413,25 +5494,39 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           pending_stop: open ? (pendingByMode[m] ?? null) : null,
           grupo: (() => {
             const chaveGrupo = `${rootSymbol(run.symbol)}|${variant}`;
+            const s = sombraByKey[chaveGrupo] ?? null;
+            const sombra = s
+              ? {
+                  resultado_livre_brl: Number(s.resultado_livre_brl ?? 0),
+                  resultado_sombra_brl: Number(s.resultado_sombra_brl ?? 0),
+                  ops_livre: Number(s.ops_livre ?? 0),
+                  ops_sombra: Number(s.ops_sombra ?? 0),
+                  diferenca_brl: Number(s.diferenca_brl ?? 0),
+                }
+              : null;
             // Grupo sem configuração: opera sem freio e a tela precisa dizer.
             if (!grupoComFreio.has(chaveGrupo)) {
               return {
                 nivel: 0, multiplicador: 1, travado: false, desde: null,
-                resultado_brl: 0, sem_limite: true,
+                resultado_brl: 0, sem_limite: true, sombra_apenas: true, sombra,
                 texto: "sem freio de grupo configurado",
               };
             }
             const g = grupoByKey[chaveGrupo];
             const nivel = Number(g?.nivel_atual ?? 0);
-            if (!g || nivel <= 0) return null;
+            if (!g || nivel <= 0) return sombra ? { nivel: 0, multiplicador: 1, travado: false, desde: null, resultado_brl: 0, sombra_apenas: true, sombra, texto: null } : null;
             const mult = Number(g.multiplicador ?? 1);
             return {
               nivel,
               multiplicador: mult,
+              // No simulado, "travado" agora significa SOMBRA: o robô entra e o
+              // espelho para o real é recusado.
               travado: Array.isArray(g.robos_travados) && g.robos_travados.includes(m),
+              sombra_apenas: true,
               desde: g.ultima_mudanca_ts ?? null,
               resultado_brl: Number(g.resultado_brl ?? 0),
-              texto: `grupo ${asset.quote_symbol}/${variant} — ${textoNivelGrupo(nivel, mult)}`,
+              sombra,
+              texto: `grupo ${asset.quote_symbol}/${variant} — ${textoNivelGrupo(nivel, mult)} (sombra: simulado entra, real não)`,
             };
           })(),
 
