@@ -141,13 +141,17 @@ async function mirrorToReal(
 ) {
   if (!REAL_MIRROR_ENABLED) return;
 
-  // ── PORTÃO DE AUTORIZAÇÃO REAL (nega por padrão) ──
+  // ── PORTÃO DE AUTORIZAÇÃO REAL (nega por padrão) — SÓ ABERTURA ──
   // Sem linha autorizada em b3_prd_authorizations para
-  // user+symbol+variant+mode, nenhum comando real é enfileirado. Falha de
-  // consulta = falha FECHADA. Nenhum registro de bloqueio é gravado
-  // (decisão do usuário). A modalidade entrou na chave em 15/08/2026:
+  // user+symbol+variant+mode, nenhuma ABERTURA real é enfileirada. Falha de
+  // consulta = falha FECHADA. A modalidade entrou na chave em 15/08/2026:
   // autorizar 'indicador' não autoriza 'price_action' no mesmo ativo/modo.
+  //
+  // FECHAMENTO nunca passa por este portão (08/09/2026): fechar REDUZ risco.
+  // Baixar max_qty ou desligar o robô não pode impedir a saída de uma posição
+  // já aberta — foi exatamente isso que travou a zeragem em 08/09.
   let authMaxQty = 1;
+  let authEnabled = false;
   try {
     const { data: auth, error: authErr } = await supabase
       .from("b3_prd_authorizations")
@@ -157,15 +161,23 @@ async function mirrorToReal(
       .eq("variant", variant)
       .eq("mode", mode)
       .maybeSingle();
-    if (authErr) return;
-    if (!auth || auth.enabled !== true) return;
-    authMaxQty = Number(auth.max_qty ?? 1);
+    if (authErr) {
+      if (action === "open") return;
+    } else if (auth) {
+      authEnabled = auth.enabled === true;
+      authMaxQty = Number(auth.max_qty ?? 1);
+    }
   } catch {
-    return;
+    if (action === "open") return;
   }
+  if (action === "open" && !authEnabled) return;
 
-  // Quantidade real = max_qty da autorização (tela), nunca max_contracts do simulado.
-  const quantity = Math.max(1, authMaxQty);
+  // Quantidade real da ABERTURA = max_qty da autorização (tela), nunca
+  // max_contracts do simulado. No FECHAMENTO a quantidade é a que está aberta
+  // de fato no real (definida na entrada), não o max_qty de agora.
+  let quantity = Math.max(1, authMaxQty);
+
+
 
 
   // Falha FECHADA: o magic vem do banco (public.b3_magic) e só é aceito se
@@ -207,6 +219,35 @@ async function mirrorToReal(
       });
     } catch { /* log é best-effort; o bloqueio já aconteceu */ }
     return;
+  }
+
+  // ── FECHAMENTO: quantidade = o que está REALMENTE aberto naquele magic ──
+  // Soma dos 'open' preenchidos menos os 'close' preenchidos (últimos 5 dias).
+  // Assim uma posição de 2 contratos é encerrada com 2 mesmo depois de a tela
+  // baixar max_qty para 1. Sem posição aberta, nada é enfileirado.
+  if (action === "close") {
+    try {
+      const desde = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: hist, error: histErr } = await supabase
+        .from("b3_mt5_commands")
+        .select("action, quantity")
+        .eq("user_id", userId).eq("env", "real").eq("magic_number", magic)
+        .eq("status", "filled")
+        .gte("created_at", desde);
+      if (histErr) throw histErr;
+      let aberto = 0;
+      for (const c of (hist ?? []) as any[]) {
+        const q = Math.abs(Number(c.quantity ?? 0));
+        if (c.action === "open") aberto += q;
+        else if (c.action === "close") aberto -= q;
+      }
+      if (aberto <= 0) return; // nada aberto no real para este robô
+      quantity = aberto;
+    } catch (e) {
+      // Falha ao medir o aberto não pode impedir a saída: mantém o max_qty
+      // vigente como melhor estimativa e segue com o fechamento.
+      console.error("[mirror] não foi possível medir a posição real aberta:", (e as Error).message);
+    }
   }
 
 

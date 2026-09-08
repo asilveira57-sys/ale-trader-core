@@ -114,6 +114,31 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-pending"
 
         if (error) return json({ ok: false, error: error.message }, 500);
 
+        // 3) Estado das AUTORIZAÇÕES por magic — a nuvem é a única fonte do teto
+        //    de quantidade. O executor não deve manter limite próprio em arquivo
+        //    local: aqui ele recebe o teto vigente junto com os comandos.
+        //    O teto vale só para ABERTURA; fechamento executa a quantidade que
+        //    vier no comando, sempre (fechar reduz risco).
+        const { data: authRows } = await (supabaseAdmin as any)
+          .from("b3_prd_authorizations")
+          .select("magic_number, max_qty, enabled, symbol, variant, mode, updated_at")
+          .eq("user_id", payload.user_id)
+          .not("magic_number", "is", null);
+
+        const autorizacoes: Record<string, unknown> = {};
+        let versao: string | null = null;
+        for (const a of (authRows ?? []) as any[]) {
+          autorizacoes[String(a.magic_number)] = {
+            max_qty: Number(a.max_qty ?? 0),
+            enabled: a.enabled === true,
+            symbol: a.symbol,
+            variant: a.variant ?? "indicador",
+            mode: a.mode,
+          };
+          const u = a.updated_at ? String(a.updated_at) : null;
+          if (u && (!versao || u > versao)) versao = u;
+        }
+
         return json({
           ok: true,
           env: payload.env,
@@ -121,10 +146,15 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-pending"
           real_stopped_at: stateRow?.stopped_at ?? null,
           real_stopped_reason: stateRow?.stopped_reason ?? null,
           open_commands_blocked: blockOpen,
+          // Teto de quantidade: aplicar SOMENTE em action='open'.
+          autorizacoes,
+          autorizacoes_versao: versao,
+          qty_limit_applies_to: ["open"],
           commands: claimed ?? [],
           count: (claimed ?? []).length,
           server_time: nowIso,
         });
+
 
       },
     },

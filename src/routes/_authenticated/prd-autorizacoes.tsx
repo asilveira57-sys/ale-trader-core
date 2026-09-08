@@ -1,8 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
-import { listPrdAuthorizations, setPrdAuthorization, revokeAllPrdAuthorizations } from "@/lib/prd-authorization.functions";
+import { useEffect, useState } from "react";
+import {
+  listPrdAuthorizations, setPrdAuthorization, revokeAllPrdAuthorizations,
+  openPrdEditSession, updatePrdAuthorizationParams,
+} from "@/lib/prd-authorization.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -13,7 +16,8 @@ import { rootSymbol } from "@/lib/b3-format";
 import { computeGlobalRealStop, brlFromMult, STOPS_POR_DIA } from "@/lib/b3-real-sizing";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { ModeName } from "@/components/b3/ModeName";
-import { ShieldAlert, AlertTriangle, Lock, Unlock } from "lucide-react";
+import { ShieldAlert, AlertTriangle, Lock, Unlock, Save, PencilLine } from "lucide-react";
+
 
 type SizingRow = {
   symbol: string; variant: string; mode: string; enabled: boolean;
@@ -59,8 +63,10 @@ export const Route = createFileRoute("/_authenticated/prd-autorizacoes")({
 type Row = {
   id: string; symbol: string; variant: string; mode: string; enabled: boolean;
   max_qty: number; max_daily_loss_brl: number; max_daily_loss_mult: number | null;
+  magic_number: number | null;
   authorized_at: string | null; authorized_by: string | null;
 };
+
 
 // MODE_LABEL removido (30/08/2026): o rótulo do modo vem de
 // public.b3_mode_apelidos via useModeApelidos. Rótulo duplicado em TypeScript
@@ -80,6 +86,8 @@ function PrdAuthorizationsPage() {
   const list = useServerFn(listPrdAuthorizations);
   const setAuth = useServerFn(setPrdAuthorization);
   const revokeAll = useServerFn(revokeAllPrdAuthorizations);
+  const openSession = useServerFn(openPrdEditSession);
+  const updateParams = useServerFn(updatePrdAuthorizationParams);
 
   const { data, isLoading } = useQuery({ queryKey: ["prd-auth"], queryFn: () => list({}) });
 
@@ -89,6 +97,64 @@ function PrdAuthorizationsPage() {
   const [lossMult, setLossMult] = useState(2.5);
   const [killStep, setKillStep] = useState<0 | 1 | 2>(0);
   const [killPassword, setKillPassword] = useState("");
+
+  // Sessão de edição de PARÂMETRO (15 min). Só em memória: recarregar ou
+  // fechar a aba encerra. Ligar/desligar o real continua pedindo senha.
+  const [session, setSession] = useState<{ id: string; token: string; expiresAt: number } | null>(null);
+  const [unlockOpen, setUnlockOpen] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  // Rascunho da linha em edição: chave `${symbol}||${variant}||${mode}`.
+  const [draft, setDraft] = useState<Record<string, { qty: number; mult: number }>>({});
+
+  useEffect(() => {
+    if (!session) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [session]);
+  useEffect(() => {
+    if (session && now >= session.expiresAt) {
+      setSession(null); setDraft({});
+      toast.info("Sessão de edição expirada — os campos voltaram a ficar travados.");
+    }
+  }, [session, now]);
+  const sessionActive = !!session && now < session.expiresAt;
+  const restante = sessionActive ? Math.max(0, session!.expiresAt - now) : 0;
+  const restanteLabel = `${String(Math.floor(restante / 60000)).padStart(2, "0")}:${String(Math.floor((restante % 60000) / 1000)).padStart(2, "0")}`;
+
+  const mUnlock = useMutation({
+    mutationFn: () => openSession({ data: { password: unlockPassword } }),
+    onSuccess: (r: { session_id: string; token: string; expires_at: string }) => {
+      setSession({ id: r.session_id, token: r.token, expiresAt: new Date(r.expires_at).getTime() });
+      setNow(Date.now());
+      setUnlockOpen(false); setUnlockPassword("");
+      toast.success("Edição liberada por 15 minutos");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const mParams = useMutation({
+    mutationFn: (p: { row: Row; max_qty: number; max_daily_loss_mult: number }) =>
+      updateParams({
+        data: {
+          symbol: p.row.symbol as never, variant: (p.row.variant ?? "indicador") as never,
+          mode: p.row.mode as never, max_qty: p.max_qty,
+          max_daily_loss_mult: p.max_daily_loss_mult, session_token: session?.token ?? "",
+        },
+      }),
+    onSuccess: (_r, p) => {
+      toast.success(`${p.row.symbol} · ${p.row.mode}: quantidade ${p.max_qty} contrato(s) — vale da próxima entrada`);
+      setDraft((d) => {
+        const c = { ...d };
+        delete c[`${p.row.symbol}||${p.row.variant ?? "indicador"}||${p.row.mode}`];
+        return c;
+      });
+      qc.invalidateQueries({ queryKey: ["prd-auth"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+
 
   const mSet = useMutation({
     mutationFn: (p: { row: Row; enabled: boolean; password: string; max_qty: number; max_daily_loss_mult: number }) =>
@@ -175,10 +241,25 @@ function PrdAuthorizationsPage() {
           <div className={`panel px-4 py-2 text-sm ${enabledCount > 0 ? "border-orange-500/50 bg-orange-500/10 text-orange-300" : "text-muted-foreground"}`}>
             <span className="font-mono text-lg font-semibold">{enabledCount}</span> / {allRows.length} pares ligados
           </div>
+          {sessionActive ? (
+            <div className="flex items-center gap-2">
+              <div className="panel px-3 py-2 text-sm border-emerald-500/50 bg-emerald-500/10 text-emerald-300">
+                <PencilLine className="size-4 inline mr-1" /> Edição liberada · <span className="font-mono">{restanteLabel}</span>
+              </div>
+              <Button variant="outline" onClick={() => { setSession(null); setDraft({}); toast.success("Edição travada"); }}>
+                <Lock className="size-4 mr-1" /> Travar agora
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" onClick={() => setUnlockOpen(true)}>
+              <PencilLine className="size-4 mr-1" /> Destravar edição
+            </Button>
+          )}
           <Button variant="destructive" onClick={() => setKillStep(1)}>
             <AlertTriangle className="size-4 mr-1" /> Desligar tudo
           </Button>
         </div>
+
       </header>
 
       {focused && (
@@ -267,6 +348,14 @@ function PrdAuthorizationsPage() {
             <tbody>
               {list.map((r) => {
                 const s = sizingFor(r);
+                const dkey = `${r.symbol}||${r.variant ?? "indicador"}||${r.mode}`;
+                const d = draft[dkey];
+                const curQty = d?.qty ?? Number(r.max_qty ?? 1);
+                const curMult = d?.mult ?? Number(r.max_daily_loss_mult ?? s?.manual_daily_loss_mult ?? 2.5);
+                const dirty = !!d && (curQty !== Number(r.max_qty ?? 1) || curMult !== Number(r.max_daily_loss_mult ?? s?.manual_daily_loss_mult ?? 2.5));
+                const abertoReal = Number(((data as any).posicao_aberta_por_magic ?? {})[String(r.magic_number ?? "")] ?? 0);
+                const setD = (patch: { qty?: number; mult?: number }) =>
+                  setDraft((prev) => ({ ...prev, [dkey]: { qty: patch.qty ?? curQty, mult: patch.mult ?? curMult } }));
                 return (
                 <tr key={r.id} className="border-b border-border/40">
                   <td className="py-2"><ModeName mode={r.mode} api={apelidos} stacked /></td>
@@ -276,10 +365,29 @@ function PrdAuthorizationsPage() {
                       ? <Badge className="bg-orange-500 text-white">LIBERADO</Badge>
                       : <Badge variant="secondary">bloqueado</Badge>}
                   </td>
-                  <td className="text-right font-mono">{r.max_qty}</td>
                   <td className="text-right font-mono">
-                    {mult(r.max_daily_loss_mult ?? s?.manual_daily_loss_mult ?? null)}
-                    <span className="ml-1 text-[10px] text-muted-foreground">{brl(r.max_daily_loss_brl)}</span>
+                    {sessionActive ? (
+                      <Input type="number" min={1} max={100} value={curQty} aria-label={`Quantidade ${r.symbol} ${r.mode}`}
+                        className="h-8 w-20 ml-auto text-right font-mono"
+                        onChange={(e) => setD({ qty: Number(e.target.value) })} />
+                    ) : r.max_qty}
+                    {sessionActive && abertoReal > 0 ? (
+                      <div className="text-[10px] text-amber-300 whitespace-nowrap">
+                        {abertoReal} aberto(s) agora — fecha nesse tamanho
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="text-right font-mono">
+                    {sessionActive ? (
+                      <Input type="number" min={0} step={0.05} value={curMult} aria-label={`Perda diária ${r.symbol} ${r.mode}`}
+                        className="h-8 w-24 ml-auto text-right font-mono"
+                        onChange={(e) => setD({ mult: Number(e.target.value) })} />
+                    ) : (
+                      <>
+                        {mult(r.max_daily_loss_mult ?? s?.manual_daily_loss_mult ?? null)}
+                        <span className="ml-1 text-[10px] text-muted-foreground">{brl(r.max_daily_loss_brl)}</span>
+                      </>
+                    )}
                   </td>
                   <td className="text-right font-mono text-muted-foreground">
                     {s ? brl(s.three_stops_brl) : "—"}
@@ -292,7 +400,13 @@ function PrdAuthorizationsPage() {
                   <td className="pl-4 text-muted-foreground">
                     {r.authorized_at ? new Date(r.authorized_at).toLocaleString("pt-BR") : "—"}
                   </td>
-                  <td className="text-right">
+                  <td className="text-right whitespace-nowrap">
+                    {sessionActive && dirty ? (
+                      <Button size="sm" className="mr-2" disabled={mParams.isPending}
+                        onClick={() => mParams.mutate({ row: r, max_qty: curQty, max_daily_loss_mult: curMult })}>
+                        <Save className="size-3.5 mr-1" /> Salvar
+                      </Button>
+                    ) : null}
                     <Button size="sm" variant={r.enabled ? "outline" : "default"} onClick={() => openDialog(r, !r.enabled)}>
                       {r.enabled ? <><Lock className="size-3.5 mr-1" /> Desligar</> : <><Unlock className="size-3.5 mr-1" /> Ligar</>}
                     </Button>
@@ -300,6 +414,7 @@ function PrdAuthorizationsPage() {
                 </tr>
                 );
               })}
+
             </tbody>
 
           </table>
@@ -320,6 +435,8 @@ function PrdAuthorizationsPage() {
                   {String(l.de_enabled)} → {String(l.para_enabled)}
                 </span>{" "}
                 · qty {l.de_max_qty} → {l.para_max_qty} · origem {l.origem ?? "—"}
+                {l.sessao_id ? <> · sessão {String(l.sessao_id).slice(0, 8)}</> : null}
+
               </li>
             ))}
           </ul>
@@ -422,6 +539,33 @@ function PrdAuthorizationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={unlockOpen} onOpenChange={(o) => { if (!o) { setUnlockOpen(false); setUnlockPassword(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Destravar edição por 15 minutos</DialogTitle>
+            <DialogDescription>
+              A senha é pedida uma vez. Durante a janela você altera quantidade e limite de perda direto na linha,
+              sem digitar senha de novo. Ligar e desligar a conta real continua exigindo a senha. Fechar ou recarregar
+              a aba encerra a liberação. A nova quantidade vale da próxima entrada — posição já aberta é encerrada no
+              tamanho em que entrou.
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label>Senha mestra</Label>
+            <Input type="password" autoComplete="current-password" value={unlockPassword}
+              onChange={(e) => setUnlockPassword(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && unlockPassword) mUnlock.mutate(); }} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setUnlockOpen(false); setUnlockPassword(""); }}>Cancelar</Button>
+            <Button disabled={!unlockPassword || mUnlock.isPending} onClick={() => mUnlock.mutate()}>
+              <Unlock className="size-4 mr-1" /> Destravar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
