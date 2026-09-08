@@ -1030,11 +1030,16 @@ async function runB3SimulationTickInner(
   // Configuração e estado do dia vivem em b3_grupo_limites / b3_grupo_estado_dia.
   // O motor só lê e age. Travar = bloquear ENTRADA NOVA; gestão de posição
   // aberta nunca é pulada por nenhum nível.
+  // 08/09/2026: a busca é pela RAIZ do ativo (WIN, WDO, BIT…), nunca pelo
+  // contrato. Chavear por contrato desligava o freio em silêncio a cada
+  // rolagem de vencimento (WDOU26 → WDOV26 em 30/08 deixou WDO, BIT, ETR e
+  // SOL sem freio nenhum por mais de uma semana).
   const grupoDia = b3DayKeyBRT(new Date());
+  const grupoRoot = rootSymbol(run.symbol);
   let grupoLimites: B3GrupoLimites | null = null;
   {
     const { data: gl } = await supabase.from("b3_grupo_limites")
-      .select("*").eq("user_id", userId).eq("symbol", run.symbol).eq("variant", runVariant).maybeSingle();
+      .select("*").eq("user_id", userId).eq("symbol", grupoRoot).eq("variant", runVariant).maybeSingle();
     if (gl) {
       grupoLimites = {
         teto_brl: Number(gl.teto_brl), nivel1_pct: Number(gl.nivel1_pct),
@@ -1045,13 +1050,33 @@ async function runB3SimulationTickInner(
       };
     }
   }
+  // Grupo sem linha de configuração opera sem freio. Isso precisa gritar —
+  // um aviso por grupo por pregão, para a tela e para o log.
+  if (!grupoLimites) {
+    try {
+      const fonte = `b3_grupo_freio:${grupoRoot}/${runVariant}`;
+      const { data: jaAvisado } = await supabase.from("system_logs")
+        .select("id").eq("event_type", "b3_grupo_sem_limite").eq("source", fonte)
+        .gte("created_at", `${grupoDia}T03:00:00.000Z`).limit(1);
+      if (!jaAvisado?.length) {
+        await supabase.from("system_logs").insert({
+          event_type: "b3_grupo_sem_limite", severity: "warning", source: fonte,
+          message: `[${grupoRoot}/${runVariant}] sem linha em b3_grupo_limites — o grupo está operando SEM freio escalonado.`,
+          technical_data: {
+            symbol_execucao: run.symbol, symbol_raiz: grupoRoot,
+            variant: runVariant, trade_date: grupoDia, run_id: runId,
+          } as any,
+        });
+      }
+    } catch { /* aviso best-effort: nunca derruba o tique */ }
+  }
   let grupoEstado: B3GrupoEstado = {
     resultado_brl: 0, pior_do_dia_brl: 0, nivel_atual: 0, multiplicador: 1,
     ultima_mudanca_ts: null, robos_travados: [],
   };
   if (grupoLimites) {
     const { data: ge } = await supabase.from("b3_grupo_estado_dia")
-      .select("*").eq("user_id", userId).eq("symbol", run.symbol)
+      .select("*").eq("user_id", userId).eq("symbol", grupoRoot)
       .eq("variant", runVariant).eq("trade_date", grupoDia).maybeSingle();
     if (ge) {
       grupoEstado = {
