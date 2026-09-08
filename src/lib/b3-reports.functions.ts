@@ -157,6 +157,14 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
         comite_aprovou: approvals,
         comite_rejeitou: rejections,
         bloqueios_risco: blocksThisPeriod,
+        // Linha limpa: mesma conta sem as ordens com stop furado.
+        trades_stop_violado: violadas.length,
+        pnl_stop_violado: prejuizoViolado,
+        pnl_periodo_limpo: liquidoLimpo,
+        pontos_liquidos_limpo: pontosLimpos,
+        trades_limpo: limpas.length,
+        vitorias_limpo: winsLimpas,
+        taxa_acerto_limpo: limpas.length > 0 ? (winsLimpas / limpas.length) * 100 : 0,
         // legado / cumulativo
         cumulative: {
           initial_balance: Number(mRow?.initial_balance ?? 0),
