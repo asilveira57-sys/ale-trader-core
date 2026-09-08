@@ -755,6 +755,7 @@ function buildEngineDigest(tickAudit: any, completo = false) {
 const ENGINE_STEP_LABEL: Record<string, string> = {
   tick_received: "Tick recebido", mt5_server: "Servidor MT5", mt5_symbol: "Símbolo",
   market_open: "Mercado aberto", time_allowed: "Horário permitido",
+  grupo_limite: "Freio de grupo",
   operation_window: "Janela operacional", force_close_window: "Janela zeragem",
   valid_quote: "Cotação válida", spread: "Spread", global_protection: "Proteção Global",
   mode_enabled: "Robô habilitado", volatility: "Volatilidade", max_trades: "Máximo trades",
