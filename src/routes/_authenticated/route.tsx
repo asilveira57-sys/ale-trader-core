@@ -20,7 +20,7 @@ function isAuthErrorMessage(message: string) {
 }
 
 function isDefinitiveSessionError(message: string) {
-  return /refresh token.*not found|invalid refresh token|token.*revoked|session.*not found|user from sub claim in jwt does not exist/i.test(message);
+  return /refresh token.*not found|invalid refresh token|invalid token|invalid jwt|jwt.*invalid|token.*revoked|session.*not found|user from sub claim in jwt does not exist/i.test(message);
 }
 
 // Timeout de infraestrutura (504/upstream) nunca deve derrubar a sessão local.

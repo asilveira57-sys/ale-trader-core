@@ -19,8 +19,11 @@ async function resolveToken(): Promise<string | undefined> {
       const expiresAt = session.expires_at ?? 0;
       const stale = expiresAt - Math.floor(Date.now() / 1000) < SKEW_S;
       if (stale) {
-        const { data: refreshed } = await supabase.auth.refreshSession();
-        return refreshed.session?.access_token ?? session.access_token;
+        const { data: refreshed, error } = await supabase.auth.refreshSession();
+        // Nunca envie novamente um JWT vencido quando a renovação falhar. Isso
+        // mascarava a causa e fazia todas as serverFns responderem Invalid token.
+        if (error || !refreshed.session?.access_token) return undefined;
+        return refreshed.session.access_token;
       }
       return session.access_token;
     }
