@@ -59,8 +59,10 @@ export const Route = createFileRoute("/_authenticated/prd-autorizacoes")({
 type Row = {
   id: string; symbol: string; variant: string; mode: string; enabled: boolean;
   max_qty: number; max_daily_loss_brl: number; max_daily_loss_mult: number | null;
+  magic_number: number | null;
   authorized_at: string | null; authorized_by: string | null;
 };
+
 
 // MODE_LABEL removido (30/08/2026): o rótulo do modo vem de
 // public.b3_mode_apelidos via useModeApelidos. Rótulo duplicado em TypeScript
