@@ -773,8 +773,10 @@ function CockpitPage() {
                           </p>
                         )}
                         {c.grupo && (
-                          <p className={`text-[10px] font-semibold ${c.grupo.travado ? "text-rose-300" : "text-amber-300"}`}>
-                            {c.grupo.texto}
+                          <p className={`text-[10px] font-semibold ${
+                            c.grupo.sem_limite ? "text-orange-400" : c.grupo.travado ? "text-rose-300" : "text-amber-300"
+                          }`}>
+                            {c.grupo.sem_limite ? "⚠ " : ""}{c.grupo.texto}
                             {c.grupo.travado ? " · entradas travadas" : ""}
                             {c.grupo.desde ? ` (${openSinceText(c.grupo.desde).replace(/\s\(.*\)$/, "")})` : ""}
                           </p>

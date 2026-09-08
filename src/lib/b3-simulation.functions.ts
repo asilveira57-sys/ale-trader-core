@@ -755,6 +755,7 @@ function buildEngineDigest(tickAudit: any, completo = false) {
 const ENGINE_STEP_LABEL: Record<string, string> = {
   tick_received: "Tick recebido", mt5_server: "Servidor MT5", mt5_symbol: "Símbolo",
   market_open: "Mercado aberto", time_allowed: "Horário permitido",
+  grupo_limite: "Freio de grupo",
   operation_window: "Janela operacional", force_close_window: "Janela zeragem",
   valid_quote: "Cotação válida", spread: "Spread", global_protection: "Proteção Global",
   mode_enabled: "Robô habilitado", volatility: "Volatilidade", max_trades: "Máximo trades",
@@ -1030,11 +1031,16 @@ async function runB3SimulationTickInner(
   // Configuração e estado do dia vivem em b3_grupo_limites / b3_grupo_estado_dia.
   // O motor só lê e age. Travar = bloquear ENTRADA NOVA; gestão de posição
   // aberta nunca é pulada por nenhum nível.
+  // 08/09/2026: a busca é pela RAIZ do ativo (WIN, WDO, BIT…), nunca pelo
+  // contrato. Chavear por contrato desligava o freio em silêncio a cada
+  // rolagem de vencimento (WDOU26 → WDOV26 em 30/08 deixou WDO, BIT, ETR e
+  // SOL sem freio nenhum por mais de uma semana).
   const grupoDia = b3DayKeyBRT(new Date());
+  const grupoRoot = rootSymbol(run.symbol);
   let grupoLimites: B3GrupoLimites | null = null;
   {
     const { data: gl } = await supabase.from("b3_grupo_limites")
-      .select("*").eq("user_id", userId).eq("symbol", run.symbol).eq("variant", runVariant).maybeSingle();
+      .select("*").eq("user_id", userId).eq("symbol", grupoRoot).eq("variant", runVariant).maybeSingle();
     if (gl) {
       grupoLimites = {
         teto_brl: Number(gl.teto_brl), nivel1_pct: Number(gl.nivel1_pct),
@@ -1045,13 +1051,33 @@ async function runB3SimulationTickInner(
       };
     }
   }
+  // Grupo sem linha de configuração opera sem freio. Isso precisa gritar —
+  // um aviso por grupo por pregão, para a tela e para o log.
+  if (!grupoLimites) {
+    try {
+      const fonte = `b3_grupo_freio:${grupoRoot}/${runVariant}`;
+      const { data: jaAvisado } = await supabase.from("system_logs")
+        .select("id").eq("event_type", "b3_grupo_sem_limite").eq("source", fonte)
+        .gte("created_at", `${grupoDia}T03:00:00.000Z`).limit(1);
+      if (!jaAvisado?.length) {
+        await supabase.from("system_logs").insert({
+          event_type: "b3_grupo_sem_limite", severity: "warning", source: fonte,
+          message: `[${grupoRoot}/${runVariant}] sem linha em b3_grupo_limites — o grupo está operando SEM freio escalonado.`,
+          technical_data: {
+            symbol_execucao: run.symbol, symbol_raiz: grupoRoot,
+            variant: runVariant, trade_date: grupoDia, run_id: runId,
+          } as any,
+        });
+      }
+    } catch { /* aviso best-effort: nunca derruba o tique */ }
+  }
   let grupoEstado: B3GrupoEstado = {
     resultado_brl: 0, pior_do_dia_brl: 0, nivel_atual: 0, multiplicador: 1,
     ultima_mudanca_ts: null, robos_travados: [],
   };
   if (grupoLimites) {
     const { data: ge } = await supabase.from("b3_grupo_estado_dia")
-      .select("*").eq("user_id", userId).eq("symbol", run.symbol)
+      .select("*").eq("user_id", userId).eq("symbol", grupoRoot)
       .eq("variant", runVariant).eq("trade_date", grupoDia).maybeSingle();
     if (ge) {
       grupoEstado = {
@@ -1097,7 +1123,7 @@ async function runB3SimulationTickInner(
     const dec = decideB3Grupo({ limites: grupoLimites, estado: grupoEstado, resultadoPorModo: porModo, R, nowIso });
 
     await supabase.from("b3_grupo_estado_dia").upsert({
-      user_id: userId, symbol: run.symbol, variant: runVariant, trade_date: grupoDia,
+      user_id: userId, symbol: grupoRoot, variant: runVariant, trade_date: grupoDia,
       resultado_brl: Number(dec.resultado_brl.toFixed(2)),
       pior_do_dia_brl: Number(dec.pior_do_dia_brl.toFixed(2)),
       nivel_atual: dec.nivel, multiplicador: dec.multiplicador,
@@ -2911,6 +2937,13 @@ async function runB3SimulationTickInner(
       addCheck("mt5_symbol", `Símbolo ${asset.symbol}`, priceSrc.source !== "mt5_xp_demo" || priceSrc.quote_symbol === asset.symbol, priceSrc.quote_symbol ? `recebido ${priceSrc.quote_symbol}` : "sem símbolo");
       addCheck("market_open", "Mercado aberto", ctx.session_phase !== "fora", `fase ${ctx.session_phase}`);
       addCheck("time_allowed", "Horário permitido", insideHours, `${cfg.trading_start_time}–${cfg.entry_cutoff_time}`);
+      // Não bloqueia entrada: é sinalização. Um robô sem freio de grupo não
+      // pode continuar visualmente idêntico a um robô protegido.
+      addCheck("grupo_limite", "Freio de grupo", Boolean(grupoLimites),
+        grupoLimites
+          ? `${grupoRoot}/${runVariant} · teto ${grupoLimites.teto_brl.toFixed(0)} BRL`
+          : `sem freio de grupo configurado (${grupoRoot}/${runVariant})`,
+        false);
       addCheck("operation_window", "Janela operacional", insideHours, `${cfg.trading_start_time}–${cfg.entry_cutoff_time}`);
       addCheck("force_close_window", "Janela zeragem", !forceClose, `zeragem ${cfg.force_close_time}`);
       addCheck("valid_quote", "Cotação válida", !invalidMt5, invalidMt5 ?? `bid ${priceSrc.raw?.bid ?? "—"} · ask ${priceSrc.raw?.ask ?? "—"}`);
@@ -5152,12 +5185,22 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
 
     // Freio escalonado por grupo (somente leitura): o card precisa explicar por
     // que o robô está operando com 2 contratos em vez de 5, ou por que não entra.
+    // Chaveado pela RAIZ do ativo — contrato vencido não pode perder a linha.
     const { data: grupoEstados } = await (supabase as any).from("b3_grupo_estado_dia")
       .select("symbol, variant, nivel_atual, multiplicador, ultima_mudanca_ts, robos_travados, resultado_brl")
       .eq("user_id", userId).eq("trade_date", sessionDate);
     const grupoByKey: Record<string, any> = {};
     for (const g of (grupoEstados ?? []) as any[]) {
-      grupoByKey[`${g.symbol}|${g.variant}`] = g;
+      grupoByKey[`${rootSymbol(g.symbol)}|${g.variant}`] = g;
+    }
+    // Quais grupos TÊM freio configurado. Sem linha aqui, o card avisa.
+    const { data: grupoLimitesRows } = await (supabase as any).from("b3_grupo_limites")
+      .select("symbol, variant, ativo, teto_brl").eq("user_id", userId);
+    const grupoComFreio = new Set<string>();
+    for (const g of (grupoLimitesRows ?? []) as any[]) {
+      if (g.ativo !== false && Number(g.teto_brl) > 0) {
+        grupoComFreio.add(`${rootSymbol(g.symbol)}|${g.variant ?? "indicador"}`);
+      }
     }
 
     // AUTORIZAÇÃO REAL (04/09/2026): quais robôs desta lista simulada estão
@@ -5330,7 +5373,16 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           blocked_reason: open ? null : (audit?.first_stop?.label ?? audit?.last_refusal_reason ?? null),
           pending_stop: open ? (pendingByMode[m] ?? null) : null,
           grupo: (() => {
-            const g = grupoByKey[`${run.symbol}|${variant}`];
+            const chaveGrupo = `${rootSymbol(run.symbol)}|${variant}`;
+            // Grupo sem configuração: opera sem freio e a tela precisa dizer.
+            if (!grupoComFreio.has(chaveGrupo)) {
+              return {
+                nivel: 0, multiplicador: 1, travado: false, desde: null,
+                resultado_brl: 0, sem_limite: true,
+                texto: "sem freio de grupo configurado",
+              };
+            }
+            const g = grupoByKey[chaveGrupo];
             const nivel = Number(g?.nivel_atual ?? 0);
             if (!g || nivel <= 0) return null;
             const mult = Number(g.multiplicador ?? 1);
