@@ -403,6 +403,12 @@ const MODES: Mode[] = [
 // por ordem (chave = order_id → minuto epoch já registrado).
 const openEvalLogMinute = new Map<string, number>();
 
+// Ordens cujo travamento de grupo já foi espelhado para o real (09/09/2026).
+// A ordem simulada permanece aberta em sombra, então o bloco é reavaliado a
+// cada tique: sem esta marca o fechamento real seria reenfileirado sem parar.
+// A chave de idempotência do comando é a segunda barreira.
+const grupoFreioEspelhado = new Set<string>();
+
 interface ModeDefaults {
   entry_style: string;
   min_approve_votes: number; min_confidence: number; min_score: number;
