@@ -11,6 +11,19 @@
 //
 // REGRA INEGOCIÁVEL: travar significa bloquear ENTRADA NOVA. Stop, alvo,
 // trailing e zeragem continuam rodando para toda posição aberta, sempre.
+//
+// ONDE ESSA REGRA VALE DE FATO (leia antes de confiar no parágrafo acima):
+//
+//   SIMULADO — desde 09/09/2026 vale integralmente. O travamento não bloqueia
+//   entrada (ela sai marcada como sombra, ver b3-grupo-sombra.server.ts) e
+//   TAMBÉM não fecha mais posição aberta: `close_reason = 'grupo_freio_lock'`
+//   deixou de ser gerado no simulado. As posições terminam por stop, alvo,
+//   trailing ou zeragem. Fechar no instante do travamento amputava o caminho
+//   livre e enviesava `diferenca_brl` a favor da sombra.
+//
+//   REAL — a regra AINDA NÃO vale por inteiro: ao travar, o motor continua
+//   enfileirando o fechamento das posições do grupo. Isso está EM REVISÃO e
+//   será decidido com os números de b3_grupo_sombra_dia. Até lá, o real fecha.
 
 export interface B3GrupoLimites {
   teto_brl: number;

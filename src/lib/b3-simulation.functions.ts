@@ -403,6 +403,12 @@ const MODES: Mode[] = [
 // por ordem (chave = order_id → minuto epoch já registrado).
 const openEvalLogMinute = new Map<string, number>();
 
+// Ordens cujo travamento de grupo já foi espelhado para o real (09/09/2026).
+// A ordem simulada permanece aberta em sombra, então o bloco é reavaliado a
+// cada tique: sem esta marca o fechamento real seria reenfileirado sem parar.
+// A chave de idempotência do comando é a segunda barreira.
+const grupoFreioEspelhado = new Set<string>();
+
 interface ModeDefaults {
   entry_style: string;
   min_approve_votes: number; min_confidence: number; min_score: number;
@@ -3307,84 +3313,65 @@ async function runB3SimulationTickInner(
           continue;
         }
 
-        // Freio escalonado de GRUPO com posição aberta: o nível já foi
-        // reavaliado neste tique com todas as posições do grupo marcadas a
-        // mercado. Quando o nível manda travar este robô (nível 2/3 = robôs
-        // negativos; nível 4 = grupo inteiro), a posição é encerrada agora —
-        // esperar o fechamento natural foi exatamente o que deixou o
-        // WDOU26/mean_reversion atravessar os quatro níveis num único evento
-        // de stops simultâneos (26/08, R$ 1.835 de uma vez).
-        if (grupoNivel >= 2 && grupoTravados.includes(mode)) {
-          const exitAuditGrupo: B3QuoteExecutionAudit = {
-            ...markAudit,
-            execution_price_origin: `${markAudit.execution_price_origin}+grupo_freio_lock`,
-          };
+        // ── TRAVAMENTO DE GRUPO COM POSIÇÃO ABERTA (09/09/2026) ──
+        // No SIMULADO o travamento deixou de fechar a posição. Fechar no
+        // instante do travamento censurava o caminho livre exatamente como o
+        // bloqueio de entrada censurava a amostra: a operação era interrompida
+        // no pior momento, antes de se saber se recuperaria — e isso enviesava
+        // `diferenca_brl` a favor da sombra, fazendo o freio parecer melhor do
+        // que é. A posição segue até stop, alvo, trailing ou zeragem, como
+        // qualquer outra (todos continuam ativos: não há risco novo).
+        //
+        // No REAL nada muda: o comando de fechamento continua sendo enfileirado
+        // no travamento, uma vez por ordem. Essa é uma decisão de risco
+        // separada, a ser revista com b3_grupo_sombra_dia em mãos.
+        //
+        // O freio de pico e o disjuntor diário continuam fechando também no
+        // simulado, sem alteração (bloco acima).
+        if (grupoNivel >= 2 && grupoTravados.includes(mode) && !grupoFreioEspelhado.has(open.id)) {
+          grupoFreioEspelhado.add(open.id);
           const Rgrupo = Number(grupo?.resultado_brl ?? 0);
           const tetoGrupo = Number(grupoLimites?.teto_brl ?? 0);
-          const tradeCtx = await closeOrder(supabase, userId, run, m, open, exitAuditGrupo, "grupo_freio_lock", marketHistory, asset);
-          markAuditEvent(`fechamento:${mode}:grupo_freio_lock`);
-          providerStats.last_exit_price = exitAuditGrupo.execution_price;
-          openOrdersCache = null;
-          realizedTodayByMode = await getRealizedTodayByMode();
-          try {
-            await supabase.from("b3_simulation_orders").update({
-              diagnostic_payload: {
-                exit_evaluation: "grupo_freio_mark_to_market",
-                close_reason: "grupo_freio_lock",
-                grupo_symbol: run.symbol, grupo_variant: runVariant,
-                grupo_nivel: grupoNivel,
-                grupo_resultado_brl: Rgrupo,
-                grupo_teto_brl: tetoGrupo,
-                grupo_robos_travados: grupoTravados,
-                realized_today_before_close_brl: realizedToday,
-                open_mtm_brl: openMtmBrlAtMark,
-                marked_today_brl: markedTodayAtMark,
-                executed_price: exitAuditGrupo.execution_price,
-                quote_age_s: Number(priceSrc.quote_age_s ?? 0),
-              },
-            }).eq("id", open.id).eq("user_id", userId);
-          } catch { /* diagnóstico nunca derruba o fechamento */ }
+          markAuditEvent(`grupo_freio_sombra_aberta:${mode}`);
+          // REAL: encerra como antes.
+          await mirrorToReal(supabase, userId, runId, mode as Mode, "close", open.side, `close-grupo-${open.id}`,
+            "engine_auto", asset.quote_symbol, runVariant);
           try {
             await supabase.from("b3_simulation_block_events").insert({
               simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
               mode,
               prev_status: m.current_status ?? "operando",
               new_status: `grupo_nivel_${grupoNivel}`,
-              trigger: "grupo_freio_close",
+              trigger: "grupo_freio_sombra_posicao_aberta",
               related_order_id: open.id,
               observed_value: Rgrupo,
               limit_value: -tetoGrupo,
               pnl_at_moment: markedTodayAtMark,
-              message: `Freio de grupo ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; posição aberta encerrada (resultado do grupo ${Rgrupo.toFixed(2)} BRL).`,
+              message: `Freio de grupo ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; posição simulada MANTIDA (sombra) e fechamento enviado ao real (resultado do grupo ${Rgrupo.toFixed(2)} BRL).`,
               diagnostic_payload: {
+                sombra: true,
                 grupo_nivel: grupoNivel, grupo_resultado_brl: Rgrupo, grupo_teto_brl: tetoGrupo,
                 realized_today_brl: realizedToday, open_mtm_brl: openMtmBrlAtMark,
                 marked_today_brl: markedTodayAtMark, mark_price: markPrice,
-                close_reason: "grupo_freio_lock",
+                close_reason: null, simulado: "mantido", real: "fechado",
               } as any,
             });
           } catch { /* auditoria best-effort */ }
           try {
             await supabase.from("system_logs").insert({
-              event_type: "grupo_freio_lock_close",
+              event_type: "grupo_freio_sombra_posicao_aberta",
               source: `b3:${asset.symbol}:${mode}`,
-              severity: "error",
-              message: `Freio de grupo nível ${grupoNivel} encerrou posição ${open.side} de ${run.symbol}/${runVariant} (grupo ${Rgrupo.toFixed(2)} BRL, teto ${tetoGrupo.toFixed(2)} BRL).`,
+              severity: "warning",
+              message: `Freio de grupo nível ${grupoNivel} em ${run.symbol}/${runVariant}: posição ${open.side} MANTIDA no simulado (sombra) e encerrada no real (grupo ${Rgrupo.toFixed(2)} BRL, teto ${tetoGrupo.toFixed(2)} BRL).`,
               technical_data: {
                 order_id: open.id, run_id: runId, mode, symbol: asset.symbol,
                 variant: runVariant, grupo_nivel: grupoNivel, grupo_resultado_brl: Rgrupo,
                 grupo_teto_brl: tetoGrupo, marked_today_brl: markedTodayAtMark,
-                executed_price: exitAuditGrupo.execution_price,
+                mark_price: markPrice,
               } as any,
             });
           } catch { /* log best-effort */ }
-          log.push({ mode, action: "close", reason: "grupo_freio_lock", nivel: grupoNivel, price: exitAuditGrupo.execution_price, grupo_resultado_brl: Rgrupo });
-          finalizeAudit(`Freio de grupo nível ${grupoNivel}: posição encerrada (grupo ${Rgrupo.toFixed(2)} BRL).`, {
-            last_setup: `Posição ${open.side.toUpperCase()} em gestão`,
-            signals: { evaluated_side: open.side, buy: false, sell: false },
-            trade_event: tradeCtx,
-          });
-          continue;
+          log.push({ mode, action: "grupo_freio_sombra", nivel: grupoNivel, grupo_resultado_brl: Rgrupo });
         }
 
         // Níveis por ordem: modalidades com níveis dinâmicos (rompimento)
