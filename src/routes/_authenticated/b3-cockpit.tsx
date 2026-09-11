@@ -612,6 +612,19 @@ function CockpitPage() {
                     </span>
                   </>
                 )}
+                {/* Medição do freio do GRUPO inteiro: aqui, ao lado de pico e
+                    resultado do dia, o número de grupo faz sentido. */}
+                {sub?.sombra && sub.sombra.ops_livre > 0 && (() => {
+                  const sg = sombraLinhas(sub.sombra);
+                  return (
+                    <span className="font-normal text-muted-foreground">
+                      grupo: operou {sg.operou} · com freio {sg.comFreio} ·{" "}
+                      <span className={sg.tom === "bom" ? "text-emerald-300" : sg.tom === "ruim" ? "text-rose-300" : ""}>
+                        {sg.veredito}
+                      </span>
+                    </span>
+                  );
+                })()}
                 <Button size="sm" variant="outline" className="h-6 text-[10px] ml-auto"
                   onClick={() => copyCards(cards, `${root} · ${variantLabel(variant).toLowerCase()}`)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo + modalidade
