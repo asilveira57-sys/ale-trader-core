@@ -781,20 +781,29 @@ function CockpitPage() {
                             {c.grupo.desde ? ` (${openSinceText(c.grupo.desde).replace(/\s\(.*\)$/, "")})` : ""}
                           </p>
                         )}
-                        {/* Livre × sombra do dia: o resultado do simulado e o que
-                            existiria se o freio de grupo tivesse bloqueado. A
-                            diferença é a medição diária do freio — e explica por
-                            que simulado e real deixam de bater. */}
-                        {c.grupo?.sombra && c.grupo.sombra.ops_livre > 0 && (
-                          <p className="text-[10px] text-muted-foreground">
-                            grupo hoje · livre {BRL(c.grupo.sombra.resultado_livre_brl)} ({c.grupo.sombra.ops_livre} ops)
-                            {" · sombra "}{BRL(c.grupo.sombra.resultado_sombra_brl)} ({c.grupo.sombra.ops_sombra} ops)
-                            {" · "}
-                            <span className={c.grupo.sombra.diferenca_brl > 0 ? "text-emerald-300" : c.grupo.sombra.diferenca_brl < 0 ? "text-rose-300" : ""}>
-                              freio {c.grupo.sombra.diferenca_brl > 0 ? "ajudaria" : c.grupo.sombra.diferenca_brl < 0 ? "atrapalharia" : "neutro"} {BRL(Math.abs(c.grupo.sombra.diferenca_brl))}
-                            </span>
-                          </p>
-                        )}
+                        {/* Livre × sombra DESTE robô: o que ele operou e o que
+                            teria operado com o freio de grupo ligado. A terceira
+                            linha diz a direção por palavra, sem número com sinal. */}
+                        {c.grupo?.sombra && c.grupo.sombra.ops_livre > 0 && (() => {
+                          const sl = sombraLinhas(c.grupo.sombra);
+                          return (
+                            <div className="text-[10px] space-y-0.5 pt-1 border-t border-border/40">
+                              <div className="flex justify-between gap-2">
+                                <span className="text-muted-foreground">Operou</span>
+                                <span className="font-mono">{sl.operou}</span>
+                              </div>
+                              <div className="flex justify-between gap-2">
+                                <span className="text-muted-foreground">Com freio</span>
+                                <span className="font-mono">{sl.comFreio}</span>
+                              </div>
+                              <div className={`font-semibold ${
+                                sl.tom === "bom" ? "text-emerald-300" : sl.tom === "ruim" ? "text-rose-300" : "text-muted-foreground"
+                              }`}>
+                                {sl.veredito}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </button>
 
 
