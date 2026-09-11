@@ -5305,12 +5305,25 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
     // Livre × sombra do dia por grupo: desde 08/09/2026 o freio de grupo só
     // registra no simulado, então o card precisa mostrar o resultado real e o
     // que existiria com o freio ligado — e a diferença, que é a medição.
+    // A medição é por ROBÔ (mode) e também consolidada por grupo (mode = "").
+    // O card mostra a linha do robô; a testeira da modalidade, a do grupo.
     const { data: sombraRows } = await (supabase as any).from("b3_grupo_sombra_dia")
-      .select("symbol, variant, resultado_livre_brl, resultado_sombra_brl, ops_livre, ops_sombra, diferenca_brl")
+      .select("symbol, variant, mode, resultado_livre_brl, resultado_sombra_brl, ops_livre, ops_sombra, diferenca_brl")
       .eq("user_id", userId).eq("trade_date", sessionDate);
-    const sombraByKey: Record<string, any> = {};
+    const shapeSombra = (s: any) => ({
+      resultado_livre_brl: Number(s.resultado_livre_brl ?? 0),
+      resultado_sombra_brl: Number(s.resultado_sombra_brl ?? 0),
+      ops_livre: Number(s.ops_livre ?? 0),
+      ops_sombra: Number(s.ops_sombra ?? 0),
+      diferenca_brl: Number(s.diferenca_brl ?? 0),
+    });
+    const sombraByKey: Record<string, any> = {};      // robô: root|variant|mode
+    const sombraGrupoByKey: Record<string, any> = {}; // grupo: root|variant
     for (const s of (sombraRows ?? []) as any[]) {
-      sombraByKey[`${rootSymbol(s.symbol)}|${s.variant}`] = s;
+      const base = `${rootSymbol(s.symbol)}|${s.variant}`;
+      const mode = String(s.mode ?? "");
+      if (mode === "") sombraGrupoByKey[base] = shapeSombra(s);
+      else sombraByKey[`${base}|${mode}`] = shapeSombra(s);
     }
 
     // AUTORIZAÇÃO REAL (04/09/2026): quais robôs desta lista simulada estão
