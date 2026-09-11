@@ -84,3 +84,32 @@ export const shortBRL = (v: number) => {
   }
   return `${sign}${abs.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
 };
+
+// ── Medição do freio (livre × sombra) ─────────────────────────────────────
+// Uma única fonte de texto para a tela e para o texto copiado: se o card muda,
+// a cópia muda junto. A terceira linha NUNCA mostra número com sinal — a
+// palavra ("pouparia", "custaria") carrega a direção.
+export interface SombraDia {
+  resultado_livre_brl: number;
+  resultado_sombra_brl: number;
+  ops_livre: number;
+  ops_sombra: number;
+  diferenca_brl: number;
+}
+
+export const sombraLinhas = (s: SombraDia) => {
+  const dif = Number(s.diferenca_brl ?? 0);
+  const veredito =
+    Math.round(dif * 100) === 0
+      ? "Freio não agiu hoje"
+      : dif > 0
+        ? `Freio pouparia ${BRL(Math.abs(dif))}`
+        : `Freio custaria ${BRL(Math.abs(dif))}`;
+  return {
+    operou: `${s.ops_livre} entradas · ${SIGNED_BRL(s.resultado_livre_brl)}`,
+    comFreio: `${s.ops_sombra} entradas · ${SIGNED_BRL(s.resultado_sombra_brl)}`,
+    veredito,
+    // Cor só do veredito: verde quando o freio pouparia, vermelho quando custaria.
+    tom: Math.round(dif * 100) === 0 ? "neutro" : dif > 0 ? "bom" : "ruim",
+  } as const;
+};
