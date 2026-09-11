@@ -1249,6 +1249,7 @@ export type Database = {
           created_at: string
           diferenca_brl: number
           id: string
+          mode: string
           ops_livre: number
           ops_sombra: number
           resultado_livre_brl: number
@@ -1263,6 +1264,7 @@ export type Database = {
           created_at?: string
           diferenca_brl?: number
           id?: string
+          mode?: string
           ops_livre?: number
           ops_sombra?: number
           resultado_livre_brl?: number
@@ -1277,6 +1279,7 @@ export type Database = {
           created_at?: string
           diferenca_brl?: number
           id?: string
+          mode?: string
           ops_livre?: number
           ops_sombra?: number
           resultado_livre_brl?: number
