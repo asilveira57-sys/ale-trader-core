@@ -4312,7 +4312,10 @@ async function runB3SimulationTickInner(
       const sombra = await atualizarGrupoSombraDia(
         supabase, userId, runId, rootSymbol(run.symbol), runVariant, b3DayKeyBRT(new Date()),
       );
-      if (sombra) log.push({ action: "grupo_sombra_dia", ...sombra });
+      if (sombra) {
+        const { por_modo: _porModo, ...resumo } = sombra;
+        log.push({ action: "grupo_sombra_dia", ...resumo, robos: Object.keys(_porModo).length });
+      }
     } catch (e: any) {
       log.push({ action: "grupo_sombra_dia_erro", error: String(e?.message ?? e) });
     }
