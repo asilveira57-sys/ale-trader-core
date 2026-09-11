@@ -5656,6 +5656,8 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           ...shape(v.agg),
           por_modalidade: Array.from(v.byVariant.entries()).map(([variant, agg]) => ({
             variant, ...shape(agg),
+            // Livre × sombra do GRUPO: aqui tudo em volta também é de grupo.
+            sombra: sombraGrupoByKey[`${root}|${variant}`] ?? null,
           })),
         });
       }
