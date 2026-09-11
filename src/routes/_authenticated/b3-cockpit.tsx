@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, AlertTriangle, Copy } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
-import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel } from "@/lib/b3-format";
+import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, sombraLinhas } from "@/lib/b3-format";
 import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
