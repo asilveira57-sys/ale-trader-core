@@ -4312,7 +4312,10 @@ async function runB3SimulationTickInner(
       const sombra = await atualizarGrupoSombraDia(
         supabase, userId, runId, rootSymbol(run.symbol), runVariant, b3DayKeyBRT(new Date()),
       );
-      if (sombra) log.push({ action: "grupo_sombra_dia", ...sombra });
+      if (sombra) {
+        const { por_modo: _porModo, ...resumo } = sombra;
+        log.push({ action: "grupo_sombra_dia", ...resumo, robos: Object.keys(_porModo).length });
+      }
     } catch (e: any) {
       log.push({ action: "grupo_sombra_dia_erro", error: String(e?.message ?? e) });
     }
@@ -5302,12 +5305,25 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
     // Livre × sombra do dia por grupo: desde 08/09/2026 o freio de grupo só
     // registra no simulado, então o card precisa mostrar o resultado real e o
     // que existiria com o freio ligado — e a diferença, que é a medição.
+    // A medição é por ROBÔ (mode) e também consolidada por grupo (mode = "").
+    // O card mostra a linha do robô; a testeira da modalidade, a do grupo.
     const { data: sombraRows } = await (supabase as any).from("b3_grupo_sombra_dia")
-      .select("symbol, variant, resultado_livre_brl, resultado_sombra_brl, ops_livre, ops_sombra, diferenca_brl")
+      .select("symbol, variant, mode, resultado_livre_brl, resultado_sombra_brl, ops_livre, ops_sombra, diferenca_brl")
       .eq("user_id", userId).eq("trade_date", sessionDate);
-    const sombraByKey: Record<string, any> = {};
+    const shapeSombra = (s: any) => ({
+      resultado_livre_brl: Number(s.resultado_livre_brl ?? 0),
+      resultado_sombra_brl: Number(s.resultado_sombra_brl ?? 0),
+      ops_livre: Number(s.ops_livre ?? 0),
+      ops_sombra: Number(s.ops_sombra ?? 0),
+      diferenca_brl: Number(s.diferenca_brl ?? 0),
+    });
+    const sombraByKey: Record<string, any> = {};      // robô: root|variant|mode
+    const sombraGrupoByKey: Record<string, any> = {}; // grupo: root|variant
     for (const s of (sombraRows ?? []) as any[]) {
-      sombraByKey[`${rootSymbol(s.symbol)}|${s.variant}`] = s;
+      const base = `${rootSymbol(s.symbol)}|${s.variant}`;
+      const mode = String(s.mode ?? "");
+      if (mode === "") sombraGrupoByKey[base] = shapeSombra(s);
+      else sombraByKey[`${base}|${mode}`] = shapeSombra(s);
     }
 
     // AUTORIZAÇÃO REAL (04/09/2026): quais robôs desta lista simulada estão
@@ -5481,16 +5497,8 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           pending_stop: open ? (pendingByMode[m] ?? null) : null,
           grupo: (() => {
             const chaveGrupo = `${rootSymbol(run.symbol)}|${variant}`;
-            const s = sombraByKey[chaveGrupo] ?? null;
-            const sombra = s
-              ? {
-                  resultado_livre_brl: Number(s.resultado_livre_brl ?? 0),
-                  resultado_sombra_brl: Number(s.resultado_sombra_brl ?? 0),
-                  ops_livre: Number(s.ops_livre ?? 0),
-                  ops_sombra: Number(s.ops_sombra ?? 0),
-                  diferenca_brl: Number(s.diferenca_brl ?? 0),
-                }
-              : null;
+            // Sombra DESTE robô — o número do grupo vive na testeira da modalidade.
+            const sombra = sombraByKey[`${chaveGrupo}|${m}`] ?? null;
             // Grupo sem configuração: opera sem freio e a tela precisa dizer.
             if (!grupoComFreio.has(chaveGrupo)) {
               return {
@@ -5648,6 +5656,8 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           ...shape(v.agg),
           por_modalidade: Array.from(v.byVariant.entries()).map(([variant, agg]) => ({
             variant, ...shape(agg),
+            // Livre × sombra do GRUPO: aqui tudo em volta também é de grupo.
+            sombra: sombraGrupoByKey[`${root}|${variant}`] ?? null,
           })),
         });
       }
