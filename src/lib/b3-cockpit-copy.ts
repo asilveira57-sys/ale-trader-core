@@ -87,6 +87,18 @@ function robotBlock(c: any): string {
   res.push(`acumulado ${BRL(c.pnl_accumulated)}`);
   lines.push(`  ${res.join(" · ")}`);
 
+  // Regra geral: a cópia tem TUDO o que o card mostra, na mesma ordem.
+  if (c.reactivated_today) lines.push("  reativado hoje após stop diário — resultado do dia não é limpo");
+  if (c.grupo?.texto) {
+    lines.push(`  ${c.grupo.sem_limite ? "⚠ " : ""}${c.grupo.texto}${c.grupo.travado ? " · simulado entra, real recusado" : ""}`);
+  }
+  if (c.grupo?.sombra && Number(c.grupo.sombra.ops_livre) > 0) {
+    const sl = sombraLinhas(c.grupo.sombra);
+    lines.push(`  operou ${sl.operou}`);
+    lines.push(`  com freio ${sl.comFreio}`);
+    lines.push(`  ${sl.veredito.toLowerCase()}`);
+  }
+
   return lines.join("\n");
 }
 
