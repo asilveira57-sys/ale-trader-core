@@ -5497,16 +5497,8 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           pending_stop: open ? (pendingByMode[m] ?? null) : null,
           grupo: (() => {
             const chaveGrupo = `${rootSymbol(run.symbol)}|${variant}`;
-            const s = sombraByKey[chaveGrupo] ?? null;
-            const sombra = s
-              ? {
-                  resultado_livre_brl: Number(s.resultado_livre_brl ?? 0),
-                  resultado_sombra_brl: Number(s.resultado_sombra_brl ?? 0),
-                  ops_livre: Number(s.ops_livre ?? 0),
-                  ops_sombra: Number(s.ops_sombra ?? 0),
-                  diferenca_brl: Number(s.diferenca_brl ?? 0),
-                }
-              : null;
+            // Sombra DESTE robô — o número do grupo vive na testeira da modalidade.
+            const sombra = sombraByKey[`${chaveGrupo}|${m}`] ?? null;
             // Grupo sem configuração: opera sem freio e a tela precisa dizer.
             if (!grupoComFreio.has(chaveGrupo)) {
               return {
