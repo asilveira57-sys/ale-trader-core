@@ -221,7 +221,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     }
 
     const dayOrders = commands
-      .filter((c) => c.created_at >= dayStartUtc)
+      .filter((c) => inWindow(c.created_at))
       .map((c) => ({
         id: c.id, action: c.action, side: c.side, symbol: c.symbol, root: rootSymbol(String(c.symbol)),
         quantity: Number(c.quantity ?? 0), mode: c.mode, variant: c.variant ?? "indicador",
@@ -247,7 +247,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     // ── 4b. Visão por OPERAÇÃO (uma linha por operação completa) ──
     const dayTrades = [
       ...ledger.trades
-        .filter((t) => (t.exit_time ?? "") >= dayStartUtc)
+        .filter((t) => inWindow(t.exit_time))
         .map((t) => ({
           id: `${t.close_command_id ?? t.magic_number}-${t.entry_time ?? ""}`,
           root: t.root, symbol: t.symbol, mode: t.mode, variant: t.variant,
@@ -276,7 +276,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     const rejectedToday = dayOrders.filter((o) => o.status === "rejected" || o.status === "error").length;
 
     // ── 5. Resultado real do dia e saldo ──
-    const tradesToday = ledger.trades.filter((t) => (t.exit_time ?? "") >= dayStartUtc);
+    const tradesToday = ledger.trades.filter((t) => inWindow(t.exit_time));
     const realizedBrl = tradesToday.reduce((a, t) => a + (t.result_brl ?? 0), 0);
     const tradesSemPreco = tradesToday.filter((t) => t.result_brl == null).length;
     const unrealizedBrl = positions.reduce((a, p) => a + (p.unrealized_brl ?? 0), 0);
@@ -341,7 +341,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       const executorStatus: "confirmado" | "recusado" | "sem_evidencia" =
         ev && ev.filled > 0 ? "confirmado" : ev && ev.whitelist_reject > 0 ? "recusado" : "sem_evidencia";
       const trades = ledger.trades.filter(
-        (t) => t.root === root && t.mode === a.mode && t.variant === (a.variant ?? "indicador") && (t.exit_time ?? "") >= dayStartUtc,
+        (t) => t.root === root && t.mode === a.mode && t.variant === (a.variant ?? "indicador") && inWindow(t.exit_time),
       );
       return {
         symbol: root, variant: a.variant ?? "indicador", mode: a.mode,
