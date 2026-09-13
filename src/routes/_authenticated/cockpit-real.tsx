@@ -27,6 +27,10 @@ import {
   setRealDailyCircuitConfig,
 
 } from "@/lib/b3-real-cockpit.functions";
+import {
+  PeriodBar, HistoricalBanner, NoMovementNotice, TruncatedNotice, PerDayTable,
+  DEFAULT_PERIOD, type PeriodInput,
+} from "@/components/b3/PeriodBar";
 
 export const Route = createFileRoute("/_authenticated/cockpit-real")({
   head: () => ({
@@ -397,6 +401,8 @@ function CockpitRealPage() {
   const [showAllRobots, setShowAllRobots] = useState(false);
   // Visão padrão: por OPERAÇÃO. A visão por comando fica como auditoria.
   const [ordersView, setOrdersView] = useState<"trades" | "commands">("trades");
+  // Recorte de DATA. Estado local, nunca persistido: a tela sempre abre em "Hoje".
+  const [period, setPeriod] = useState<PeriodInput>(DEFAULT_PERIOD);
 
   // Fechamento pontual de UMA posição reportada pela corretora.
   const [closeTarget, setCloseTarget] = useState<any | null>(null);
@@ -409,8 +415,8 @@ function CockpitRealPage() {
   // Ao vivo: sem cache de posição nem de cotação.
   const refetchInterval = useVisibleRefetchInterval(15_000);
   const q = useQuery({
-    queryKey: ["cockpit-real"],
-    queryFn: () => load({ data: undefined as never }),
+    queryKey: ["cockpit-real", period.preset, period.start, period.end],
+    queryFn: () => load({ data: period as never }),
     refetchInterval,
     refetchIntervalInBackground: false,
     gcTime: 0,
@@ -498,6 +504,9 @@ function CockpitRealPage() {
   const st = STATE_UI[d?.executor?.state ?? "sem_comando"] ?? STATE_UI["sem_comando"]!;
   const realEnabled = d?.real_state?.real_enabled !== false;
   const today = d?.today ?? {};
+  const per = (d?.period ?? null) as any;
+  // MODO histórico: período que não inclui hoje esconde blocos vivos e ações.
+  const vivo = per ? per.includes_today !== false : true;
 
   // Requisito de SEGURANÇA, não de estilo: relatório da corretora com mais de
   // 60s é dado velho. A tela é a única proteção de quem está na rua.
@@ -522,7 +531,7 @@ function CockpitRealPage() {
   );
 
   const StaleBanner = () =>
-    !reportStale ? null : (
+    !reportStale || !vivo ? null : (
       <div className="rounded-xl border-2 border-rose-300 bg-rose-600 px-3 py-2 text-white">
         <p className="flex items-center gap-2 text-base font-black leading-tight">
           <AlertTriangle className="size-6 shrink-0 animate-pulse" />
@@ -559,10 +568,12 @@ function CockpitRealPage() {
 
         </div>
 
+        <PeriodBar value={period} onChange={setPeriod} resolved={per} busy={q.isFetching} />
+        <HistoricalBanner resolved={per} />
         <StaleBanner />
 
         {/* 1) Tenho posição aberta? */}
-        {!brokerPositions.length ? (
+        {!vivo ? null : !brokerPositions.length ? (
           <p className="rounded-xl border-2 border-border bg-muted/30 px-3 py-4 text-center text-base font-black">
             Nenhuma posição aberta na corretora
           </p>
@@ -608,6 +619,7 @@ function CockpitRealPage() {
         </div>
 
         {/* Emergência — sem rolar muito, mas com dois passos de confirmação */}
+        {vivo ? (
         <div className="grid gap-2">
           {realEnabled ? (
             <Button
@@ -632,6 +644,7 @@ function CockpitRealPage() {
             <XOctagon className="size-5 shrink-0" /> Zerar posição real agora
           </Button>
         </div>
+        ) : null}
 
         <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
           O painel apenas <b>enfileira</b> o comando; quem fala com o MT5 é o executor. Comando não
@@ -680,6 +693,13 @@ function CockpitRealPage() {
         </div>
       </header>
 
+      <div className="mt-3 hidden md:block">
+        <PeriodBar value={period} onChange={setPeriod} resolved={per} busy={q.isFetching} />
+        <HistoricalBanner resolved={per} />
+        {d?.rows_truncated ? <TruncatedNotice limit={d?.rows_limit} /> : null}
+        {d?.no_movement ? <NoMovementNotice label={per?.label} /> : null}
+      </div>
+
       {/* Do ponto abaixo em diante é a leitura completa de DESKTOP; no celular
           ela só atrapalharia a tela de emergência acima. */}
       <div className="hidden md:block">
@@ -697,6 +717,7 @@ function CockpitRealPage() {
         </div>
       ) : null}
 
+      {vivo ? (
       <div className={`mt-3 rounded-xl border-2 px-4 py-3 ${st.cls}`}>
         <div className="flex flex-wrap items-center gap-2">
           <st.Icon className="size-6 shrink-0" />
@@ -713,8 +734,9 @@ function CockpitRealPage() {
           ? <p className="mt-1 break-words text-[11px] opacity-90">Resposta do executor: {d.executor.last_command.error_message}</p>
           : null}
       </div>
+      ) : null}
 
-      {broker.has_divergence ? (
+      {vivo && broker.has_divergence ? (
         <div className="mt-3 rounded-xl border-2 border-amber-400 bg-amber-500/15 px-4 py-3 text-amber-100">
           <p className="flex items-center gap-2 text-sm font-black">
             <GitCompareArrows className="size-5" /> DIVERGÊNCIA entre a corretora e o cálculo por comandos
@@ -741,9 +763,9 @@ function CockpitRealPage() {
 
       {/* Placar do dia */}
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <Tile label="Realizado hoje" value={SIGNED_BRL(today.realized_brl ?? 0)} sub={PCT(today.realized_pct)} cls={money(today.realized_brl)} />
+        <Tile label={vivo ? "Realizado hoje" : "Realizado no período"} value={SIGNED_BRL(today.realized_brl ?? 0)} sub={PCT(today.realized_pct)} cls={money(today.realized_brl)} />
         <Tile label="Em aberto" value={today.unrealized_brl == null ? "—" : SIGNED_BRL(today.unrealized_brl)} sub={PCT(today.unrealized_pct)} cls={money(today.unrealized_brl)} />
-        <Tile label="Total do dia" value={SIGNED_BRL(today.total_brl ?? 0)} sub={PCT(today.total_pct)} cls={money(today.total_brl)} />
+        <Tile label={per && per.single_day === false ? "Total do período" : "Total do dia"} value={SIGNED_BRL(today.total_brl ?? 0)} sub={PCT(today.total_pct)} cls={money(today.total_brl)} />
         <Tile
           label="Saldo da conta"
           value={
@@ -768,6 +790,12 @@ function CockpitRealPage() {
         />
       </div>
 
+      {per && per.single_day === false ? (
+        <Panel title={`Resultado de cada pregão (${per.label})`} hint="Serve para ver se um número grande veio de um dia só ou do período inteiro.">
+          <PerDayTable rows={(d?.by_day ?? []) as any[]} brl={SIGNED_BRL} />
+        </Panel>
+      ) : null}
+
       <DailyCircuitPanel circuit={(d as any)?.daily_circuit ?? null} onSaved={() => q.refetch()} />
       <PeakBrakePanel peak={d?.account_peak ?? null} onSaved={() => q.refetch()} />
 
@@ -777,6 +805,7 @@ function CockpitRealPage() {
       <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-3">
           {/* Posição real na corretora — verdade reportada pelo executor */}
+          {vivo ? (
           <Panel
             title="Posição na corretora (reportada pelo executor)"
             hint="Vem do relatório que o executor manda a cada 2s lendo o MT5. É a verdade — não é cálculo."
@@ -856,8 +885,9 @@ function CockpitRealPage() {
               </div>
             ) : null}
           </Panel>
+          ) : null}
 
-          {/* Segunda opinião: livro por comandos */}
+          {vivo ? (
           <Panel
             title="Segunda opinião — cálculo por comandos"
             hint="Aberturas executadas menos fechamentos executados, por magic. Serve para detectar comando expirado ou executado fora do previsto — não é a verdade da corretora."
@@ -916,6 +946,7 @@ function CockpitRealPage() {
               </div>
             )}
           </Panel>
+          ) : null}
 
           {/* Ordens reais do dia — duas visões */}
           <Panel
@@ -1098,6 +1129,7 @@ function CockpitRealPage() {
 
         {/* Coluna de ações e avisos */}
         <div className="space-y-3">
+          {vivo ? (
           <Panel
             title="Ações sobre dinheiro real"
             hint="Nenhuma destas ações pausa a simulação. Desligar não pede senha; religar pede a senha mestra."
@@ -1160,6 +1192,9 @@ function CockpitRealPage() {
             </div>
           </Panel>
 
+          ) : null}
+
+          {vivo ? (
           <Panel title="Avisos da última hora" hint="Só o que aconteceu de fato. O aviso desaparece quando a condição deixa de existir.">
             {!alerts.length ? (
               <p className="text-xs text-muted-foreground">Nada anormal na última hora.</p>
@@ -1178,6 +1213,7 @@ function CockpitRealPage() {
               </ul>
             )}
           </Panel>
+          ) : null}
         </div>
       </div>
       </div>

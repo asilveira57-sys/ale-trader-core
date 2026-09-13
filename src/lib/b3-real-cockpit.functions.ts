@@ -17,27 +17,45 @@ import {
   buildBrokerState, buildRealLedger, isPregaoOpen, loadAssetProfiles, rootSymbol, saoPauloDate,
   STALE_REPORT_S, type RealCommandRow,
 } from "@/lib/b3-real-cockpit.server";
+import { addDays, brtDate, periodRowLimit, resolvePeriod } from "@/lib/b3-period";
+
 
 const MINUTE = 60_000;
 
 // ─────────────────────────── leitura da tela ───────────────────────────
 export const getB3RealCockpit = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((input: unknown) =>
+    z.object({
+      preset: z.string().nullish(),
+      start: z.string().nullish(),
+      end: z.string().nullish(),
+    }).partial().optional().parse(input ?? {}),
+  )
+  .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const now = new Date();
     const nowMs = now.getTime();
     const sessionDate = saoPauloDate(now);
-    const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3, sem horário de verão
-    const ledgerStartUtc = new Date(nowMs - 5 * 24 * 60 * MINUTE).toISOString();
+    // Recorte de DATA da tela (leitura). O padrão é sempre "hoje".
+    const period = resolvePeriod(data ?? null, now);
+    const dayStartUtc = period.start_utc;
+    const dayEndUtc = period.end_utc;
+    // O livro FIFO precisa de história ANTES da janela, senão um fechamento
+    // dentro do recorte fica órfão (ou inventa posição). O corte é na SAÍDA.
+    const ledgerStartUtc = `${addDays(period.start, -5)}T03:00:00.000Z`;
+    const rowLimit = periodRowLimit(period.days);
     const pregaoOpen = isPregaoOpen(now);
+    const inWindow = (iso: string | null | undefined) =>
+      !!iso && iso >= dayStartUtc && iso < dayEndUtc;
 
     const [{ data: cmds }, { data: tset }, { data: auths }, { data: stateRow }, { data: brokerRow }] = await Promise.all([
       supabase.from("b3_mt5_commands")
         .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number")
         .eq("user_id", userId).eq("env", "real")
-        .gte("created_at", ledgerStartUtc)
-        .order("created_at", { ascending: true }).limit(2000),
+        .gte("created_at", ledgerStartUtc).lt("created_at", dayEndUtc)
+        .order("created_at", { ascending: true }).limit(rowLimit),
+
       supabase.from("b3_trading_settings")
         .select("capital_disponivel_brl, environment").eq("user_id", userId).maybeSingle(),
       supabase.from("b3_prd_authorizations")
@@ -203,7 +221,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     }
 
     const dayOrders = commands
-      .filter((c) => c.created_at >= dayStartUtc)
+      .filter((c) => inWindow(c.created_at))
       .map((c) => ({
         id: c.id, action: c.action, side: c.side, symbol: c.symbol, root: rootSymbol(String(c.symbol)),
         quantity: Number(c.quantity ?? 0), mode: c.mode, variant: c.variant ?? "indicador",
@@ -229,7 +247,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     // ── 4b. Visão por OPERAÇÃO (uma linha por operação completa) ──
     const dayTrades = [
       ...ledger.trades
-        .filter((t) => (t.exit_time ?? "") >= dayStartUtc)
+        .filter((t) => inWindow(t.exit_time))
         .map((t) => ({
           id: `${t.close_command_id ?? t.magic_number}-${t.entry_time ?? ""}`,
           root: t.root, symbol: t.symbol, mode: t.mode, variant: t.variant,
@@ -241,7 +259,8 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
           tick_size: t.tick_size ?? profileFor(t.root).tick_size,
           open: false,
         })),
-      ...positions.map((p) => ({
+      // Posição aberta só existe no PRESENTE: em modo histórico ela não entra.
+      ...(period.includes_today ? positions : []).map((p) => ({
         id: `open-${p.root}-${p.magic_number}`,
         root: p.root, symbol: p.symbol, mode: p.mode, variant: p.variant,
         magic_number: p.magic_number, side: p.side, quantity: p.quantity,
@@ -258,10 +277,12 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     const rejectedToday = dayOrders.filter((o) => o.status === "rejected" || o.status === "error").length;
 
     // ── 5. Resultado real do dia e saldo ──
-    const tradesToday = ledger.trades.filter((t) => (t.exit_time ?? "") >= dayStartUtc);
+    const tradesToday = ledger.trades.filter((t) => inWindow(t.exit_time));
     const realizedBrl = tradesToday.reduce((a, t) => a + (t.result_brl ?? 0), 0);
     const tradesSemPreco = tradesToday.filter((t) => t.result_brl == null).length;
-    const unrealizedBrl = positions.reduce((a, p) => a + (p.unrealized_brl ?? 0), 0);
+    const unrealizedBrl = period.includes_today
+      ? positions.reduce((a, p) => a + (p.unrealized_brl ?? 0), 0)
+      : 0;
     const capital = Number((tset as any)?.capital_disponivel_brl ?? 0) || null;
     const pct = (v: number) => (capital && capital > 0 ? v / capital : null);
     const lastWin = [...tradesToday].reverse().find((t) => (t.result_brl ?? 0) > 0) ?? null;
@@ -323,7 +344,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       const executorStatus: "confirmado" | "recusado" | "sem_evidencia" =
         ev && ev.filled > 0 ? "confirmado" : ev && ev.whitelist_reject > 0 ? "recusado" : "sem_evidencia";
       const trades = ledger.trades.filter(
-        (t) => t.root === root && t.mode === a.mode && t.variant === (a.variant ?? "indicador") && (t.exit_time ?? "") >= dayStartUtc,
+        (t) => t.root === root && t.mode === a.mode && t.variant === (a.variant ?? "indicador") && inWindow(t.exit_time),
       );
       return {
         symbol: root, variant: a.variant ?? "indicador", mode: a.mode,
@@ -503,10 +524,41 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       });
     }
 
+    // ── 9. Resultado de cada pregão do recorte (só quando há mais de um dia) ──
+    const byDayMap = new Map<string, { date: string; realized_brl: number; trades: number; wins: number; losses: number; sem_preco: number }>();
+    for (const t of tradesToday) {
+      const day = brtDate(new Date(t.exit_time ?? now));
+      const row = byDayMap.get(day) ?? { date: day, realized_brl: 0, trades: 0, wins: 0, losses: 0, sem_preco: 0 };
+      row.trades += 1;
+      if (t.result_brl == null) row.sem_preco += 1;
+      else {
+        row.realized_brl += Number(t.result_brl);
+        if (Number(t.result_brl) > 0) row.wins += 1;
+        else if (Number(t.result_brl) < 0) row.losses += 1;
+      }
+      byDayMap.set(day, row);
+    }
+    const byDay = Array.from(byDayMap.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
 
     return {
       server_time: now.toISOString(),
       session_date: sessionDate,
+      period: {
+        preset: period.preset,
+        start: period.start,
+        end: period.end,
+        days: period.days,
+        single_day: period.single_day,
+        includes_today: period.includes_today,
+        label: period.label,
+        // Modo histórico: a tela esconde blocos vivos e as ações.
+        historical: !period.includes_today,
+      },
+      // Livro incompleto NUNCA pode aparecer como número completo.
+      rows_limit: rowLimit,
+      rows_truncated: (cmds ?? []).length >= rowLimit,
+      by_day: byDay,
+      no_movement: dayOrders.length === 0 && tradesToday.length === 0,
       real_state: realState,
       executor,
       broker,
@@ -522,6 +574,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       enabled_count: robots.filter((r) => r.enabled).length,
       alerts: alerts.slice(0, 12),
     };
+
   });
 
 // ─────────── ajuste do freio de pico da CONTA (só a configuração) ───────────
