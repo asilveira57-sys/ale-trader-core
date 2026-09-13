@@ -280,7 +280,9 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     const tradesToday = ledger.trades.filter((t) => inWindow(t.exit_time));
     const realizedBrl = tradesToday.reduce((a, t) => a + (t.result_brl ?? 0), 0);
     const tradesSemPreco = tradesToday.filter((t) => t.result_brl == null).length;
-    const unrealizedBrl = positions.reduce((a, p) => a + (p.unrealized_brl ?? 0), 0);
+    const unrealizedBrl = period.includes_today
+      ? positions.reduce((a, p) => a + (p.unrealized_brl ?? 0), 0)
+      : 0;
     const capital = Number((tset as any)?.capital_disponivel_brl ?? 0) || null;
     const pct = (v: number) => (capital && capital > 0 ? v / capital : null);
     const lastWin = [...tradesToday].reverse().find((t) => (t.result_brl ?? 0) > 0) ?? null;
