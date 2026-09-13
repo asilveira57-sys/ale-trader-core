@@ -17,6 +17,8 @@ import {
   buildBrokerState, buildRealLedger, isPregaoOpen, loadAssetProfiles, rootSymbol, saoPauloDate,
   STALE_REPORT_S, type RealCommandRow,
 } from "@/lib/b3-real-cockpit.server";
+import { addDays, brtDate, periodRowLimit, resolvePeriod } from "@/lib/b3-period";
+
 
 const MINUTE = 60_000;
 
