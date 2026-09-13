@@ -259,7 +259,8 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
           tick_size: t.tick_size ?? profileFor(t.root).tick_size,
           open: false,
         })),
-      ...positions.map((p) => ({
+      // Posição aberta só existe no PRESENTE: em modo histórico ela não entra.
+      ...(period.includes_today ? positions : []).map((p) => ({
         id: `open-${p.root}-${p.magic_number}`,
         root: p.root, symbol: p.symbol, mode: p.mode, variant: p.variant,
         magic_number: p.magic_number, side: p.side, quantity: p.quantity,
