@@ -524,10 +524,41 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       });
     }
 
+    // ── 9. Resultado de cada pregão do recorte (só quando há mais de um dia) ──
+    const byDayMap = new Map<string, { date: string; realized_brl: number; trades: number; wins: number; losses: number; sem_preco: number }>();
+    for (const t of tradesToday) {
+      const day = brtDate(new Date(t.exit_time ?? now));
+      const row = byDayMap.get(day) ?? { date: day, realized_brl: 0, trades: 0, wins: 0, losses: 0, sem_preco: 0 };
+      row.trades += 1;
+      if (t.result_brl == null) row.sem_preco += 1;
+      else {
+        row.realized_brl += Number(t.result_brl);
+        if (Number(t.result_brl) > 0) row.wins += 1;
+        else if (Number(t.result_brl) < 0) row.losses += 1;
+      }
+      byDayMap.set(day, row);
+    }
+    const byDay = Array.from(byDayMap.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
 
     return {
       server_time: now.toISOString(),
       session_date: sessionDate,
+      period: {
+        preset: period.preset,
+        start: period.start,
+        end: period.end,
+        days: period.days,
+        single_day: period.single_day,
+        includes_today: period.includes_today,
+        label: period.label,
+        // Modo histórico: a tela esconde blocos vivos e as ações.
+        historical: !period.includes_today,
+      },
+      // Livro incompleto NUNCA pode aparecer como número completo.
+      rows_limit: rowLimit,
+      rows_truncated: (cmds ?? []).length >= rowLimit,
+      by_day: byDay,
+      no_movement: dayOrders.length === 0 && tradesToday.length === 0,
       real_state: realState,
       executor,
       broker,
@@ -543,6 +574,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       enabled_count: robots.filter((r) => r.enabled).length,
       alerts: alerts.slice(0, 12),
     };
+
   });
 
 // ─────────── ajuste do freio de pico da CONTA (só a configuração) ───────────
