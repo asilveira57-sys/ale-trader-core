@@ -23,21 +23,37 @@ const MINUTE = 60_000;
 // ─────────────────────────── leitura da tela ───────────────────────────
 export const getB3RealCockpit = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((input: unknown) =>
+    z.object({
+      preset: z.string().nullish(),
+      start: z.string().nullish(),
+      end: z.string().nullish(),
+    }).partial().optional().parse(input ?? {}),
+  )
+  .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const now = new Date();
     const nowMs = now.getTime();
     const sessionDate = saoPauloDate(now);
-    const dayStartUtc = `${sessionDate}T03:00:00.000Z`; // BRT = UTC-3, sem horário de verão
-    const ledgerStartUtc = new Date(nowMs - 5 * 24 * 60 * MINUTE).toISOString();
+    // Recorte de DATA da tela (leitura). O padrão é sempre "hoje".
+    const period = resolvePeriod(data ?? null, now);
+    const dayStartUtc = period.start_utc;
+    const dayEndUtc = period.end_utc;
+    // O livro FIFO precisa de história ANTES da janela, senão um fechamento
+    // dentro do recorte fica órfão (ou inventa posição). O corte é na SAÍDA.
+    const ledgerStartUtc = `${addDays(period.start, -5)}T03:00:00.000Z`;
+    const rowLimit = periodRowLimit(period.days);
     const pregaoOpen = isPregaoOpen(now);
+    const inWindow = (iso: string | null | undefined) =>
+      !!iso && iso >= dayStartUtc && iso < dayEndUtc;
 
     const [{ data: cmds }, { data: tset }, { data: auths }, { data: stateRow }, { data: brokerRow }] = await Promise.all([
       supabase.from("b3_mt5_commands")
         .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number")
         .eq("user_id", userId).eq("env", "real")
-        .gte("created_at", ledgerStartUtc)
-        .order("created_at", { ascending: true }).limit(2000),
+        .gte("created_at", ledgerStartUtc).lt("created_at", dayEndUtc)
+        .order("created_at", { ascending: true }).limit(rowLimit),
+
       supabase.from("b3_trading_settings")
         .select("capital_disponivel_brl, environment").eq("user_id", userId).maybeSingle(),
       supabase.from("b3_prd_authorizations")
