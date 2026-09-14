@@ -22,6 +22,10 @@ export interface RealCommandRow {
   // 'engine_auto' | 'user_manual_close' | ... — distingue fechamento do sistema
   // do fechamento na mão pelo usuário. Opcional: consultas antigas não pedem.
   requested_by?: string | null;
+  // Ticket da POSIÇÃO na corretora, informado pelo executor no ack: na abertura
+  // é a posição criada; no fechamento, a(s) posição(ões) encerrada(s) (lista
+  // separada por vírgula). Linhas antigas não têm — caem no FIFO.
+  broker_position_ticket?: string | null;
 }
 
 export interface AssetProfile {
