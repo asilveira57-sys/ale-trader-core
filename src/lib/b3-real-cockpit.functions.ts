@@ -51,7 +51,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
 
     const [{ data: cmds }, { data: tset }, { data: auths }, { data: stateRow }, { data: brokerRow }] = await Promise.all([
       supabase.from("b3_mt5_commands")
-        .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number")
+        .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, broker_position_ticket")
         .eq("user_id", userId).eq("env", "real")
         .gte("created_at", ledgerStartUtc).lt("created_at", dayEndUtc)
         .order("created_at", { ascending: true }).limit(rowLimit),
@@ -66,7 +66,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         .eq("user_id", userId).maybeSingle(),
       // Verdade da corretora, reportada pelo executor a cada 2s. Sem cache.
       supabase.from("b3_mt5_account_state")
-        .select("reportado_em, saldo, capital_liquido, margem_livre, negociacao_permitida, posicoes, account_login, server_name")
+        .select("reportado_em, saldo, capital_liquido, margem_livre, negociacao_permitida, posicoes, account_login, server_name, modo_conta")
         .eq("user_id", userId).maybeSingle(),
     ]);
 
@@ -755,7 +755,7 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
     const nowMs = Date.now();
 
     const { data: cmds, error: cmdErr } = await supabase.from("b3_mt5_commands")
-      .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, simulation_run_id")
+      .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, simulation_run_id, broker_position_ticket")
       .eq("user_id", userId).eq("env", "real")
       .gte("created_at", new Date(nowMs - 5 * 24 * 60 * MINUTE).toISOString())
       .order("created_at", { ascending: true }).limit(2000);
