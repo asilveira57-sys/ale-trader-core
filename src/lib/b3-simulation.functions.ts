@@ -247,34 +247,85 @@ async function mirrorToReal(
     return;
   }
 
-  // ── FECHAMENTO: quantidade = o que está REALMENTE aberto naquele magic ──
-  // Soma dos 'open' preenchidos menos os 'close' preenchidos (últimos 5 dias).
-  // Assim uma posição de 2 contratos é encerrada com 2 mesmo depois de a tela
-  // baixar max_qty para 1. Sem posição aberta, nada é enfileirado.
-  if (action === "close") {
-    try {
-      const desde = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
-      const { data: hist, error: histErr } = await supabase
-        .from("b3_mt5_commands")
-        .select("action, quantity")
-        .eq("user_id", userId).eq("env", "real").eq("magic_number", magic)
-        .eq("status", "filled")
-        .gte("created_at", desde);
-      if (histErr) throw histErr;
-      let aberto = 0;
-      for (const c of (hist ?? []) as any[]) {
-        const q = Math.abs(Number(c.quantity ?? 0));
-        if (c.action === "open") aberto += q;
-        else if (c.action === "close") aberto -= q;
-      }
-      if (aberto <= 0) return; // nada aberto no real para este robô
-      quantity = aberto;
-    } catch (e) {
-      // Falha ao medir o aberto não pode impedir a saída: mantém o max_qty
-      // vigente como melhor estimativa e segue com o fechamento.
-      console.error("[mirror] não foi possível medir a posição real aberta:", (e as Error).message);
+  // ── A CORRETORA MANDA: estado real do magic vem de b3_mt5_account_state ──
+  // (14/09/2026) O livro por comandos continua servindo para APURAR resultado
+  // de operações encerradas; deixa de ser base de decisão sobre risco novo.
+  const { readBrokerMagicState } = await import("./b3-broker-state.server");
+  const broker = await readBrokerMagicState(supabase, userId);
+  const abertoNaCorretora = broker.qty_by_magic.get(magic) ?? 0;
+
+  if (action === "open") {
+    // Relatório velho (> STALE_REPORT_S): sem prova do estado da conta não se
+    // abre nada. Mesmo princípio de reconcileB3LiveOrders — sem relatório
+    // fresco não há prova de ausência.
+    if (!broker.reported || broker.stale) {
+      await logNaoAbriu(
+        "relatorio_velho",
+        broker.reported
+          ? `relatório da corretora parado há ${broker.report_age_s}s (limite 60s).`
+          : "nenhum relatório da corretora — estado da conta desconhecido.",
+        { magic, reportado_em: broker.reported_at, idade_s: broker.report_age_s },
+      );
+      return;
+    }
+    if (abertoNaCorretora > 0) {
+      await logNaoAbriu(
+        "posicao_ja_aberta_na_corretora",
+        `a corretora já reporta ${abertoNaCorretora} contrato(s) abertos no magic ${magic}.`,
+        { magic, aberto_na_corretora: abertoNaCorretora, reportado_em: broker.reported_at },
+      );
+      return;
     }
   }
+
+  // ── FECHAMENTO: quantidade = o que a CORRETORA reporta aberto no magic ──
+  // Saída nunca é bloqueada por relatório velho: com relatório velho vale a
+  // última foto. Sem posição na corretora, o comando NÃO é criado — foi o ruído
+  // de 11/09 ("nenhuma posicao aberta em WINV26 para fechar"), quando a
+  // abertura correspondente havia sido recusada.
+  if (action === "close") {
+    if (broker.reported) {
+      if (abertoNaCorretora <= 0) {
+        try {
+          await supabase.from("system_logs").insert({
+            event_type: "b3_espelho_nao_fechou",
+            source: `b3_real_mirror:${symbol}:${variant}:${mode}`,
+            severity: "info",
+            message: `Saída do simulado sem correspondente no real: a corretora não tem posição no magic ${magic} (a entrada nunca aconteceu).`,
+            technical_data: {
+              motivo: "sem_posicao_na_corretora", symbol, variant, mode, side, magic,
+              run_id: runId, reportado_em: broker.reported_at, idade_s: broker.report_age_s,
+            } as any,
+          });
+        } catch { /* registro nunca derruba o motor */ }
+        return;
+      }
+      quantity = abertoNaCorretora;
+    } else {
+      // Nunca houve relatório: única saída é a estimativa antiga pelo livro de
+      // comandos (últimos 5 dias). Fechar de menos é melhor que não fechar.
+      try {
+        const desde = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: hist, error: histErr } = await supabase
+          .from("b3_mt5_commands")
+          .select("action, quantity")
+          .eq("user_id", userId).eq("env", "real").eq("magic_number", magic)
+          .eq("status", "filled")
+          .gte("created_at", desde);
+        if (histErr) throw histErr;
+        let aberto = 0;
+        for (const c of (hist ?? []) as any[]) {
+          const q = Math.abs(Number(c.quantity ?? 0));
+          if (c.action === "open") aberto += q;
+          else if (c.action === "close") aberto -= q;
+        }
+        if (aberto > 0) quantity = aberto;
+      } catch (e) {
+        console.error("[mirror] não foi possível medir a posição real aberta:", (e as Error).message);
+      }
+    }
+  }
+
 
 
   // ── PORTÃO DE PERDA REAL (só ABERTURA; fechamento nunca é bloqueado) ──
