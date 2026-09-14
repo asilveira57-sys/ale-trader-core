@@ -39,9 +39,18 @@ interface AckRequest {
   command_id: string;
   result: "filled" | "rejected" | "error";
   broker_ticket?: string | null;
+  // Ticket da POSIÇÃO na corretora: na abertura, a posição criada; no
+  // fechamento, a(s) posição(ões) encerrada(s), separadas por vírgula. É isso
+  // que permite ao livro parear sem adivinhar (conta hedge).
+  broker_position_ticket?: string | string[] | number | null;
   filled_price?: number | null;
   error_message?: string | null;
 }
+
+const positionTicket = (v: unknown): string | null => {
+  const s = Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean).join(",") : String(v ?? "").trim();
+  return s ? s : null;
+};
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" } as const;
 const json = (body: unknown, status = 200) =>
