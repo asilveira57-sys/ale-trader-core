@@ -454,11 +454,20 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         at: broker.reported_at,
       });
     }
+    const divSeverity = broker.divergencia_critica ? "critical" : "warning";
     for (const dv of broker.divergences) {
       alerts.push({
-        kind: "divergencia_posicao", severity: "warning",
+        kind: "divergencia_posicao", severity: divSeverity,
         title: `Divergência em ${dv.root}: corretora ${dv.broker_net} x comandos ${dv.ledger_net}`,
         detail: "Algum comando expirou ou executou fora do previsto. A corretora é a verdade; o cálculo por comandos é segunda opinião.",
+        at: broker.reported_at,
+      });
+    }
+    for (const dv of broker.magic_divergences ?? []) {
+      alerts.push({
+        kind: "divergencia_posicao_magic", severity: divSeverity,
+        title: `Divergência no magic ${dv.magic_number} (${dv.root}): corretora ${dv.broker_net} x comandos ${dv.ledger_net}`,
+        detail: "Posição que a corretora tem e o sistema não conhece é posição SEM STOP. Confira na corretora agora.",
         at: broker.reported_at,
       });
     }
