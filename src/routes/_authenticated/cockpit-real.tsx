@@ -772,7 +772,7 @@ function CockpitRealPage() {
       </div>
       ) : null}
 
-      {vivo && broker.has_divergence ? (
+      {vivo && broker.has_divergence && !divCritica ? (
         <div className="mt-3 rounded-xl border-2 border-amber-400 bg-amber-500/15 px-4 py-3 text-amber-100">
           <p className="flex items-center gap-2 text-sm font-black">
             <GitCompareArrows className="size-5" /> DIVERGÊNCIA entre a corretora e o cálculo por comandos
