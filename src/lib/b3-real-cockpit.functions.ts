@@ -14,7 +14,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { assertMasterPassword } from "@/lib/prd-master-password.server";
 import {
-  buildBrokerState, buildRealLedger, isPregaoOpen, loadAssetProfiles, rootSymbol, saoPauloDate,
+  buildBrokerState, buildRealLedger, isPregaoOpen, loadAssetProfiles, normalizeAccountMode,
+  rootSymbol, saoPauloDate,
   STALE_REPORT_S, type RealCommandRow,
 } from "@/lib/b3-real-cockpit.server";
 import { addDays, brtDate, periodRowLimit, resolvePeriod } from "@/lib/b3-period";
