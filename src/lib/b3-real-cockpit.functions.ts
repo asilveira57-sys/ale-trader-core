@@ -127,7 +127,11 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     };
 
     // ── 3. Livro real: posição aberta + operações encerradas, por FIFO ──
-    const ledger = buildRealLedger(commands, profileFor);
+    // Modo da conta reportado pelo executor. Sem informação: HEDGE (a conta real
+    // é hedge desde 31/08/2026 e errar para hedge MOSTRA posição a mais, o erro
+    // seguro; errar para netting esconde posição aberta sem stop).
+    const accountMode = normalizeAccountMode((brokerRow as any)?.modo_conta);
+    const ledger = buildRealLedger(commands, profileFor, accountMode);
 
     // Cotação viva (sem cache) para marcar a mercado a posição aberta.
     const symbols = Array.from(new Set([
