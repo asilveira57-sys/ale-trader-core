@@ -174,7 +174,29 @@ async function mirrorToReal(
   } catch {
     if (action === "open") return;
   }
-  if (action === "open" && !authEnabled) return;
+  // Registro de recusa de ABERTURA real (14/09/2026): sem isso só se descobre
+  // por ausência — não havia como contar quantas entradas reais foram puladas
+  // nem por quê. Um único event_type, com o motivo em campo próprio.
+  const logNaoAbriu = async (
+    motivo: "posicao_ja_aberta_na_corretora" | "relatorio_velho" | "freio_de_grupo" | "robo_desligado",
+    detalhe: string,
+    extra: Record<string, unknown> = {},
+  ) => {
+    try {
+      await supabase.from("system_logs").insert({
+        event_type: "b3_espelho_nao_abriu",
+        source: `b3_real_mirror:${symbol}:${variant}:${mode}`,
+        severity: "warning",
+        message: `Abertura real NÃO enfileirada (${motivo}): ${detalhe}`,
+        technical_data: { motivo, symbol, variant, mode, side, run_id: runId, ...extra } as any,
+      });
+    } catch { /* registro nunca derruba o motor */ }
+  };
+
+  if (action === "open" && !authEnabled) {
+    await logNaoAbriu("robo_desligado", "sem autorização real habilitada para este robô.");
+    return;
+  }
 
   // Quantidade real da ABERTURA = max_qty da autorização (tela), nunca
   // max_contracts do simulado. No FECHAMENTO a quantidade é a que está aberta
