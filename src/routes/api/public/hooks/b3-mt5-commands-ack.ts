@@ -64,7 +64,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-ack")({
           ok: true,
           endpoint: "b3-mt5-commands-ack",
           method: "POST",
-          hint: "POST JSON {user_id, command_id, result, broker_ticket?, filled_price?, error_message?} com header x-mt5-signature.",
+          hint: "POST JSON {user_id, command_id, result, broker_ticket?, broker_position_ticket?, filled_price?, error_message?} com header x-mt5-signature.",
         }),
       OPTIONS: async () =>
         new Response(null, {
