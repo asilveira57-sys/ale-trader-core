@@ -336,32 +336,45 @@ export function buildBrokerState(
       };
     });
 
-  // Divergência: comparação por raiz do ativo (a conta da B3 é netting, então o
-  // magic do livro pode não bater com o magic da posição líquida).
-  const net = (items: { root: string; side: "buy" | "sell" | null; quantity: number }[]) => {
+  // Divergência por RAIZ (líquido do ativo) e por MAGIC (robô): em hedge duas
+  // pontas do mesmo ativo podem coexistir, e a divergência de 14/09 estava
+  // DENTRO do ativo — só a comparação por magic a enxerga.
+  const net = <T extends { side: "buy" | "sell" | null; quantity: number }>(
+    items: T[], keyOf: (i: T) => string,
+  ) => {
     const m = new Map<string, number>();
     for (const i of items) {
       const dir = i.side === "sell" ? -1 : 1;
-      m.set(i.root, (m.get(i.root) ?? 0) + dir * i.quantity);
+      m.set(keyOf(i), (m.get(keyOf(i)) ?? 0) + dir * i.quantity);
     }
     return m;
   };
-  const brokerNet = net(positions);
-  const ledgerNet = net(ledgerPositions);
-  const roots = Array.from(new Set([...brokerNet.keys(), ...ledgerNet.keys()]));
-  const divergences = roots
-    .map((root) => ({
-      root,
-      broker_net: brokerNet.get(root) ?? 0,
-      ledger_net: ledgerNet.get(root) ?? 0,
-    }))
-    .filter((d) => d.broker_net !== d.ledger_net);
+  const diff = (a: Map<string, number>, b: Map<string, number>) =>
+    Array.from(new Set([...a.keys(), ...b.keys()]))
+      .map((k) => ({ key: k, broker_net: a.get(k) ?? 0, ledger_net: b.get(k) ?? 0 }))
+      .filter((d) => d.broker_net !== d.ledger_net);
+
+  const divergences = diff(
+    net(positions, (p) => p.root),
+    net(ledgerPositions, (p) => p.root),
+  ).map((d) => ({ root: d.key, broker_net: d.broker_net, ledger_net: d.ledger_net }));
+
+  const magicDivergences = diff(
+    net(positions.filter((p) => p.magic_number != null), (p) => `${p.root}|${p.magic_number}`),
+    net(ledgerPositions, (p) => `${p.root}|${p.magic_number}`),
+  ).map((d) => {
+    const [root = "", magic = "0"] = d.key.split("|");
+    return { root, magic_number: Number(magic), broker_net: d.broker_net, ledger_net: d.ledger_net };
+  });
+
+  const fresh = ageS != null && ageS <= STALE_REPORT_S;
 
   return {
     reported: !!row,
     reported_at: reportedAt,
     report_age_s: ageS,
     stale: ageS == null ? true : ageS > STALE_REPORT_S,
+    account_mode: normalizeAccountMode(row?.modo_conta),
     balance_brl: row?.saldo == null ? null : Number(row.saldo),
     equity_brl: row?.capital_liquido == null ? null : Number(row.capital_liquido),
     free_margin_brl: row?.margem_livre == null ? null : Number(row.margem_livre),
@@ -373,6 +386,11 @@ export function buildBrokerState(
       ? positions.reduce((s, p) => s + (p.profit_brl ?? 0), 0)
       : 0,
     divergences,
-    has_divergence: divergences.length > 0,
+    magic_divergences: magicDivergences,
+    has_divergence: divergences.length > 0 || magicDivergences.length > 0,
+    // Relatório fresco + divergência = posição possivelmente sem stop. É o pior
+    // estado possível: a tela precisa gritar, não deixar nota de rodapé.
+    divergencia_critica: fresh && (divergences.length > 0 || magicDivergences.length > 0),
   };
+}
 }
