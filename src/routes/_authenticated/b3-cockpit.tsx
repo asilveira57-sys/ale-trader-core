@@ -20,6 +20,11 @@ import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
   resetB3DailyStop, updateB3ModeSettings,
 } from "@/lib/b3-simulation.functions";
+import { getB3SimPeriodSummary } from "@/lib/b3-sim-period.functions";
+import {
+  PeriodBar, HistoricalBanner, NoMovementNotice, TruncatedNotice, PerDayTable,
+  DEFAULT_PERIOD, type PeriodInput,
+} from "@/components/b3/PeriodBar";
 
 export const Route = createFileRoute("/_authenticated/b3-cockpit")({
   head: () => ({
@@ -242,6 +247,8 @@ function CockpitPage() {
   const allModes = modesSel.length === MODE_LIST.length;
   const filtroAtivo = !allSymbols || !allVariants || !allModes || filter !== "all";
   const [motivo, setMotivo] = useState("");
+  // Recorte de DATA. Nunca persistido: a tela sempre abre em "Hoje".
+  const [period, setPeriod] = useState<PeriodInput>(DEFAULT_PERIOD);
   // Faixas de ativo recolhidas — preferência só enquanto a página está aberta.
   const [collapsedAssets, setCollapsedAssets] = useState<Set<string>>(new Set());
   const toggleAsset = (root: string) => setCollapsedAssets((prev) => {
@@ -261,12 +268,25 @@ function CockpitPage() {
   };
   const filterKey = JSON.stringify(filterArgs);
 
+  const vivo = (period.preset ?? "hoje") === "hoje";
   const q = useQuery({
     queryKey: ["b3-cockpit", filterKey],
     queryFn: () => getOverview({ data: filterArgs as any }),
     refetchInterval: useVisibleRefetchInterval(10000),
     refetchIntervalInBackground: false,
+    enabled: vivo,
   });
+
+  // Leitura histórica (só quando o recorte não é "hoje"): agregados do período
+  // por pregão e por robô, sem tocar em nada do motor.
+  const getPeriodo = useServerFn(getB3SimPeriodSummary);
+  const hq = useQuery({
+    queryKey: ["b3-cockpit-periodo", period.preset, period.start, period.end, filterKey],
+    queryFn: () => getPeriodo({ data: { ...period, ...filterArgs } as never }),
+    enabled: !vivo,
+    gcTime: 0,
+  });
+  const hd = hq.data as any;
 
   const all: any[] = q.data?.cards ?? [];
   const porAtivo: any[] = q.data?.por_ativo ?? [];
@@ -436,8 +456,75 @@ function CockpitPage() {
         </div>
       </header>
 
+      <PeriodBar value={period} onChange={setPeriod} resolved={hd?.period ?? { label: "Hoje", includes_today: true }} busy={q.isFetching || hq.isFetching} />
+      <HistoricalBanner resolved={hd?.period} />
+
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
-      <Scoreboard filterArgs={filterArgs} filterKey={filterKey} />
+      {vivo ? <Scoreboard filterArgs={filterArgs} filterKey={filterKey} /> : null}
+
+      {/* ── Leitura histórica do período (modo histórico) ── */}
+      {!vivo ? (
+        <section className="space-y-3 rounded-lg border border-border/60 bg-card p-3">
+          {hq.isLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando o período…</p>
+          ) : hd?.no_movement ? (
+            <NoMovementNotice label={hd?.period?.label} />
+          ) : (
+            <>
+              {hd?.rows_truncated ? <TruncatedNotice limit={hd?.rows_limit} /> : null}
+              <div className="flex flex-wrap items-baseline gap-3">
+                <h2 className="text-lg font-bold">Resultado de {hd?.period?.label ?? "período"}</h2>
+                <span className={`font-mono text-xl font-black ${Number(hd?.total_brl ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                  {BRL(Number(hd?.total_brl ?? 0))}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {hd?.ops ?? 0} operação(ões) · {hd?.ganhos ?? 0} ganho(s) · {hd?.perdas ?? 0} perda(s)
+                </span>
+              </div>
+
+              {hd?.period?.single_day === false ? (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">Por pregão</p>
+                  <PerDayTable rows={(hd?.by_day ?? []) as any[]} brl={(v) => BRL(Number(v ?? 0))} />
+                </div>
+              ) : null}
+
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-muted-foreground">Por robô</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] text-xs">
+                    <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <tr className="border-b border-border">
+                        <th className="py-1 text-left">Robô</th>
+                        <th className="py-1 text-right">Operações</th>
+                        <th className="py-1 text-right">Ganhos</th>
+                        <th className="py-1 text-right">Perdas</th>
+                        <th className="py-1 text-right">Resultado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {((hd?.robots ?? []) as any[]).map((r) => (
+                        <tr key={r.key} className="border-b border-border/50">
+                          <td className="py-1">
+                            <span className="font-semibold">{r.symbol}</span>{" "}
+                            <span className="text-muted-foreground">{variantLabel(r.variant)} · {apelidos.nick(r.mode)}</span>
+                          </td>
+                          <td className="py-1 text-right">{r.ops}</td>
+                          <td className="py-1 text-right">{r.ganhos}</td>
+                          <td className="py-1 text-right">{r.perdas}</td>
+                          <td className={`py-1 text-right font-mono font-black ${Number(r.resultado_brl) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                            {BRL(Number(r.resultado_brl))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      ) : null}
 
       {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
@@ -537,12 +624,12 @@ function CockpitPage() {
       </section>
 
 
-      {q.isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
-      {!q.isLoading && !visible.length && (
+      {vivo && q.isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
+      {vivo && !q.isLoading && !visible.length && (
         <p className="text-sm text-muted-foreground">Nenhum robô para o filtro selecionado.</p>
       )}
 
-      {orderedAssets.map(([root, group]) => {
+      {vivo && orderedAssets.map(([root, group]) => {
         const hdr = headerByAsset.get(root);
         const isCollapsed = collapsedAssets.has(root);
         const robotCount = Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0);
