@@ -393,4 +393,3 @@ export function buildBrokerState(
     divergencia_critica: fresh && (divergences.length > 0 || magicDivergences.length > 0),
   };
 }
-}
