@@ -297,7 +297,7 @@ export const getB3ExtratoReal = createServerFn({ method: "POST" })
     // O livro FIFO precisa de TODOS os comandos anteriores para casar abertura
     // com fechamento; o corte por data é aplicado na saída, não na consulta.
     const { data: cmds, error } = await (supabase as any).from("b3_mt5_commands")
-      .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, requested_by")
+      .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, requested_by, broker_position_ticket")
       .eq("user_id", userId).eq("env", "real")
       .order("created_at", { ascending: true }).limit(5000);
     if (error) throw error;

@@ -146,6 +146,13 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-estado-real")({
             capital_liquido: num(payload.capital_liquido ?? payload.equity),
             margem_livre: num(payload.margem_livre ?? payload.free_margin ?? payload.margin_free),
             negociacao_permitida: permitida == null ? null : Boolean(permitida),
+            // Modo da conta na corretora (HEDGE/NETTING/EXCHANGE). O livro real
+            // depende disso: em hedge, abrir no lado contrário cria uma SEGUNDA
+            // posição, não uma inversão.
+            modo_conta: ((): string | null => {
+              const s = String(payload.modo_conta ?? payload.account_mode ?? payload.margin_mode ?? "").trim().toUpperCase();
+              return s === "HEDGE" || s === "NETTING" || s === "EXCHANGE" ? s : null;
+            })(),
             posicoes: positions,
             account_login: payload.conta == null && payload.account_login == null
               ? null

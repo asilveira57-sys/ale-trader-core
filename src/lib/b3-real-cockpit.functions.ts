@@ -14,7 +14,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { assertMasterPassword } from "@/lib/prd-master-password.server";
 import {
-  buildBrokerState, buildRealLedger, isPregaoOpen, loadAssetProfiles, rootSymbol, saoPauloDate,
+  buildBrokerState, buildRealLedger, isPregaoOpen, loadAssetProfiles, normalizeAccountMode,
+  rootSymbol, saoPauloDate,
   STALE_REPORT_S, type RealCommandRow,
 } from "@/lib/b3-real-cockpit.server";
 import { addDays, brtDate, periodRowLimit, resolvePeriod } from "@/lib/b3-period";
@@ -51,7 +52,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
 
     const [{ data: cmds }, { data: tset }, { data: auths }, { data: stateRow }, { data: brokerRow }] = await Promise.all([
       supabase.from("b3_mt5_commands")
-        .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number")
+        .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, broker_position_ticket")
         .eq("user_id", userId).eq("env", "real")
         .gte("created_at", ledgerStartUtc).lt("created_at", dayEndUtc)
         .order("created_at", { ascending: true }).limit(rowLimit),
@@ -66,7 +67,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         .eq("user_id", userId).maybeSingle(),
       // Verdade da corretora, reportada pelo executor a cada 2s. Sem cache.
       supabase.from("b3_mt5_account_state")
-        .select("reportado_em, saldo, capital_liquido, margem_livre, negociacao_permitida, posicoes, account_login, server_name")
+        .select("reportado_em, saldo, capital_liquido, margem_livre, negociacao_permitida, posicoes, account_login, server_name, modo_conta")
         .eq("user_id", userId).maybeSingle(),
     ]);
 
@@ -126,7 +127,11 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     };
 
     // ── 3. Livro real: posição aberta + operações encerradas, por FIFO ──
-    const ledger = buildRealLedger(commands, profileFor);
+    // Modo da conta reportado pelo executor. Sem informação: HEDGE (a conta real
+    // é hedge desde 31/08/2026 e errar para hedge MOSTRA posição a mais, o erro
+    // seguro; errar para netting esconde posição aberta sem stop).
+    const accountMode = normalizeAccountMode((brokerRow as any)?.modo_conta);
+    const ledger = buildRealLedger(commands, profileFor, accountMode);
 
     // Cotação viva (sem cache) para marcar a mercado a posição aberta.
     const symbols = Array.from(new Set([
@@ -449,11 +454,20 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         at: broker.reported_at,
       });
     }
+    const divSeverity = broker.divergencia_critica ? "critical" : "warning";
     for (const dv of broker.divergences) {
       alerts.push({
-        kind: "divergencia_posicao", severity: "warning",
+        kind: "divergencia_posicao", severity: divSeverity,
         title: `Divergência em ${dv.root}: corretora ${dv.broker_net} x comandos ${dv.ledger_net}`,
         detail: "Algum comando expirou ou executou fora do previsto. A corretora é a verdade; o cálculo por comandos é segunda opinião.",
+        at: broker.reported_at,
+      });
+    }
+    for (const dv of broker.magic_divergences ?? []) {
+      alerts.push({
+        kind: "divergencia_posicao_magic", severity: divSeverity,
+        title: `Divergência no magic ${dv.magic_number} (${dv.root}): corretora ${dv.broker_net} x comandos ${dv.ledger_net}`,
+        detail: "Posição que a corretora tem e o sistema não conhece é posição SEM STOP. Confira na corretora agora.",
         at: broker.reported_at,
       });
     }
@@ -755,7 +769,7 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
     const nowMs = Date.now();
 
     const { data: cmds, error: cmdErr } = await supabase.from("b3_mt5_commands")
-      .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, simulation_run_id")
+      .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, simulation_run_id, broker_position_ticket")
       .eq("user_id", userId).eq("env", "real")
       .gte("created_at", new Date(nowMs - 5 * 24 * 60 * MINUTE).toISOString())
       .order("created_at", { ascending: true }).limit(2000);

@@ -22,6 +22,10 @@ export interface RealCommandRow {
   // 'engine_auto' | 'user_manual_close' | ... — distingue fechamento do sistema
   // do fechamento na mão pelo usuário. Opcional: consultas antigas não pedem.
   requested_by?: string | null;
+  // Ticket da POSIÇÃO na corretora, informado pelo executor no ack: na abertura
+  // é a posição criada; no fechamento, a(s) posição(ões) encerrada(s) (lista
+  // separada por vírgula). Linhas antigas não têm — caem no FIFO.
+  broker_position_ticket?: string | null;
 }
 
 export interface AssetProfile {
@@ -112,16 +116,47 @@ export interface RealTrade {
 interface Lot {
   qty: number; price: number | null; time: string | null; ticket: string | null;
   command_id?: string | null;
+  // ticket da POSIÇÃO na corretora que este lote representa (quando informado)
+  pos_ticket?: string | null;
 }
 
-// Livro FIFO por (raiz do ativo + magic): comandos 'filled' entram em ordem
+// Modo da conta na corretora. Vem do executor em b3_mt5_account_state.modo_conta.
+export type AccountMode = "HEDGE" | "NETTING" | "EXCHANGE";
+
+// Sem informação, assume HEDGE: é o estado real da conta desde 31/08/2026 e o
+// erro seguro é o que MOSTRA posição demais. Assumir netting ESCONDE posição
+// aberta — foi exatamente o que deixou o magic 2507 4h40 sem gestão em 14/09.
+export function normalizeAccountMode(v: unknown): AccountMode {
+  const s = String(v ?? "").trim().toUpperCase();
+  if (s === "NETTING") return "NETTING";
+  if (s === "EXCHANGE") return "EXCHANGE";
+  return "HEDGE";
+}
+
+const parseTickets = (v: unknown): string[] =>
+  String(v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+
+// Livro por (raiz do ativo + magic): comandos 'filled' entram em ordem
 // cronológica. Quem soma é a AÇÃO, não o campo `side`: 'open' abre no lado do
 // comando e 'close' abate a posição existente qualquer que seja o `side`
 // gravado — o executor manda fechamento com o mesmo `side` da posição, e usar
 // o `side` aqui inventaria posição em dobro.
+//
+// HEDGE (padrão): abertura NUNCA abate lote existente — cria sempre um lote
+// novo, porque na corretora ela cria uma posição independente. Só 'close'
+// abate. NETTING preserva o comportamento antigo (abrir vendido reduz a compra).
+//
+// Pareamento: quando o comando traz broker_position_ticket, o fechamento abate
+// EXATAMENTE o lote daquela posição — sem adivinhação. Linhas antigas sem o
+// ticket seguem pelo FIFO.
 // Quando o executor não gravou filled_price, a operação fica sem resultado
 // (null) em vez de virar zero — zero mentiria na soma do dia.
-export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileLookup) {
+export function buildRealLedger(
+  commands: RealCommandRow[],
+  profileFor: ProfileLookup,
+  accountMode: AccountMode = "HEDGE",
+) {
+  const netting = accountMode === "NETTING";
   const groups = new Map<string, RealCommandRow[]>();
   for (const c of commands) {
     if (c.status !== "filled") continue;
@@ -140,8 +175,8 @@ export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileL
     const profile = profileFor(root);
     list.sort((a, b) => new Date(a.filled_at ?? a.created_at).getTime() - new Date(b.filled_at ?? b.created_at).getTime());
 
-    let longs: Lot[] = [];
-    let shorts: Lot[] = [];
+    const longs: Lot[] = [];
+    const shorts: Lot[] = [];
     let last = list[list.length - 1]!;
 
     for (const c of list) {
@@ -150,50 +185,81 @@ export function buildRealLedger(commands: RealCommandRow[], profileFor: ProfileL
       let qty = Math.abs(Number(c.quantity ?? 0));
       if (!qty) continue;
       const isClose = String(c.action) === "close";
-      // Fechamento abate a ponta que está aberta; abertura abate a contrária
-      // (virada de mão) e abre o resto.
-      const closingLongs = isClose ? longs.length > 0 : c.side === "sell";
-      const target = closingLongs ? longs : shorts;
+      const tickets = parseTickets(c.broker_position_ticket);
 
-      while (qty > 0 && target.length) {
-        const lot = target[0]!;
-        const used = Math.min(qty, lot.qty);
+      // Registra uma operação encerrada abatendo `used` do lote informado.
+      const settle = (lot: Lot, used: number, closingLongs: boolean, cmd: RealCommandRow) => {
         const entry = lot.price;
         const dir = closingLongs ? 1 : -1; // long: lucro quando o preço sobe
         const pts = entry != null && price != null ? (price - entry) * dir : null;
         trades.push({
-          root, symbol: c.symbol, mode: c.mode, variant: c.variant ?? "indicador",
-          magic_number: Number(c.magic_number ?? 0),
+          root, symbol: cmd.symbol, mode: cmd.mode, variant: cmd.variant ?? "indicador",
+          magic_number: Number(cmd.magic_number ?? 0),
           side: closingLongs ? "buy" : "sell", quantity: used,
           entry_price: entry, exit_price: price,
           entry_time: lot.time, exit_time: time,
           result_pts: pts, result_brl: pts == null ? null : pts * profile.point_value_brl * used,
-          broker_ticket: c.broker_ticket ?? lot.ticket ?? null,
-          closed_by: c.requested_by ?? null,
+          broker_ticket: cmd.broker_ticket ?? lot.ticket ?? null,
+          closed_by: cmd.requested_by ?? null,
           open_command_id: lot.command_id ?? null,
-          close_command_id: c.id,
+          close_command_id: cmd.id,
           point_value_brl: profile.point_value_brl,
           tick_size: profile.tick_size,
         });
         lot.qty -= used;
-        qty -= used;
-        if (lot.qty <= 0) target.shift();
+      };
+
+      const drain = (target: Lot[], closingLongs: boolean) => {
+        while (qty > 0 && target.length) {
+          const lot = target[0]!;
+          const used = Math.min(qty, lot.qty);
+          settle(lot, used, closingLongs, c);
+          qty -= used;
+          if (lot.qty <= 0) target.shift();
+        }
+      };
+
+      if (isClose) {
+        // 1) pareamento exato pelo ticket da posição encerrada
+        for (const tk of tickets) {
+          if (qty <= 0) break;
+          for (const [target, closingLongs] of [[longs, true], [shorts, false]] as [Lot[], boolean][]) {
+            const idx = target.findIndex((l) => l.pos_ticket === tk);
+            if (idx < 0) continue;
+            const lot = target[idx]!;
+            const used = Math.min(qty, lot.qty);
+            settle(lot, used, closingLongs, c);
+            qty -= used;
+            if (lot.qty <= 0) target.splice(idx, 1);
+            break;
+          }
+        }
+        // 2) sobra (ou comando antigo sem ticket): FIFO na ponta aberta
+        if (qty > 0) drain(longs.length > 0 ? longs : shorts, longs.length > 0);
+        if (qty > 0) drain(shorts, false);
+      } else if (netting) {
+        // Conta netting: abrir no lado contrário reduz a posição existente.
+        const closingLongs = c.side === "sell";
+        drain(closingLongs ? longs : shorts, closingLongs);
       }
 
       // Sobra só abre posição quando o comando é de ABERTURA. Fechamento
       // sobrando significa desencontro com a corretora — não inventa posição.
       if (qty > 0 && !isClose) {
-        const lot: Lot = { qty, price, time, ticket: c.broker_ticket ?? null, command_id: c.id };
+        const lot: Lot = {
+          qty, price, time, ticket: c.broker_ticket ?? null, command_id: c.id,
+          pos_ticket: tickets[0] ?? null,
+        };
         if (c.side === "buy") longs.push(lot); else shorts.push(lot);
       }
       last = c;
     }
 
-
-    const openSide: "buy" | "sell" | null = longs.length ? "buy" : shorts.length ? "sell" : null;
-    if (openSide) {
-      const lots = openSide === "buy" ? longs : shorts;
+    // Em HEDGE as duas pontas podem coexistir: cada uma vira uma posição.
+    for (const [lots, openSide] of [[longs, "buy"], [shorts, "sell"]] as [Lot[], "buy" | "sell"][]) {
+      if (!lots.length) continue;
       const qty = lots.reduce((s, l) => s + l.qty, 0);
+      if (qty <= 0) continue;
       const priced = lots.filter((l) => l.price != null);
       const avg = priced.length
         ? priced.reduce((s, l) => s + (l.price as number) * l.qty, 0) / priced.reduce((s, l) => s + l.qty, 0)
@@ -270,32 +336,45 @@ export function buildBrokerState(
       };
     });
 
-  // Divergência: comparação por raiz do ativo (a conta da B3 é netting, então o
-  // magic do livro pode não bater com o magic da posição líquida).
-  const net = (items: { root: string; side: "buy" | "sell" | null; quantity: number }[]) => {
+  // Divergência por RAIZ (líquido do ativo) e por MAGIC (robô): em hedge duas
+  // pontas do mesmo ativo podem coexistir, e a divergência de 14/09 estava
+  // DENTRO do ativo — só a comparação por magic a enxerga.
+  const net = <T extends { side: "buy" | "sell" | null; quantity: number }>(
+    items: T[], keyOf: (i: T) => string,
+  ) => {
     const m = new Map<string, number>();
     for (const i of items) {
       const dir = i.side === "sell" ? -1 : 1;
-      m.set(i.root, (m.get(i.root) ?? 0) + dir * i.quantity);
+      m.set(keyOf(i), (m.get(keyOf(i)) ?? 0) + dir * i.quantity);
     }
     return m;
   };
-  const brokerNet = net(positions);
-  const ledgerNet = net(ledgerPositions);
-  const roots = Array.from(new Set([...brokerNet.keys(), ...ledgerNet.keys()]));
-  const divergences = roots
-    .map((root) => ({
-      root,
-      broker_net: brokerNet.get(root) ?? 0,
-      ledger_net: ledgerNet.get(root) ?? 0,
-    }))
-    .filter((d) => d.broker_net !== d.ledger_net);
+  const diff = (a: Map<string, number>, b: Map<string, number>) =>
+    Array.from(new Set([...a.keys(), ...b.keys()]))
+      .map((k) => ({ key: k, broker_net: a.get(k) ?? 0, ledger_net: b.get(k) ?? 0 }))
+      .filter((d) => d.broker_net !== d.ledger_net);
+
+  const divergences = diff(
+    net(positions, (p) => p.root),
+    net(ledgerPositions, (p) => p.root),
+  ).map((d) => ({ root: d.key, broker_net: d.broker_net, ledger_net: d.ledger_net }));
+
+  const magicDivergences = diff(
+    net(positions.filter((p) => p.magic_number != null), (p) => `${p.root}|${p.magic_number}`),
+    net(ledgerPositions, (p) => `${p.root}|${p.magic_number}`),
+  ).map((d) => {
+    const [root = "", magic = "0"] = d.key.split("|");
+    return { root, magic_number: Number(magic), broker_net: d.broker_net, ledger_net: d.ledger_net };
+  });
+
+  const fresh = ageS != null && ageS <= STALE_REPORT_S;
 
   return {
     reported: !!row,
     reported_at: reportedAt,
     report_age_s: ageS,
     stale: ageS == null ? true : ageS > STALE_REPORT_S,
+    account_mode: normalizeAccountMode(row?.modo_conta),
     balance_brl: row?.saldo == null ? null : Number(row.saldo),
     equity_brl: row?.capital_liquido == null ? null : Number(row.capital_liquido),
     free_margin_brl: row?.margem_livre == null ? null : Number(row.margem_livre),
@@ -307,6 +386,10 @@ export function buildBrokerState(
       ? positions.reduce((s, p) => s + (p.profit_brl ?? 0), 0)
       : 0,
     divergences,
-    has_divergence: divergences.length > 0,
+    magic_divergences: magicDivergences,
+    has_divergence: divergences.length > 0 || magicDivergences.length > 0,
+    // Relatório fresco + divergência = posição possivelmente sem stop. É o pior
+    // estado possível: a tela precisa gritar, não deixar nota de rodapé.
+    divergencia_critica: fresh && (divergences.length > 0 || magicDivergences.length > 0),
   };
 }

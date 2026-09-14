@@ -1904,6 +1904,7 @@ export type Database = {
           capital_liquido: number | null
           env: string | null
           margem_livre: number | null
+          modo_conta: string | null
           negociacao_permitida: boolean | null
           posicoes: Json
           reportado_em: string
@@ -1917,6 +1918,7 @@ export type Database = {
           capital_liquido?: number | null
           env?: string | null
           margem_livre?: number | null
+          modo_conta?: string | null
           negociacao_permitida?: boolean | null
           posicoes?: Json
           reportado_em?: string
@@ -1930,6 +1932,7 @@ export type Database = {
           capital_liquido?: number | null
           env?: string | null
           margem_livre?: number | null
+          modo_conta?: string | null
           negociacao_permitida?: boolean | null
           posicoes?: Json
           reportado_em?: string
@@ -1943,6 +1946,7 @@ export type Database = {
       b3_mt5_commands: {
         Row: {
           action: string
+          broker_position_ticket: string | null
           broker_ticket: string | null
           claimed_at: string | null
           claimed_by: string | null
@@ -1972,6 +1976,7 @@ export type Database = {
         }
         Insert: {
           action: string
+          broker_position_ticket?: string | null
           broker_ticket?: string | null
           claimed_at?: string | null
           claimed_by?: string | null
@@ -2001,6 +2006,7 @@ export type Database = {
         }
         Update: {
           action?: string
+          broker_position_ticket?: string | null
           broker_ticket?: string | null
           claimed_at?: string | null
           claimed_by?: string | null

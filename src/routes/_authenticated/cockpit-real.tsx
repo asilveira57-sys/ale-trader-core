@@ -547,8 +547,44 @@ function CockpitRealPage() {
       </div>
     );
 
+  // ALARME DE TOPO (14/09/2026): posição que a corretora tem e o sistema não
+  // conhece é posição SEM STOP — o pior estado possível. Enquanto o relatório
+  // está fresco, isso passa à frente de qualquer outra coisa na tela.
+  const divCritica = vivo && broker.divergencia_critica === true;
+  const magicDiv = (broker.magic_divergences ?? []) as any[];
+  const DivergenceAlarm = () =>
+    !divCritica ? null : (
+      <div className="mb-2 rounded-xl border-2 border-rose-300 bg-rose-700 px-3 py-3 text-white">
+        <p className="flex items-center gap-2 text-base font-black leading-tight">
+          <AlertTriangle className="size-6 shrink-0 animate-pulse" />
+          POSIÇÃO SEM CONTROLE — corretora e sistema não batem
+        </p>
+        <ul className="mt-1 space-y-0.5 text-[12px] font-semibold">
+          {magicDiv.map((dv) => (
+            <li key={`m-${dv.root}-${dv.magic_number}`}>
+              magic <b>{dv.magic_number}</b> ({assetLabel(dv.root)}): corretora <b>{dv.broker_net}</b> · sistema <b>{dv.ledger_net}</b>
+              {" "}· diferença <b>{dv.broker_net - dv.ledger_net}</b> contrato(s)
+            </li>
+          ))}
+          {(broker.divergences ?? []).map((dv: any) => (
+            <li key={`r-${dv.root}`}>
+              {assetLabel(dv.root)}: corretora <b>{dv.broker_net}</b> · sistema <b>{dv.ledger_net}</b>
+              {" "}· diferença <b>{dv.broker_net - dv.ledger_net}</b> contrato(s)
+            </li>
+          ))}
+        </ul>
+        <p className="mt-1 text-[12px] leading-snug opacity-95">
+          Relatório da corretora fresco ({reportAgeS ?? "?"}s). Uma posição que a corretora tem e o
+          sistema não conhece <b>não está sendo gerida</b> — sem stop, sem alvo. Confira na corretora
+          agora e zere pelo painel ou pela mesa.
+        </p>
+      </div>
+    );
+
   return (
     <div className="mx-auto w-full max-w-[1500px] px-3 pb-16 pt-3 sm:px-6 sm:pt-4">
+      <DivergenceAlarm />
+
       {/* ══════════ CELULAR: tela de emergência, uma mão, sem rolagem ══════════
           Ordem obrigatória: 1) tenho posição? 2) resultado e saldo 3) fechar. */}
       <div className="space-y-2 md:hidden">
@@ -736,7 +772,7 @@ function CockpitRealPage() {
       </div>
       ) : null}
 
-      {vivo && broker.has_divergence ? (
+      {vivo && broker.has_divergence && !divCritica ? (
         <div className="mt-3 rounded-xl border-2 border-amber-400 bg-amber-500/15 px-4 py-3 text-amber-100">
           <p className="flex items-center gap-2 text-sm font-black">
             <GitCompareArrows className="size-5" /> DIVERGÊNCIA entre a corretora e o cálculo por comandos

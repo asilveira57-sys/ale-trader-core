@@ -225,7 +225,7 @@ export async function loadRealizedAndOpen(supabase: SupabaseClient, userId: stri
   const [cmdRes, stateRes, profileFor] = await Promise.all([
     supabase
       .from("b3_mt5_commands")
-      .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, requested_by")
+      .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, requested_by, broker_position_ticket")
       .eq("user_id", userId)
       .eq("env", "real")
       .gte("created_at", dayStart)

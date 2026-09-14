@@ -39,9 +39,18 @@ interface AckRequest {
   command_id: string;
   result: "filled" | "rejected" | "error";
   broker_ticket?: string | null;
+  // Ticket da POSIÇÃO na corretora: na abertura, a posição criada; no
+  // fechamento, a(s) posição(ões) encerrada(s), separadas por vírgula. É isso
+  // que permite ao livro parear sem adivinhar (conta hedge).
+  broker_position_ticket?: string | string[] | number | null;
   filled_price?: number | null;
   error_message?: string | null;
 }
+
+const positionTicket = (v: unknown): string | null => {
+  const s = Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean).join(",") : String(v ?? "").trim();
+  return s ? s : null;
+};
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" } as const;
 const json = (body: unknown, status = 200) =>
@@ -55,7 +64,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-ack")({
           ok: true,
           endpoint: "b3-mt5-commands-ack",
           method: "POST",
-          hint: "POST JSON {user_id, command_id, result, broker_ticket?, filled_price?, error_message?} com header x-mt5-signature.",
+          hint: "POST JSON {user_id, command_id, result, broker_ticket?, broker_position_ticket?, filled_price?, error_message?} com header x-mt5-signature.",
         }),
       OPTIONS: async () =>
         new Response(null, {
@@ -120,6 +129,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-ack")({
             status: newStatus,
             filled_at: payload.result === "filled" ? nowIso : null,
             broker_ticket: payload.broker_ticket ?? null,
+            broker_position_ticket: positionTicket(payload.broker_position_ticket),
             filled_price: payload.filled_price ?? null,
             error_message: payload.error_message ?? null,
           })
