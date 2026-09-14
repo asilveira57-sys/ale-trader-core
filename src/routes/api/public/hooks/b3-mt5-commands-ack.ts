@@ -129,6 +129,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-ack")({
             status: newStatus,
             filled_at: payload.result === "filled" ? nowIso : null,
             broker_ticket: payload.broker_ticket ?? null,
+            broker_position_ticket: positionTicket(payload.broker_position_ticket),
             filled_price: payload.filled_price ?? null,
             error_message: payload.error_message ?? null,
           })
