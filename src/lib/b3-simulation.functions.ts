@@ -4296,6 +4296,20 @@ async function runB3SimulationTickInner(
                 side: effectiveSide,
               },
             });
+            // Contagem única de recusas de abertura real (14/09/2026): todo
+            // motivo cai no mesmo event_type, para dar para contar num lugar só.
+            await supabase.from("system_logs").insert({
+              event_type: "b3_espelho_nao_abriu",
+              source: `b3_real_mirror:${asset.quote_symbol}:${runVariant}:${mode}`,
+              severity: "warning",
+              message: `Abertura real NÃO enfileirada (freio_de_grupo): freio de grupo nível ${grupoNivel}.`,
+              technical_data: {
+                motivo: "freio_de_grupo",
+                symbol: asset.quote_symbol, variant: runVariant, mode, side: effectiveSide,
+                run_id: runId, grupo_nivel: grupoNivel, grupo_multiplicador: grupoMultiplicador,
+                simulation_order_id: insertedOrder.id,
+              } as any,
+            });
           } catch { /* registro nunca derruba o motor */ }
         } else {
           await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant, {
