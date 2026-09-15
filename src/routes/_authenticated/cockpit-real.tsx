@@ -460,6 +460,19 @@ function CockpitRealPage() {
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao enfileirar a zeragem."),
   });
+  // Zerar SEM travar: operação normal, não pânico. Um clique de confirmação,
+  // sem senha e sem desligar o real.
+  const mCloseAll = useMutation({
+    mutationFn: () => closeAllKeep({ data: { confirm: true as const } }),
+    onSuccess: (r: any) => {
+      invalidate();
+      setConfirmCloseAll(false);
+      if (r?.ok) toast.success(`Fechamento enviado: ${r.queued} comando(s) a mercado (${(r.detalhe ?? []).join(", ")}). Os robôs continuam operando.`);
+      else toast.warning(r?.reason ?? "Nenhuma posição real aberta.");
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao enfileirar o fechamento."),
+  });
+
 
   // Acompanha o veredito do comando manual até ele sair de 'pending'/'claimed'.
   const cmdQ = useQuery({
