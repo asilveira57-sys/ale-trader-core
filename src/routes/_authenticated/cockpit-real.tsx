@@ -1213,9 +1213,30 @@ function CockpitRealPage() {
           {vivo ? (
           <Panel
             title="Ações sobre dinheiro real"
-            hint="Nenhuma destas ações pausa a simulação. Desligar não pede senha; religar pede a senha mestra."
+            hint="Nenhuma destas ações pausa a simulação. Zerar posições não desliga nada; o bloco de emergência desliga o real e religar pede a senha mestra."
           >
             <div className="space-y-2">
+              {/* OPERAÇÃO NORMAL — neutro, longe do amarelo e do vermelho. */}
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-auto min-h-16 w-full justify-start gap-3 whitespace-normal border-2 py-2"
+                onClick={() => setConfirmCloseAll(true)}
+                disabled={!zeraveisCount || mCloseAll.isPending}
+              >
+                <CheckCircle2 className="size-5 shrink-0" />
+                <span className="min-w-0 text-left">
+                  <span className="block text-sm font-black">Zerar posições — fecha tudo, continua operando</span>
+                  <span className="block text-[11px] font-medium opacity-80">
+                    {zeraveisCount
+                      ? `Realiza ${zeraveisCount} posição(ões) a mercado. Não desliga o real, não revoga autorização e não pede senha — a próxima entrada do simulado espelha normalmente.`
+                      : "sem posição real aberta para zerar"}
+                  </span>
+                </span>
+              </Button>
+
+              <div className="space-y-2 rounded-xl border border-rose-500/30 bg-rose-500/5 p-2">
+                <p className="text-[10px] font-black uppercase tracking-wide text-rose-300">Emergência</p>
               {realEnabled ? (
                 <Button
                   size="lg"
@@ -1225,9 +1246,9 @@ function CockpitRealPage() {
                 >
                   <Hand className="size-5 shrink-0" />
                   <span className="min-w-0 text-left">
-                    <span className="block text-sm font-black">Parar novas entradas reais</span>
+                    <span className="block text-sm font-black">Parar entradas — mantém posição aberta</span>
                     <span className="block text-[11px] font-medium opacity-80">
-                      Bloqueia imediatamente qualquer ordem de abertura real e desliga as autorizações. Sem senha. A posição aberta continua sendo gerida.
+                      Bloqueia imediatamente qualquer ordem de abertura real e desliga as autorizações. Sem senha para parar; religar pede a senha mestra. A posição aberta continua sendo gerida.
                     </span>
                   </span>
                 </Button>
@@ -1257,14 +1278,16 @@ function CockpitRealPage() {
               >
                 <XOctagon className="size-5 shrink-0" />
                 <span className="min-w-0 text-left">
-                  <span className="block text-sm font-black">Zerar posição real agora</span>
+                  <span className="block text-sm font-black">Pânico: zerar e travar o real</span>
                   <span className="block text-[11px] font-medium opacity-90">
                     {positions.length
-                      ? "Envia fechamento a mercado da ponta contrária e desliga as autorizações. Pede confirmação."
+                      ? "Fecha tudo a mercado E desliga o real (autorizações revogadas). Religar exige a senha mestra."
                       : "sem posição real para zerar"}
                   </span>
                 </span>
               </Button>
+              </div>
+
 
               <p className="flex items-start gap-1 text-[11px] text-muted-foreground">
                 <ShieldOff className="mt-0.5 size-3 shrink-0" />
