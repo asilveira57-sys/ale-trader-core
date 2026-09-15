@@ -1254,6 +1254,7 @@ export type Database = {
           ops_sombra: number
           resultado_livre_brl: number
           resultado_sombra_brl: number
+          sombra_por_freio: Json
           symbol: string
           trade_date: string
           updated_at: string
@@ -1269,6 +1270,7 @@ export type Database = {
           ops_sombra?: number
           resultado_livre_brl?: number
           resultado_sombra_brl?: number
+          sombra_por_freio?: Json
           symbol: string
           trade_date: string
           updated_at?: string
@@ -1284,6 +1286,7 @@ export type Database = {
           ops_sombra?: number
           resultado_livre_brl?: number
           resultado_sombra_brl?: number
+          sombra_por_freio?: Json
           symbol?: string
           trade_date?: string
           updated_at?: string
@@ -4050,6 +4053,7 @@ export type Database = {
           exit_price: number | null
           exit_time: string | null
           fees: number
+          freios_na_sombra: string[]
           gain_pts: number | null
           gross_result_brl: number
           gross_result_points: number
@@ -4102,6 +4106,7 @@ export type Database = {
           exit_price?: number | null
           exit_time?: string | null
           fees?: number
+          freios_na_sombra?: string[]
           gain_pts?: number | null
           gross_result_brl?: number
           gross_result_points?: number
@@ -4154,6 +4159,7 @@ export type Database = {
           exit_price?: number | null
           exit_time?: string | null
           fees?: number
+          freios_na_sombra?: string[]
           gain_pts?: number | null
           gross_result_brl?: number
           gross_result_points?: number
