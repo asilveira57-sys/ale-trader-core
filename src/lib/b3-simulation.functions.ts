@@ -6100,10 +6100,16 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     for (const symbol of Array.from(new Set(runList.map((r) => r.symbol)))) {
       const asset = profiles[symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
       const candidates = Array.from(new Set([asset.symbol, asset.quote_symbol, symbol].filter(Boolean)));
-      const { data: q } = await (supabase as any).from("b3_mt5sim_quotes")
-        .select("tick_ts").eq("user_id", userId).in("symbol", candidates as string[])
-        .order("tick_ts", { ascending: false }).limit(1);
-      const tickTs = q?.[0]?.tick_ts ? new Date(q[0].tick_ts).getTime() : null;
+      // Uma consulta por símbolo (índice user_id+symbol+tick_ts): a lista de
+      // símbolos numa só consulta não usa o índice e varre a tabela de ticks.
+      const tickTsList = await Promise.all((candidates as string[]).map(async (sym) => {
+        const { data: q } = await (supabase as any).from("b3_mt5sim_quotes")
+          .select("tick_ts").eq("user_id", userId).eq("symbol", sym)
+          .order("tick_ts", { ascending: false }).limit(1);
+        return q?.[0]?.tick_ts ? new Date(q[0].tick_ts).getTime() : null;
+      }));
+      const validTs = tickTsList.filter((t): t is number => t != null);
+      const tickTs = validTs.length ? Math.max(...validTs) : null;
       const ageS = tickTs == null ? null : Math.max(0, Math.round((Date.now() - tickTs) / 1000));
       quotesHealth.push({ symbol, age_s: ageS, stale: ageS == null || ageS > quoteGuardLimitS });
     }

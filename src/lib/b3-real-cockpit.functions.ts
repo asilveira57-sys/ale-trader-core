@@ -143,11 +143,17 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       const p = profileFor(root);
       // As cotações chegam no contrato (WINV26), não na raiz: aceita qualquer
       // contrato conhecido da raiz e usa o tick mais recente.
-      const { data: q } = await supabase.from("b3_mt5sim_quotes")
-        .select("bid, ask, last, tick_ts")
-        .eq("user_id", userId).in("symbol", p.quote_symbols)
-        .order("tick_ts", { ascending: false }).limit(1);
-      const row = (q ?? [])[0] as any;
+      // Uma consulta por contrato (índice user_id+symbol+tick_ts). A lista de
+      // símbolos numa só consulta não usa o índice e varre a tabela de ticks.
+      const perSymbol = await Promise.all(p.quote_symbols.map(async (sym: string) => {
+        const { data: q } = await supabase.from("b3_mt5sim_quotes")
+          .select("bid, ask, last, tick_ts")
+          .eq("user_id", userId).eq("symbol", sym)
+          .order("tick_ts", { ascending: false }).limit(1);
+        return (q ?? [])[0] as any;
+      }));
+      const row = perSymbol.filter(Boolean).sort((a: any, b: any) =>
+        new Date(b.tick_ts).getTime() - new Date(a.tick_ts).getTime())[0] as any;
       const price = row ? Number(row.last ?? row.bid ?? row.ask) : null;
       quoteByRoot[root] = {
         price: Number.isFinite(price as number) && (price as number) > 0 ? Number(price) : null,
