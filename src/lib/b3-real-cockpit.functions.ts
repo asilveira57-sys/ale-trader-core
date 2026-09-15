@@ -600,7 +600,12 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       daily_circuit: dailyCircuit,
 
       enabled_count: robots.filter((r) => r.enabled).length,
-      alerts: alerts.slice(0, 12),
+      // Crítico primeiro: aviso que custa pregão não pode ficar no meio da lista.
+      alerts: alerts
+        .slice()
+        .sort((a, b) => (a.severity === "critical" ? 0 : 1) - (b.severity === "critical" ? 0 : 1))
+        .slice(0, 12),
+
     };
 
   });
