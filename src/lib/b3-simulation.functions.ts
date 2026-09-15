@@ -1,6 +1,6 @@
 // B3 Day Trade — Fase 2.5: simulação comparativa dos 3 modos
 import { createServerFn } from "@tanstack/react-start";
-import { rootSymbol } from "./b3-format";
+import { rootSymbol, FREIO_LABEL } from "./b3-format";
 import { buildCockpitFilter, cockpitKeep, cockpitRootSymbol } from "./b3-cockpit-filter";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
@@ -481,6 +481,11 @@ const openEvalLogMinute = new Map<string, number>();
 // cada tique: sem esta marca o fechamento real seria reenfileirado sem parar.
 // A chave de idempotência do comando é a segunda barreira.
 const grupoFreioEspelhado = new Set<string>();
+// Mesma marca para o FREIO DE PICO (15/09/2026), que também passou a ser
+// sombra no simulado: a posição simulada segue aberta e o real é encerrado
+// uma única vez por ordem.
+const picoFreioEspelhado = new Set<string>();
+
 
 interface ModeDefaults {
   entry_style: string;
@@ -3429,85 +3434,67 @@ async function runB3SimulationTickInner(
         const openMtmBrlAtMark = markOpenOrderBrl(open, markPrice);
         const markedTodayAtMark = realizedToday + (openMtmBrlAtMark ?? 0);
 
-        // Freio de devolução de pico: a proteção já foi reavaliada neste tique
-        // com o resultado da posição aberta marcado a mercado. Se o limite foi
-        // atingido, fecha a posição a mercado agora; a trava continua sendo só
-        // de entrada nova quando não há posição aberta.
-        if (protDec.next.protection_state === "blocked_peak_giveback") {
+        // ── FREIO DE PICO EM SOMBRA NO SIMULADO (15/09/2026) ──
+        // Até aqui o freio de pico fechava a posição simulada a mercado. Isso
+        // censura o caminho livre exatamente como o bloqueio de entrada
+        // censurava a amostra do freio de grupo: a operação era interrompida no
+        // pior instante, antes de se saber se recuperaria, e a medição ficava
+        // enviesada a favor do freio. Agora a posição simulada SEGUE até stop,
+        // alvo, trailing ou zeragem (todos ativos — não há risco novo), e a
+        // medição diária diz quanto o freio pouparia ou custaria.
+        //
+        // NO REAL NADA MUDA: o fechamento continua sendo enfileirado no
+        // instante do travamento, uma vez por posição.
+        if (protDec.next.protection_state === "blocked_peak_giveback" && !picoFreioEspelhado.has(open.id)) {
+          picoFreioEspelhado.add(open.id);
           const peak = Number(protDec.next.day_peak_profit_brl ?? 0);
           const allowed = peak * Number(protCfg.peak_giveback_pct ?? 0.4);
           const givenBack = Math.max(0, peak - markedTodayAtMark);
-          const exitAuditFinal: B3QuoteExecutionAudit = {
-            ...markAudit,
-            execution_price_origin: `${markAudit.execution_price_origin}+peak_giveback_lock`,
-          };
-          const tradeCtx = await closeOrder(supabase, userId, run, m, open, exitAuditFinal, "peak_giveback_lock", marketHistory, asset);
-          markAuditEvent(`fechamento:${mode}:peak_giveback_lock`);
-          providerStats.last_exit_price = exitAuditFinal.execution_price;
-          openOrdersCache = null; ordersMutated = true;
-          realizedTodayByMode = await getRealizedTodayByMode();
-          try {
-            await supabase.from("b3_simulation_orders").update({
-              diagnostic_payload: {
-                exit_evaluation: "peak_giveback_mark_to_market",
-                close_reason: "peak_giveback_lock",
-                realized_today_before_close_brl: realizedToday,
-                open_mtm_brl: openMtmBrlAtMark,
-                marked_today_brl: markedTodayAtMark,
-                day_peak_profit_brl: peak,
-                given_back_brl: givenBack,
-                limit_brl: allowed,
-                peak_giveback_pct: protCfg.peak_giveback_pct,
-                peak_lock_min_profit_brl: protCfg.peak_lock_min_profit_brl,
-                executed_price: exitAuditFinal.execution_price,
-                quote_age_s: Number(priceSrc.quote_age_s ?? 0),
-              },
-            }).eq("id", open.id).eq("user_id", userId);
-          } catch { /* diagnóstico nunca derruba o fechamento */ }
+          markAuditEvent(`pico_freio_sombra_aberta:${mode}`);
+          await mirrorToReal(supabase, userId, runId, mode as Mode, "close", open.side, `close-pico-${open.id}`,
+            "engine_auto", asset.quote_symbol, runVariant);
           try {
             await supabase.from("b3_simulation_block_events").insert({
               simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
               mode,
               prev_status: m.current_status ?? "operando",
               new_status: "blocked_peak_giveback",
-              trigger: "protection_peak_giveback_close",
+              trigger: "pico_freio_sombra_posicao_aberta",
               related_order_id: open.id,
               observed_value: givenBack,
               limit_value: allowed,
               pnl_at_moment: markedTodayAtMark,
-              message: `Freio de devolução de pico fechou posição aberta: devolução ${givenBack.toFixed(2)} BRL / limite ${allowed.toFixed(2)} BRL.`,
+              message: `Freio de devolução de pico: devolução ${givenBack.toFixed(2)} BRL / limite ${allowed.toFixed(2)} BRL — posição simulada MANTIDA (sombra) e fechamento enviado ao real.`,
               diagnostic_payload: {
+                sombra: true,
+                freio: "pico",
                 realized_today_brl: realizedToday,
                 open_mtm_brl: openMtmBrlAtMark,
                 marked_today_brl: markedTodayAtMark,
                 day_peak_profit_brl: peak,
                 mark_price: markPrice,
-                close_reason: "peak_giveback_lock",
+                close_reason: null, simulado: "mantido", real: "fechado",
               } as any,
             });
           } catch { /* auditoria best-effort */ }
           try {
             await supabase.from("system_logs").insert({
-              event_type: "peak_giveback_lock_close",
+              event_type: "peak_giveback_lock_sombra_posicao_aberta",
               source: `b3:${asset.symbol}:${mode}`,
               severity: "warning",
-              message: `Freio de devolução de pico encerrou posição ${open.side}: devolução ${givenBack.toFixed(2)} BRL / limite ${allowed.toFixed(2)} BRL.`,
+              message: `Freio de devolução de pico: posição ${open.side} MANTIDA no simulado (sombra) e encerrada no real — devolução ${givenBack.toFixed(2)} BRL / limite ${allowed.toFixed(2)} BRL.`,
               technical_data: {
                 order_id: open.id, run_id: runId, mode, symbol: asset.symbol,
+                variant: runVariant,
                 realized_today_brl: realizedToday, open_mtm_brl: openMtmBrlAtMark,
                 marked_today_brl: markedTodayAtMark, day_peak_profit_brl: peak,
-                limit_brl: allowed, executed_price: exitAuditFinal.execution_price,
+                limit_brl: allowed, mark_price: markPrice,
               } as any,
             });
           } catch { /* log best-effort */ }
-          log.push({ mode, action: "close", reason: "peak_giveback_lock", price: exitAuditFinal.execution_price, given_back_brl: givenBack, limit_brl: allowed });
-          finalizeAudit(`Freio de devolução de pico: ${givenBack.toFixed(2)} BRL devolvidos de ${peak.toFixed(2)} BRL — posição encerrada.`, {
-            last_setup: `Posição ${open.side.toUpperCase()} em gestão`,
-            signals: { evaluated_side: open.side, buy: false, sell: false },
-            trade_event: tradeCtx,
-          });
-          continue;
+          log.push({ mode, action: "pico_freio_sombra", given_back_brl: givenBack, limit_brl: allowed });
         }
+
 
         // ── TRAVAMENTO DE GRUPO COM POSIÇÃO ABERTA (09/09/2026) ──
         // No SIMULADO o travamento deixou de fechar a posição. Fechar no
@@ -3522,8 +3509,9 @@ async function runB3SimulationTickInner(
         // no travamento, uma vez por ordem. Essa é uma decisão de risco
         // separada, a ser revista com b3_grupo_sombra_dia em mãos.
         //
-        // O freio de pico e o disjuntor diário continuam fechando também no
-        // simulado, sem alteração (bloco acima).
+        // Desde 15/09/2026 o freio de PICO segue a mesma regra (bloco acima).
+        // O disjuntor diário real continua fechando de verdade.
+
         if (grupoNivel >= 2 && grupoTravados.includes(mode) && !grupoFreioEspelhado.has(open.id)) {
           grupoFreioEspelhado.add(open.id);
           const Rgrupo = Number(grupo?.resultado_brl ?? 0);
@@ -3963,7 +3951,9 @@ async function runB3SimulationTickInner(
       // multiplicador e lista de travados, e segue gravando em
       // b3_grupo_estado_dia. Muda só o EFEITO aqui: a entrada sai, marcada como
       // sombra na ordem, e o espelho para o real é recusado (com registro).
-      // O freio de pico e o disjuntor diário continuam bloqueando de verdade.
+      // Desde 15/09/2026 os freios de PICO, PÓS-META e STOP DIÁRIO seguem a
+      // mesma regra no simulado (bloco abaixo). No real todos continuam
+      // bloqueando de verdade.
       const sombraFreioGrupo = grupoNivel >= 2 && grupoTravados.includes(mode);
       if (sombraFreioGrupo) {
         const msg = `Freio de grupo nível ${grupoNivel} (SOMBRA — entrada liberada no simulado) ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; resultado do grupo ${Number(grupo?.resultado_brl ?? 0).toFixed(2)} BRL. Nenhum comando real será enfileirado.`;
@@ -3985,16 +3975,64 @@ async function runB3SimulationTickInner(
         });
       }
 
-
+      // ── FREIOS DE RESULTADO EM SOMBRA NO SIMULADO (15/09/2026) ──
+      // Em 15/09 cinco robôs de price action do WIN passaram o dia travados
+      // pelo freio de pico, num dia que fechou positivo — e não havia nenhuma
+      // medição para dizer se travar acertou. Os três freios de RESULTADO
+      // (pico, pós-meta e stop diário por robô) passam a registrar em vez de
+      // bloquear no simulado, exatamente como o freio de grupo desde 08/09.
+      //
+      // Os demais bloqueios da proteção continuam bloqueando: falha
+      // operacional, volatilidade extrema e drawdown não são freios de
+      // resultado — não há contrafactual a medir neles.
+      const SOMBRA_POR_ESTADO: Record<string, string> = {
+        blocked_peak_giveback: "pico",
+        blocked_post_target_loss: "pos_meta",
+        blocked_stop: "stop_diario",
+      };
+      const freioProtecaoSombra = protDec.allow_new_entry
+        ? null
+        : (SOMBRA_POR_ESTADO[protDec.next.protection_state] ?? null);
 
       // Bloqueio de proteção B3 substitui o antigo gate "meta atingida".
-      if (!protDec.allow_new_entry) {
+      if (!protDec.allow_new_entry && !freioProtecaoSombra) {
         await recordStatusIfChanged(mode, m, protDec.next.protection_state, `protection:${protDec.next.protection_state}`,
           { pnl: realizedToday, message: protDec.next.protection_block_reason ?? "Bloqueio pós-meta." });
         log.push({ mode, action: "skip", reason: protDec.next.protection_state });
         finalizeAudit(protDec.next.protection_block_reason ?? "Proteção global/diária bloqueou nova entrada.");
         continue;
       }
+
+      if (freioProtecaoSombra) {
+        const motivoProt = protDec.next.protection_block_reason ?? protDec.next.protection_state;
+        const msgProt = `${FREIO_LABEL[freioProtecaoSombra]} (SOMBRA — entrada liberada no simulado): ${motivoProt} Nenhum comando real será enfileirado.`;
+        await recordStatusIfChanged(mode, m, `sombra_${freioProtecaoSombra}`, `${protDec.next.protection_state}_sombra`,
+          { pnl: realizedToday, message: msgProt });
+        log.push({ mode, action: `sombra_${freioProtecaoSombra}`, estado: protDec.next.protection_state });
+        entryStageRows.push({
+          user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+          symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+          estagio: `freio_${freioProtecaoSombra}_sombra`,
+          motivo: msgProt.slice(0, 500),
+          detalhe: {
+            sombra: true, freio: freioProtecaoSombra,
+            protection_state: protDec.next.protection_state,
+            realizado_hoje_brl: realizedToday,
+            pico_do_dia_brl: Number(protDec.next.day_peak_profit_brl ?? 0),
+            espelho_real: "barrado",
+          },
+        });
+      }
+
+      // Todos os freios que teriam barrado ESTA entrada. Uma entrada pode ser
+      // barrada por mais de um ao mesmo tempo — é o que permite julgar um
+      // freio contra o outro na medição diária.
+      const freiosNaSombra: string[] = [
+        ...(sombraFreioGrupo ? ["grupo"] : []),
+        ...(freioProtecaoSombra ? [freioProtecaoSombra] : []),
+      ];
+      const entradaEmSombra = freiosNaSombra.length > 0;
+
 
       // Diagnóstico visual: rotula o estado atual (sem bloquear gainHit).
       const lossHit = realizedToday <= -Number(cfg.daily_loss_limit_brl);
@@ -4258,13 +4296,19 @@ async function runB3SimulationTickInner(
         // reduzindo o tamanho quando o motor de risco pede cautela — ele
         // agora reduz a partir da base certa, em vez de reduzir 1 contrato.
         const baseQty = Number(cfg.max_contracts) || 1;
-        const qtyProt = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
+        // Entrada em sombra por freio de resultado sai no TAMANHO DO ROBÔ: o
+        // multiplicador da proteção é zero quando ela bloqueia, e usar zero aqui
+        // faria a amostra livre sair com 1 contrato — livre e sombra deixariam
+        // de ser comparáveis.
+        const sizeMulEfetivo = freioProtecaoSombra ? 1 : protDec.size_multiplier;
+        const qtyProt = Math.max(1, Math.round(baseQty * Math.max(0.05, sizeMulEfetivo)));
         // Freio de grupo no simulado não reduz contratos (é sombra, item 1 de
         // 08/09/2026): a amostra tem de sair no tamanho do robô, senão o
         // resultado livre não é comparável ao sombra. `aplicarFatorContratos`
         // segue existindo e valendo para o caminho real.
         const qty = qtyProt;
         const qtySeFreioValesse = grupoNivel >= 1 ? aplicarFatorContratos(qtyProt, grupoMultiplicador) : qtyProt;
+
 
         // ── CONTRATO DE SAÍDA CONGELADO NA ABERTURA (08/09/2026) ──
         // `stop_pts` estava NULO em 100% das ordens: o nível só existia na
@@ -4292,11 +4336,14 @@ async function runB3SimulationTickInner(
           gain_pts: gainPtsFrozen > 0 ? gainPtsFrozen : null,
           stop_price: stopPriceFrozen,
           target_price: targetPriceFrozen,
-          // Sombra do freio de grupo: esta ordem existiria no simulado mas não
-          // no real. É o que separa resultado livre de resultado sombra e o que
-          // mantém a curadoria fiel ao que o dinheiro real faria.
-          bloqueado_na_sombra: sombraFreioGrupo,
+          // Sombra: esta ordem existiria no simulado mas não no real. É o que
+          // separa resultado livre de resultado sombra e o que mantém a
+          // curadoria fiel ao que o dinheiro real faria. O vetor diz QUAL freio
+          // a teria barrado; o booleano continua sendo "algum freio barraria".
+          bloqueado_na_sombra: entradaEmSombra,
+          freios_na_sombra: freiosNaSombra,
           nivel_freio_na_abertura: grupoNivel,
+
           ...orderAuditPatch(entryAudit),
         };
         // Instrumentação permanente do veredito do comitê na própria ordem.
@@ -4394,18 +4441,19 @@ async function runB3SimulationTickInner(
         if (!insertedOrder) throw new Error("Falha ao criar ordem simulada");
 
         markAuditEvent(`abertura:${mode}:${effectiveSide}`);
-        if (sombraFreioGrupo) {
-          // NO REAL, NADA MUDA: o espelho recusa a abertura quando o freio de
-          // grupo está acionado. A recusa é registrada — sem isso não há como
+        if (entradaEmSombra) {
+          // NO REAL, NADA MUDA: o espelho recusa a abertura quando QUALQUER
+          // freio está acionado. A recusa é registrada — sem isso não há como
           // contar quantas entradas reais foram puladas, e a diferença entre o
           // resultado simulado e o real pareceria erro de conciliação.
-          markAuditEvent(`espelho_barrado:${mode}:freio_grupo`);
+          const freiosTexto = freiosNaSombra.map((f) => FREIO_LABEL[f] ?? f).join(" + ");
+          markAuditEvent(`espelho_barrado:${mode}:${freiosNaSombra.join("+")}`);
           try {
             await supabase.from("system_logs").insert({
               event_type: "b3_espelho_barrado_freio",
               source: "b3-simulation-tick",
               severity: "warning",
-              message: `[${asset.quote_symbol}/${runVariant}/${mode}] abertura ${effectiveSide.toUpperCase()} liberada no simulado e RECUSADA no real — freio de grupo nível ${grupoNivel}.`,
+              message: `[${asset.quote_symbol}/${runVariant}/${mode}] abertura ${effectiveSide.toUpperCase()} liberada no simulado e RECUSADA no real — ${freiosTexto}.`,
               technical_data: {
                 // Magic vem do banco (única fonte da fórmula). Aqui é registro:
                 // se a RPC falhar, fica nulo e o resto do log continua valendo.
@@ -4413,9 +4461,12 @@ async function runB3SimulationTickInner(
                   p_symbol: rootSymbol(asset.quote_symbol), p_variant: runVariant, p_mode: mode,
                 }).then((r: any) => r?.data ?? null).catch(() => null)),
                 symbol: rootSymbol(asset.quote_symbol), quote_symbol: asset.quote_symbol,
-                variant: runVariant, mode, grupo_nivel: grupoNivel,
+                variant: runVariant, mode,
+                freios_na_sombra: freiosNaSombra,
+                grupo_nivel: grupoNivel,
                 grupo_multiplicador: grupoMultiplicador,
                 grupo_resultado_brl: Number(grupo?.resultado_brl ?? 0),
+                protection_state: protDec.next.protection_state,
                 simulation_order_id: insertedOrder.id,
                 quantidade_simulada: qty, quantidade_se_freio_valesse: qtySeFreioValesse,
                 side: effectiveSide,
@@ -4427,11 +4478,13 @@ async function runB3SimulationTickInner(
               event_type: "b3_espelho_nao_abriu",
               source: `b3_real_mirror:${asset.quote_symbol}:${runVariant}:${mode}`,
               severity: "warning",
-              message: `Abertura real NÃO enfileirada (freio_de_grupo): freio de grupo nível ${grupoNivel}.`,
+              message: `Abertura real NÃO enfileirada (${sombraFreioGrupo ? "freio_de_grupo" : `freio_${freiosNaSombra[0]}`}): ${freiosTexto}.`,
               technical_data: {
-                motivo: "freio_de_grupo",
+                motivo: sombraFreioGrupo ? "freio_de_grupo" : `freio_${freiosNaSombra[0]}`,
+                freios_na_sombra: freiosNaSombra,
                 symbol: asset.quote_symbol, variant: runVariant, mode, side: effectiveSide,
                 run_id: runId, grupo_nivel: grupoNivel, grupo_multiplicador: grupoMultiplicador,
+                protection_state: protDec.next.protection_state,
                 simulation_order_id: insertedOrder.id,
               } as any,
             });
@@ -4444,6 +4497,7 @@ async function runB3SimulationTickInner(
             target_price: targetPriceFrozen,
           });
         }
+
         providerStats.last_entry_price = entry;
         openOrdersCache = null; ordersMutated = true;
         await patchMode(m, {
@@ -5527,7 +5581,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
     // A medição é por ROBÔ (mode) e também consolidada por grupo (mode = "").
     // O card mostra a linha do robô; a testeira da modalidade, a do grupo.
     const { data: sombraRows } = await (supabase as any).from("b3_grupo_sombra_dia")
-      .select("symbol, variant, mode, resultado_livre_brl, resultado_sombra_brl, ops_livre, ops_sombra, diferenca_brl")
+      .select("symbol, variant, mode, resultado_livre_brl, resultado_sombra_brl, ops_livre, ops_sombra, diferenca_brl, sombra_por_freio")
       .eq("user_id", userId).eq("trade_date", sessionDate);
     const shapeSombra = (s: any) => ({
       resultado_livre_brl: Number(s.resultado_livre_brl ?? 0),
@@ -5535,7 +5589,11 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       ops_livre: Number(s.ops_livre ?? 0),
       ops_sombra: Number(s.ops_sombra ?? 0),
       diferenca_brl: Number(s.diferenca_brl ?? 0),
+      // Atribuição por freio (15/09/2026). Dias anteriores vêm vazios: nada é
+      // recalculado, a medição por freio vale daqui para frente.
+      por_freio: (s.sombra_por_freio ?? {}) as Record<string, any>,
     });
+
     const sombraByKey: Record<string, any> = {};      // robô: root|variant|mode
     const sombraGrupoByKey: Record<string, any> = {}; // grupo: root|variant
     for (const s of (sombraRows ?? []) as any[]) {

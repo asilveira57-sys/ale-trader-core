@@ -113,3 +113,52 @@ export const sombraLinhas = (s: SombraDia) => {
     tom: Math.round(dif * 100) === 0 ? "neutro" : dif > 0 ? "bom" : "ruim",
   } as const;
 };
+
+// ── Atribuição por freio (15/09/2026) ─────────────────────────────────────
+// Com quatro freios em sombra, saber que "o freio teria barrado" não basta:
+// é preciso saber QUAL, senão não dá para julgar um contra o outro.
+export const FREIO_LABEL: Record<string, string> = {
+  pico: "Freio de pico",
+  pos_meta: "Pós-meta",
+  stop_diario: "Stop diário",
+  grupo: "Freio de grupo",
+};
+// Ordem fixa na tela e na cópia: do mais frequente ao menos.
+export const FREIO_ORDEM = ["pico", "pos_meta", "stop_diario", "grupo"] as const;
+
+export interface SombraFreio {
+  resultado_sombra_brl: number;
+  ops_sombra: number;
+  ops_barradas: number;
+  diferenca_brl: number;
+}
+
+/** Linha de um freio: "pouparia R$ X", "custaria R$ Y" ou "não agiu hoje". */
+export const sombraFreioLinha = (freio: string, s: SombraFreio) => {
+  const dif = Number(s.diferenca_brl ?? 0);
+  const zero = Math.round(dif * 100) === 0;
+  return {
+    freio,
+    rotulo: FREIO_LABEL[freio] ?? freio,
+    agiu: Number(s.ops_barradas ?? 0) > 0,
+    texto: zero
+      ? "não agiu hoje"
+      : dif > 0
+        ? `pouparia ${BRL(Math.abs(dif))}`
+        : `custaria ${BRL(Math.abs(dif))}`,
+    tom: zero ? "neutro" : dif > 0 ? "bom" : "ruim",
+  } as const;
+};
+
+/** Só os freios que efetivamente barraram alguma entrada hoje, em ordem fixa. */
+export const sombraFreiosQueAgiram = (porFreio: Record<string, SombraFreio> | null | undefined) => {
+  const p = porFreio ?? {};
+  const chaves = [
+    ...FREIO_ORDEM.filter((f) => p[f]),
+    ...Object.keys(p).filter((f) => !(FREIO_ORDEM as readonly string[]).includes(f)),
+  ];
+  return chaves
+    .map((f) => sombraFreioLinha(f, p[f] as SombraFreio))
+    .filter((l) => l.agiu);
+};
+

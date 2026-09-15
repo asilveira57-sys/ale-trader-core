@@ -1,7 +1,7 @@
 // Geração do texto de "copiar" do Cockpit. Somente apresentação:
 // nada aqui participa do motor de simulação, nem lê/escreve no banco.
 
-import { decimalsForTick, openSinceText, rootSymbol, sombraLinhas, PX } from "./b3-format";
+import { decimalsForTick, openSinceText, rootSymbol, sombraLinhas, sombraFreiosQueAgiram, PX } from "./b3-format";
 import { modeFullLabel } from "./mode-nick-registry";
 
 const BRL = (v: number | null | undefined) =>
@@ -96,8 +96,15 @@ function robotBlock(c: any): string {
     const sl = sombraLinhas(c.grupo.sombra);
     lines.push(`  operou ${sl.operou}`);
     lines.push(`  com freio ${sl.comFreio}`);
-    lines.push(`  ${sl.veredito.toLowerCase()}`);
+    // Uma linha por freio que agiu na sombra, na mesma ordem do card.
+    const freios = sombraFreiosQueAgiram(c.grupo.sombra.por_freio);
+    if (freios.length > 0) {
+      for (const f of freios) lines.push(`  ${f.rotulo.toLowerCase()} ${f.texto}`);
+    } else {
+      lines.push(`  ${sl.veredito.toLowerCase()}`);
+    }
   }
+
 
   return lines.join("\n");
 }

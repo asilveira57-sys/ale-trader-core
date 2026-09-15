@@ -1,35 +1,47 @@
-// MEDIÇÃO DIÁRIA DO FREIO DE GRUPO (08/09/2026)
+// MEDIÇÃO DIÁRIA DOS FREIOS EM SOMBRA (08/09/2026 · ampliada em 15/09/2026)
 //
 // Desde 08/09/2026 o freio de grupo não bloqueia no simulado — ele registra.
-// Para que a decisão de manter, afrouxar ou endurecer o freio seja tomada por
-// número e não por opinião sobre um dia bom, o motor guarda os DOIS caminhos
-// por pregão:
+// Desde 15/09/2026 o mesmo vale para os outros três freios de RESULTADO:
+// freio de pico, proteção pós-meta e stop diário por robô. No real todos
+// continuam bloqueando de verdade.
 //
-//   livre  — o que de fato aconteceu no simulado, sem freio de grupo
-//   sombra — o que teria acontecido se o freio tivesse bloqueado
+// Para que a decisão de manter, afrouxar ou endurecer cada freio seja tomada
+// por número e não por opinião sobre um dia bom, o motor guarda os DOIS
+// caminhos por pregão:
+//
+//   livre  — o que de fato aconteceu no simulado, sem nenhum freio
+//   sombra — o que teria acontecido se os freios tivessem bloqueado
+//
+// ATRIBUIÇÃO POR FREIO (15/09/2026): com quatro freios em sombra, um número
+// agregado mistura tudo e não permite julgar um freio contra o outro. A ordem
+// nasce com `freios_na_sombra` (vetor: 'grupo', 'pico', 'pos_meta',
+// 'stop_diario'), e aqui se calcula, por freio, o resultado que existiria se
+// APENAS aquele freio estivesse ativo. `bloqueado_na_sombra` continua sendo
+// "algum freio barraria" e alimenta a medição agregada, como antes.
 //
 // GRANULARIDADE (11/09/2026): a medição é gravada por ROBÔ
 // (symbol raiz, variant, mode) e também consolidada por GRUPO na linha com
 // `mode = ''`. O card do robô lê a linha dele; a testeira do grupo lê a linha
-// do grupo. Antes só existia a linha do grupo e o card mostrava a soma da
-// modalidade como se fosse do robô.
+// do grupo.
 //
 // IDEMPOTÊNCIA (11/09/2026): a passada recalcula o DIA INTEIRO a partir de
-// `b3_simulation_orders` e sobrescreve as linhas. A versão anterior somava
-// todas as ordens fechadas da execução, sem recorte de dia — e como a execução
-// vive semanas, `ops_livre` aparecia inflado de 5 a 15 vezes e o resultado
-// vinha de dias antigos. O recorte de dia usa `entry_time` na janela BRT, o
-// mesmo critério da consulta de referência da auditoria.
-//
-// Nenhuma simulação nova é necessária: a ordem já nasce com
-// `bloqueado_na_sombra`, gravado na abertura. Quem estava travado naquele
-// instante entra no livre e sai do sombra.
+// `b3_simulation_orders` e sobrescreve as linhas. O recorte de dia usa
+// `entry_time` na janela BRT, o mesmo critério da consulta de referência da
+// auditoria.
 //
 // `diferenca_brl = sombra - livre`: positiva significa que o freio teria
 // ajudado; negativa, que teria atrapalhado.
 //
-// Este arquivo NÃO decide nada. Não toca em `decideB3Grupo`, em stop, alvo,
-// trailing, zeragem, freio de pico ou disjuntor.
+// Este arquivo NÃO decide nada. Não toca em `decideB3Grupo`, na proteção
+// diária, em stop, alvo, trailing, zeragem, freio de pico ou disjuntor.
+
+export interface GrupoSombraFreio {
+  resultado_sombra_brl: number;
+  ops_sombra: number;
+  /** Quantas entradas do dia este freio teria barrado. */
+  ops_barradas: number;
+  diferenca_brl: number;
+}
 
 export interface GrupoSombraDia {
   resultado_livre_brl: number;
@@ -37,6 +49,8 @@ export interface GrupoSombraDia {
   ops_livre: number;
   ops_sombra: number;
   diferenca_brl: number;
+  /** Mesma medição isolando cada freio. Só freios que apareceram no dia. */
+  por_freio: Record<string, GrupoSombraFreio>;
 }
 
 export interface GrupoSombraResultado extends GrupoSombraDia {
@@ -44,15 +58,30 @@ export interface GrupoSombraResultado extends GrupoSombraDia {
   por_modo: Record<string, GrupoSombraDia>;
 }
 
-const zero = (): { livre: number; sombra: number; opsL: number; opsS: number } =>
-  ({ livre: 0, sombra: 0, opsL: 0, opsS: 0 });
+type Acc = {
+  livre: number; sombra: number; opsL: number; opsS: number;
+  /** freio -> { resultado sem aquele freio, ops sem aquele freio, ops barradas } */
+  freios: Map<string, { brl: number; ops: number; barradas: number }>;
+};
 
-const shape = (a: { livre: number; sombra: number; opsL: number; opsS: number }): GrupoSombraDia => ({
-  resultado_livre_brl: Number(a.livre.toFixed(2)),
-  resultado_sombra_brl: Number(a.sombra.toFixed(2)),
+const zero = (): Acc => ({ livre: 0, sombra: 0, opsL: 0, opsS: 0, freios: new Map() });
+
+const r2 = (v: number) => Number(v.toFixed(2));
+
+const shape = (a: Acc): GrupoSombraDia => ({
+  resultado_livre_brl: r2(a.livre),
+  resultado_sombra_brl: r2(a.sombra),
   ops_livre: a.opsL,
   ops_sombra: a.opsS,
-  diferenca_brl: Number((a.sombra - a.livre).toFixed(2)),
+  diferenca_brl: r2(a.sombra - a.livre),
+  por_freio: Object.fromEntries(
+    Array.from(a.freios.entries()).map(([f, v]) => [f, {
+      resultado_sombra_brl: r2(v.brl),
+      ops_sombra: v.ops,
+      ops_barradas: v.barradas,
+      diferenca_brl: r2(v.brl - a.livre),
+    } satisfies GrupoSombraFreio]),
+  ),
 });
 
 // FREQUÊNCIA (15/09/2026): a consolidação é um ACUMULADO do pregão — muda
@@ -66,8 +95,8 @@ const ULTIMA_CONSOLIDACAO_MS = 60_000;
 const ultimaPorGrupo = new Map<string, { at: number; res: GrupoSombraResultado }>();
 
 /**
- * Recalcula e grava o consolidado livre/sombra do dia — por robô e por grupo.
- * Falha em silêncio no chamador: é medição, nunca caminho crítico.
+ * Recalcula e grava o consolidado livre/sombra do dia — por robô, por grupo e
+ * por freio. Falha em silêncio no chamador: é medição, nunca caminho crítico.
  *
  * `opts.force` ignora o intervalo mínimo (fim de pregão, fechamento manual).
  */
@@ -94,7 +123,7 @@ export async function atualizarGrupoSombraDia(
 
   const { data, error } = await supabase
     .from("b3_simulation_orders")
-    .select("mode, net_result_brl, bloqueado_na_sombra")
+    .select("mode, net_result_brl, bloqueado_na_sombra, freios_na_sombra")
     .eq("user_id", userId)
     .eq("simulation_run_id", runId)
     .eq("status", "closed")
@@ -105,19 +134,39 @@ export async function atualizarGrupoSombraDia(
   if (error) throw new Error(`sombra de grupo: ${error.message}`);
 
   const ords = (data ?? []) as any[];
+  // Freios que apareceram no dia: só eles ganham linha, para não inventar
+  // medição de freio que nunca agiu.
+  const freiosDoDia = new Set<string>();
+  for (const o of ords) {
+    for (const f of (Array.isArray(o.freios_na_sombra) ? o.freios_na_sombra : [])) {
+      if (f) freiosDoDia.add(String(f));
+    }
+  }
+
   const grupo = zero();
-  const porModo = new Map<string, ReturnType<typeof zero>>();
+  const porModo = new Map<string, Acc>();
   for (const o of ords) {
     const mode = String(o.mode ?? "");
     if (!porModo.has(mode)) porModo.set(mode, zero());
     const alvos = [grupo, porModo.get(mode)!];
     const brl = Number(o.net_result_brl ?? 0);
+    const freios = new Set<string>(
+      (Array.isArray(o.freios_na_sombra) ? o.freios_na_sombra : []).map((f: any) => String(f)),
+    );
     for (const a of alvos) {
       a.livre += brl;
       a.opsL += 1;
       if (o.bloqueado_na_sombra !== true) {
         a.sombra += brl;
         a.opsS += 1;
+      }
+      // Por freio: a ordem entra no resultado daquele freio quando ELE não a
+      // teria barrado. Barrada por dois freios ao mesmo tempo → sai dos dois.
+      for (const f of freiosDoDia) {
+        if (!a.freios.has(f)) a.freios.set(f, { brl: 0, ops: 0, barradas: 0 });
+        const acc = a.freios.get(f)!;
+        if (freios.has(f)) acc.barradas += 1;
+        else { acc.brl += brl; acc.ops += 1; }
       }
     }
   }
@@ -128,9 +177,13 @@ export async function atualizarGrupoSombraDia(
   };
 
   const agora = new Date().toISOString();
+  const linha = (mode: string, a: Acc) => {
+    const { por_freio, ...resto } = shape(a);
+    return { mode, ...resto, sombra_por_freio: por_freio };
+  };
   const rows = [
-    { mode: "", ...shape(grupo) },
-    ...Array.from(porModo.entries()).map(([m, a]) => ({ mode: m, ...shape(a) })),
+    linha("", grupo),
+    ...Array.from(porModo.entries()).map(([m, a]) => linha(m, a)),
   ].map((r) => ({
     user_id: userId, symbol: symbolRoot, variant, trade_date: tradeDate,
     ...r, updated_at: agora,

@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, AlertTriangle, Copy } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
-import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, sombraLinhas } from "@/lib/b3-format";
+import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, sombraLinhas, sombraFreiosQueAgiram } from "@/lib/b3-format";
 import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
@@ -882,10 +882,13 @@ function CockpitPage() {
                           </p>
                         )}
                         {/* Livre × sombra DESTE robô: o que ele operou e o que
-                            teria operado com o freio de grupo ligado. A terceira
-                            linha diz a direção por palavra, sem número com sinal. */}
+                            teria operado com os freios ligados. Abaixo, uma
+                            linha por freio que efetivamente agiu hoje — sem
+                            atribuição não dá para julgar um freio contra o
+                            outro. Freio que não agiu é omitido. */}
                         {c.grupo?.sombra && c.grupo.sombra.ops_livre > 0 && (() => {
                           const sl = sombraLinhas(c.grupo.sombra);
+                          const freios: ReturnType<typeof sombraFreiosQueAgiram> = sombraFreiosQueAgiram(c.grupo.sombra.por_freio);
                           return (
                             <div className="text-[10px] space-y-0.5 pt-1 border-t border-border/40">
                               <div className="flex justify-between gap-2">
@@ -896,14 +899,28 @@ function CockpitPage() {
                                 <span className="text-muted-foreground">Com freio</span>
                                 <span className="font-mono">{sl.comFreio}</span>
                               </div>
-                              <div className={`font-semibold ${
-                                sl.tom === "bom" ? "text-emerald-300" : sl.tom === "ruim" ? "text-rose-300" : "text-muted-foreground"
-                              }`}>
-                                {sl.veredito}
-                              </div>
+                              {freios.length > 0 ? (
+                                freios.map((f) => (
+                                  <div key={f.freio} className="flex justify-between gap-2">
+                                    <span className="text-muted-foreground">{f.rotulo}</span>
+                                    <span className={`font-mono ${
+                                      f.tom === "bom" ? "text-emerald-300" : f.tom === "ruim" ? "text-rose-300" : "text-muted-foreground"
+                                    }`}>
+                                      {f.texto}
+                                    </span>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className={`font-semibold ${
+                                  sl.tom === "bom" ? "text-emerald-300" : sl.tom === "ruim" ? "text-rose-300" : "text-muted-foreground"
+                                }`}>
+                                  {sl.veredito}
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
+
                       </button>
 
 
