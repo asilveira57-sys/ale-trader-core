@@ -1251,6 +1251,7 @@ function CockpitRealPage() {
             hint="Nenhuma destas ações pausa a simulação. Zerar posições não desliga nada; o bloco de emergência desliga o real e religar pede a senha mestra."
           >
             <div className="space-y-2">
+              <RefreshNow />
               {/* OPERAÇÃO NORMAL — neutro, longe do amarelo e do vermelho. */}
               <Button
                 size="lg"
