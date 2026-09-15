@@ -719,6 +719,7 @@ function CockpitRealPage() {
             zerar posição reduz risco e não pode ser confundido com o pânico. */}
         {vivo ? (
         <div className="grid gap-2">
+          <RefreshNow className="justify-center" />
           <Button
             variant="outline"
             className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal border-2 py-2 text-sm font-black"
