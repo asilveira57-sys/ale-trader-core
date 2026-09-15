@@ -1487,6 +1487,46 @@ async function runB3SimulationTickInner(
     };
   }
 
+  // EVENTO DE STATUS: só quando o status REALMENTE mudou na passada (15/09/2026).
+  //
+  // Dentro de um mesmo tique o status de um robô oscilava (operando ->
+  // sombra_grupo -> operando), e cada perna virava linha em
+  // b3_simulation_block_events: 205 mil eventos de sombra e 144 mil "ok" sem
+  // informação nova. Agora o status intermediário fica em memória e, no fim da
+  // passada do robô, um único evento é gravado se o status final diferir do
+  // status com que o robô entrou na passada. `forceLog` continua gravando na
+  // hora (diagnóstico explícito). Nada muda no que a tela mostra: o status
+  // corrente do robô continua o mesmo.
+  const statusTickStart = new Map<string, string>();
+  const pendingStatusEvent = new Map<string, { mode: string; m: any; newStatus: string; trigger: string; opts: any }>();
+  async function insertStatusEvent(mode: string, m: any, prev: string, newStatus: string, trigger: string, opts: any) {
+    markAuditEvent(prev !== newStatus ? `status:${mode}:${prev}->${newStatus}` : `block_event:${mode}:${trigger}`);
+    await supabase.from("b3_simulation_block_events").insert({
+      simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
+      mode, prev_status: prev, new_status: newStatus, trigger,
+      observed_value: opts.observed ?? null,
+      limit_value: opts.limit ?? null,
+      pnl_at_moment: opts.pnl ?? null,
+      related_order_id: opts.related_order_id ?? null,
+      message: opts.message ?? null,
+      provider_name: opts.provider_name ?? null,
+      price_source: opts.price_source ?? null,
+      rejected_price: opts.rejected_price ?? null,
+      mt5_last: opts.mt5_last ?? null,
+      diagnostic_payload: opts.diagnostic_payload ?? {},
+    });
+  }
+  async function flushStatusEvent(modeId?: string | null) {
+    if (!modeId) return;
+    const pend = pendingStatusEvent.get(modeId);
+    pendingStatusEvent.delete(modeId);
+    if (!pend) return;
+    const inicial = statusTickStart.get(modeId) ?? "operando";
+    if (inicial === pend.newStatus) return; // voltou ao mesmo ponto: nada mudou
+    try {
+      await insertStatusEvent(pend.mode, pend.m, inicial, pend.newStatus, pend.trigger, pend.opts);
+    } catch { /* auditoria nunca derruba o tique */ }
+  }
   // Helper: registra mudança de status operacional (parou de operar / voltou)
   async function recordStatusIfChanged(
     mode: string, m: any, newStatus: string, trigger: string,
