@@ -136,10 +136,20 @@ export async function atualizarGrupoSombraDia(
     ...r, updated_at: agora,
   }));
 
-  const { error: upErr } = await supabase.from("b3_grupo_sombra_dia").upsert(
-    rows,
-    { onConflict: "user_id,symbol,variant,mode,trade_date" },
-  );
-  if (upErr) throw new Error(`sombra de grupo (gravação): ${upErr.message}`);
+  // Medição idêntica à última gravada não vira UPDATE: linha nova no Postgres
+  // custa I/O e vacuum mesmo quando nenhum valor muda.
+  const igual = anterior && JSON.stringify(anterior.res) === JSON.stringify(res);
+  if (!igual) {
+    const { error: upErr } = await supabase.from("b3_grupo_sombra_dia").upsert(
+      rows,
+      { onConflict: "user_id,symbol,variant,mode,trade_date" },
+    );
+    if (upErr) throw new Error(`sombra de grupo (gravação): ${upErr.message}`);
+  }
+  ultimaPorGrupo.set(chave, { at: Date.now(), res });
+  // O cache é por processo e só guarda o dia corrente de cada grupo.
+  if (ultimaPorGrupo.size > 200) {
+    for (const k of Array.from(ultimaPorGrupo.keys()).slice(0, 100)) ultimaPorGrupo.delete(k);
+  }
   return res;
 }
