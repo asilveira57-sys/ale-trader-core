@@ -4172,19 +4172,27 @@ async function runB3SimulationTickInner(
         const voteRows = votes.map(v => ({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
-          market_data_snapshot: {
-            snapshot_id: snapId, decision: decision.final, score: decision.score,
-            price: ctx.price, side: effectiveSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
-          } as any,
-        }));
+          // CONTEXTO DO TIQUE NÃO VIAJA MAIS EM CADA VOTO (15/09/2026).
+          // Antes cada agente repetia o mesmo objeto de mercado: era
+          // praticamente a tabela inteira (568 MB). O contexto do tique fica em
+          // b3_simulation_market_snapshots (uma linha por tique persistido) e o
+          // estado corrente em b3_engine_state; a ligação é tick_snapshot_id.
+          tick_snapshot_id: snapId,
+          decision: decision.final,
+          score: decision.score,
+          side: effectiveSide,
+          has_veto: v.has_veto ?? false,
+          veto_reason: v.veto_reason ?? null,
+          market_data_snapshot: {} as any,
+        })) as any[];
         // Instrumentação: guardamos os ids inseridos para vincular à ordem
         // criada neste mesmo tique/modo (order_id só existe depois do insert).
         try {
-          const { data: insertedVotes } = await supabase
+          const { data: insertedVotes } = await (supabase as any)
             .from("b3_simulation_agent_votes").insert(voteRows).select("id");
           lastVoteIdsByMode[mode] = (insertedVotes ?? []).map((r: any) => r.id);
         } catch {
-          await supabase.from("b3_simulation_agent_votes").insert(voteRows);
+          await (supabase as any).from("b3_simulation_agent_votes").insert(voteRows);
         }
       }
 
