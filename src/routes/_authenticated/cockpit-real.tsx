@@ -1034,9 +1034,15 @@ function CockpitRealPage() {
                           estado<br />desconhecido
                         </p>
                       ) : (
-                        <p className={`text-2xl font-black ${money(p.unrealized_brl)}`}>
-                          {p.unrealized_brl == null ? "—" : SIGNED_BRL(p.unrealized_brl)}
-                        </p>
+                        <div className="text-right">
+                          <p className={`text-2xl font-black ${money(p.unrealized_brl)}`}>
+                            {p.unrealized_brl == null ? "—" : SIGNED_BRL(p.unrealized_brl)}
+                          </p>
+                          {/* De onde vem o número: MetaTrader ou conta por cotação. */}
+                          <p className={`text-[10px] font-bold uppercase ${p.resultado_fonte === "corretora" ? "text-muted-foreground" : "text-amber-300"}`}>
+                            {p.resultado_fonte === "corretora" ? "número da corretora" : "estimado por cotação"}
+                          </p>
+                        </div>
                       )}
                     </div>
                     {p.confirmada_corretora === false && (
