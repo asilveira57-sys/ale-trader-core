@@ -1292,6 +1292,43 @@ async function runB3SimulationTickInner(
     return guardEval.ok ? null : (guardEval.first_block_reason ?? "Guard MT5 rejeitou o tick.");
   }
 
+  // GRAVAÇÃO CONDICIONAL DO ESTADO DO ROBÔ (15/09/2026).
+  //
+  // 114 mil UPDATEs em 711 linhas vivas — e a maioria regravava valor idêntico.
+  // No Postgres um UPDATE que não muda nada ainda cria nova versão da linha,
+  // com I/O e trabalho de vacuum: não é de graça. As comparações espalhadas
+  // pelo motor erravam em dois pontos: data devolvida pelo banco como
+  // "2026-09-15T12:00:00+00:00" comparada como texto contra ISO "…000Z", e
+  // número devolvido como string. Aqui a comparação é única e normalizada, e
+  // só os campos que realmente mudaram entram no UPDATE.
+  //
+  // Não muda nenhum valor calculado: o que muda continua sendo gravado.
+  function mesmoValorDeModo(cur: any, next: any): boolean {
+    if (cur == null && next == null) return true;
+    if (cur == null || next == null) return false;
+    if (typeof next === "boolean" || typeof cur === "boolean") return Boolean(cur) === Boolean(next);
+    if (typeof next === "number" || typeof cur === "number") return Number(cur) === Number(next);
+    const a = String(cur), b = String(next);
+    if (a === b) return true;
+    // Instantes iguais escritos de formas diferentes (+00:00 vs Z).
+    const isTs = (s: string) => /^\d{4}-\d{2}-\d{2}T/.test(s);
+    if (isTs(a) && isTs(b)) {
+      const ta = Date.parse(a), tb = Date.parse(b);
+      if (Number.isFinite(ta) && Number.isFinite(tb)) return ta === tb;
+    }
+    return false;
+  }
+  async function patchMode(m: any, patch: Record<string, any>): Promise<boolean> {
+    const diff: Record<string, any> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (!mesmoValorDeModo(m[k] ?? null, v ?? null)) diff[k] = v;
+    }
+    if (!Object.keys(diff).length) return false;
+    await supabase.from("b3_simulation_modes").update(diff).eq("id", m.id).eq("user_id", userId);
+    Object.assign(m, diff);
+    return true;
+  }
+
   let totalsComputedOnce = false;
   async function recomputeModeTotalsFromValidMt5Orders(force = false) {
     // I/O: só recalcula uma vez por execução, salvo mudança real de ordens.
@@ -1340,12 +1377,10 @@ async function runB3SimulationTickInner(
         contracts_traded: contracts,
       };
       // Grava só quando há mudança real de estado.
-      const changed = Object.entries(patch).some(([k, v]) => Number(m[k] ?? 0) !== Number(v ?? 0));
-      if (!changed) continue;
-      await supabase.from("b3_simulation_modes").update(patch).eq("id", m.id).eq("user_id", userId);
-      Object.assign(m, patch);
+      await patchMode(m, patch);
     }
   }
+
 
   async function invalidateLegacyOrdersForMt5(info: B3PriceContextResult) {
     if (info.source !== "mt5_xp_demo") return;
@@ -1433,14 +1468,10 @@ async function runB3SimulationTickInner(
       diagnostic_payload: opts.diagnostic_payload ?? {},
     });
     if (prev !== newStatus) {
-      await supabase.from("b3_simulation_modes").update({
+      await patchMode(m, {
         current_status: newStatus, status_reason: opts.message ?? null,
         status_changed_at: new Date().toISOString(), last_trigger: trigger,
-      }).eq("id", m.id);
-      m.current_status = newStatus;
-      m.status_reason = opts.message ?? null;
-      m.status_changed_at = new Date().toISOString();
-      m.last_trigger = trigger;
+      });
     }
   }
 
@@ -2866,6 +2897,10 @@ async function runB3SimulationTickInner(
     // linhas/pregão) mais caro que o próprio tique.
     const entryStageRows: any[] = [];
 
+    // Zeragem/fechamento de pregão em qualquer robô: a consolidação da sombra
+    // do dia é forçada no fim da passada, para não perder o último trecho.
+    let zeragemNoTique = false;
+
     const runT0 = Date.now();
 
     for (const mode of activeModes) {
@@ -2902,6 +2937,8 @@ async function runB3SimulationTickInner(
       // Antes da abertura o motor também "força fechamento" (não há nada aberto),
       // mas o rótulo de zeragem é enganoso — este estado é só pré-abertura.
       const beforeOpen = cur < startMin;
+      // Fim de pregão: obriga a consolidação final da sombra do dia.
+      if (forceClose && !beforeOpen) zeragemNoTique = true;
 
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
@@ -3183,16 +3220,11 @@ async function runB3SimulationTickInner(
         protection_block_reason: protDec.next.protection_block_reason,
         protection_day_key: todayKey,
       } as Record<string, any>;
-      const protChanged = Object.entries(protPatch).some(([k, v]) => {
-        const cur = m[k] ?? null;
-        const next = v ?? null;
-        if (typeof next === "number" || typeof cur === "number") return Number(cur ?? 0) !== Number(next ?? 0);
-        return String(cur ?? "") !== String(next ?? "");
-      });
-      if (protChanged) {
-        await supabase.from("b3_simulation_modes").update(protPatch).eq("id", m.id);
-        Object.assign(m, protPatch);
-      }
+      // A comparação campo a campo vive em `patchMode`: datas devolvidas pelo
+      // banco como "+00:00" comparadas contra ISO "…Z" faziam este bloco gravar
+      // a cada passada, mesmo sem nenhuma mudança de proteção.
+      await patchMode(m, protPatch);
+
 
 
       if (protDec.transition) {
@@ -3920,9 +3952,7 @@ async function runB3SimulationTickInner(
       if (macroBlock) {
         log.push({ mode, action: "skip", reason: `macro:${macroBlock.name}` });
         if (sigChanged(`block:${mode}`, `macro:${macroBlock.name}`)) {
-          await supabase.from("b3_simulation_modes")
-            .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
-          m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+          await patchMode(m, { risk_blocks: (Number(m.risk_blocks) || 0) + 1 });
         }
         finalizeAudit(`Proteção global: evento macro ${macroBlock.name}.`);
         continue;
@@ -3954,9 +3984,7 @@ async function runB3SimulationTickInner(
       const localCtx = { ...ctx };
       if (localCtx.volatility_pct > Number(cfg.max_volatility_pct)) {
         if (sigChanged(`block:${mode}`, "volatility")) {
-          await supabase.from("b3_simulation_modes")
-            .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
-          m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+          await patchMode(m, { risk_blocks: (Number(m.risk_blocks) || 0) + 1 });
         }
 
         log.push({ mode, action: "skip", reason: "volatilidade" });
@@ -4074,9 +4102,7 @@ async function runB3SimulationTickInner(
         // Comitê aprovou, mas o setup técnico não é operável (Fase 1: só trend_pullback).
         const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "critérios de trend_pullback não atendidos"}`;
         if (sigChanged(`block:${mode}`, `no_valid_setup:${setupInfo.name}`)) {
-          await supabase.from("b3_simulation_modes")
-            .update({ committee_rejections: (Number(m.committee_rejections) || 0) + 1 }).eq("id", m.id);
-          m.committee_rejections = (Number(m.committee_rejections) || 0) + 1;
+          await patchMode(m, { committee_rejections: (Number(m.committee_rejections) || 0) + 1 });
         }
 
         log.push({ mode, action: "reject", reason: "no_valid_setup", setup: setupInfo.name, side: effectiveSide });
@@ -4321,13 +4347,10 @@ async function runB3SimulationTickInner(
         }
         providerStats.last_entry_price = entry;
         openOrdersCache = null;
-        await supabase.from("b3_simulation_modes")
-          .update({
-            committee_approvals: (Number(m.committee_approvals) || 0) + 1,
-            contracts_traded: (Number(m.contracts_traded) || 0) + qty,
-          }).eq("id", m.id);
-        m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
-        m.contracts_traded = (Number(m.contracts_traded) || 0) + qty;
+        await patchMode(m, {
+          committee_approvals: (Number(m.committee_approvals) || 0) + 1,
+          contracts_traded: (Number(m.contracts_traded) || 0) + qty,
+        });
         log.push({ mode, action: "open", side: effectiveSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin, setup: setupInfo.name });
         finalizeAudit(`Setup ${setupInfo.name} ${effectiveSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
           last_analysis: decision.justification,
@@ -4341,9 +4364,7 @@ async function runB3SimulationTickInner(
       } else {
         const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
         if (sigChanged(`block:${mode}`, `${decision.final}:${field}`)) {
-          await supabase.from("b3_simulation_modes")
-            .update({ [field]: (Number(m[field]) || 0) + 1 }).eq("id", m.id);
-          m[field] = (Number(m[field]) || 0) + 1;
+          await patchMode(m, { [field]: (Number(m[field]) || 0) + 1 });
         }
         log.push({ mode, action: "reject", final: decision.final, score: decision.score });
         finalizeAudit(finalReasonFromDecision(decision, committee), {
@@ -4393,11 +4414,14 @@ async function runB3SimulationTickInner(
     }
 
     // MEDIÇÃO DIÁRIA DO FREIO DE GRUPO: os dois caminhos, todo dia.
-    // Uma leitura por tique por execução; falha em silêncio.
+    // No máximo uma consolidação por minuto por grupo (o acumulado do pregão
+    // não muda em segundos); na zeragem de fim de pregão a consolidação é
+    // forçada, e a virada do dia já força por trocar a chave do dia.
     try {
       const { atualizarGrupoSombraDia } = await import("./b3-grupo-sombra.server");
       const sombra = await atualizarGrupoSombraDia(
         supabase, userId, runId, rootSymbol(run.symbol), runVariant, b3DayKeyBRT(new Date()),
+        { force: zeragemNoTique },
       );
       if (sombra) {
         const { por_modo: _porModo, ...resumo } = sombra;

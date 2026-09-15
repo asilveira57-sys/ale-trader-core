@@ -55,9 +55,21 @@ const shape = (a: { livre: number; sombra: number; opsL: number; opsS: number })
   diferenca_brl: Number((a.sombra - a.livre).toFixed(2)),
 });
 
+// FREQUÊNCIA (15/09/2026): a consolidação é um ACUMULADO do pregão — muda
+// devagar e precisão de segundos não serve para nada, nem na tela nem na
+// decisão. Chamada a cada passada do tique, ela reescrevia as mesmas ~230
+// linhas 70 mil vezes: I/O e vacuum sem informação nova, o pior padrão de
+// custo de banco. Agora vale no máximo UMA gravação por minuto por grupo/dia.
+// A virada do dia troca a chave do cache (logo consolida na hora) e a zeragem
+// de fim de pregão chama com `force` para não perder o último trecho.
+const ULTIMA_CONSOLIDACAO_MS = 60_000;
+const ultimaPorGrupo = new Map<string, { at: number; res: GrupoSombraResultado }>();
+
 /**
  * Recalcula e grava o consolidado livre/sombra do dia — por robô e por grupo.
  * Falha em silêncio no chamador: é medição, nunca caminho crítico.
+ *
+ * `opts.force` ignora o intervalo mínimo (fim de pregão, fechamento manual).
  */
 export async function atualizarGrupoSombraDia(
   supabase: any,
@@ -66,7 +78,15 @@ export async function atualizarGrupoSombraDia(
   symbolRoot: string,
   variant: string,
   tradeDate: string,
+  opts: { force?: boolean } = {},
 ): Promise<GrupoSombraResultado | null> {
+  const chave = `${userId}|${runId}|${symbolRoot}|${variant}|${tradeDate}`;
+  const anterior = ultimaPorGrupo.get(chave);
+  if (!opts.force && anterior && Date.now() - anterior.at < ULTIMA_CONSOLIDACAO_MS) {
+    // Nada é gravado: devolve a última medição para a tela e o log seguirem iguais.
+    return anterior.res;
+  }
+
   // Janela do pregão em BRT (UTC−3): [dia 00:00, dia+1 00:00).
   const inicio = `${tradeDate}T03:00:00.000Z`;
   const fimMs = new Date(inicio).getTime() + 24 * 60 * 60 * 1000;
@@ -116,10 +136,20 @@ export async function atualizarGrupoSombraDia(
     ...r, updated_at: agora,
   }));
 
-  const { error: upErr } = await supabase.from("b3_grupo_sombra_dia").upsert(
-    rows,
-    { onConflict: "user_id,symbol,variant,mode,trade_date" },
-  );
-  if (upErr) throw new Error(`sombra de grupo (gravação): ${upErr.message}`);
+  // Medição idêntica à última gravada não vira UPDATE: linha nova no Postgres
+  // custa I/O e vacuum mesmo quando nenhum valor muda.
+  const igual = anterior && JSON.stringify(anterior.res) === JSON.stringify(res);
+  if (!igual) {
+    const { error: upErr } = await supabase.from("b3_grupo_sombra_dia").upsert(
+      rows,
+      { onConflict: "user_id,symbol,variant,mode,trade_date" },
+    );
+    if (upErr) throw new Error(`sombra de grupo (gravação): ${upErr.message}`);
+  }
+  ultimaPorGrupo.set(chave, { at: Date.now(), res });
+  // O cache é por processo e só guarda o dia corrente de cada grupo.
+  if (ultimaPorGrupo.size > 200) {
+    for (const k of Array.from(ultimaPorGrupo.keys()).slice(0, 100)) ultimaPorGrupo.delete(k);
+  }
   return res;
 }
