@@ -519,6 +519,15 @@ function CockpitRealPage() {
     ? allRobots
     : allRobots.filter((r) => r.enabled || r.magic_number != null || r.has_open_position);
   const alerts = (d?.alerts ?? []) as any[];
+  // Quantas posições e quanto resultado em aberto a zeragem vai realizar.
+  // Corretora manda; o cálculo por comandos só cobre o que ela não reportou.
+  const zeraveis = brokerPositions.length ? brokerPositions : positions;
+  const zeraveisCount = zeraveis.length;
+  const zeraveisAberto = zeraveis.reduce(
+    (s: number, p: any) => s + Number(p.profit_brl ?? p.unrealized_brl ?? 0),
+    0,
+  );
+
   const st = STATE_UI[d?.executor?.state ?? "sem_comando"] ?? STATE_UI["sem_comando"]!;
   const realEnabled = d?.real_state?.real_enabled !== false;
   const today = d?.today ?? {};
