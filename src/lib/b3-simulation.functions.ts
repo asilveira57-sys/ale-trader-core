@@ -1340,12 +1340,10 @@ async function runB3SimulationTickInner(
         contracts_traded: contracts,
       };
       // Grava só quando há mudança real de estado.
-      const changed = Object.entries(patch).some(([k, v]) => Number(m[k] ?? 0) !== Number(v ?? 0));
-      if (!changed) continue;
-      await supabase.from("b3_simulation_modes").update(patch).eq("id", m.id).eq("user_id", userId);
-      Object.assign(m, patch);
+      await patchMode(m, patch);
     }
   }
+
 
   async function invalidateLegacyOrdersForMt5(info: B3PriceContextResult) {
     if (info.source !== "mt5_xp_demo") return;
