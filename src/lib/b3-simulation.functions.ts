@@ -1,6 +1,6 @@
 // B3 Day Trade — Fase 2.5: simulação comparativa dos 3 modos
 import { createServerFn } from "@tanstack/react-start";
-import { rootSymbol } from "./b3-format";
+import { rootSymbol, FREIO_LABEL } from "./b3-format";
 import { buildCockpitFilter, cockpitKeep, cockpitRootSymbol } from "./b3-cockpit-filter";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
