@@ -1292,6 +1292,43 @@ async function runB3SimulationTickInner(
     return guardEval.ok ? null : (guardEval.first_block_reason ?? "Guard MT5 rejeitou o tick.");
   }
 
+  // GRAVAÇÃO CONDICIONAL DO ESTADO DO ROBÔ (15/09/2026).
+  //
+  // 114 mil UPDATEs em 711 linhas vivas — e a maioria regravava valor idêntico.
+  // No Postgres um UPDATE que não muda nada ainda cria nova versão da linha,
+  // com I/O e trabalho de vacuum: não é de graça. As comparações espalhadas
+  // pelo motor erravam em dois pontos: data devolvida pelo banco como
+  // "2026-09-15T12:00:00+00:00" comparada como texto contra ISO "…000Z", e
+  // número devolvido como string. Aqui a comparação é única e normalizada, e
+  // só os campos que realmente mudaram entram no UPDATE.
+  //
+  // Não muda nenhum valor calculado: o que muda continua sendo gravado.
+  function mesmoValorDeModo(cur: any, next: any): boolean {
+    if (cur == null && next == null) return true;
+    if (cur == null || next == null) return false;
+    if (typeof next === "boolean" || typeof cur === "boolean") return Boolean(cur) === Boolean(next);
+    if (typeof next === "number" || typeof cur === "number") return Number(cur) === Number(next);
+    const a = String(cur), b = String(next);
+    if (a === b) return true;
+    // Instantes iguais escritos de formas diferentes (+00:00 vs Z).
+    const isTs = (s: string) => /^\d{4}-\d{2}-\d{2}T/.test(s);
+    if (isTs(a) && isTs(b)) {
+      const ta = Date.parse(a), tb = Date.parse(b);
+      if (Number.isFinite(ta) && Number.isFinite(tb)) return ta === tb;
+    }
+    return false;
+  }
+  async function patchMode(m: any, patch: Record<string, any>): Promise<boolean> {
+    const diff: Record<string, any> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (!mesmoValorDeModo(m[k] ?? null, v ?? null)) diff[k] = v;
+    }
+    if (!Object.keys(diff).length) return false;
+    await supabase.from("b3_simulation_modes").update(diff).eq("id", m.id).eq("user_id", userId);
+    Object.assign(m, diff);
+    return true;
+  }
+
   let totalsComputedOnce = false;
   async function recomputeModeTotalsFromValidMt5Orders(force = false) {
     // I/O: só recalcula uma vez por execução, salvo mudança real de ordens.
