@@ -23,6 +23,8 @@ import { useRealPositionAlerts } from "@/hooks/use-real-position-alerts";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
   getB3RealCockpit, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
+  closeAllRealPositionsKeepRunning,
+
   closeRealPositionByBroker, getRealCommandStatus, setRealAccountPeakConfig,
   setRealDailyCircuitConfig,
 
@@ -391,10 +393,13 @@ function CockpitRealPage() {
   const stopEntries = useServerFn(stopRealNewEntries);
   const resumeReal = useServerFn(resumeRealExecution);
   const closeNow = useServerFn(closeRealPositionNow);
+  const closeAllKeep = useServerFn(closeAllRealPositionsKeepRunning);
   const closeOne = useServerFn(closeRealPositionByBroker);
   const commandStatus = useServerFn(getRealCommandStatus);
 
   const [confirmClose, setConfirmClose] = useState(false);
+  const [confirmCloseAll, setConfirmCloseAll] = useState(false);
+
   const [confirmStop, setConfirmStop] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -455,6 +460,19 @@ function CockpitRealPage() {
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao enfileirar a zeragem."),
   });
+  // Zerar SEM travar: operação normal, não pânico. Um clique de confirmação,
+  // sem senha e sem desligar o real.
+  const mCloseAll = useMutation({
+    mutationFn: () => closeAllKeep({ data: { confirm: true as const } }),
+    onSuccess: (r: any) => {
+      invalidate();
+      setConfirmCloseAll(false);
+      if (r?.ok) toast.success(`Fechamento enviado: ${r.queued} comando(s) a mercado (${(r.detalhe ?? []).join(", ")}). Os robôs continuam operando.`);
+      else toast.warning(r?.reason ?? "Nenhuma posição real aberta.");
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao enfileirar o fechamento."),
+  });
+
 
   // Acompanha o veredito do comando manual até ele sair de 'pending'/'claimed'.
   const cmdQ = useQuery({
@@ -501,6 +519,15 @@ function CockpitRealPage() {
     ? allRobots
     : allRobots.filter((r) => r.enabled || r.magic_number != null || r.has_open_position);
   const alerts = (d?.alerts ?? []) as any[];
+  // Quantas posições e quanto resultado em aberto a zeragem vai realizar.
+  // Corretora manda; o cálculo por comandos só cobre o que ela não reportou.
+  const zeraveis = brokerPositions.length ? brokerPositions : positions;
+  const zeraveisCount = zeraveis.length;
+  const zeraveisAberto = zeraveis.reduce(
+    (s: number, p: any) => s + Number(p.profit_brl ?? p.unrealized_brl ?? 0),
+    0,
+  );
+
   const st = STATE_UI[d?.executor?.state ?? "sem_comando"] ?? STATE_UI["sem_comando"]!;
   const realEnabled = d?.real_state?.real_enabled !== false;
   const today = d?.today ?? {};
@@ -654,15 +681,32 @@ function CockpitRealPage() {
           />
         </div>
 
-        {/* Emergência — sem rolar muito, mas com dois passos de confirmação */}
+        {/* Operação normal — cor neutra e AFASTADA da família de emergência:
+            zerar posição reduz risco e não pode ser confundido com o pânico. */}
         {vivo ? (
         <div className="grid gap-2">
+          <Button
+            variant="outline"
+            className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal border-2 py-2 text-sm font-black"
+            onClick={() => setConfirmCloseAll(true)}
+            disabled={!zeraveisCount || mCloseAll.isPending}
+          >
+            <CheckCircle2 className="size-5 shrink-0" />
+            {zeraveisCount ? `Zerar posições (${zeraveisCount}) — continua operando` : "Zerar posições — sem posição aberta"}
+          </Button>
+        </div>
+        ) : null}
+
+        {/* Emergência — sem rolar muito, mas com dois passos de confirmação */}
+        {vivo ? (
+        <div className="mt-4 grid gap-2 rounded-xl border border-rose-500/30 bg-rose-500/5 p-2">
+          <p className="text-[10px] font-black uppercase tracking-wide text-rose-300">Emergência</p>
           {realEnabled ? (
             <Button
               className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal bg-amber-500 py-2 text-sm font-black text-black hover:bg-amber-400"
               onClick={() => { setStopStep(1); setConfirmStop(true); }}
             >
-              <Hand className="size-5 shrink-0" /> Parar novas entradas reais
+              <Hand className="size-5 shrink-0" /> Parar entradas — mantém posição aberta
             </Button>
           ) : (
             <Button
@@ -677,10 +721,11 @@ function CockpitRealPage() {
             className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal py-2 text-sm font-black"
             onClick={() => { setCloseStep(1); setConfirmClose(true); }}
           >
-            <XOctagon className="size-5 shrink-0" /> Zerar posição real agora
+            <XOctagon className="size-5 shrink-0" /> Pânico: zerar e travar o real
           </Button>
         </div>
         ) : null}
+
 
         <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
           O painel apenas <b>enfileira</b> o comando; quem fala com o MT5 é o executor. Comando não
@@ -1168,9 +1213,30 @@ function CockpitRealPage() {
           {vivo ? (
           <Panel
             title="Ações sobre dinheiro real"
-            hint="Nenhuma destas ações pausa a simulação. Desligar não pede senha; religar pede a senha mestra."
+            hint="Nenhuma destas ações pausa a simulação. Zerar posições não desliga nada; o bloco de emergência desliga o real e religar pede a senha mestra."
           >
             <div className="space-y-2">
+              {/* OPERAÇÃO NORMAL — neutro, longe do amarelo e do vermelho. */}
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-auto min-h-16 w-full justify-start gap-3 whitespace-normal border-2 py-2"
+                onClick={() => setConfirmCloseAll(true)}
+                disabled={!zeraveisCount || mCloseAll.isPending}
+              >
+                <CheckCircle2 className="size-5 shrink-0" />
+                <span className="min-w-0 text-left">
+                  <span className="block text-sm font-black">Zerar posições — fecha tudo, continua operando</span>
+                  <span className="block text-[11px] font-medium opacity-80">
+                    {zeraveisCount
+                      ? `Realiza ${zeraveisCount} posição(ões) a mercado. Não desliga o real, não revoga autorização e não pede senha — a próxima entrada do simulado espelha normalmente.`
+                      : "sem posição real aberta para zerar"}
+                  </span>
+                </span>
+              </Button>
+
+              <div className="space-y-2 rounded-xl border border-rose-500/30 bg-rose-500/5 p-2">
+                <p className="text-[10px] font-black uppercase tracking-wide text-rose-300">Emergência</p>
               {realEnabled ? (
                 <Button
                   size="lg"
@@ -1180,9 +1246,9 @@ function CockpitRealPage() {
                 >
                   <Hand className="size-5 shrink-0" />
                   <span className="min-w-0 text-left">
-                    <span className="block text-sm font-black">Parar novas entradas reais</span>
+                    <span className="block text-sm font-black">Parar entradas — mantém posição aberta</span>
                     <span className="block text-[11px] font-medium opacity-80">
-                      Bloqueia imediatamente qualquer ordem de abertura real e desliga as autorizações. Sem senha. A posição aberta continua sendo gerida.
+                      Bloqueia imediatamente qualquer ordem de abertura real e desliga as autorizações. Sem senha para parar; religar pede a senha mestra. A posição aberta continua sendo gerida.
                     </span>
                   </span>
                 </Button>
@@ -1212,14 +1278,16 @@ function CockpitRealPage() {
               >
                 <XOctagon className="size-5 shrink-0" />
                 <span className="min-w-0 text-left">
-                  <span className="block text-sm font-black">Zerar posição real agora</span>
+                  <span className="block text-sm font-black">Pânico: zerar e travar o real</span>
                   <span className="block text-[11px] font-medium opacity-90">
                     {positions.length
-                      ? "Envia fechamento a mercado da ponta contrária e desliga as autorizações. Pede confirmação."
+                      ? "Fecha tudo a mercado E desliga o real (autorizações revogadas). Religar exige a senha mestra."
                       : "sem posição real para zerar"}
                   </span>
                 </span>
               </Button>
+              </div>
+
 
               <p className="flex items-start gap-1 text-[11px] text-muted-foreground">
                 <ShieldOff className="mt-0.5 size-3 shrink-0" />
@@ -1376,12 +1444,54 @@ function CockpitRealPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Confirmação: ZERAR SEM TRAVAR — um clique, sem senha.
+          O atrito é exatamente o que fez o lucro virar prejuízo em 15/09, e a
+          ação reduz risco: confirmar basta para não ser acidental. */}
+      <AlertDialog open={confirmCloseAll} onOpenChange={setConfirmCloseAll}>
+        <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Fechar {zeraveisCount} posição(ões) real(is) agora? Os robôs continuam operando.
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left">
+                {zeraveis.map((p: any, i: number) => (
+                  <p key={`ka-${p.symbol ?? p.root}-${p.ticket ?? p.magic_number ?? i}`} className="text-sm font-semibold text-foreground">
+                    {sideLabel(p.side === "buy" ? "sell" : "buy")} {p.quantity}x {p.symbol ?? p.root} a mercado, resultado atual{" "}
+                    <span className={money(p.profit_brl ?? p.unrealized_brl)}>
+                      {(p.profit_brl ?? p.unrealized_brl) == null ? "—" : SIGNED_BRL(p.profit_brl ?? p.unrealized_brl)}
+                    </span>
+                  </p>
+                ))}
+                <p className="text-sm font-black text-foreground">
+                  Resultado em aberto que será realizado:{" "}
+                  <span className={money(zeraveisAberto)}>{SIGNED_BRL(zeraveisAberto)}</span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  O real <b>continua ligado</b>: nenhuma autorização é revogada e nenhuma senha é pedida. A próxima
+                  entrada do simulado volta a espelhar normalmente.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); mCloseAll.mutate(); }}
+              disabled={mCloseAll.isPending}
+            >
+              {mCloseAll.isPending ? "Enviando…" : "Fechar posições"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Confirmação: zerar — DOIS passos */}
       <AlertDialog open={confirmClose} onOpenChange={(o) => { setConfirmClose(o); if (!o) setCloseStep(1); }}>
         <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {closeStep === 1 ? "Zerar posição real agora?" : "Confirmar: zeragem de emergência"}
+              {closeStep === 1 ? "Pânico: zerar e travar o real?" : "Confirmar: zeragem de emergência"}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-left">
@@ -1404,9 +1514,14 @@ function CockpitRealPage() {
                     Nenhuma posição conhecida — o real será parado de qualquer forma.
                   </p>
                 )}
+                <p className="rounded-lg border-2 border-rose-400 bg-rose-600/90 px-2 py-1.5 text-xs font-bold text-white">
+                  Isto também PARA o real. Religar exige a senha mestra e precisa ser feito antes do próximo pregão.
+                  Se você só quer realizar o resultado, use <b>“Zerar posições”</b>: fecha tudo e os robôs continuam operando.
+                </p>
                 <p className="text-xs text-muted-foreground">
                   Em seguida o real é parado e as autorizações de conta real são desligadas. A simulação não é afetada.
                 </p>
+
                 {closeStep === 2 ? (
                   <p className="rounded-lg border-2 border-rose-400 bg-rose-600 px-2 py-1.5 text-xs font-bold text-white">
                     {reportStale

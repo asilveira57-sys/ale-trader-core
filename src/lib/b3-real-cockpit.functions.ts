@@ -376,13 +376,21 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     const alerts: any[] = [];
     const hourAgo = nowMs - 60 * MINUTE;
     if (!realEnabled) {
+      // Real desligado DENTRO do pregão é perda de pregão, não aviso: em 15/09
+      // passou quase uma hora sem entrada real e sem ninguém perceber, porque
+      // este aviso era 'warning' no meio dos outros. Fora do pregão, real
+      // desligado é estado normal e segue como aviso.
       alerts.push({
-        kind: "real_parado", severity: "warning",
-        title: "Real parado pela tela",
-        detail: `Novas entradas reais bloqueadas${realState.stopped_reason ? `: ${realState.stopped_reason}` : "."} A simulação segue coletando normalmente.`,
+        kind: "real_parado",
+        severity: pregaoOpen ? "critical" : "warning",
+        title: pregaoOpen ? "REAL DESLIGADO COM O PREGÃO ABERTO" : "Real parado pela tela",
+        detail: pregaoOpen
+          ? `Nenhuma entrada real será executada${realState.stopped_at ? ` — desligado desde ${new Date(realState.stopped_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}.${realState.stopped_reason ? ` Motivo: ${realState.stopped_reason}.` : ""} Use "Liberar entradas reais" (senha mestra).`
+          : `Novas entradas reais bloqueadas${realState.stopped_reason ? `: ${realState.stopped_reason}` : "."} A simulação segue coletando normalmente.`,
         at: realState.stopped_at,
       });
     }
+
     for (const c of desc) {
       const at = new Date(c.created_at).getTime();
       if (at < hourAgo) continue;
@@ -592,7 +600,12 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       daily_circuit: dailyCircuit,
 
       enabled_count: robots.filter((r) => r.enabled).length,
-      alerts: alerts.slice(0, 12),
+      // Crítico primeiro: aviso que custa pregão não pode ficar no meio da lista.
+      alerts: alerts
+        .slice()
+        .sort((a, b) => (a.severity === "critical" ? 0 : 1) - (b.severity === "critical" ? 0 : 1))
+        .slice(0, 12),
+
     };
 
   });
@@ -766,7 +779,138 @@ export const resumeRealExecution = createServerFn({ method: "POST" })
     return { ok: true as const, resumed_at: now };
   });
 
-// ─────────── botão: ZERAR POSIÇÃO REAL AGORA ───────────
+// ─────────── posições reais abertas, com a corretora mandando ───────────
+// Mesma leitura usada pelos dois botões de zeragem (pânico e sem travar).
+// Saída de emergência: o cálculo por comandos NÃO pode ser a única fonte.
+// Justamente quando o MT5 se comporta mal (comando expirado, execução parcial)
+// o livro por comandos zera e a corretora segue posicionada — e é aí que zerar
+// é necessário. Por isso b3_mt5_account_state.posicoes entra como fonte
+// principal, e o livro por comandos só cobre o que ela não reportou.
+type ToClose = {
+  symbol: string; side: string; quantity: number; magic_number: number;
+  mode: string; variant: string; fonte: "corretora" | "comandos"; profit_brl: number | null;
+};
+
+async function collectOpenRealPositions(supabase: any, userId: string, nowMs: number): Promise<ToClose[]> {
+  const { data: cmds, error: cmdErr } = await supabase.from("b3_mt5_commands")
+    .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, simulation_run_id, broker_position_ticket")
+    .eq("user_id", userId).eq("env", "real")
+    .gte("created_at", new Date(nowMs - 5 * 24 * 60 * MINUTE).toISOString())
+    .order("created_at", { ascending: true }).limit(2000);
+  if (cmdErr) throw cmdErr;
+
+  const profileFor = await loadAssetProfiles(supabase);
+  const ledger = buildRealLedger((cmds ?? []) as unknown as RealCommandRow[], profileFor);
+
+  const { data: brokerRow } = await supabase.from("b3_mt5_account_state")
+    .select("posicoes, reportado_em").eq("user_id", userId).maybeSingle();
+
+  const fromLedger: ToClose[] = ledger.positions.map((p) => ({
+    symbol: rootSymbol(String(p.symbol)), side: String(p.side),
+    quantity: Number(p.quantity), magic_number: Number(p.magic_number ?? 0),
+    mode: String(p.mode), variant: String(p.variant), fonte: "comandos",
+    profit_brl: (p as any).unrealized_brl == null ? null : Number((p as any).unrealized_brl),
+  }));
+  const fromBroker: ToClose[] = (((brokerRow as any)?.posicoes ?? []) as any[])
+    .map((p) => {
+      const qty = Math.abs(Number(p?.volume ?? p?.quantidade ?? p?.quantity ?? 0));
+      const rawSide = String(p?.side ?? p?.tipo ?? p?.type ?? "").toLowerCase();
+      const side = /sell|venda|short/.test(rawSide) ? "sell" : "buy";
+      const magic = Number(p?.magic ?? p?.magic_number ?? 0);
+      const led = ledger.positions.find((x) => Number(x.magic_number ?? 0) === magic);
+      const lucro = p?.profit ?? p?.lucro ?? p?.profit_brl ?? null;
+      return {
+        symbol: rootSymbol(String(p?.symbol ?? "")), side, quantity: qty, magic_number: magic,
+        mode: String(led?.mode ?? "manual"), variant: String(led?.variant ?? "manual"),
+        fonte: "corretora" as const,
+        profit_brl: lucro == null ? null : Number(lucro),
+      };
+    })
+    .filter((p) => p.symbol && p.quantity > 0);
+
+  const positions: ToClose[] = [...fromBroker];
+  for (const p of fromLedger) {
+    if (!positions.some((x) => x.magic_number === p.magic_number && x.symbol === p.symbol)) positions.push(p);
+  }
+  return positions;
+}
+
+function buildCloseCommands(userId: string, positions: ToClose[], stamp: number, prefix: string) {
+  return positions.map((p) => {
+    // Mesma regra do motor e do fechamento manual: RAIZ, nunca o contrato.
+    const symbol = rootSymbol(String(p.symbol));
+    return {
+      user_id: userId,
+      env: "real",
+      simulation_run_id: null,
+      mode: p.mode,
+      variant: p.variant,
+      action: "close",
+      // Fechar é a ponta contrária da posição aberta.
+      side: p.side === "buy" ? "sell" : "buy",
+      symbol,
+      quantity: p.quantity,
+      magic_number: p.magic_number,
+      idempotency_key: `${prefix}:${symbol}:${p.magic_number}:${stamp}`,
+      requested_by: "user_close_all",
+      // Validade folgada: pelo celular vale dar tempo do executor reivindicar.
+      expires_at: new Date(stamp + 120_000).toISOString(),
+    };
+  });
+}
+
+// ─────────── botão: ZERAR POSIÇÕES (sem travar o real) ───────────
+// Nasceu de prejuízo em 15/09: a única zeragem do painel era a de PÂNICO, que
+// também desliga o real e exige senha mestra para voltar — e por medo de travar
+// o pregão o lucro em aberto não foi realizado. Zerar posição REDUZ risco, então
+// aqui não há senha, não há desligamento e nenhuma autorização é revogada:
+// b3_real_execution_state.real_enabled continua true e a próxima entrada do
+// simulado espelha normalmente. Só um clique de confirmação na tela.
+export const closeAllRealPositionsKeepRunning = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ confirm: z.literal(true) }).parse(input))
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const nowMs = Date.now();
+
+    const positions = await collectOpenRealPositions(supabase, userId, nowMs);
+    if (!positions.length) {
+      return { ok: false as const, queued: 0, reason: "sem posição real aberta para zerar (nem na corretora, nem no cálculo por comandos)" };
+    }
+
+    const commands = buildCloseCommands(userId, positions, nowMs, "close_all_keep");
+    const { error: insErr } = await (supabase as any).from("b3_mt5_commands").insert(commands);
+    if (insErr) throw insErr;
+
+    // Precisa ficar distinguível da zeragem de pânico no histórico: são decisões
+    // diferentes. Aqui o real segue ligado.
+    try {
+      await (supabase as any).from("system_logs").insert({
+        event_type: "zeragem_sem_travar",
+        source: "cockpit_real",
+        severity: "warning",
+        message: `Zeragem SEM travar o real: ${commands.length} comando(s) 'close' enfileirado(s). real_enabled segue true e nenhuma autorização foi revogada.`,
+        technical_data: {
+          comandos: commands.map((c) => ({ symbol: c.symbol, side: c.side, quantity: c.quantity, magic_number: c.magic_number })),
+          posicoes: positions.map((p) => ({
+            symbol: p.symbol, side: p.side, quantity: p.quantity,
+            magic_number: p.magic_number, fonte: p.fonte, resultado_aberto_brl: p.profit_brl,
+          })),
+          real_enabled: true,
+        } as any,
+      });
+    } catch { /* log é best-effort; os comandos já estão na fila */ }
+
+    return {
+      ok: true as const,
+      queued: commands.length,
+      detalhe: commands.map((c) => `${String(c.side).toUpperCase()} ${c.quantity}x ${c.symbol}`),
+    };
+  });
+
+// ─────────── botão: PÂNICO — ZERAR E TRAVAR O REAL ───────────
+// Comportamento inalterado: fecha tudo, desliga o real e revoga as autorizações;
+// religar exige senha mestra.
 export const closeRealPositionNow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ confirm: z.literal(true) }).parse(input))
@@ -774,79 +918,14 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const nowMs = Date.now();
 
-    const { data: cmds, error: cmdErr } = await supabase.from("b3_mt5_commands")
-      .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, simulation_run_id, broker_position_ticket")
-      .eq("user_id", userId).eq("env", "real")
-      .gte("created_at", new Date(nowMs - 5 * 24 * 60 * MINUTE).toISOString())
-      .order("created_at", { ascending: true }).limit(2000);
-    if (cmdErr) throw cmdErr;
-
-    const profileFor = await loadAssetProfiles(supabase);
-    const ledger = buildRealLedger((cmds ?? []) as unknown as RealCommandRow[], profileFor);
-
-    // Saída de emergência: o cálculo por comandos NÃO pode ser a única fonte.
-    // Justamente quando o MT5 se comporta mal (comando expirado, execução
-    // parcial) o livro por comandos zera e a corretora segue posicionada — e é
-    // aí que este botão é necessário. Por isso a verdade da corretora
-    // (b3_mt5_account_state.posicoes) entra como fonte alternativa.
-    const { data: brokerRow } = await supabase.from("b3_mt5_account_state")
-      .select("posicoes, reportado_em").eq("user_id", userId).maybeSingle();
-
-    type ToClose = { symbol: string; side: string; quantity: number; magic_number: number; mode: string; variant: string; fonte: "corretora" | "comandos" };
-    const fromLedger: ToClose[] = ledger.positions.map((p) => ({
-      symbol: rootSymbol(String(p.symbol)), side: String(p.side),
-      quantity: Number(p.quantity), magic_number: Number(p.magic_number ?? 0),
-      mode: String(p.mode), variant: String(p.variant), fonte: "comandos",
-    }));
-    const fromBroker: ToClose[] = (((brokerRow as any)?.posicoes ?? []) as any[])
-      .map((p) => {
-        const qty = Math.abs(Number(p?.volume ?? p?.quantidade ?? p?.quantity ?? 0));
-        const rawSide = String(p?.side ?? p?.tipo ?? p?.type ?? "").toLowerCase();
-        const side = /sell|venda|short/.test(rawSide) ? "sell" : "buy";
-        const magic = Number(p?.magic ?? p?.magic_number ?? 0);
-        const led = ledger.positions.find((x) => Number(x.magic_number ?? 0) === magic);
-        return {
-          symbol: rootSymbol(String(p?.symbol ?? "")), side, quantity: qty, magic_number: magic,
-          mode: String(led?.mode ?? "manual"), variant: String(led?.variant ?? "manual"),
-          fonte: "corretora" as const,
-        };
-      })
-      .filter((p) => p.symbol && p.quantity > 0);
-
-    // Corretora manda; o livro por comandos só cobre o que ela não reportou.
-    const positions: ToClose[] = [...fromBroker];
-    for (const p of fromLedger) {
-      if (!positions.some((x) => x.magic_number === p.magic_number && x.symbol === p.symbol)) positions.push(p);
-    }
+    const positions = await collectOpenRealPositions(supabase, userId, nowMs);
 
     if (!positions.length) {
       return { ok: false as const, queued: 0, disabled: 0, reason: "sem posição real aberta para zerar (nem na corretora, nem no cálculo por comandos)" };
     }
 
-
     const stamp = nowMs;
-    const commands = positions.map((p) => {
-      // Mesma regra do motor e do fechamento manual: RAIZ, nunca o contrato.
-      const symbol = rootSymbol(String(p.symbol));
-      return {
-        user_id: userId,
-        env: "real",
-        simulation_run_id: null,
-        mode: p.mode,
-        variant: p.variant,
-        action: "close",
-        // Fechar é a ponta contrária da posição aberta.
-        side: p.side === "buy" ? "sell" : "buy",
-        symbol,
-        quantity: p.quantity,
-        magic_number: p.magic_number,
-        idempotency_key: `panic_close:${symbol}:${p.magic_number}:${stamp}`,
-        requested_by: "user_close_all",
-        // Validade folgada: pelo celular vale dar tempo do executor reivindicar.
-        expires_at: new Date(stamp + 120_000).toISOString(),
-      };
-    });
-
+    const commands = buildCloseCommands(userId, positions, stamp, "panic_close");
 
     const { error: insErr } = await (supabase as any).from("b3_mt5_commands").insert(commands);
     if (insErr) throw insErr;
@@ -886,6 +965,7 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
       detalhe: commands.map((c) => `${String(c.side).toUpperCase()} ${c.quantity}x ${c.symbol}`),
     };
   });
+
 
 // ─────────── botão: FECHAR ESTA POSIÇÃO (dentro do card) ───────────
 // Fecha UMA posição específica reportada pela corretora. Quem executa continua

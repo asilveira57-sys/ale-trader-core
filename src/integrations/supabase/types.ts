@@ -3520,42 +3520,60 @@ export type Database = {
           agent_name: string
           confidence: number
           created_at: string
+          decision: string | null
+          has_veto: boolean | null
           id: string
           market_data_snapshot: Json
           mode: string
           order_id: string | null
           reason: string | null
+          score: number | null
+          side: string | null
           simulation_mode_id: string
           simulation_run_id: string
+          tick_snapshot_id: string | null
           user_id: string
+          veto_reason: string | null
           vote: string
         }
         Insert: {
           agent_name: string
           confidence?: number
           created_at?: string
+          decision?: string | null
+          has_veto?: boolean | null
           id?: string
           market_data_snapshot?: Json
           mode: string
           order_id?: string | null
           reason?: string | null
+          score?: number | null
+          side?: string | null
           simulation_mode_id: string
           simulation_run_id: string
+          tick_snapshot_id?: string | null
           user_id: string
+          veto_reason?: string | null
           vote: string
         }
         Update: {
           agent_name?: string
           confidence?: number
           created_at?: string
+          decision?: string | null
+          has_veto?: boolean | null
           id?: string
           market_data_snapshot?: Json
           mode?: string
           order_id?: string | null
           reason?: string | null
+          score?: number | null
+          side?: string | null
           simulation_mode_id?: string
           simulation_run_id?: string
+          tick_snapshot_id?: string | null
           user_id?: string
+          veto_reason?: string | null
           vote?: string
         }
         Relationships: [
