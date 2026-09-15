@@ -880,7 +880,12 @@ function CockpitRealPage() {
       {/* Placar do dia */}
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <Tile label={vivo ? "Realizado hoje" : "Realizado no período"} value={SIGNED_BRL(today.realized_brl ?? 0)} sub={PCT(today.realized_pct)} cls={money(today.realized_brl)} />
-        <Tile label="Em aberto" value={today.unrealized_brl == null ? "—" : SIGNED_BRL(today.unrealized_brl)} sub={PCT(today.unrealized_pct)} cls={money(today.unrealized_brl)} />
+        <Tile
+          label="Em aberto"
+          value={today.unrealized_brl == null ? "—" : SIGNED_BRL(today.unrealized_brl)}
+          sub={abertoEstimado ? "estimado por cotação" : `${PCT(today.unrealized_pct)} · corretora`}
+          cls={money(today.unrealized_brl)}
+        />
         <Tile label={per && per.single_day === false ? "Total do período" : "Total do dia"} value={SIGNED_BRL(today.total_brl ?? 0)} sub={PCT(today.total_pct)} cls={money(today.total_brl)} />
         <Tile
           label="Saldo da conta"
