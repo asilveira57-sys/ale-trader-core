@@ -2866,6 +2866,10 @@ async function runB3SimulationTickInner(
     // linhas/pregão) mais caro que o próprio tique.
     const entryStageRows: any[] = [];
 
+    // Zeragem/fechamento de pregão em qualquer robô: a consolidação da sombra
+    // do dia é forçada no fim da passada, para não perder o último trecho.
+    let zeragemNoTique = false;
+
     const runT0 = Date.now();
 
     for (const mode of activeModes) {
