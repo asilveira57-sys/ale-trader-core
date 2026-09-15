@@ -4499,6 +4499,9 @@ async function runB3SimulationTickInner(
       }
     }
 
+    // Estado de robôs alterado fora do laço (ex.: reconciliação de totais).
+    await flushAllModeWrites();
+
     // Um único INSERT por tique com os robôs cujo motivo de recusa MUDOU.
     // Falha em silêncio: diagnóstico nunca derruba nem atrasa o motor.
     if (entryStageRows.length) {
