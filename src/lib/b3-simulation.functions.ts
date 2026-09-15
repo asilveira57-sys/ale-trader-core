@@ -4336,11 +4336,14 @@ async function runB3SimulationTickInner(
           gain_pts: gainPtsFrozen > 0 ? gainPtsFrozen : null,
           stop_price: stopPriceFrozen,
           target_price: targetPriceFrozen,
-          // Sombra do freio de grupo: esta ordem existiria no simulado mas não
-          // no real. É o que separa resultado livre de resultado sombra e o que
-          // mantém a curadoria fiel ao que o dinheiro real faria.
-          bloqueado_na_sombra: sombraFreioGrupo,
+          // Sombra: esta ordem existiria no simulado mas não no real. É o que
+          // separa resultado livre de resultado sombra e o que mantém a
+          // curadoria fiel ao que o dinheiro real faria. O vetor diz QUAL freio
+          // a teria barrado; o booleano continua sendo "algum freio barraria".
+          bloqueado_na_sombra: entradaEmSombra,
+          freios_na_sombra: freiosNaSombra,
           nivel_freio_na_abertura: grupoNivel,
+
           ...orderAuditPatch(entryAudit),
         };
         // Instrumentação permanente do veredito do comitê na própria ordem.
