@@ -4325,13 +4325,10 @@ async function runB3SimulationTickInner(
         }
         providerStats.last_entry_price = entry;
         openOrdersCache = null;
-        await supabase.from("b3_simulation_modes")
-          .update({
-            committee_approvals: (Number(m.committee_approvals) || 0) + 1,
-            contracts_traded: (Number(m.contracts_traded) || 0) + qty,
-          }).eq("id", m.id);
-        m.committee_approvals = (Number(m.committee_approvals) || 0) + 1;
-        m.contracts_traded = (Number(m.contracts_traded) || 0) + qty;
+        await patchMode(m, {
+          committee_approvals: (Number(m.committee_approvals) || 0) + 1,
+          contracts_traded: (Number(m.contracts_traded) || 0) + qty,
+        });
         log.push({ mode, action: "open", side: effectiveSide, price: entry, score: decision.score, source: entryAudit.quote_source, origin: entryAudit.execution_price_origin, setup: setupInfo.name });
         finalizeAudit(`Setup ${setupInfo.name} ${effectiveSide.toUpperCase()} aprovado e ordem simulada aberta.`, {
           last_analysis: decision.justification,
