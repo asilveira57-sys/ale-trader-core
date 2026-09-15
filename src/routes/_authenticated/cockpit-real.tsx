@@ -681,15 +681,32 @@ function CockpitRealPage() {
           />
         </div>
 
-        {/* Emergência — sem rolar muito, mas com dois passos de confirmação */}
+        {/* Operação normal — cor neutra e AFASTADA da família de emergência:
+            zerar posição reduz risco e não pode ser confundido com o pânico. */}
         {vivo ? (
         <div className="grid gap-2">
+          <Button
+            variant="outline"
+            className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal border-2 py-2 text-sm font-black"
+            onClick={() => setConfirmCloseAll(true)}
+            disabled={!zeraveisCount || mCloseAll.isPending}
+          >
+            <CheckCircle2 className="size-5 shrink-0" />
+            {zeraveisCount ? `Zerar posições (${zeraveisCount}) — continua operando` : "Zerar posições — sem posição aberta"}
+          </Button>
+        </div>
+        ) : null}
+
+        {/* Emergência — sem rolar muito, mas com dois passos de confirmação */}
+        {vivo ? (
+        <div className="mt-4 grid gap-2 rounded-xl border border-rose-500/30 bg-rose-500/5 p-2">
+          <p className="text-[10px] font-black uppercase tracking-wide text-rose-300">Emergência</p>
           {realEnabled ? (
             <Button
               className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal bg-amber-500 py-2 text-sm font-black text-black hover:bg-amber-400"
               onClick={() => { setStopStep(1); setConfirmStop(true); }}
             >
-              <Hand className="size-5 shrink-0" /> Parar novas entradas reais
+              <Hand className="size-5 shrink-0" /> Parar entradas — mantém posição aberta
             </Button>
           ) : (
             <Button
@@ -704,10 +721,11 @@ function CockpitRealPage() {
             className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal py-2 text-sm font-black"
             onClick={() => { setCloseStep(1); setConfirmClose(true); }}
           >
-            <XOctagon className="size-5 shrink-0" /> Zerar posição real agora
+            <XOctagon className="size-5 shrink-0" /> Pânico: zerar e travar o real
           </Button>
         </div>
         ) : null}
+
 
         <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
           O painel apenas <b>enfileira</b> o comando; quem fala com o MT5 é o executor. Comando não
