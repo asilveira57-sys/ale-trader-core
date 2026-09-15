@@ -8,9 +8,33 @@ import { supabase } from "@/integrations/supabase/client";
 const SKEW_S = 60;
 const RETURN_TO_KEY = "aletrader:return-to";
 
+// O erro que volta do serverFn nem sempre é um Error: pode chegar como objeto
+// serializado ({ message }), como Response com corpo JSON ou como string. Se a
+// detecção falhar, o token rejeitado é reenviado em toda chamada e a tela fica
+// branca em vez de voltar para o login.
+function messageOf(error: unknown): string {
+  if (error == null) return "";
+  if (error instanceof Error) return `${error.message} ${(error as any).cause ? messageOf((error as any).cause) : ""}`;
+  if (typeof error === "string") return error;
+  if (typeof error === "object") {
+    const o = error as Record<string, unknown>;
+    const parts = [o["message"], o["error"], o["statusText"], o["body"]]
+      .map((v) => (typeof v === "string" ? v : v && typeof v === "object" ? messageOf(v) : ""))
+      .filter(Boolean);
+    if (parts.length) return parts.join(" ");
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "";
+    }
+  }
+  return String(error);
+}
+
 function isRejectedSession(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  return /unauthorized|invalid token|invalid jwt|jwt.*invalid|token.*revoked|no authorization header/i.test(message);
+  return /unauthorized|invalid token|invalid jwt|jwt.*invalid|token.*revoked|no authorization header/i.test(
+    messageOf(error),
+  );
 }
 
 async function leaveInvalidSession(): Promise<never> {
