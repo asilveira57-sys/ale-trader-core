@@ -1,7 +1,7 @@
 // Geração do texto de "copiar" do Cockpit. Somente apresentação:
 // nada aqui participa do motor de simulação, nem lê/escreve no banco.
 
-import { decimalsForTick, openSinceText, rootSymbol, sombraLinhas, PX } from "./b3-format";
+import { decimalsForTick, openSinceText, rootSymbol, sombraLinhas, sombraFreiosQueAgiram, PX } from "./b3-format";
 import { modeFullLabel } from "./mode-nick-registry";
 
 const BRL = (v: number | null | undefined) =>
