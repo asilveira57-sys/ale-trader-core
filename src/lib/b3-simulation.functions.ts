@@ -1433,14 +1433,10 @@ async function runB3SimulationTickInner(
       diagnostic_payload: opts.diagnostic_payload ?? {},
     });
     if (prev !== newStatus) {
-      await supabase.from("b3_simulation_modes").update({
+      await patchMode(m, {
         current_status: newStatus, status_reason: opts.message ?? null,
         status_changed_at: new Date().toISOString(), last_trigger: trigger,
-      }).eq("id", m.id);
-      m.current_status = newStatus;
-      m.status_reason = opts.message ?? null;
-      m.status_changed_at = new Date().toISOString();
-      m.last_trigger = trigger;
+      });
     }
   }
 
