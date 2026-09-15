@@ -4345,9 +4345,7 @@ async function runB3SimulationTickInner(
       } else {
         const field = decision.final === "blocked" ? "risk_blocks" : "committee_rejections";
         if (sigChanged(`block:${mode}`, `${decision.final}:${field}`)) {
-          await supabase.from("b3_simulation_modes")
-            .update({ [field]: (Number(m[field]) || 0) + 1 }).eq("id", m.id);
-          m[field] = (Number(m[field]) || 0) + 1;
+          await patchMode(m, { [field]: (Number(m[field]) || 0) + 1 });
         }
         log.push({ mode, action: "reject", final: decision.final, score: decision.score });
         finalizeAudit(finalReasonFromDecision(decision, committee), {
