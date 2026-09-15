@@ -376,13 +376,21 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     const alerts: any[] = [];
     const hourAgo = nowMs - 60 * MINUTE;
     if (!realEnabled) {
+      // Real desligado DENTRO do pregão é perda de pregão, não aviso: em 15/09
+      // passou quase uma hora sem entrada real e sem ninguém perceber, porque
+      // este aviso era 'warning' no meio dos outros. Fora do pregão, real
+      // desligado é estado normal e segue como aviso.
       alerts.push({
-        kind: "real_parado", severity: "warning",
-        title: "Real parado pela tela",
-        detail: `Novas entradas reais bloqueadas${realState.stopped_reason ? `: ${realState.stopped_reason}` : "."} A simulação segue coletando normalmente.`,
+        kind: "real_parado",
+        severity: pregaoOpen ? "critical" : "warning",
+        title: pregaoOpen ? "REAL DESLIGADO COM O PREGÃO ABERTO" : "Real parado pela tela",
+        detail: pregaoOpen
+          ? `Nenhuma entrada real será executada${realState.stopped_at ? ` — desligado desde ${new Date(realState.stopped_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}.${realState.stopped_reason ? ` Motivo: ${realState.stopped_reason}.` : ""} Use "Liberar entradas reais" (senha mestra).`
+          : `Novas entradas reais bloqueadas${realState.stopped_reason ? `: ${realState.stopped_reason}` : "."} A simulação segue coletando normalmente.`,
         at: realState.stopped_at,
       });
     }
+
     for (const c of desc) {
       const at = new Date(c.created_at).getTime();
       if (at < hourAgo) continue;
