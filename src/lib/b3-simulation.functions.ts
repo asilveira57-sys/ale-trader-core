@@ -3509,8 +3509,9 @@ async function runB3SimulationTickInner(
         // no travamento, uma vez por ordem. Essa é uma decisão de risco
         // separada, a ser revista com b3_grupo_sombra_dia em mãos.
         //
-        // O freio de pico e o disjuntor diário continuam fechando também no
-        // simulado, sem alteração (bloco acima).
+        // Desde 15/09/2026 o freio de PICO segue a mesma regra (bloco acima).
+        // O disjuntor diário real continua fechando de verdade.
+
         if (grupoNivel >= 2 && grupoTravados.includes(mode) && !grupoFreioEspelhado.has(open.id)) {
           grupoFreioEspelhado.add(open.id);
           const Rgrupo = Number(grupo?.resultado_brl ?? 0);
