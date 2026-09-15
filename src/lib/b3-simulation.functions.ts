@@ -4397,11 +4397,14 @@ async function runB3SimulationTickInner(
     }
 
     // MEDIÇÃO DIÁRIA DO FREIO DE GRUPO: os dois caminhos, todo dia.
-    // Uma leitura por tique por execução; falha em silêncio.
+    // No máximo uma consolidação por minuto por grupo (o acumulado do pregão
+    // não muda em segundos); na zeragem de fim de pregão a consolidação é
+    // forçada, e a virada do dia já força por trocar a chave do dia.
     try {
       const { atualizarGrupoSombraDia } = await import("./b3-grupo-sombra.server");
       const sombra = await atualizarGrupoSombraDia(
         supabase, userId, runId, rootSymbol(run.symbol), runVariant, b3DayKeyBRT(new Date()),
+        { force: zeragemNoTique },
       );
       if (sombra) {
         const { por_modo: _porModo, ...resumo } = sombra;
