@@ -540,6 +540,15 @@ function CockpitRealPage() {
   const reportAgeS = broker.report_age_s == null ? null : Math.round(Number(broker.report_age_s));
   const reportStale = !broker.reported || (reportAgeS != null && reportAgeS > 60);
 
+  // Idade do dado NA TELA: segundos desde a última leitura bem-sucedida. Sobe
+  // de 1 em 1 segundo sem consultar nada.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const dataAgeS = q.dataUpdatedAt ? Math.max(0, Math.round((nowTick - q.dataUpdatedAt) / 1000)) : null;
+
   // AVISO SONORO / NOTIFICAÇÃO de abertura e fechamento de posição REAL.
   // Fonte: as posições reportadas pelo executor (verdade da corretora), nunca o
   // momento em que o app manda espelhar. Só simulado nenhum: esta tela é real.
