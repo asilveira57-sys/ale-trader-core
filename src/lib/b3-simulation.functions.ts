@@ -4078,9 +4078,7 @@ async function runB3SimulationTickInner(
         // Comitê aprovou, mas o setup técnico não é operável (Fase 1: só trend_pullback).
         const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "critérios de trend_pullback não atendidos"}`;
         if (sigChanged(`block:${mode}`, `no_valid_setup:${setupInfo.name}`)) {
-          await supabase.from("b3_simulation_modes")
-            .update({ committee_rejections: (Number(m.committee_rejections) || 0) + 1 }).eq("id", m.id);
-          m.committee_rejections = (Number(m.committee_rejections) || 0) + 1;
+          await patchMode(m, { committee_rejections: (Number(m.committee_rejections) || 0) + 1 });
         }
 
         log.push({ mode, action: "reject", reason: "no_valid_setup", setup: setupInfo.name, side: effectiveSide });
