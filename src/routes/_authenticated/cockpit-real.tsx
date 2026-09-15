@@ -2,7 +2,7 @@
 // degradação para celular. Somente leitura + três ações explícitas:
 // parar novas entradas (sem senha), religar (com senha mestra) e zerar posição.
 // Nada aqui toca no motor de simulação, no comitê, nos classificadores ou nos freios.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
