@@ -2906,6 +2906,8 @@ async function runB3SimulationTickInner(
       // Antes da abertura o motor também "força fechamento" (não há nada aberto),
       // mas o rótulo de zeragem é enganoso — este estado é só pré-abertura.
       const beforeOpen = cur < startMin;
+      // Fim de pregão: obriga a consolidação final da sombra do dia.
+      if (forceClose && !beforeOpen) zeragemNoTique = true;
 
       const openList = await getOpen();
       const open = (openList ?? []).find((o: any) => o.simulation_mode_id === m.id);
