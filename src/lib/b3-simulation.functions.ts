@@ -1537,22 +1537,17 @@ async function runB3SimulationTickInner(
     } = {},
   ) {
     const prev = m.current_status ?? "operando";
+    if (!statusTickStart.has(m.id)) statusTickStart.set(m.id, prev);
     if (prev === newStatus && !opts.forceLog) return;
-    markAuditEvent(prev !== newStatus ? `status:${mode}:${prev}->${newStatus}` : `block_event:${mode}:${trigger}`);
-    await supabase.from("b3_simulation_block_events").insert({
-      simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
-      mode, prev_status: prev, new_status: newStatus, trigger,
-      observed_value: opts.observed ?? null,
-      limit_value: opts.limit ?? null,
-      pnl_at_moment: opts.pnl ?? null,
-      related_order_id: opts.related_order_id ?? null,
-      message: opts.message ?? null,
-      provider_name: opts.provider_name ?? null,
-      price_source: opts.price_source ?? null,
-      rejected_price: opts.rejected_price ?? null,
-      mt5_last: opts.mt5_last ?? null,
-      diagnostic_payload: opts.diagnostic_payload ?? {},
-    });
+    if (opts.forceLog) {
+      // Diagnóstico explícito: grava na hora, como antes.
+      markAuditEvent(prev !== newStatus ? `status:${mode}:${prev}->${newStatus}` : `block_event:${mode}:${trigger}`);
+      try { await insertStatusEvent(mode, m, prev, newStatus, trigger, opts); } catch { /* auditoria não derruba o tique */ }
+    } else {
+      // O evento fica pendente: só vira linha se o status FINAL da passada
+      // for diferente do status inicial. Última intenção vence.
+      pendingStatusEvent.set(m.id, { mode, m, newStatus, trigger, opts });
+    }
     if (prev !== newStatus) {
       await patchMode(m, {
         current_status: newStatus, status_reason: opts.message ?? null,
