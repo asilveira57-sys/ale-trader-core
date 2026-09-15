@@ -1444,12 +1444,54 @@ function CockpitRealPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Confirmação: ZERAR SEM TRAVAR — um clique, sem senha.
+          O atrito é exatamente o que fez o lucro virar prejuízo em 15/09, e a
+          ação reduz risco: confirmar basta para não ser acidental. */}
+      <AlertDialog open={confirmCloseAll} onOpenChange={setConfirmCloseAll}>
+        <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Fechar {zeraveisCount} posição(ões) real(is) agora? Os robôs continuam operando.
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left">
+                {zeraveis.map((p: any, i: number) => (
+                  <p key={`ka-${p.symbol ?? p.root}-${p.ticket ?? p.magic_number ?? i}`} className="text-sm font-semibold text-foreground">
+                    {sideLabel(p.side === "buy" ? "sell" : "buy")} {p.quantity}x {p.symbol ?? p.root} a mercado, resultado atual{" "}
+                    <span className={money(p.profit_brl ?? p.unrealized_brl)}>
+                      {(p.profit_brl ?? p.unrealized_brl) == null ? "—" : SIGNED_BRL(p.profit_brl ?? p.unrealized_brl)}
+                    </span>
+                  </p>
+                ))}
+                <p className="text-sm font-black text-foreground">
+                  Resultado em aberto que será realizado:{" "}
+                  <span className={money(zeraveisAberto)}>{SIGNED_BRL(zeraveisAberto)}</span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  O real <b>continua ligado</b>: nenhuma autorização é revogada e nenhuma senha é pedida. A próxima
+                  entrada do simulado volta a espelhar normalmente.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); mCloseAll.mutate(); }}
+              disabled={mCloseAll.isPending}
+            >
+              {mCloseAll.isPending ? "Enviando…" : "Fechar posições"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Confirmação: zerar — DOIS passos */}
       <AlertDialog open={confirmClose} onOpenChange={(o) => { setConfirmClose(o); if (!o) setCloseStep(1); }}>
         <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {closeStep === 1 ? "Zerar posição real agora?" : "Confirmar: zeragem de emergência"}
+              {closeStep === 1 ? "Pânico: zerar e travar o real?" : "Confirmar: zeragem de emergência"}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-left">
@@ -1472,9 +1514,14 @@ function CockpitRealPage() {
                     Nenhuma posição conhecida — o real será parado de qualquer forma.
                   </p>
                 )}
+                <p className="rounded-lg border-2 border-rose-400 bg-rose-600/90 px-2 py-1.5 text-xs font-bold text-white">
+                  Isto também PARA o real. Religar exige a senha mestra e precisa ser feito antes do próximo pregão.
+                  Se você só quer realizar o resultado, use <b>“Zerar posições”</b>: fecha tudo e os robôs continuam operando.
+                </p>
                 <p className="text-xs text-muted-foreground">
                   Em seguida o real é parado e as autorizações de conta real são desligadas. A simulação não é afetada.
                 </p>
+
                 {closeStep === 2 ? (
                   <p className="rounded-lg border-2 border-rose-400 bg-rose-600 px-2 py-1.5 text-xs font-bold text-white">
                     {reportStale
