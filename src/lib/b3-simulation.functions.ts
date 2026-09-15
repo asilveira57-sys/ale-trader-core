@@ -5581,7 +5581,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
     // A medição é por ROBÔ (mode) e também consolidada por grupo (mode = "").
     // O card mostra a linha do robô; a testeira da modalidade, a do grupo.
     const { data: sombraRows } = await (supabase as any).from("b3_grupo_sombra_dia")
-      .select("symbol, variant, mode, resultado_livre_brl, resultado_sombra_brl, ops_livre, ops_sombra, diferenca_brl")
+      .select("symbol, variant, mode, resultado_livre_brl, resultado_sombra_brl, ops_livre, ops_sombra, diferenca_brl, sombra_por_freio")
       .eq("user_id", userId).eq("trade_date", sessionDate);
     const shapeSombra = (s: any) => ({
       resultado_livre_brl: Number(s.resultado_livre_brl ?? 0),
@@ -5589,7 +5589,11 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       ops_livre: Number(s.ops_livre ?? 0),
       ops_sombra: Number(s.ops_sombra ?? 0),
       diferenca_brl: Number(s.diferenca_brl ?? 0),
+      // Atribuição por freio (15/09/2026). Dias anteriores vêm vazios: nada é
+      // recalculado, a medição por freio vale daqui para frente.
+      por_freio: (s.sombra_por_freio ?? {}) as Record<string, any>,
     });
+
     const sombraByKey: Record<string, any> = {};      // robô: root|variant|mode
     const sombraGrupoByKey: Record<string, any> = {}; // grupo: root|variant
     for (const s of (sombraRows ?? []) as any[]) {
