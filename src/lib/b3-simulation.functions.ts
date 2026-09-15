@@ -1326,7 +1326,9 @@ async function runB3SimulationTickInner(
   // de propósito: o upsert precisaria reescrever colunas de configuração que
   // o usuário pode ter mudado na tela durante a passada.
   const pendingModeWrite = new Map<string, Record<string, any>>();
-  const modeRowById = new Map<string, any>();
+  // Valor que estava no banco antes da primeira mudança da passada: se o campo
+  // voltar a esse valor, ele sai do UPDATE (regravação idêntica não é de graça).
+  const modeWriteOrigin = new Map<string, Record<string, any>>();
   async function patchMode(m: any, patch: Record<string, any>): Promise<boolean> {
     const diff: Record<string, any> = {};
     for (const [k, v] of Object.entries(patch)) {
@@ -1334,18 +1336,27 @@ async function runB3SimulationTickInner(
     }
     if (!Object.keys(diff).length) return false;
     const buf = pendingModeWrite.get(m.id) ?? {};
+    const orig = modeWriteOrigin.get(m.id) ?? {};
+    for (const k of Object.keys(diff)) if (!(k in orig)) orig[k] = m[k] ?? null;
     Object.assign(buf, diff);
     pendingModeWrite.set(m.id, buf);
-    modeRowById.set(m.id, m);
+    modeWriteOrigin.set(m.id, orig);
     Object.assign(m, diff);
     return true;
   }
   async function flushModeWrite(modeId?: string | null) {
     if (!modeId) return;
     const buf = pendingModeWrite.get(modeId);
+    const orig = modeWriteOrigin.get(modeId) ?? {};
     pendingModeWrite.delete(modeId);
-    if (!buf || !Object.keys(buf).length) return;
-    await supabase.from("b3_simulation_modes").update(buf).eq("id", modeId).eq("user_id", userId);
+    modeWriteOrigin.delete(modeId);
+    if (!buf) return;
+    const finalDiff: Record<string, any> = {};
+    for (const [k, v] of Object.entries(buf)) {
+      if (!mesmoValorDeModo(orig[k] ?? null, v ?? null)) finalDiff[k] = v;
+    }
+    if (!Object.keys(finalDiff).length) return;
+    await supabase.from("b3_simulation_modes").update(finalDiff).eq("id", modeId).eq("user_id", userId);
   }
   async function flushAllModeWrites() {
     for (const id of Array.from(pendingModeWrite.keys())) {
