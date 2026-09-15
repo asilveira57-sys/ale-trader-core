@@ -393,10 +393,13 @@ function CockpitRealPage() {
   const stopEntries = useServerFn(stopRealNewEntries);
   const resumeReal = useServerFn(resumeRealExecution);
   const closeNow = useServerFn(closeRealPositionNow);
+  const closeAllKeep = useServerFn(closeAllRealPositionsKeepRunning);
   const closeOne = useServerFn(closeRealPositionByBroker);
   const commandStatus = useServerFn(getRealCommandStatus);
 
   const [confirmClose, setConfirmClose] = useState(false);
+  const [confirmCloseAll, setConfirmCloseAll] = useState(false);
+
   const [confirmStop, setConfirmStop] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
   const [password, setPassword] = useState("");
