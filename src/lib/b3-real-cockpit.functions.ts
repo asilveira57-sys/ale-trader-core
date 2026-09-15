@@ -174,22 +174,62 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     // DESCONHECIDO, fora de qualquer soma. A reconciliação
     // (b3-real-reconcile.server) resolve o registro em b3_live_orders.
     const brokerTrustworthy = broker.reported && !broker.stale;
+
+    // O NÚMERO DA TELA É O DO METATRADER (15/09/2026).
+    // O MT5 já manda `resultado` (profit da posição) e `preco_atual` em
+    // b3_mt5_account_state.posicoes. Recalcular por cotação criava um segundo
+    // número, divergente do terminal, com o qual não se decide fechar.
+    // Regra: resultado da corretora é o principal; o cálculo por cotação fica
+    // como RESERVA e é marcado como estimado. Operações ENCERRADAS não mudam.
+    const brokerUsed = new Set<number>();
+    const matchBroker = (p: { root: string; side: "buy" | "sell"; magic_number: number }) => {
+      const cand = broker.positions
+        .map((b, i) => ({ b, i }))
+        .filter(({ b, i }) => !brokerUsed.has(i) && b.root === p.root);
+      const pick =
+        cand.filter(({ b }) => b.magic_number === p.magic_number && (b.side === null || b.side === p.side)) ;
+      const chosen = pick.length
+        ? pick
+        : cand.filter(({ b }) => b.side === null || b.side === p.side);
+      for (const c of chosen) brokerUsed.add(c.i);
+      return chosen.map((c) => c.b);
+    };
+
     const positions = ledger.positions.map((p) => {
       // Conta B3 é netting: o magic da posição líquida pode não bater com o do
       // livro. Presença por raiz + lado já é confirmação suficiente.
-      const naCorretora = broker.positions.some(
-        (b) => b.root === p.root && (b.magic_number === p.magic_number || b.side === null || b.side === p.side),
-      );
+      const matched = matchBroker(p);
+      const naCorretora = matched.length > 0;
       const confirmada = !brokerTrustworthy || naCorretora;
       const quote = quoteByRoot[p.root] ?? { price: null, tick_ts: null, age_s: null };
       const dir = p.side === "buy" ? 1 : -1;
-      const live = quote.price;
-      const pts = confirmada && live != null && p.entry_price != null ? (live - p.entry_price) * dir : null;
-      const brl = pts != null ? pts * p.point_value_brl * p.quantity : null;
+
+      // 1) corretora: soma do profit reportado das posições correspondentes
+      const reported = matched.filter((b) => b.profit_brl != null);
+      const brokerBrl = reported.length ? reported.reduce((s, b) => s + Number(b.profit_brl), 0) : null;
+      const precoAtual = matched.find((b) => b.price_current != null)?.price_current ?? null;
+
+      // 2) reserva: marcação a mercado pela cotação
+      const live = precoAtual ?? quote.price;
+      const estPts = confirmada && quote.price != null && p.entry_price != null
+        ? (quote.price - p.entry_price) * dir : null;
+      const estBrl = estPts != null ? estPts * p.point_value_brl * p.quantity : null;
+
+      const fonte: "corretora" | "estimado" = brokerBrl != null ? "corretora" : "estimado";
+      const brl = brokerBrl != null ? brokerBrl : estBrl;
+      const pts = brokerBrl != null
+        ? (precoAtual != null && p.entry_price != null ? (precoAtual - p.entry_price) * dir : estPts)
+        : estPts;
+
       return {
         ...p,
         live_price: live, quote_tick_ts: quote.tick_ts, quote_age_s: quote.age_s,
         unrealized_pts: pts, unrealized_brl: brl,
+        // fonte do resultado em aberto: "corretora" (número do MetaTrader) ou
+        // "estimado" (cálculo por cotação, reserva)
+        resultado_fonte: fonte,
+        broker_profit_brl: brokerBrl,
+        broker_price_current: precoAtual,
         confirmada_corretora: confirmada,
         estado: confirmada ? "aberta" : "estado_desconhecido",
       };

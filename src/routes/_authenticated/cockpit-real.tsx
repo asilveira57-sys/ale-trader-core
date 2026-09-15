@@ -2,7 +2,7 @@
 // degradação para celular. Somente leitura + três ações explícitas:
 // parar novas entradas (sem senha), religar (com senha mestra) e zerar posição.
 // Nada aqui toca no motor de simulação, no comitê, nos classificadores ou nos freios.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -527,6 +527,11 @@ function CockpitRealPage() {
     (s: number, p: any) => s + Number(p.profit_brl ?? p.unrealized_brl ?? 0),
     0,
   );
+  // Alguma posição aberta sem número da corretora? Então o total em aberto tem
+  // parte estimada por cotação — e isso precisa aparecer.
+  const abertoEstimado = positions.some(
+    (p: any) => p.confirmada_corretora !== false && p.resultado_fonte === "estimado" && p.unrealized_brl != null,
+  );
 
   const st = STATE_UI[d?.executor?.state ?? "sem_comando"] ?? STATE_UI["sem_comando"]!;
   const realEnabled = d?.real_state?.real_enabled !== false;
@@ -539,6 +544,15 @@ function CockpitRealPage() {
   // 60s é dado velho. A tela é a única proteção de quem está na rua.
   const reportAgeS = broker.report_age_s == null ? null : Math.round(Number(broker.report_age_s));
   const reportStale = !broker.reported || (reportAgeS != null && reportAgeS > 60);
+
+  // Idade do dado NA TELA: segundos desde a última leitura bem-sucedida. Sobe
+  // de 1 em 1 segundo sem consultar nada.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const dataAgeS = q.dataUpdatedAt ? Math.max(0, Math.round((nowTick - q.dataUpdatedAt) / 1000)) : null;
 
   // AVISO SONORO / NOTIFICAÇÃO de abertura e fechamento de posição REAL.
   // Fonte: as posições reportadas pelo executor (verdade da corretora), nunca o
@@ -555,6 +569,31 @@ function CockpitRealPage() {
       {alerta.ligado ? <Bell className="size-4 text-emerald-400" /> : <BellOff className="size-4 text-muted-foreground" />}
       <span className="hidden sm:inline">{alerta.ligado ? (alerta.armado ? "Aviso ligado" : "Aviso: toque p/ liberar som") : "Aviso mudo"}</span>
     </button>
+  );
+
+  // PRECISÃO SOB DEMANDA (15/09/2026). A recarga de fundo segue em 15s; quem vai
+  // decidir fechar aperta aqui e vê o dado do instante. A idade fica AO LADO do
+  // botão — onde a decisão é tomada. Nunca desabilita nada: idade é informação,
+  // não trava.
+  const RefreshNow = ({ className = "" }: { className?: string }) => (
+    <div className={`flex items-center gap-2 ${className}`}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-9 gap-1 border-2 text-[12px] font-black"
+        onClick={() => q.refetch()}
+      >
+        <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
+        {q.isFetching ? "Atualizando…" : "Atualizar agora"}
+      </Button>
+      <span className="text-[11px] font-semibold text-muted-foreground">
+        {q.isFetching
+          ? "buscando…"
+          : dataAgeS == null
+            ? "sem dado"
+            : `atualizado ${ageText(dataAgeS)}`}
+      </span>
+    </div>
   );
 
   const StaleBanner = () =>
@@ -685,6 +724,7 @@ function CockpitRealPage() {
             zerar posição reduz risco e não pode ser confundido com o pânico. */}
         {vivo ? (
         <div className="grid gap-2">
+          <RefreshNow className="justify-center" />
           <Button
             variant="outline"
             className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal border-2 py-2 text-sm font-black"
@@ -845,7 +885,12 @@ function CockpitRealPage() {
       {/* Placar do dia */}
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <Tile label={vivo ? "Realizado hoje" : "Realizado no período"} value={SIGNED_BRL(today.realized_brl ?? 0)} sub={PCT(today.realized_pct)} cls={money(today.realized_brl)} />
-        <Tile label="Em aberto" value={today.unrealized_brl == null ? "—" : SIGNED_BRL(today.unrealized_brl)} sub={PCT(today.unrealized_pct)} cls={money(today.unrealized_brl)} />
+        <Tile
+          label="Em aberto"
+          value={today.unrealized_brl == null ? "—" : SIGNED_BRL(today.unrealized_brl)}
+          sub={abertoEstimado ? "estimado por cotação" : `${PCT(today.unrealized_pct)} · corretora`}
+          cls={money(today.unrealized_brl)}
+        />
         <Tile label={per && per.single_day === false ? "Total do período" : "Total do dia"} value={SIGNED_BRL(today.total_brl ?? 0)} sub={PCT(today.total_pct)} cls={money(today.total_brl)} />
         <Tile
           label="Saldo da conta"
@@ -999,9 +1044,15 @@ function CockpitRealPage() {
                           estado<br />desconhecido
                         </p>
                       ) : (
-                        <p className={`text-2xl font-black ${money(p.unrealized_brl)}`}>
-                          {p.unrealized_brl == null ? "—" : SIGNED_BRL(p.unrealized_brl)}
-                        </p>
+                        <div className="text-right">
+                          <p className={`text-2xl font-black ${money(p.unrealized_brl)}`}>
+                            {p.unrealized_brl == null ? "—" : SIGNED_BRL(p.unrealized_brl)}
+                          </p>
+                          {/* De onde vem o número: MetaTrader ou conta por cotação. */}
+                          <p className={`text-[10px] font-bold uppercase ${p.resultado_fonte === "corretora" ? "text-muted-foreground" : "text-amber-300"}`}>
+                            {p.resultado_fonte === "corretora" ? "número da corretora" : "estimado por cotação"}
+                          </p>
+                        </div>
                       )}
                     </div>
                     {p.confirmada_corretora === false && (
@@ -1216,6 +1267,7 @@ function CockpitRealPage() {
             hint="Nenhuma destas ações pausa a simulação. Zerar posições não desliga nada; o bloco de emergência desliga o real e religar pede a senha mestra."
           >
             <div className="space-y-2">
+              <RefreshNow />
               {/* OPERAÇÃO NORMAL — neutro, longe do amarelo e do vermelho. */}
               <Button
                 size="lg"
