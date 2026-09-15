@@ -3187,16 +3187,11 @@ async function runB3SimulationTickInner(
         protection_block_reason: protDec.next.protection_block_reason,
         protection_day_key: todayKey,
       } as Record<string, any>;
-      const protChanged = Object.entries(protPatch).some(([k, v]) => {
-        const cur = m[k] ?? null;
-        const next = v ?? null;
-        if (typeof next === "number" || typeof cur === "number") return Number(cur ?? 0) !== Number(next ?? 0);
-        return String(cur ?? "") !== String(next ?? "");
-      });
-      if (protChanged) {
-        await supabase.from("b3_simulation_modes").update(protPatch).eq("id", m.id);
-        Object.assign(m, protPatch);
-      }
+      // A comparação campo a campo vive em `patchMode`: datas devolvidas pelo
+      // banco como "+00:00" comparadas contra ISO "…Z" faziam este bloco gravar
+      // a cada passada, mesmo sem nenhuma mudança de proteção.
+      await patchMode(m, protPatch);
+
 
 
       if (protDec.transition) {
