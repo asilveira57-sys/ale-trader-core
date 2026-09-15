@@ -4441,18 +4441,19 @@ async function runB3SimulationTickInner(
         if (!insertedOrder) throw new Error("Falha ao criar ordem simulada");
 
         markAuditEvent(`abertura:${mode}:${effectiveSide}`);
-        if (sombraFreioGrupo) {
-          // NO REAL, NADA MUDA: o espelho recusa a abertura quando o freio de
-          // grupo está acionado. A recusa é registrada — sem isso não há como
+        if (entradaEmSombra) {
+          // NO REAL, NADA MUDA: o espelho recusa a abertura quando QUALQUER
+          // freio está acionado. A recusa é registrada — sem isso não há como
           // contar quantas entradas reais foram puladas, e a diferença entre o
           // resultado simulado e o real pareceria erro de conciliação.
-          markAuditEvent(`espelho_barrado:${mode}:freio_grupo`);
+          const freiosTexto = freiosNaSombra.map((f) => FREIO_LABEL[f] ?? f).join(" + ");
+          markAuditEvent(`espelho_barrado:${mode}:${freiosNaSombra.join("+")}`);
           try {
             await supabase.from("system_logs").insert({
               event_type: "b3_espelho_barrado_freio",
               source: "b3-simulation-tick",
               severity: "warning",
-              message: `[${asset.quote_symbol}/${runVariant}/${mode}] abertura ${effectiveSide.toUpperCase()} liberada no simulado e RECUSADA no real — freio de grupo nível ${grupoNivel}.`,
+              message: `[${asset.quote_symbol}/${runVariant}/${mode}] abertura ${effectiveSide.toUpperCase()} liberada no simulado e RECUSADA no real — ${freiosTexto}.`,
               technical_data: {
                 // Magic vem do banco (única fonte da fórmula). Aqui é registro:
                 // se a RPC falhar, fica nulo e o resto do log continua valendo.
@@ -4460,9 +4461,12 @@ async function runB3SimulationTickInner(
                   p_symbol: rootSymbol(asset.quote_symbol), p_variant: runVariant, p_mode: mode,
                 }).then((r: any) => r?.data ?? null).catch(() => null)),
                 symbol: rootSymbol(asset.quote_symbol), quote_symbol: asset.quote_symbol,
-                variant: runVariant, mode, grupo_nivel: grupoNivel,
+                variant: runVariant, mode,
+                freios_na_sombra: freiosNaSombra,
+                grupo_nivel: grupoNivel,
                 grupo_multiplicador: grupoMultiplicador,
                 grupo_resultado_brl: Number(grupo?.resultado_brl ?? 0),
+                protection_state: protDec.next.protection_state,
                 simulation_order_id: insertedOrder.id,
                 quantidade_simulada: qty, quantidade_se_freio_valesse: qtySeFreioValesse,
                 side: effectiveSide,
@@ -4474,11 +4478,13 @@ async function runB3SimulationTickInner(
               event_type: "b3_espelho_nao_abriu",
               source: `b3_real_mirror:${asset.quote_symbol}:${runVariant}:${mode}`,
               severity: "warning",
-              message: `Abertura real NÃO enfileirada (freio_de_grupo): freio de grupo nível ${grupoNivel}.`,
+              message: `Abertura real NÃO enfileirada (${sombraFreioGrupo ? "freio_de_grupo" : `freio_${freiosNaSombra[0]}`}): ${freiosTexto}.`,
               technical_data: {
-                motivo: "freio_de_grupo",
+                motivo: sombraFreioGrupo ? "freio_de_grupo" : `freio_${freiosNaSombra[0]}`,
+                freios_na_sombra: freiosNaSombra,
                 symbol: asset.quote_symbol, variant: runVariant, mode, side: effectiveSide,
                 run_id: runId, grupo_nivel: grupoNivel, grupo_multiplicador: grupoMultiplicador,
+                protection_state: protDec.next.protection_state,
                 simulation_order_id: insertedOrder.id,
               } as any,
             });
@@ -4491,6 +4497,7 @@ async function runB3SimulationTickInner(
             target_price: targetPriceFrozen,
           });
         }
+
         providerStats.last_entry_price = entry;
         openOrdersCache = null; ordersMutated = true;
         await patchMode(m, {
