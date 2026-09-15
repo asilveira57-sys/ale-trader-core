@@ -4296,13 +4296,19 @@ async function runB3SimulationTickInner(
         // reduzindo o tamanho quando o motor de risco pede cautela — ele
         // agora reduz a partir da base certa, em vez de reduzir 1 contrato.
         const baseQty = Number(cfg.max_contracts) || 1;
-        const qtyProt = Math.max(1, Math.round(baseQty * Math.max(0.05, protDec.size_multiplier)));
+        // Entrada em sombra por freio de resultado sai no TAMANHO DO ROBÔ: o
+        // multiplicador da proteção é zero quando ela bloqueia, e usar zero aqui
+        // faria a amostra livre sair com 1 contrato — livre e sombra deixariam
+        // de ser comparáveis.
+        const sizeMulEfetivo = freioProtecaoSombra ? 1 : protDec.size_multiplier;
+        const qtyProt = Math.max(1, Math.round(baseQty * Math.max(0.05, sizeMulEfetivo)));
         // Freio de grupo no simulado não reduz contratos (é sombra, item 1 de
         // 08/09/2026): a amostra tem de sair no tamanho do robô, senão o
         // resultado livre não é comparável ao sombra. `aplicarFatorContratos`
         // segue existindo e valendo para o caminho real.
         const qty = qtyProt;
         const qtySeFreioValesse = grupoNivel >= 1 ? aplicarFatorContratos(qtyProt, grupoMultiplicador) : qtyProt;
+
 
         // ── CONTRATO DE SAÍDA CONGELADO NA ABERTURA (08/09/2026) ──
         // `stop_pts` estava NULO em 100% das ordens: o nível só existia na
