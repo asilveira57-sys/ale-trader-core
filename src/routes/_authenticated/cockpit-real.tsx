@@ -557,6 +557,31 @@ function CockpitRealPage() {
     </button>
   );
 
+  // PRECISÃO SOB DEMANDA (15/09/2026). A recarga de fundo segue em 15s; quem vai
+  // decidir fechar aperta aqui e vê o dado do instante. A idade fica AO LADO do
+  // botão — onde a decisão é tomada. Nunca desabilita nada: idade é informação,
+  // não trava.
+  const RefreshNow = ({ className = "" }: { className?: string }) => (
+    <div className={`flex items-center gap-2 ${className}`}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-9 gap-1 border-2 text-[12px] font-black"
+        onClick={() => q.refetch()}
+      >
+        <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
+        {q.isFetching ? "Atualizando…" : "Atualizar agora"}
+      </Button>
+      <span className="text-[11px] font-semibold text-muted-foreground">
+        {q.isFetching
+          ? "buscando…"
+          : dataAgeS == null
+            ? "sem dado"
+            : `atualizado ${ageText(dataAgeS)}`}
+      </span>
+    </div>
+  );
+
   const StaleBanner = () =>
     !reportStale || !vivo ? null : (
       <div className="rounded-xl border-2 border-rose-300 bg-rose-600 px-3 py-2 text-white">
