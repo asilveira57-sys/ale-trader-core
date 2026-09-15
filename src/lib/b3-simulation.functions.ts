@@ -481,6 +481,11 @@ const openEvalLogMinute = new Map<string, number>();
 // cada tique: sem esta marca o fechamento real seria reenfileirado sem parar.
 // A chave de idempotência do comando é a segunda barreira.
 const grupoFreioEspelhado = new Set<string>();
+// Mesma marca para o FREIO DE PICO (15/09/2026), que também passou a ser
+// sombra no simulado: a posição simulada segue aberta e o real é encerrado
+// uma única vez por ordem.
+const picoFreioEspelhado = new Set<string>();
+
 
 interface ModeDefaults {
   entry_style: string;
