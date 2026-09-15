@@ -3924,9 +3924,7 @@ async function runB3SimulationTickInner(
       if (macroBlock) {
         log.push({ mode, action: "skip", reason: `macro:${macroBlock.name}` });
         if (sigChanged(`block:${mode}`, `macro:${macroBlock.name}`)) {
-          await supabase.from("b3_simulation_modes")
-            .update({ risk_blocks: (Number(m.risk_blocks) || 0) + 1 }).eq("id", m.id);
-          m.risk_blocks = (Number(m.risk_blocks) || 0) + 1;
+          await patchMode(m, { risk_blocks: (Number(m.risk_blocks) || 0) + 1 });
         }
         finalizeAudit(`Proteção global: evento macro ${macroBlock.name}.`);
         continue;
