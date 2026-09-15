@@ -3951,7 +3951,9 @@ async function runB3SimulationTickInner(
       // multiplicador e lista de travados, e segue gravando em
       // b3_grupo_estado_dia. Muda só o EFEITO aqui: a entrada sai, marcada como
       // sombra na ordem, e o espelho para o real é recusado (com registro).
-      // O freio de pico e o disjuntor diário continuam bloqueando de verdade.
+      // Desde 15/09/2026 os freios de PICO, PÓS-META e STOP DIÁRIO seguem a
+      // mesma regra no simulado (bloco abaixo). No real todos continuam
+      // bloqueando de verdade.
       const sombraFreioGrupo = grupoNivel >= 2 && grupoTravados.includes(mode);
       if (sombraFreioGrupo) {
         const msg = `Freio de grupo nível ${grupoNivel} (SOMBRA — entrada liberada no simulado) ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; resultado do grupo ${Number(grupo?.resultado_brl ?? 0).toFixed(2)} BRL. Nenhum comando real será enfileirado.`;
@@ -3973,16 +3975,64 @@ async function runB3SimulationTickInner(
         });
       }
 
-
+      // ── FREIOS DE RESULTADO EM SOMBRA NO SIMULADO (15/09/2026) ──
+      // Em 15/09 cinco robôs de price action do WIN passaram o dia travados
+      // pelo freio de pico, num dia que fechou positivo — e não havia nenhuma
+      // medição para dizer se travar acertou. Os três freios de RESULTADO
+      // (pico, pós-meta e stop diário por robô) passam a registrar em vez de
+      // bloquear no simulado, exatamente como o freio de grupo desde 08/09.
+      //
+      // Os demais bloqueios da proteção continuam bloqueando: falha
+      // operacional, volatilidade extrema e drawdown não são freios de
+      // resultado — não há contrafactual a medir neles.
+      const SOMBRA_POR_ESTADO: Record<string, string> = {
+        blocked_peak_giveback: "pico",
+        blocked_post_target_loss: "pos_meta",
+        blocked_stop: "stop_diario",
+      };
+      const freioProtecaoSombra = protDec.allow_new_entry
+        ? null
+        : (SOMBRA_POR_ESTADO[protDec.next.protection_state] ?? null);
 
       // Bloqueio de proteção B3 substitui o antigo gate "meta atingida".
-      if (!protDec.allow_new_entry) {
+      if (!protDec.allow_new_entry && !freioProtecaoSombra) {
         await recordStatusIfChanged(mode, m, protDec.next.protection_state, `protection:${protDec.next.protection_state}`,
           { pnl: realizedToday, message: protDec.next.protection_block_reason ?? "Bloqueio pós-meta." });
         log.push({ mode, action: "skip", reason: protDec.next.protection_state });
         finalizeAudit(protDec.next.protection_block_reason ?? "Proteção global/diária bloqueou nova entrada.");
         continue;
       }
+
+      if (freioProtecaoSombra) {
+        const motivoProt = protDec.next.protection_block_reason ?? protDec.next.protection_state;
+        const msgProt = `${FREIO_LABEL[freioProtecaoSombra]} (SOMBRA — entrada liberada no simulado): ${motivoProt} Nenhum comando real será enfileirado.`;
+        await recordStatusIfChanged(mode, m, `sombra_${freioProtecaoSombra}`, `${protDec.next.protection_state}_sombra`,
+          { pnl: realizedToday, message: msgProt });
+        log.push({ mode, action: `sombra_${freioProtecaoSombra}`, estado: protDec.next.protection_state });
+        entryStageRows.push({
+          user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+          symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+          estagio: `freio_${freioProtecaoSombra}_sombra`,
+          motivo: msgProt.slice(0, 500),
+          detalhe: {
+            sombra: true, freio: freioProtecaoSombra,
+            protection_state: protDec.next.protection_state,
+            realizado_hoje_brl: realizedToday,
+            pico_do_dia_brl: Number(protDec.next.day_peak_profit_brl ?? 0),
+            espelho_real: "barrado",
+          },
+        });
+      }
+
+      // Todos os freios que teriam barrado ESTA entrada. Uma entrada pode ser
+      // barrada por mais de um ao mesmo tempo — é o que permite julgar um
+      // freio contra o outro na medição diária.
+      const freiosNaSombra: string[] = [
+        ...(sombraFreioGrupo ? ["grupo"] : []),
+        ...(freioProtecaoSombra ? [freioProtecaoSombra] : []),
+      ];
+      const entradaEmSombra = freiosNaSombra.length > 0;
+
 
       // Diagnóstico visual: rotula o estado atual (sem bloquear gainHit).
       const lossHit = realizedToday <= -Number(cfg.daily_loss_limit_brl);
