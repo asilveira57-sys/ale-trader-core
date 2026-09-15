@@ -1552,7 +1552,6 @@ async function runB3SimulationTickInner(
     if (prev === newStatus && !opts.forceLog) return;
     if (opts.forceLog) {
       // Diagnóstico explícito: grava na hora, como antes.
-      markAuditEvent(prev !== newStatus ? `status:${mode}:${prev}->${newStatus}` : `block_event:${mode}:${trigger}`);
       try { await insertStatusEvent(mode, m, prev, newStatus, trigger, opts); } catch { /* auditoria não derruba o tique */ }
     } else {
       // O evento fica pendente: só vira linha se o status FINAL da passada
@@ -4490,6 +4489,12 @@ async function runB3SimulationTickInner(
         } catch { /* log nunca deve derrubar o tick */ }
         continue;
       } finally {
+        // UMA gravação de estado e NO MÁXIMO um evento de status por robô por
+        // passada. O status intermediário não vira linha no banco.
+        const mid = modeByName[mode]?.id ?? null;
+        try { await flushStatusEvent(mid); } catch { /* auditoria não derruba o tique */ }
+        try { await flushModeWrite(mid); } catch { /* estado não derruba o tique */ }
+        if (mid) statusTickStart.delete(mid);
         modeTimings[mode] = Date.now() - modeT0;
       }
     }
