@@ -1449,7 +1449,7 @@ async function runB3SimulationTickInner(
       exit_time: nowIso,
     }).in("id", ids).eq("user_id", userId);
     providerStats.legacy_orders_invalidated += rows.length;
-    openOrdersCache = null;
+    openOrdersCache = null; ordersMutated = true;
     for (const o of rows.slice(0, 5)) {
 
       const m = modeByName[o.mode];
@@ -3333,7 +3333,7 @@ async function runB3SimulationTickInner(
             status: "cancelled",
             close_reason: "Fonte alterada para MT5 XP DEMO — operação legada invalidada",
           }).eq("id", open.id).eq("user_id", userId);
-          openOrdersCache = null;
+          openOrdersCache = null; ordersMutated = true;
           log.push({ mode, action: "cancel_legacy_open", reason: "legacy_price_state_invalidated" });
           finalizeAudit("Posição legada aberta foi invalidada antes de nova decisão.");
           continue;
@@ -3399,7 +3399,7 @@ async function runB3SimulationTickInner(
           const tradeCtx = await closeOrder(supabase, userId, run, m, open, exitAuditFinal, "peak_giveback_lock", marketHistory, asset);
           markAuditEvent(`fechamento:${mode}:peak_giveback_lock`);
           providerStats.last_exit_price = exitAuditFinal.execution_price;
-          openOrdersCache = null;
+          openOrdersCache = null; ordersMutated = true;
           realizedTodayByMode = await getRealizedTodayByMode();
           try {
             await supabase.from("b3_simulation_orders").update({
@@ -3746,7 +3746,7 @@ async function runB3SimulationTickInner(
           const tradeCtx = await closeOrder(supabase, userId, run, m, open, exitAuditFinal, reason, marketHistory, asset);
           markAuditEvent(`fechamento:${mode}:${reason}`);
           providerStats.last_exit_price = exitPriceFinal;
-          openOrdersCache = null;
+          openOrdersCache = null; ordersMutated = true;
           realizedTodayByMode = await getRealizedTodayByMode();
           try {
             await supabase.from("b3_simulation_orders").update({
@@ -3808,7 +3808,7 @@ async function runB3SimulationTickInner(
             await closeOrder(supabase, userId, run, m, open, safetyAudit, "stop_safety_net", marketHistory, asset);
             markAuditEvent(`fechamento:${mode}:stop_safety_net`);
             providerStats.last_exit_price = safetyAudit.execution_price;
-            openOrdersCache = null;
+            openOrdersCache = null; ordersMutated = true;
             realizedTodayByMode = await getRealizedTodayByMode();
             try {
               await supabase.from("b3_simulation_orders").update({
@@ -4392,7 +4392,7 @@ async function runB3SimulationTickInner(
           });
         }
         providerStats.last_entry_price = entry;
-        openOrdersCache = null;
+        openOrdersCache = null; ordersMutated = true;
         await patchMode(m, {
           committee_approvals: (Number(m.committee_approvals) || 0) + 1,
           contracts_traded: (Number(m.contracts_traded) || 0) + qty,
