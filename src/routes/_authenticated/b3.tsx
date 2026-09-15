@@ -987,9 +987,9 @@ function CommitteePanel({ settings }: { settings: B3Settings }) {
               <p className="text-xs text-muted-foreground">
                 conf {Number(v.confidence).toFixed(0)} · {v.reason}
               </p>
-              {v.market_data_snapshot?.has_veto && (
+              {(v.has_veto ?? v.market_data_snapshot?.has_veto) && (
                 <p className="text-xs text-destructive flex items-center gap-1 mt-1">
-                  <ShieldAlert className="w-3 h-3" /> veto: {v.market_data_snapshot.veto_reason}
+                  <ShieldAlert className="w-3 h-3" /> veto: {v.veto_reason ?? v.market_data_snapshot?.veto_reason}
                 </p>
               )}
             </div>
@@ -1025,8 +1025,8 @@ function CommitteePanel({ settings }: { settings: B3Settings }) {
                       }>{v.vote}</Badge>
                     </td>
                     <td className="text-right">{Number(v.confidence).toFixed(0)}</td>
-                    <td>{v.market_data_snapshot?.decision ?? "—"}</td>
-                    <td className="text-right">{Number(v.market_data_snapshot?.score ?? 0).toFixed(0)}</td>
+                    <td>{v.decision ?? v.market_data_snapshot?.decision ?? "—"}</td>
+                    <td className="text-right">{Number(v.score ?? v.market_data_snapshot?.score ?? 0).toFixed(0)}</td>
                     <td className="truncate max-w-[360px]">{v.reason}</td>
                   </tr>
                 ))}

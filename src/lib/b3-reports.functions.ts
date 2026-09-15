@@ -55,7 +55,9 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
 
     // Votos do comitê no período (aprovados/rejeitados a partir dos snapshots)
     let qv = (supabase as any).from("b3_simulation_agent_votes")
-      .select("created_at, mode, market_data_snapshot")
+      // A decisão vive em coluna própria desde 15/09/2026; linhas antigas
+      // ainda trazem o objeto de contexto, então os dois caminhos são lidos.
+      .select("created_at, mode, decision, market_data_snapshot")
       .eq("simulation_run_id", data.run_id).eq("user_id", userId);
     if (fromISO) qv = qv.gte("created_at", fromISO);
     if (toISO) qv = qv.lte("created_at", toISO);
@@ -123,7 +125,7 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
       let approvals = 0, rejections = 0, riskBlocks = 0;
       for (const v of votes ?? []) {
         if (v.mode !== mode) continue;
-        const dec = (v.market_data_snapshot as any)?.decision;
+        const dec = v.decision ?? (v.market_data_snapshot as any)?.decision;
         if (dec === "approved") approvals++;
         else if (dec === "rejected") rejections++;
         else if (dec === "blocked") riskBlocks++;

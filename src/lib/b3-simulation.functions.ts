@@ -1318,24 +1318,74 @@ async function runB3SimulationTickInner(
     }
     return false;
   }
+  // UMA GRAVAÇÃO POR ROBÔ POR PASSADA (15/09/2026).
+  // As mudanças são acumuladas em memória durante a passada e gravadas uma
+  // única vez por robô, no `finally` do laço, já sem os campos que não
+  // mudaram. O objeto `m` em memória é atualizado na hora, então toda a
+  // lógica do tique continua lendo o valor novo. Não é um upsert multi-linha
+  // de propósito: o upsert precisaria reescrever colunas de configuração que
+  // o usuário pode ter mudado na tela durante a passada.
+  const pendingModeWrite = new Map<string, Record<string, any>>();
+  // Valor que estava no banco antes da primeira mudança da passada: se o campo
+  // voltar a esse valor, ele sai do UPDATE (regravação idêntica não é de graça).
+  const modeWriteOrigin = new Map<string, Record<string, any>>();
   async function patchMode(m: any, patch: Record<string, any>): Promise<boolean> {
     const diff: Record<string, any> = {};
     for (const [k, v] of Object.entries(patch)) {
       if (!mesmoValorDeModo(m[k] ?? null, v ?? null)) diff[k] = v;
     }
     if (!Object.keys(diff).length) return false;
-    await supabase.from("b3_simulation_modes").update(diff).eq("id", m.id).eq("user_id", userId);
+    const buf = pendingModeWrite.get(m.id) ?? {};
+    const orig = modeWriteOrigin.get(m.id) ?? {};
+    for (const k of Object.keys(diff)) if (!(k in orig)) orig[k] = m[k] ?? null;
+    Object.assign(buf, diff);
+    pendingModeWrite.set(m.id, buf);
+    modeWriteOrigin.set(m.id, orig);
     Object.assign(m, diff);
     return true;
   }
+  async function flushModeWrite(modeId?: string | null) {
+    if (!modeId) return;
+    const buf = pendingModeWrite.get(modeId);
+    const orig = modeWriteOrigin.get(modeId) ?? {};
+    pendingModeWrite.delete(modeId);
+    modeWriteOrigin.delete(modeId);
+    if (!buf) return;
+    const finalDiff: Record<string, any> = {};
+    for (const [k, v] of Object.entries(buf)) {
+      if (!mesmoValorDeModo(orig[k] ?? null, v ?? null)) finalDiff[k] = v;
+    }
+    if (!Object.keys(finalDiff).length) return;
+    await supabase.from("b3_simulation_modes").update(finalDiff).eq("id", modeId).eq("user_id", userId);
+  }
+  async function flushAllModeWrites() {
+    for (const id of Array.from(pendingModeWrite.keys())) {
+      try { await flushModeWrite(id); } catch { /* gravação de estado nunca derruba o tique */ }
+    }
+  }
 
-  let totalsComputedOnce = false;
+  let ordersMutated = false;
   async function recomputeModeTotalsFromValidMt5Orders(force = false) {
-    // I/O: só recalcula uma vez por execução, salvo mudança real de ordens.
-    if (totalsComputedOnce && !force) return;
-    totalsComputedOnce = true;
+    // I/O: só recalcula quando ALGUMA ordem mudou. A assinatura (quantidade de
+    // ordens válidas + instante da última alteração) custa duas consultas
+    // baratas; o recálculo completo lê milhares de linhas.
+    if (!force) {
+      const [{ count }, { data: lastRows }] = await Promise.all([
+        supabase.from("b3_simulation_orders").select("id", { count: "exact", head: true })
+          .eq("simulation_run_id", runId).eq("user_id", userId)
+          .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider"),
+        supabase.from("b3_simulation_orders").select("updated_at")
+          .eq("simulation_run_id", runId).eq("user_id", userId)
+          .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider")
+          .order("updated_at", { ascending: false }).limit(1),
+      ]);
+      const sig = `${count ?? 0}:${(lastRows ?? [])[0]?.updated_at ?? ""}`;
+      if (!ordersMutated && (memo as any).orders_sig === sig) return;
+      (memo as any).orders_sig = sig;
+    }
+    ordersMutated = false;
     const { data: validOrders } = await supabase.from("b3_simulation_orders")
-      .select("id, mode, status, quantity, fees, net_result_brl, gross_result_points, exit_time, created_at")
+      .select("id, mode, status, quantity, fees, net_result_brl, gross_result_points, exit_time, created_at, updated_at")
       .eq("simulation_run_id", runId).eq("user_id", userId)
       .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider");
     const byMode: Record<string, any[]> = {};
@@ -1379,17 +1429,24 @@ async function runB3SimulationTickInner(
       // Grava só quando há mudança real de estado.
       await patchMode(m, patch);
     }
+    if (force) {
+      const maxUpd = (validOrders ?? []).reduce((s: string, o: any) => (o.updated_at > s ? o.updated_at : s), "");
+      (memo as any).orders_sig = `${(validOrders ?? []).length}:${maxUpd}`;
+    }
   }
 
 
   async function invalidateLegacyOrdersForMt5(info: B3PriceContextResult) {
     if (info.source !== "mt5_xp_demo") return;
+    // O filtro das ordens legadas vive no BANCO (índice parcial
+    // idx_b3_sim_orders_legacy_pending). Antes lia a tabela inteira da execução
+    // a cada tique só para descobrir, quase sempre, que não havia nenhuma.
     const { data: legacyOrders } = await supabase.from("b3_simulation_orders")
       .select("id, mode, status, entry_price, exit_price, quote_source, provider_name")
       .eq("simulation_run_id", runId).eq("user_id", userId)
-      .in("status", ["open", "closed"]);
-    // Só ordens ainda ativas/fechadas — as já canceladas não são reprocessadas
-    // (era isto que gerava UPDATE e evento a cada tick).
+      .in("status", ["open", "closed"])
+      .or("quote_source.is.null,quote_source.neq.MT5 XP DEMO,provider_name.is.null,provider_name.neq.B3QuoteProvider")
+      .limit(500);
     const rows = (legacyOrders ?? []).filter((o: any) => o.quote_source !== "MT5 XP DEMO" || o.provider_name !== "B3QuoteProvider");
     if (!rows.length) {
       await recomputeModeTotalsFromValidMt5Orders();
@@ -1403,7 +1460,7 @@ async function runB3SimulationTickInner(
       exit_time: nowIso,
     }).in("id", ids).eq("user_id", userId);
     providerStats.legacy_orders_invalidated += rows.length;
-    openOrdersCache = null;
+    openOrdersCache = null; ordersMutated = true;
     for (const o of rows.slice(0, 5)) {
 
       const m = modeByName[o.mode];
@@ -1441,17 +1498,19 @@ async function runB3SimulationTickInner(
     };
   }
 
-  // Helper: registra mudança de status operacional (parou de operar / voltou)
-  async function recordStatusIfChanged(
-    mode: string, m: any, newStatus: string, trigger: string,
-    opts: {
-      observed?: number; limit?: number; pnl?: number; related_order_id?: string; message?: string;
-      provider_name?: string; price_source?: string; rejected_price?: number | null; mt5_last?: number | null; diagnostic_payload?: any;
-      forceLog?: boolean;
-    } = {},
-  ) {
-    const prev = m.current_status ?? "operando";
-    if (prev === newStatus && !opts.forceLog) return;
+  // EVENTO DE STATUS: só quando o status REALMENTE mudou na passada (15/09/2026).
+  //
+  // Dentro de um mesmo tique o status de um robô oscilava (operando ->
+  // sombra_grupo -> operando), e cada perna virava linha em
+  // b3_simulation_block_events: 205 mil eventos de sombra e 144 mil "ok" sem
+  // informação nova. Agora o status intermediário fica em memória e, no fim da
+  // passada do robô, um único evento é gravado se o status final diferir do
+  // status com que o robô entrou na passada. `forceLog` continua gravando na
+  // hora (diagnóstico explícito). Nada muda no que a tela mostra: o status
+  // corrente do robô continua o mesmo.
+  const statusTickStart = new Map<string, string>();
+  const pendingStatusEvent = new Map<string, { mode: string; m: any; newStatus: string; trigger: string; opts: any }>();
+  async function insertStatusEvent(mode: string, m: any, prev: string, newStatus: string, trigger: string, opts: any) {
     markAuditEvent(prev !== newStatus ? `status:${mode}:${prev}->${newStatus}` : `block_event:${mode}:${trigger}`);
     await supabase.from("b3_simulation_block_events").insert({
       simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
@@ -1467,6 +1526,38 @@ async function runB3SimulationTickInner(
       mt5_last: opts.mt5_last ?? null,
       diagnostic_payload: opts.diagnostic_payload ?? {},
     });
+  }
+  async function flushStatusEvent(modeId?: string | null) {
+    if (!modeId) return;
+    const pend = pendingStatusEvent.get(modeId);
+    pendingStatusEvent.delete(modeId);
+    if (!pend) return;
+    const inicial = statusTickStart.get(modeId) ?? "operando";
+    if (inicial === pend.newStatus) return; // voltou ao mesmo ponto: nada mudou
+    try {
+      await insertStatusEvent(pend.mode, pend.m, inicial, pend.newStatus, pend.trigger, pend.opts);
+    } catch { /* auditoria nunca derruba o tique */ }
+  }
+  // Helper: registra mudança de status operacional (parou de operar / voltou)
+  async function recordStatusIfChanged(
+    mode: string, m: any, newStatus: string, trigger: string,
+    opts: {
+      observed?: number; limit?: number; pnl?: number; related_order_id?: string; message?: string;
+      provider_name?: string; price_source?: string; rejected_price?: number | null; mt5_last?: number | null; diagnostic_payload?: any;
+      forceLog?: boolean;
+    } = {},
+  ) {
+    const prev = m.current_status ?? "operando";
+    if (!statusTickStart.has(m.id)) statusTickStart.set(m.id, prev);
+    if (prev === newStatus && !opts.forceLog) return;
+    if (opts.forceLog) {
+      // Diagnóstico explícito: grava na hora, como antes.
+      try { await insertStatusEvent(mode, m, prev, newStatus, trigger, opts); } catch { /* auditoria não derruba o tique */ }
+    } else {
+      // O evento fica pendente: só vira linha se o status FINAL da passada
+      // for diferente do status inicial. Última intenção vence.
+      pendingStatusEvent.set(m.id, { mode, m, newStatus, trigger, opts });
+    }
     if (prev !== newStatus) {
       await patchMode(m, {
         current_status: newStatus, status_reason: opts.message ?? null,
@@ -3287,7 +3378,7 @@ async function runB3SimulationTickInner(
             status: "cancelled",
             close_reason: "Fonte alterada para MT5 XP DEMO — operação legada invalidada",
           }).eq("id", open.id).eq("user_id", userId);
-          openOrdersCache = null;
+          openOrdersCache = null; ordersMutated = true;
           log.push({ mode, action: "cancel_legacy_open", reason: "legacy_price_state_invalidated" });
           finalizeAudit("Posição legada aberta foi invalidada antes de nova decisão.");
           continue;
@@ -3353,7 +3444,7 @@ async function runB3SimulationTickInner(
           const tradeCtx = await closeOrder(supabase, userId, run, m, open, exitAuditFinal, "peak_giveback_lock", marketHistory, asset);
           markAuditEvent(`fechamento:${mode}:peak_giveback_lock`);
           providerStats.last_exit_price = exitAuditFinal.execution_price;
-          openOrdersCache = null;
+          openOrdersCache = null; ordersMutated = true;
           realizedTodayByMode = await getRealizedTodayByMode();
           try {
             await supabase.from("b3_simulation_orders").update({
@@ -3700,7 +3791,7 @@ async function runB3SimulationTickInner(
           const tradeCtx = await closeOrder(supabase, userId, run, m, open, exitAuditFinal, reason, marketHistory, asset);
           markAuditEvent(`fechamento:${mode}:${reason}`);
           providerStats.last_exit_price = exitPriceFinal;
-          openOrdersCache = null;
+          openOrdersCache = null; ordersMutated = true;
           realizedTodayByMode = await getRealizedTodayByMode();
           try {
             await supabase.from("b3_simulation_orders").update({
@@ -3762,7 +3853,7 @@ async function runB3SimulationTickInner(
             await closeOrder(supabase, userId, run, m, open, safetyAudit, "stop_safety_net", marketHistory, asset);
             markAuditEvent(`fechamento:${mode}:stop_safety_net`);
             providerStats.last_exit_price = safetyAudit.execution_price;
-            openOrdersCache = null;
+            openOrdersCache = null; ordersMutated = true;
             realizedTodayByMode = await getRealizedTodayByMode();
             try {
               await supabase.from("b3_simulation_orders").update({
@@ -4081,19 +4172,27 @@ async function runB3SimulationTickInner(
         const voteRows = votes.map(v => ({
           simulation_run_id: runId, simulation_mode_id: m.id, user_id: userId,
           mode, agent_name: v.agent_name, vote: v.vote, confidence: v.confidence, reason: v.reason,
-          market_data_snapshot: {
-            snapshot_id: snapId, decision: decision.final, score: decision.score,
-            price: ctx.price, side: effectiveSide, has_veto: v.has_veto, veto_reason: v.veto_reason ?? null,
-          } as any,
-        }));
+          // CONTEXTO DO TIQUE NÃO VIAJA MAIS EM CADA VOTO (15/09/2026).
+          // Antes cada agente repetia o mesmo objeto de mercado: era
+          // praticamente a tabela inteira (568 MB). O contexto do tique fica em
+          // b3_simulation_market_snapshots (uma linha por tique persistido) e o
+          // estado corrente em b3_engine_state; a ligação é tick_snapshot_id.
+          tick_snapshot_id: snapId,
+          decision: decision.final,
+          score: decision.score,
+          side: effectiveSide,
+          has_veto: v.has_veto ?? false,
+          veto_reason: v.veto_reason ?? null,
+          market_data_snapshot: {} as any,
+        })) as any[];
         // Instrumentação: guardamos os ids inseridos para vincular à ordem
         // criada neste mesmo tique/modo (order_id só existe depois do insert).
         try {
-          const { data: insertedVotes } = await supabase
+          const { data: insertedVotes } = await (supabase as any)
             .from("b3_simulation_agent_votes").insert(voteRows).select("id");
           lastVoteIdsByMode[mode] = (insertedVotes ?? []).map((r: any) => r.id);
         } catch {
-          await supabase.from("b3_simulation_agent_votes").insert(voteRows);
+          await (supabase as any).from("b3_simulation_agent_votes").insert(voteRows);
         }
       }
 
@@ -4346,7 +4445,7 @@ async function runB3SimulationTickInner(
           });
         }
         providerStats.last_entry_price = entry;
-        openOrdersCache = null;
+        openOrdersCache = null; ordersMutated = true;
         await patchMode(m, {
           committee_approvals: (Number(m.committee_approvals) || 0) + 1,
           contracts_traded: (Number(m.contracts_traded) || 0) + qty,
@@ -4398,9 +4497,18 @@ async function runB3SimulationTickInner(
         } catch { /* log nunca deve derrubar o tick */ }
         continue;
       } finally {
+        // UMA gravação de estado e NO MÁXIMO um evento de status por robô por
+        // passada. O status intermediário não vira linha no banco.
+        const mid = modeByName[mode]?.id ?? null;
+        try { await flushStatusEvent(mid); } catch { /* auditoria não derruba o tique */ }
+        try { await flushModeWrite(mid); } catch { /* estado não derruba o tique */ }
+        if (mid) statusTickStart.delete(mid);
         modeTimings[mode] = Date.now() - modeT0;
       }
     }
+
+    // Estado de robôs alterado fora do laço (ex.: reconciliação de totais).
+    await flushAllModeWrites();
 
     // Um único INSERT por tique com os robôs cujo motivo de recusa MUDOU.
     // Falha em silêncio: diagnóstico nunca derruba nem atrasa o motor.
@@ -5992,10 +6100,16 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     for (const symbol of Array.from(new Set(runList.map((r) => r.symbol)))) {
       const asset = profiles[symbol] ?? WIN_FALLBACK_ASSET_PROFILE;
       const candidates = Array.from(new Set([asset.symbol, asset.quote_symbol, symbol].filter(Boolean)));
-      const { data: q } = await (supabase as any).from("b3_mt5sim_quotes")
-        .select("tick_ts").eq("user_id", userId).in("symbol", candidates as string[])
-        .order("tick_ts", { ascending: false }).limit(1);
-      const tickTs = q?.[0]?.tick_ts ? new Date(q[0].tick_ts).getTime() : null;
+      // Uma consulta por símbolo (índice user_id+symbol+tick_ts): a lista de
+      // símbolos numa só consulta não usa o índice e varre a tabela de ticks.
+      const tickTsList = await Promise.all((candidates as string[]).map(async (sym) => {
+        const { data: q } = await (supabase as any).from("b3_mt5sim_quotes")
+          .select("tick_ts").eq("user_id", userId).eq("symbol", sym)
+          .order("tick_ts", { ascending: false }).limit(1);
+        return q?.[0]?.tick_ts ? new Date(q[0].tick_ts).getTime() : null;
+      }));
+      const validTs = tickTsList.filter((t): t is number => t != null);
+      const tickTs = validTs.length ? Math.max(...validTs) : null;
       const ageS = tickTs == null ? null : Math.max(0, Math.round((Date.now() - tickTs) / 1000));
       quotesHealth.push({ symbol, age_s: ageS, stale: ageS == null || ageS > quoteGuardLimitS });
     }
