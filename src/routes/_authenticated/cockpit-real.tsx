@@ -527,6 +527,11 @@ function CockpitRealPage() {
     (s: number, p: any) => s + Number(p.profit_brl ?? p.unrealized_brl ?? 0),
     0,
   );
+  // Alguma posição aberta sem número da corretora? Então o total em aberto tem
+  // parte estimada por cotação — e isso precisa aparecer.
+  const abertoEstimado = positions.some(
+    (p: any) => p.confirmada_corretora !== false && p.resultado_fonte === "estimado" && p.unrealized_brl != null,
+  );
 
   const st = STATE_UI[d?.executor?.state ?? "sem_comando"] ?? STATE_UI["sem_comando"]!;
   const realEnabled = d?.real_state?.real_enabled !== false;
