@@ -1378,7 +1378,43 @@ async function runB3SimulationTickInner(
       .eq("simulation_run_id", runId).eq("user_id", userId)
       .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider");
     const byMode: Record<string, any[]> = {};
-...
+    for (const mode of activeModes) byMode[mode] = [];
+    for (const o of (validOrders ?? [])) if (byMode[o.mode]) byMode[o.mode].push(o);
+    providerStats.valid_mt5_orders = (validOrders ?? []).length;
+
+    for (const mode of activeModes) {
+      const m = modeByName[mode];
+      if (!m) continue;
+      const orders = byMode[mode] ?? [];
+      const closed = orders.filter((o) => o.status === "closed");
+      const realized = closed.reduce((s, o) => s + Number(o.net_result_brl ?? 0), 0);
+      const fees = orders.reduce((s, o) => s + Number(o.fees ?? 0), 0);
+      const wins = closed.filter((o) => Number(o.net_result_brl ?? 0) > 0).length;
+      const losses = closed.filter((o) => Number(o.net_result_brl ?? 0) < 0).length;
+      const maxGain = closed.reduce((v, o) => Math.max(v, Number(o.net_result_brl ?? 0)), 0);
+      const maxLoss = closed.reduce((v, o) => Math.min(v, Number(o.net_result_brl ?? 0)), 0);
+      const points = closed.reduce((s, o) => s + Number(o.gross_result_points ?? 0), 0);
+      const contracts = orders.reduce((s, o) => s + Number(o.quantity ?? 0), 0);
+      let acc = 0, peak = 0, dd = 0;
+      for (const o of closed.slice().sort((a, b) => new Date(a.exit_time ?? a.created_at).getTime() - new Date(b.exit_time ?? b.created_at).getTime())) {
+        acc += Number(o.net_result_brl ?? 0);
+        peak = Math.max(peak, acc);
+        dd = Math.max(dd, peak - acc);
+      }
+      const patch = {
+        realized_pnl: realized,
+        unrealized_pnl: 0,
+        current_balance: Number(m.initial_balance) + realized,
+        total_fees: fees,
+        total_trades: closed.length,
+        winning_trades: wins,
+        losing_trades: losses,
+        max_gain: maxGain,
+        max_loss: maxLoss,
+        max_drawdown: dd,
+        points_result: points,
+        contracts_traded: contracts,
+      };
       // Grava só quando há mudança real de estado.
       await patchMode(m, patch);
     }
