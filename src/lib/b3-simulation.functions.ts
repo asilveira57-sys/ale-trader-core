@@ -1318,78 +1318,88 @@ async function runB3SimulationTickInner(
     }
     return false;
   }
+  // UMA GRAVAÇÃO POR ROBÔ POR PASSADA (15/09/2026).
+  // As mudanças são acumuladas em memória durante a passada e gravadas uma
+  // única vez por robô, no `finally` do laço, já sem os campos que não
+  // mudaram. O objeto `m` em memória é atualizado na hora, então toda a
+  // lógica do tique continua lendo o valor novo. Não é um upsert multi-linha
+  // de propósito: o upsert precisaria reescrever colunas de configuração que
+  // o usuário pode ter mudado na tela durante a passada.
+  const pendingModeWrite = new Map<string, Record<string, any>>();
+  const modeRowById = new Map<string, any>();
   async function patchMode(m: any, patch: Record<string, any>): Promise<boolean> {
     const diff: Record<string, any> = {};
     for (const [k, v] of Object.entries(patch)) {
       if (!mesmoValorDeModo(m[k] ?? null, v ?? null)) diff[k] = v;
     }
     if (!Object.keys(diff).length) return false;
-    await supabase.from("b3_simulation_modes").update(diff).eq("id", m.id).eq("user_id", userId);
+    const buf = pendingModeWrite.get(m.id) ?? {};
+    Object.assign(buf, diff);
+    pendingModeWrite.set(m.id, buf);
+    modeRowById.set(m.id, m);
     Object.assign(m, diff);
     return true;
   }
+  async function flushModeWrite(modeId?: string | null) {
+    if (!modeId) return;
+    const buf = pendingModeWrite.get(modeId);
+    pendingModeWrite.delete(modeId);
+    if (!buf || !Object.keys(buf).length) return;
+    await supabase.from("b3_simulation_modes").update(buf).eq("id", modeId).eq("user_id", userId);
+  }
+  async function flushAllModeWrites() {
+    for (const id of Array.from(pendingModeWrite.keys())) {
+      try { await flushModeWrite(id); } catch { /* gravação de estado nunca derruba o tique */ }
+    }
+  }
 
-  let totalsComputedOnce = false;
+  let ordersMutated = false;
   async function recomputeModeTotalsFromValidMt5Orders(force = false) {
-    // I/O: só recalcula uma vez por execução, salvo mudança real de ordens.
-    if (totalsComputedOnce && !force) return;
-    totalsComputedOnce = true;
+    // I/O: só recalcula quando ALGUMA ordem mudou. A assinatura (quantidade de
+    // ordens válidas + instante da última alteração) custa duas consultas
+    // baratas; o recálculo completo lê milhares de linhas.
+    if (!force) {
+      const [{ count }, { data: lastRows }] = await Promise.all([
+        supabase.from("b3_simulation_orders").select("id", { count: "exact", head: true })
+          .eq("simulation_run_id", runId).eq("user_id", userId)
+          .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider"),
+        supabase.from("b3_simulation_orders").select("updated_at")
+          .eq("simulation_run_id", runId).eq("user_id", userId)
+          .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider")
+          .order("updated_at", { ascending: false }).limit(1),
+      ]);
+      const sig = `${count ?? 0}:${(lastRows ?? [])[0]?.updated_at ?? ""}`;
+      if (!ordersMutated && (memo as any).orders_sig === sig) return;
+      (memo as any).orders_sig = sig;
+    }
+    ordersMutated = false;
     const { data: validOrders } = await supabase.from("b3_simulation_orders")
-      .select("id, mode, status, quantity, fees, net_result_brl, gross_result_points, exit_time, created_at")
+      .select("id, mode, status, quantity, fees, net_result_brl, gross_result_points, exit_time, created_at, updated_at")
       .eq("simulation_run_id", runId).eq("user_id", userId)
       .eq("quote_source", "MT5 XP DEMO").eq("provider_name", "B3QuoteProvider");
     const byMode: Record<string, any[]> = {};
-    for (const mode of activeModes) byMode[mode] = [];
-    for (const o of (validOrders ?? [])) if (byMode[o.mode]) byMode[o.mode].push(o);
-    providerStats.valid_mt5_orders = (validOrders ?? []).length;
-
-    for (const mode of activeModes) {
-      const m = modeByName[mode];
-      if (!m) continue;
-      const orders = byMode[mode] ?? [];
-      const closed = orders.filter((o) => o.status === "closed");
-      const realized = closed.reduce((s, o) => s + Number(o.net_result_brl ?? 0), 0);
-      const fees = orders.reduce((s, o) => s + Number(o.fees ?? 0), 0);
-      const wins = closed.filter((o) => Number(o.net_result_brl ?? 0) > 0).length;
-      const losses = closed.filter((o) => Number(o.net_result_brl ?? 0) < 0).length;
-      const maxGain = closed.reduce((v, o) => Math.max(v, Number(o.net_result_brl ?? 0)), 0);
-      const maxLoss = closed.reduce((v, o) => Math.min(v, Number(o.net_result_brl ?? 0)), 0);
-      const points = closed.reduce((s, o) => s + Number(o.gross_result_points ?? 0), 0);
-      const contracts = orders.reduce((s, o) => s + Number(o.quantity ?? 0), 0);
-      let acc = 0, peak = 0, dd = 0;
-      for (const o of closed.slice().sort((a, b) => new Date(a.exit_time ?? a.created_at).getTime() - new Date(b.exit_time ?? b.created_at).getTime())) {
-        acc += Number(o.net_result_brl ?? 0);
-        peak = Math.max(peak, acc);
-        dd = Math.max(dd, peak - acc);
-      }
-      const patch = {
-        realized_pnl: realized,
-        unrealized_pnl: 0,
-        current_balance: Number(m.initial_balance) + realized,
-        total_fees: fees,
-        total_trades: closed.length,
-        winning_trades: wins,
-        losing_trades: losses,
-        max_gain: maxGain,
-        max_loss: maxLoss,
-        max_drawdown: dd,
-        points_result: points,
-        contracts_traded: contracts,
-      };
+...
       // Grava só quando há mudança real de estado.
       await patchMode(m, patch);
+    }
+    if (force) {
+      const maxUpd = (validOrders ?? []).reduce((s: string, o: any) => (o.updated_at > s ? o.updated_at : s), "");
+      (memo as any).orders_sig = `${(validOrders ?? []).length}:${maxUpd}`;
     }
   }
 
 
   async function invalidateLegacyOrdersForMt5(info: B3PriceContextResult) {
     if (info.source !== "mt5_xp_demo") return;
+    // O filtro das ordens legadas vive no BANCO (índice parcial
+    // idx_b3_sim_orders_legacy_pending). Antes lia a tabela inteira da execução
+    // a cada tique só para descobrir, quase sempre, que não havia nenhuma.
     const { data: legacyOrders } = await supabase.from("b3_simulation_orders")
       .select("id, mode, status, entry_price, exit_price, quote_source, provider_name")
       .eq("simulation_run_id", runId).eq("user_id", userId)
-      .in("status", ["open", "closed"]);
-    // Só ordens ainda ativas/fechadas — as já canceladas não são reprocessadas
-    // (era isto que gerava UPDATE e evento a cada tick).
+      .in("status", ["open", "closed"])
+      .or("quote_source.is.null,quote_source.neq.MT5 XP DEMO,provider_name.is.null,provider_name.neq.B3QuoteProvider")
+      .limit(500);
     const rows = (legacyOrders ?? []).filter((o: any) => o.quote_source !== "MT5 XP DEMO" || o.provider_name !== "B3QuoteProvider");
     if (!rows.length) {
       await recomputeModeTotalsFromValidMt5Orders();
