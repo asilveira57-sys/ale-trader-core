@@ -888,7 +888,7 @@ function CockpitPage() {
                             outro. Freio que não agiu é omitido. */}
                         {c.grupo?.sombra && c.grupo.sombra.ops_livre > 0 && (() => {
                           const sl = sombraLinhas(c.grupo.sombra);
-                          const freios = sombraFreiosQueAgiram(c.grupo.sombra.por_freio);
+                          const freios: ReturnType<typeof sombraFreiosQueAgiram> = sombraFreiosQueAgiram(c.grupo.sombra.por_freio);
                           return (
                             <div className="text-[10px] space-y-0.5 pt-1 border-t border-border/40">
                               <div className="flex justify-between gap-2">
