@@ -3000,6 +3000,16 @@ async function runB3SimulationTickInner(
     const freioEstaLiberado = (mode: string, freio: string) =>
       liberacoesFreio.length > 0 &&
       !!freioLiberado(liberacoesFreio, rootSymbol(asset.quote_symbol), runVariant, mode, freio);
+    // CARIMBO DO CONJUNTO LIBERADO (16/09/2026): com seleção múltipla, o que
+    // estava solto muda ao longo do mesmo pregão. Sem carimbar o conjunto no
+    // instante da entrada não há como interpretar depois a comparação real x
+    // simulado. Vai no registro da ordem real e no log de decisão de entrada.
+    const freiosLiberadosDoRobo = (mode: string) => liberacoesFreio
+      .filter((l) => l.symbol === rootSymbol(asset.quote_symbol) && l.variant === runVariant
+        && (l.escopo === "grupo" || l.mode === mode))
+      .map((l) => l.freio)
+      .filter((f, i, a) => a.indexOf(f) === i)
+      .sort();
 
 
     // Timings por modo + isolamento de falha: um modo que estoura não pode
@@ -3389,7 +3399,7 @@ async function runB3SimulationTickInner(
       addCheck("daily_loss_aggregate", "Perda diária agregada (conta)", realizedTodayTotal > -globalDailyLossLimitBrl,
         `${realizedTodayTotal.toFixed(2)} / -${globalDailyLossLimitBrl.toFixed(2)} BRL (5 modos somados)`, false);
       addCheck("daily_target", "Meta diária", realizedToday < Number(cfg.daily_gain_target_brl) || protDec.allow_new_entry, `${realizedToday.toFixed(2)} / ${Number(cfg.daily_gain_target_brl).toFixed(2)} BRL`, false);
-      addCheck("position_open", "Posição aberta", !open, open ? `ordem ${open.id}` : "NÃO", false);
+      addCheck("position_open", "Posição aberta", !open, open ? `ordem ${open.id}` : "NÃO");
       addCheck("protection_engine", "Proteção diária", protDec.allow_new_entry, protDec.next.protection_block_reason ?? protDec.next.protection_state, false);
 
       if (cfg.enabled === false) {
@@ -4031,9 +4041,21 @@ async function runB3SimulationTickInner(
         blocked_stop: "stop_diario",
         blocked_drawdown: "drawdown",
       };
+      // 16/09/2026 (3ª passada) — CAMINHO RESIDUAL FECHADO: enquanto a sombra era
+      // uma LISTA DE ESTADOS conhecidos, qualquer estado de bloqueio fora dela
+      // caía no gate abaixo e barrava a entrada de verdade, em paralelo ao
+      // registro de sombra do mesmo freio (era o estágio `protecao` aparecendo
+      // no log de decisão com o texto do pico ou do stop diário). Agora a regra
+      // é invertida: no simulado só bloqueiam os dois estados MECÂNICOS — falha
+      // operacional e volatilidade extrema, que não são desempenho e não têm
+      // contrafactual a medir. Todo o resto é freio de RESULTADO e vira sombra,
+      // inclusive estados novos que apareçam depois.
+      const BLOQUEIO_MECANICO = new Set(["blocked_ops_failure", "blocked_volatility"]);
       const freioProtecaoSombra = protDec.allow_new_entry
         ? null
-        : (SOMBRA_POR_ESTADO[protDec.next.protection_state] ?? null);
+        : BLOQUEIO_MECANICO.has(protDec.next.protection_state)
+          ? null
+          : (SOMBRA_POR_ESTADO[protDec.next.protection_state] ?? "protecao_resultado");
 
       // Bloqueio de proteção B3 substitui o antigo gate "meta atingida".
       if (!protDec.allow_new_entry && !freioProtecaoSombra) {
@@ -4046,7 +4068,7 @@ async function runB3SimulationTickInner(
 
       if (freioProtecaoSombra) {
         const motivoProt = protDec.next.protection_block_reason ?? protDec.next.protection_state;
-        const msgProt = `${FREIO_LABEL[freioProtecaoSombra]} (SOMBRA — entrada liberada no simulado): ${motivoProt} Nenhum comando real será enfileirado.`;
+        const msgProt = `${FREIO_LABEL[freioProtecaoSombra] ?? freioProtecaoSombra} (SOMBRA — entrada liberada no simulado): ${motivoProt} Nenhum comando real será enfileirado.`;
         await recordStatusIfChanged(mode, m, `sombra_${freioProtecaoSombra}`, `${protDec.next.protection_state}_sombra`,
           { pnl: realizedToday, message: msgProt });
         log.push({ mode, action: `sombra_${freioProtecaoSombra}`, estado: protDec.next.protection_state });
@@ -4566,6 +4588,21 @@ async function runB3SimulationTickInner(
             target_price: targetPriceFrozen,
           }, entradaSobLiberacao);
           if (entradaSobLiberacao) {
+            const freiosLiberadosAgora = freiosLiberadosDoRobo(mode);
+            entryStageRows.push({
+              user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+              symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+              estagio: "espelho_sob_liberacao",
+              motivo: `Abertura real enfileirada sob liberação manual — freios liberados: ${freiosLiberadosAgora.join(", ")}.`,
+              detalhe: {
+                liberacao_manual: true,
+                freios_liberados: freiosLiberadosAgora,
+                freios_na_sombra: freiosNaSombra,
+                idempotency_key: `open-${insertedOrder.id}`,
+                simulation_order_id: insertedOrder.id,
+                side: effectiveSide,
+              },
+            });
             // Ordem real que existe por decisão de UMA PESSOA, não por regra do
             // sistema. Fica contável ao lado de manual_close_user.
             try {
@@ -4576,7 +4613,12 @@ async function runB3SimulationTickInner(
                 message: `Abertura real enfileirada SOB LIBERAÇÃO MANUAL (${freiosNaSombra.join(", ")} ignorado(s)) — ${asset.quote_symbol}/${runVariant}/${mode}.`,
                 technical_data: {
                   freios_na_sombra: freiosNaSombra, liberacao_manual: true,
-                  symbol: asset.quote_symbol, variant: runVariant, mode, side: effectiveSide,
+                  // Conjunto liberado NAQUELE instante + chave do comando real:
+                  // é o par que permite reconstruir a ordem real depois.
+                  freios_liberados: freiosLiberadosDoRobo(mode),
+                  idempotency_key: `open-${insertedOrder.id}`,
+                  symbol: asset.quote_symbol, variant: runVariant, mode,
+                  entry_style: runVariant, side: effectiveSide,
                   run_id: runId, simulation_order_id: insertedOrder.id,
                 } as any,
               });

@@ -23,10 +23,18 @@ export const listLiberacoesFreio = createServerFn({ method: "POST" })
     return { liberacoes: ativas };
   });
 
+// SELEÇÃO MÚLTIPLA (16/09/2026): liberar é definir um ESTADO — o operador marca
+// quantos freios quiser de uma vez. Cada freio continua sendo uma liberação
+// própria (para poder travar um de volta sem derrubar os outros), mas todas do
+// mesmo pedido carregam o conjunto (`freios_do_pedido`) para dar para
+// reconstruir depois o que estava solto no momento de cada entrada.
 export const liberarFreioReal = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    alvoSchema.extend({ password: z.string().min(1).max(200) }).parse(input),
+    alvoSchema.omit({ freio: true }).extend({
+      freios: z.array(z.enum(FREIOS)).min(1),
+      password: z.string().min(1).max(200),
+    }).parse(input),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
@@ -36,24 +44,18 @@ export const liberarFreioReal = createServerFn({ method: "POST" })
     const { registrarLiberacao, listLiberacoesAtivas, chaveLiberacao } =
       await import("./b3-liberacao-freio.server");
 
-    const alvo = {
+    const base = {
       escopo: data.escopo,
       symbol: data.symbol,
       variant: data.variant,
       mode: data.escopo === "grupo" ? null : (data.mode ?? null),
-      freio: data.freio,
     };
-    if (alvo.escopo === "robo" && !alvo.mode) throw new Error("Liberação por robô exige o modo.");
-
-    const jaAtivas = await listLiberacoesAtivas(supabase, userId);
-    if (jaAtivas.some((l) => chaveLiberacao(l) === chaveLiberacao(alvo))) {
-      return { ok: true as const, ja_estava: true };
-    }
+    if (base.escopo === "robo" && !base.mode) throw new Error("Liberação por robô exige o modo.");
 
     // Estado do freio no momento da liberação: para o freio de grupo, nível e
     // resultado do grupo — sem isso o registro não diz o que foi contornado.
     let estado: Record<string, unknown> = {};
-    if (data.freio === "grupo") {
+    if (data.freios.includes("grupo")) {
       const { data: g } = await (supabase as any).from("b3_grupo_estado_dia")
         .select("nivel_atual, resultado_brl, multiplicador, robos_travados, trade_date")
         .eq("user_id", userId).eq("symbol", data.symbol).eq("variant", data.variant)
@@ -66,8 +68,17 @@ export const liberarFreioReal = createServerFn({ method: "POST" })
       };
     }
 
-    const lib = await registrarLiberacao(supabase, userId, alvo, estado);
-    return { ok: true as const, ja_estava: false, liberacao: lib };
+    const jaAtivas = await listLiberacoesAtivas(supabase, userId);
+    const criadas: import("./b3-liberacao-freio.server").Liberacao[] = [];
+    let jaEstavam = 0;
+    for (const freio of data.freios) {
+      const alvo = { ...base, freio };
+      if (jaAtivas.some((l) => chaveLiberacao(l) === chaveLiberacao(alvo))) { jaEstavam += 1; continue; }
+      criadas.push(await registrarLiberacao(supabase, userId, alvo, {
+        ...estado, freios_do_pedido: data.freios,
+      }));
+    }
+    return { ok: true as const, ja_estava: criadas.length === 0, ja_estavam: jaEstavam, liberacoes: criadas };
   });
 
 export const travarFreioReal = createServerFn({ method: "POST" })
