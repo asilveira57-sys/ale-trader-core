@@ -996,7 +996,8 @@ function CockpitPage() {
                             {riskBlocked ? (
                               <span className="text-amber-300 not-italic flex items-center gap-1">
                                 <Lock className="w-3 h-3" />
-                                {c.current_status === "blocked_stop" ? "Bloqueado por stop diário" : "Bloqueado por trava de risco"}
+                                {/* Freio é RÓTULO no simulado: o robô continua entrando. */}
+                                {c.current_status === "blocked_stop" ? "Stop diário acionado (sombra) — segue entrando" : "Freio acionado (sombra) — segue entrando"}
                               </span>
                             ) : c.enabled === false ? (
                               <span className="text-muted-foreground">Desligado por configuração</span>
