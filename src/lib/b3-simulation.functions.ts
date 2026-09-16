@@ -3378,13 +3378,19 @@ async function runB3SimulationTickInner(
       addCheck("mode_enabled", "Robô habilitado", cfg.enabled !== false, cfg.enabled === false ? "Modo desativado nas configurações." : "habilitado");
       addCheck("volatility", "Volatilidade", ctx.volatility_pct <= Number(cfg.max_volatility_pct), `${ctx.volatility_pct.toFixed(2)}% / limite ${Number(cfg.max_volatility_pct).toFixed(2)}%`);
       addCheck("max_trades", "Máximo trades", !open && 1 <= Number(cfg.max_contracts), open ? "Já existe posição aberta neste robô." : `1 / ${Number(cfg.max_contracts)} contrato(s)`);
-      addCheck("daily_loss", "Loss diário", realizedToday > -Number(cfg.daily_loss_limit_brl), `${realizedToday.toFixed(2)} / -${Number(cfg.daily_loss_limit_brl).toFixed(2)} BRL`);
+      // Freios de RESULTADO no simulado são RÓTULO, não portão (16/09/2026):
+      // `blocking: false`. Enquanto ficaram como bloqueantes, `firstStop` os
+      // elegia e o diagnóstico gravava estágio `protecao` com o texto do freio,
+      // mesmo quando a entrada seguiu adiante e foi recusada pelo setup ou pelo
+      // comitê — dois caminhos aparentes para o mesmo freio, um liberando e o
+      // outro parecendo barrar. No REAL o bloqueio vive no espelho, não aqui.
+      addCheck("daily_loss", "Loss diário", realizedToday > -Number(cfg.daily_loss_limit_brl), `${realizedToday.toFixed(2)} / -${Number(cfg.daily_loss_limit_brl).toFixed(2)} BRL`, false);
       const realizedTodayTotal = Object.values(realizedTodayByMode).reduce((a: number, b: any) => a + Number(b ?? 0), 0);
       addCheck("daily_loss_aggregate", "Perda diária agregada (conta)", realizedTodayTotal > -globalDailyLossLimitBrl,
-        `${realizedTodayTotal.toFixed(2)} / -${globalDailyLossLimitBrl.toFixed(2)} BRL (5 modos somados)`);
-      addCheck("daily_target", "Meta diária", realizedToday < Number(cfg.daily_gain_target_brl) || protDec.allow_new_entry, `${realizedToday.toFixed(2)} / ${Number(cfg.daily_gain_target_brl).toFixed(2)} BRL`);
+        `${realizedTodayTotal.toFixed(2)} / -${globalDailyLossLimitBrl.toFixed(2)} BRL (5 modos somados)`, false);
+      addCheck("daily_target", "Meta diária", realizedToday < Number(cfg.daily_gain_target_brl) || protDec.allow_new_entry, `${realizedToday.toFixed(2)} / ${Number(cfg.daily_gain_target_brl).toFixed(2)} BRL`, false);
       addCheck("position_open", "Posição aberta", !open, open ? `ordem ${open.id}` : "NÃO", false);
-      addCheck("protection_engine", "Proteção diária", protDec.allow_new_entry, protDec.next.protection_block_reason ?? protDec.next.protection_state);
+      addCheck("protection_engine", "Proteção diária", protDec.allow_new_entry, protDec.next.protection_block_reason ?? protDec.next.protection_state, false);
 
       if (cfg.enabled === false) {
         await recordStatusIfChanged(mode, m, "pausado", "paused",
