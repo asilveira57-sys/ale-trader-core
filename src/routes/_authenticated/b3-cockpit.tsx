@@ -279,27 +279,36 @@ function LiberacaoBloco({
             ela não atravessa o dia. O disjuntor diário da conta real não é liberável.
           </p>
           <div className="space-y-1">
-            <p className="text-xs font-semibold">Qual freio quero ignorar</p>
-            <div className="flex flex-wrap gap-1">
+            <p className="text-xs font-semibold">Quais freios quero ignorar</p>
+            <label className="flex items-center gap-2 text-[11px] font-semibold">
+              <input type="checkbox" className="h-3.5 w-3.5 accent-amber-400"
+                checked={freios.length === FREIOS_LIB.length}
+                onChange={(e) => setFreios(e.target.checked ? FREIOS_LIB.map((f) => f.v) : [])} />
+              Selecionar todos
+            </label>
+            <div className="space-y-1 pt-1">
               {FREIOS_LIB.map((f) => (
-                <Button key={f.v} type="button" size="sm"
-                  variant={freio === f.v ? "default" : "outline"}
-                  className="h-7 text-[11px]"
-                  onClick={() => setFreio(f.v)}>
+                <label key={f.v} className="flex items-center gap-2 text-[11px]">
+                  <input type="checkbox" className="h-3.5 w-3.5 accent-amber-400"
+                    checked={freios.includes(f.v)} onChange={() => toggleFreio(f.v)} />
                   {f.label}
-                </Button>
+                </label>
               ))}
             </div>
           </div>
           <Input type="password" value={senha} autoComplete="current-password"
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSenha(e.target.value)} placeholder="Senha mestra" />
           <DialogFooter>
-            <Button disabled={liberarM.isPending || senha.length < 1}
+            <Button disabled={liberarM.isPending || senha.length < 1 || freios.length === 0}
               onClick={() => liberarM.mutate(
-                { escopo, symbol: root, variant, mode: escopo === "grupo" ? null : mode, freio, password: senha },
+                { escopo, symbol: root, variant, mode: escopo === "grupo" ? null : mode, freios, password: senha },
                 { onSuccess: () => { setSenha(""); setOpen(false); } },
               )}>
-              {liberarM.isPending ? "Liberando..." : "Liberar no real"}
+              {liberarM.isPending
+                ? "Liberando..."
+                : freios.length === 0
+                  ? "Marque ao menos um freio"
+                  : `Liberar ${freios.length} de ${FREIOS_LIB.length} freios até o fim do pregão`}
             </Button>
           </DialogFooter>
         </DialogContent>
