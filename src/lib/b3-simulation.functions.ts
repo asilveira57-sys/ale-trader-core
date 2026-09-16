@@ -5632,6 +5632,38 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       .select("symbol, variant, mode, acao")
       .eq("user_id", userId).eq("trade_date", sessionDate).eq("acao", "reset_stop_diario");
 
+    // ── FREIOS ACIONADOS HOJE, POR ROBÔ, COM HORÁRIO (16/09/2026) ──
+    // Com todos os freios em sombra, o robô continua entrando — e por isso o
+    // card precisa dizer que ele está rodando APESAR de um freio acionado, e
+    // desde quando. "Desde" é o PRIMEIRO acionamento do dia daquele freio
+    // (leitura ordenada do mais novo para o mais antigo, o último sobrescreve).
+    const FREIO_POR_TRIGGER: Record<string, string> = {
+      "blocked_peak_giveback_sombra": "pico",
+      "protection:blocked_peak_giveback": "pico",
+      "protection_peak_giveback_close": "pico",
+      "pico_freio_sombra_posicao_aberta": "pico",
+      "blocked_post_target_loss_sombra": "pos_meta",
+      "protection:blocked_post_target_loss": "pos_meta",
+      "blocked_stop_sombra": "stop_diario",
+      "protection:blocked_stop": "stop_diario",
+      "daily_loss": "stop_diario",
+    };
+    const { data: freioEvents } = await (supabase as any).from("b3_simulation_block_events")
+      .select("simulation_run_id, mode, trigger, created_at")
+      .eq("user_id", userId)
+      .in("trigger", Object.keys(FREIO_POR_TRIGGER))
+      .gte("created_at", dayStartUtc)
+      .order("created_at", { ascending: false })
+      .limit(3000);
+    const freiosAcionadosByRunMode: Record<string, Record<string, string>> = {};
+    for (const ev of (freioEvents ?? []) as any[]) {
+      const freio = FREIO_POR_TRIGGER[ev.trigger as string];
+      if (!freio) continue;
+      const k = `${ev.simulation_run_id}|${ev.mode}`;
+      (freiosAcionadosByRunMode[k] ??= {})[freio] = ev.created_at;
+    }
+
+
     // Freio escalonado por grupo (somente leitura): o card precisa explicar por
     // que o robô está operando com 2 contratos em vez de 5, ou por que não entra.
     // Chaveado pela RAIZ do ativo — contrato vencido não pode perder a linha.
