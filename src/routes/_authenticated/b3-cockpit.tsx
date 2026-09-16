@@ -1046,6 +1046,23 @@ function CockpitPage() {
                             {c.grupo.desde ? ` (${openSinceText(c.grupo.desde).replace(/\s\(.*\)$/, "")})` : ""}
                           </p>
                         )}
+                        {/* Freios ACIONADOS agora: o robô continua entrando
+                            (sombra) e a tela tem que dizer que ele roda apesar
+                            deles, com o horário de cada um. */}
+                        {(() => {
+                          const txt = freiosAcionadosTexto(c.freios_acionados, c.grupo);
+                          if (!txt) return null;
+                          return (
+                            <div className="mt-1 rounded border border-amber-500/50 bg-amber-500/10 px-2 py-1">
+                              <p className="text-[10px] font-bold text-amber-300">
+                                FREIOS ACIONADOS (sombra): {txt}
+                              </p>
+                              <p className="text-[9px] italic text-amber-200/80">
+                                entradas continuam, marcadas como sombra
+                              </p>
+                            </div>
+                          );
+                        })()}
                         {/* Livre × sombra DESTE robô: o que ele operou e o que
                             teria operado com os freios ligados. Abaixo, uma
                             linha por freio que efetivamente agiu hoje — sem
