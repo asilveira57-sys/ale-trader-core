@@ -92,6 +92,11 @@ function robotBlock(c: any): string {
   if (c.grupo?.texto) {
     lines.push(`  ${c.grupo.sem_limite ? "⚠ " : ""}${c.grupo.texto}${c.grupo.travado ? " · simulado entra, real recusado" : ""}`);
   }
+  const freiosAgora = freiosAcionadosTexto(c.freios_acionados, c.grupo);
+  if (freiosAgora) {
+    lines.push(`  FREIOS ACIONADOS (sombra): ${freiosAgora}`);
+    lines.push("  entradas continuam, marcadas como sombra");
+  }
   if (c.grupo?.sombra && Number(c.grupo.sombra.ops_livre) > 0) {
     const sl = sombraLinhas(c.grupo.sombra);
     lines.push(`  operou ${sl.operou}`);
