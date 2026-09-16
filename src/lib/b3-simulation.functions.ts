@@ -4054,12 +4054,24 @@ async function runB3SimulationTickInner(
         });
       }
 
+      // ── STOP DIÁRIO POR ROBÔ TAMBÉM EM SOMBRA (16/09/2026) ──
+      // O stop diário barrava a entrada por um caminho que a sombra não cobria:
+      // o agente Risco recebia `daily_loss_limit` e VETAVA, e o veto derruba o
+      // score do comitê para 25 — ou seja, o robô parava de entrar sem que
+      // nenhum gate de freio aparecesse. Foi o que calou Amanda às 10:11 de
+      // 16/09. Agora o limite diário vira RÓTULO no simulado: o estado continua
+      // sendo gravado, a ordem nasce marcada com `stop_diario`, e o Risco deixa
+      // de vetar por ele (ver `risk` abaixo). No REAL nada muda: o espelho
+      // continua recusando comando para qualquer freio acionado.
+      const lossHit = realizedToday <= -Number(cfg.daily_loss_limit_brl);
+
       // Todos os freios que teriam barrado ESTA entrada. Uma entrada pode ser
       // barrada por mais de um ao mesmo tempo — é o que permite julgar um
       // freio contra o outro na medição diária.
       const freiosNaSombra: string[] = [
         ...(sombraFreioGrupo ? ["grupo"] : []),
         ...(freioProtecaoSombra ? [freioProtecaoSombra] : []),
+        ...(lossHit && freioProtecaoSombra !== "stop_diario" ? ["stop_diario"] : []),
       ];
       const entradaEmSombra = freiosNaSombra.length > 0;
       // LIBERAÇÃO MANUAL (16/09/2026): a ordem SIMULADA e `freios_na_sombra` não
@@ -4073,7 +4085,7 @@ async function runB3SimulationTickInner(
 
 
       // Diagnóstico visual: rotula o estado atual (sem bloquear gainHit).
-      const lossHit = realizedToday <= -Number(cfg.daily_loss_limit_brl);
+      // `lossHit` já foi calculado acima, junto do vetor de freios em sombra.
       if (lossHit) {
         await recordStatusIfChanged(mode, m, "bloqueado_perda_diaria", "daily_loss",
           { observed: realizedToday, limit: -Number(cfg.daily_loss_limit_brl), pnl: realizedToday,
@@ -4133,13 +4145,17 @@ async function runB3SimulationTickInner(
         continue;
       }
 
-      // Se protegido/observando, elevamos o daily_gain_target passado ao Risco
-      // para não bloquear por "meta atingida" — a decisão de continuar já foi tomada aqui.
-      const inProtectionRun = protDec.next.protection_state === "target_reached_observing"
-        || protDec.next.protection_state === "profit_protected";
+      // NENHUM FREIO DE RESULTADO BLOQUEIA ENTRADA NO SIMULADO (16/09/2026).
+      // Perda e meta diárias entravam no comitê pelo agente Risco, que VETA e
+      // crava o score em 25 — um bloqueio de entrada por resultado, exatamente o
+      // que a sombra existe para medir, e invisível nos gates de freio. Os dois
+      // limites saem daqui: o estado continua rotulado, a ordem nasce marcada
+      // com `stop_diario` em `freios_na_sombra`, e o espelho para o REAL continua
+      // recusando comando. Contratos e horário seguem valendo — não são freios de
+      // resultado, são a mecânica da ordem.
       const risk: B3RiskState = {
-        daily_loss_limit: Number(cfg.daily_loss_limit_brl),
-        daily_gain_target: inProtectionRun ? Number.MAX_SAFE_INTEGER : Number(cfg.daily_gain_target_brl),
+        daily_loss_limit: Number.MAX_SAFE_INTEGER,
+        daily_gain_target: Number.MAX_SAFE_INTEGER,
         realized_today_brl: realizedToday,
         open_contracts: 0,
         max_contracts: Number(cfg.max_contracts),
@@ -5616,6 +5632,38 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       .select("symbol, variant, mode, acao")
       .eq("user_id", userId).eq("trade_date", sessionDate).eq("acao", "reset_stop_diario");
 
+    // ── FREIOS ACIONADOS HOJE, POR ROBÔ, COM HORÁRIO (16/09/2026) ──
+    // Com todos os freios em sombra, o robô continua entrando — e por isso o
+    // card precisa dizer que ele está rodando APESAR de um freio acionado, e
+    // desde quando. "Desde" é o PRIMEIRO acionamento do dia daquele freio
+    // (leitura ordenada do mais novo para o mais antigo, o último sobrescreve).
+    const FREIO_POR_TRIGGER: Record<string, string> = {
+      "blocked_peak_giveback_sombra": "pico",
+      "protection:blocked_peak_giveback": "pico",
+      "protection_peak_giveback_close": "pico",
+      "pico_freio_sombra_posicao_aberta": "pico",
+      "blocked_post_target_loss_sombra": "pos_meta",
+      "protection:blocked_post_target_loss": "pos_meta",
+      "blocked_stop_sombra": "stop_diario",
+      "protection:blocked_stop": "stop_diario",
+      "daily_loss": "stop_diario",
+    };
+    const { data: freioEvents } = await (supabase as any).from("b3_simulation_block_events")
+      .select("simulation_run_id, mode, trigger, created_at")
+      .eq("user_id", userId)
+      .in("trigger", Object.keys(FREIO_POR_TRIGGER))
+      .gte("created_at", dayStartUtc)
+      .order("created_at", { ascending: false })
+      .limit(3000);
+    const freiosAcionadosByRunMode: Record<string, Record<string, string>> = {};
+    for (const ev of (freioEvents ?? []) as any[]) {
+      const freio = FREIO_POR_TRIGGER[ev.trigger as string];
+      if (!freio) continue;
+      const k = `${ev.simulation_run_id}|${ev.mode}`;
+      (freiosAcionadosByRunMode[k] ??= {})[freio] = ev.created_at;
+    }
+
+
     // Freio escalonado por grupo (somente leitura): o card precisa explicar por
     // que o robô está operando com 2 contratos em vez de 5, ou por que não entra.
     // Chaveado pela RAIZ do ativo — contrato vencido não pode perder a linha.
@@ -5824,6 +5872,23 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           protection_state: mode?.protection_state ?? null,
           protection_block_reason: mode?.protection_block_reason ?? null,
           daily_loss_limit_brl: lossLimitByMode[m] ?? null,
+          // Freios de resultado acionados AGORA neste robô, com o horário do
+          // primeiro acionamento do dia. O robô continua entrando (sombra) — o
+          // card existe para dizer que ele roda APESAR do freio.
+          freios_acionados: (() => {
+            const desde = freiosAcionadosByRunMode[`${run.id}|${m}`] ?? {};
+            const estado = String(mode?.protection_state ?? "");
+            const limite = lossLimitByMode[m];
+            const ativo: Record<string, boolean> = {
+              pico: estado === "blocked_peak_giveback",
+              pos_meta: estado === "blocked_post_target_loss",
+              stop_diario: estado === "blocked_stop"
+                || (limite != null && limite > 0 && realizedToday <= -limite),
+            };
+            return Object.entries(ativo)
+              .filter(([f, on]) => on && desde[f])
+              .map(([f]) => ({ freio: f, desde: desde[f]! }));
+          })(),
           // Pico do dia e limite de devolução: canal visual próprio no card
           // (a cor da linha continua significando constância).
           day_peak_profit_brl: mode?.day_peak_profit_brl == null ? null : Number(mode.day_peak_profit_brl),

@@ -162,3 +162,34 @@ export const sombraFreiosQueAgiram = (porFreio: Record<string, SombraFreio> | nu
     .filter((l) => l.agiu);
 };
 
+// ── Freios ACIONADOS agora, com horário (16/09/2026) ─────────────────────────
+// Nenhum freio bloqueia entrada no simulado: o robô roda APESAR do freio. A
+// tela precisa dizer quais estão acionados e desde quando — se três agem ao
+// mesmo tempo, os três aparecem.
+const hhmmBrt = (iso: string | null | undefined) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+};
+
+export interface FreioAcionado { freio: string; desde: string | null }
+
+/** "stop diário desde 10:11 · freio de pico desde 10:26 · grupo nível 4 desde 10:15" */
+export const freiosAcionadosTexto = (
+  freios: FreioAcionado[] | null | undefined,
+  grupo?: { nivel?: number; travado?: boolean; desde?: string | null } | null,
+) => {
+  const partes = (freios ?? [])
+    .filter((f) => f && f.freio)
+    .sort((a, b) =>
+      (FREIO_ORDEM as readonly string[]).indexOf(a.freio) - (FREIO_ORDEM as readonly string[]).indexOf(b.freio))
+    .map((f) => `${FREIO_LABEL[f.freio] ?? f.freio} desde ${hhmmBrt(f.desde)}`);
+  if (grupo?.travado && Number(grupo.nivel ?? 0) >= 2) {
+    partes.push(`grupo nível ${Number(grupo.nivel)} desde ${hhmmBrt(grupo.desde ?? null)}`);
+  }
+  return partes.join(" · ");
+};
+
+

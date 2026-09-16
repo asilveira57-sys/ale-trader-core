@@ -16,7 +16,7 @@ import {
 import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, Unlock, AlertTriangle, Copy } from "lucide-react";
 
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
-import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, sombraLinhas, sombraFreiosQueAgiram } from "@/lib/b3-format";
+import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, sombraLinhas, sombraFreiosQueAgiram, freiosAcionadosTexto } from "@/lib/b3-format";
 import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
@@ -996,7 +996,8 @@ function CockpitPage() {
                             {riskBlocked ? (
                               <span className="text-amber-300 not-italic flex items-center gap-1">
                                 <Lock className="w-3 h-3" />
-                                {c.current_status === "blocked_stop" ? "Bloqueado por stop diário" : "Bloqueado por trava de risco"}
+                                {/* Freio é RÓTULO no simulado: o robô continua entrando. */}
+                                {c.current_status === "blocked_stop" ? "Stop diário acionado (sombra) — segue entrando" : "Freio acionado (sombra) — segue entrando"}
                               </span>
                             ) : c.enabled === false ? (
                               <span className="text-muted-foreground">Desligado por configuração</span>
@@ -1046,6 +1047,23 @@ function CockpitPage() {
                             {c.grupo.desde ? ` (${openSinceText(c.grupo.desde).replace(/\s\(.*\)$/, "")})` : ""}
                           </p>
                         )}
+                        {/* Freios ACIONADOS agora: o robô continua entrando
+                            (sombra) e a tela tem que dizer que ele roda apesar
+                            deles, com o horário de cada um. */}
+                        {(() => {
+                          const txt = freiosAcionadosTexto(c.freios_acionados, c.grupo);
+                          if (!txt) return null;
+                          return (
+                            <div className="mt-1 rounded border border-amber-500/50 bg-amber-500/10 px-2 py-1">
+                              <p className="text-[10px] font-bold text-amber-300">
+                                FREIOS ACIONADOS (sombra): {txt}
+                              </p>
+                              <p className="text-[9px] italic text-amber-200/80">
+                                entradas continuam, marcadas como sombra
+                              </p>
+                            </div>
+                          );
+                        })()}
                         {/* Livre × sombra DESTE robô: o que ele operou e o que
                             teria operado com os freios ligados. Abaixo, uma
                             linha por freio que efetivamente agiu hoje — sem

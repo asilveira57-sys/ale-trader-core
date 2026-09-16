@@ -1,7 +1,7 @@
 // Geração do texto de "copiar" do Cockpit. Somente apresentação:
 // nada aqui participa do motor de simulação, nem lê/escreve no banco.
 
-import { decimalsForTick, openSinceText, rootSymbol, sombraLinhas, sombraFreiosQueAgiram, PX } from "./b3-format";
+import { decimalsForTick, openSinceText, rootSymbol, sombraLinhas, sombraFreiosQueAgiram, freiosAcionadosTexto, PX } from "./b3-format";
 import { modeFullLabel } from "./mode-nick-registry";
 
 const BRL = (v: number | null | undefined) =>
@@ -48,10 +48,11 @@ function robotBlock(c: any): string {
   lines.push(`${rootSymbol(c.symbol)} · ${variantLabel(c.variant ?? "indicador")} · ${modeLabel(c.mode)}`);
 
   if (isRiskBlocked(c)) {
+    // No simulado o freio não bloqueia: é rótulo. A cópia diz isso.
     const motivo = c.current_status === "blocked_stop"
       ? "stop diário atingido"
       : (c.protection_block_reason ?? "trava de risco");
-    lines.push(`  BLOQUEADO: ${motivo}`);
+    lines.push(`  FREIO ACIONADO (sombra, segue entrando): ${motivo}`);
   } else if (c.open) {
     const side = c.open.side === "buy" ? "COMPRA" : "VENDA";
     const pts = Number(c.unrealized_pts ?? 0);
@@ -91,6 +92,11 @@ function robotBlock(c: any): string {
   if (c.reactivated_today) lines.push("  reativado hoje após stop diário — resultado do dia não é limpo");
   if (c.grupo?.texto) {
     lines.push(`  ${c.grupo.sem_limite ? "⚠ " : ""}${c.grupo.texto}${c.grupo.travado ? " · simulado entra, real recusado" : ""}`);
+  }
+  const freiosAgora = freiosAcionadosTexto(c.freios_acionados, c.grupo);
+  if (freiosAgora) {
+    lines.push(`  FREIOS ACIONADOS (sombra): ${freiosAgora}`);
+    lines.push("  entradas continuam, marcadas como sombra");
   }
   if (c.grupo?.sombra && Number(c.grupo.sombra.ops_livre) > 0) {
     const sl = sombraLinhas(c.grupo.sombra);

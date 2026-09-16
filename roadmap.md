@@ -5,6 +5,7 @@
 
 
 ## Concluído
+- [x] Nenhum freio bloqueia entrada no simulado (16/09): o veto do agente Risco por perda/meta diárias saiu (era o bloqueio invisível que calava os robôs em `blocked_stop`), `stop_diario` entra em `freios_na_sombra`, e o card mostra "FREIOS ACIONADOS (sombra)" com horário de cada freio. **Só passa a valer no motor após publicar (mercado fechado).**
 - [x] Liberação manual de freio para o REAL (16/09): por grupo e por robô, senha mestra para liberar, travar de volta sem senha, cai no pânico e no fim do pregão, registro em `system_logs` (`liberacao_manual` / `liberacao_manual_fim`), comando e ordem real marcados com `liberacao_manual`, simulado e medição da sombra intocados.
 - [x] Contraste do botão do menu no celular (retangular, fundo branco, letra preta).
 - [x] Estado do motor fora de `b3_simulation_market_snapshots` (tabela `b3_engine_state` + resumo compacto no snapshot).
