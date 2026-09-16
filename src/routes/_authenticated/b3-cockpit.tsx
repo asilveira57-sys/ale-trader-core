@@ -492,6 +492,11 @@ function CockpitPage() {
   const withOpen = all.filter((c) => !!c.open).length;
   const blocked = all.filter(isRiskBlocked).length;
   const waiting = all.filter((c) => !c.open && !isRiskBlocked(c)).length;
+  // Quantos robôs estão com algum freio liberado agora. Fica no topo: saindo do
+  // card, ainda tem de ficar visível que há liberação ativa.
+  const robosLiberados = all.filter((c) =>
+    libsDoRobo(liberacoes, rootSymbol(c.symbol), c.variant ?? "indicador", c.mode).length > 0).length;
+
 
   // Ativo/modalidade/modo já vêm recortados do servidor; aqui só ficam os
   // atalhos de pregão (posicionado / bloqueado) e a ordenação.
