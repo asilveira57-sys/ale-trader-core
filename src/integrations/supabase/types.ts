@@ -1559,6 +1559,7 @@ export type Database = {
           gross_result_brl: number | null
           id: string
           instance_id: string | null
+          liberacao_manual: boolean
           magic_number: number
           mode: string | null
           net_result_brl: number | null
@@ -1588,6 +1589,7 @@ export type Database = {
           gross_result_brl?: number | null
           id?: string
           instance_id?: string | null
+          liberacao_manual?: boolean
           magic_number: number
           mode?: string | null
           net_result_brl?: number | null
@@ -1617,6 +1619,7 @@ export type Database = {
           gross_result_brl?: number | null
           id?: string
           instance_id?: string | null
+          liberacao_manual?: boolean
           magic_number?: number
           mode?: string | null
           net_result_brl?: number | null
@@ -1963,6 +1966,7 @@ export type Database = {
           id: string
           idempotency_key: string
           instance_id: string | null
+          liberacao_manual: boolean
           magic_number: number
           mode: string | null
           quantity: number
@@ -1993,6 +1997,7 @@ export type Database = {
           id?: string
           idempotency_key: string
           instance_id?: string | null
+          liberacao_manual?: boolean
           magic_number: number
           mode?: string | null
           quantity: number
@@ -2023,6 +2028,7 @@ export type Database = {
           id?: string
           idempotency_key?: string
           instance_id?: string | null
+          liberacao_manual?: boolean
           magic_number?: number
           mode?: string | null
           quantity?: number

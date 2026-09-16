@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { RobotConfigDialog } from "@/components/b3/RobotConfigDialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, AlertTriangle, Copy } from "lucide-react";
+import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, Unlock, AlertTriangle, Copy } from "lucide-react";
+
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, sombraLinhas, sombraFreiosQueAgiram } from "@/lib/b3-format";
 import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
@@ -187,6 +189,119 @@ function loadFilters(): SavedFilters {
     return DEFAULT_FILTERS;
   }
 }
+
+// ── LIBERAÇÃO MANUAL DE FREIO PARA O REAL (16/09/2026) ───────────────────────
+// Isto NÃO destrava o simulador: com o modo sombra o robô já continua entrando.
+// O que volta a acontecer é o ESPELHO enfileirar comando real ignorando UM freio
+// escolhido. Liberar pede a senha mestra; travar de volta não pede nada.
+// O disjuntor diário da conta real fica fora de propósito: é a última linha de
+// defesa da conta inteira e não tem botão de contorno.
+export type FreioLib = "grupo" | "pico" | "pos_meta" | "stop_diario";
+const FREIOS_LIB: { v: FreioLib; label: string }[] = [
+  { v: "grupo", label: "freio de grupo" },
+  { v: "pico", label: "freio de pico" },
+  { v: "pos_meta", label: "proteção pós-meta" },
+  { v: "stop_diario", label: "stop diário do robô" },
+];
+const FREIO_LIB_LABEL = (f: string) => FREIOS_LIB.find((x) => x.v === f)?.label ?? f;
+
+type Lib = { escopo: "grupo" | "robo"; symbol: string; variant: string; mode: string | null; freio: string; desde: string };
+
+// Liberações que valem para este robô (inclui as de escopo de grupo).
+function libsDoRobo(libs: Lib[], root: string, variant: string, mode: string | null) {
+  return libs.filter((l) =>
+    l.symbol === root && l.variant === variant &&
+    (l.escopo === "grupo" ? true : mode != null && l.mode === mode));
+}
+
+function LiberacaoBloco({
+  escopo, root, variant, mode, libs, liberarM, travarM, defaultFreio,
+}: {
+  escopo: "grupo" | "robo";
+  root: string; variant: string; mode: string | null;
+  libs: Lib[];
+  liberarM: any; travarM: any;
+  defaultFreio?: FreioLib;
+}) {
+  const [freio, setFreio] = useState<FreioLib>(defaultFreio ?? "grupo");
+  const [senha, setSenha] = useState("");
+  const [open, setOpen] = useState(false);
+  // No card do robô só aparecem as liberações que o afetam; no card do grupo,
+  // as de escopo de grupo (as por robô são desfeitas no card do robô).
+  const ativas = escopo === "grupo"
+    ? libs.filter((l) => l.escopo === "grupo" && l.symbol === root && l.variant === variant)
+    : libsDoRobo(libs, root, variant, mode);
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {ativas.map((l) => (
+        <span key={`${l.escopo}-${l.freio}`}
+          className="inline-flex items-center gap-1 rounded border border-amber-400 bg-amber-500/25 px-1.5 py-[2px] text-[10px] font-bold text-amber-100">
+          LIBERADO — {FREIO_LIB_LABEL(l.freio)} ignorado
+          {l.escopo === "grupo" && escopo === "robo" && " (grupo)"}
+          <button type="button"
+            className="ml-1 rounded bg-amber-100 px-1 py-[1px] text-[10px] font-semibold text-amber-950 hover:bg-white"
+            disabled={travarM.isPending}
+            onClick={(e) => {
+              e.stopPropagation();
+              travarM.mutate({ escopo: l.escopo, symbol: l.symbol, variant: l.variant, mode: l.mode, freio: l.freio });
+            }}>
+            Travar de volta
+          </button>
+        </span>
+      ))}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button size="sm" variant="outline" className="h-6 border-amber-400/60 text-[10px] text-amber-200"
+            onClick={(e) => e.stopPropagation()}>
+            <Unlock className="mr-1 h-3 w-3" />
+            {escopo === "grupo" ? "Liberar grupo no real" : "Liberar real"}
+          </Button>
+        </DialogTrigger>
+        <DialogContent onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>
+              {escopo === "grupo"
+                ? `Liberar o real de ${root}/${variant} (grupo inteiro)`
+                : `Liberar o real de ${root}/${variant}/${mode}`}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            O simulado não muda em nada: ele já continua entrando com o freio em sombra.
+            O que volta a acontecer é o real seguir o simulado, ignorando o freio escolhido.
+            A liberação vale até você travar de volta, até o botão de pânico ou até o fim do pregão —
+            ela não atravessa o dia. O disjuntor diário da conta real não é liberável.
+          </p>
+          <div className="space-y-1">
+            <p className="text-xs font-semibold">Qual freio quero ignorar</p>
+            <div className="flex flex-wrap gap-1">
+              {FREIOS_LIB.map((f) => (
+                <Button key={f.v} type="button" size="sm"
+                  variant={freio === f.v ? "default" : "outline"}
+                  className="h-7 text-[11px]"
+                  onClick={() => setFreio(f.v)}>
+                  {f.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <Input type="password" value={senha} autoComplete="current-password"
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSenha(e.target.value)} placeholder="Senha mestra" />
+          <DialogFooter>
+            <Button disabled={liberarM.isPending || senha.length < 1}
+              onClick={() => liberarM.mutate(
+                { escopo, symbol: root, variant, mode: escopo === "grupo" ? null : mode, freio, password: senha },
+                { onSuccess: () => { setSenha(""); setOpen(false); } },
+              )}>
+              {liberarM.isPending ? "Liberando..." : "Liberar no real"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 
 function CockpitPage() {
   const apelidos = useModeApelidos();

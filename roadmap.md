@@ -1,7 +1,10 @@
 # Fila de trabalho
 
 ## Em andamento
-- (nada)
+- [ ] Liberação manual de freio para o REAL (16/09): por grupo e por robô, senha mestra para liberar, travar de volta sem senha, cai no pânico e no fim do pregão, registro em `system_logs` (`liberacao_manual`), ordem/comando real marcados, simulado intocado.
+- [ ] Contraste do botão do cockpit no celular (fundo branco, letra preta) — baixa prioridade.
+- [ ] Redução de VOLUME do banco (votos só nas aprovadas, resumo diário do diário de decisões, retenção 48h) — **só depois das 18:00**, exige migração.
+
 
 ## Concluído
 - [x] Estado do motor fora de `b3_simulation_market_snapshots` (tabela `b3_engine_state` + resumo compacto no snapshot).
