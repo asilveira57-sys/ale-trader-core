@@ -4145,13 +4145,17 @@ async function runB3SimulationTickInner(
         continue;
       }
 
-      // Se protegido/observando, elevamos o daily_gain_target passado ao Risco
-      // para não bloquear por "meta atingida" — a decisão de continuar já foi tomada aqui.
-      const inProtectionRun = protDec.next.protection_state === "target_reached_observing"
-        || protDec.next.protection_state === "profit_protected";
+      // NENHUM FREIO DE RESULTADO BLOQUEIA ENTRADA NO SIMULADO (16/09/2026).
+      // Perda e meta diárias entravam no comitê pelo agente Risco, que VETA e
+      // crava o score em 25 — um bloqueio de entrada por resultado, exatamente o
+      // que a sombra existe para medir, e invisível nos gates de freio. Os dois
+      // limites saem daqui: o estado continua rotulado, a ordem nasce marcada
+      // com `stop_diario` em `freios_na_sombra`, e o espelho para o REAL continua
+      // recusando comando. Contratos e horário seguem valendo — não são freios de
+      // resultado, são a mecânica da ordem.
       const risk: B3RiskState = {
-        daily_loss_limit: Number(cfg.daily_loss_limit_brl),
-        daily_gain_target: inProtectionRun ? Number.MAX_SAFE_INTEGER : Number(cfg.daily_gain_target_brl),
+        daily_loss_limit: Number.MAX_SAFE_INTEGER,
+        daily_gain_target: Number.MAX_SAFE_INTEGER,
         realized_today_brl: realizedToday,
         open_contracts: 0,
         max_contracts: Number(cfg.max_contracts),
