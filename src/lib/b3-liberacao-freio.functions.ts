@@ -69,7 +69,7 @@ export const liberarFreioReal = createServerFn({ method: "POST" })
     }
 
     const jaAtivas = await listLiberacoesAtivas(supabase, userId);
-    const criadas: unknown[] = [];
+    const criadas: import("./b3-liberacao-freio.server").Liberacao[] = [];
     let jaEstavam = 0;
     for (const freio of data.freios) {
       const alvo = { ...base, freio };
