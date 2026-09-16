@@ -142,8 +142,13 @@ async function mirrorToReal(
   // comando e é copiado para b3_live_orders na confirmação do executor —
   // registro, não instrução: o executor ignora campos que não conhece.
   levels: { stop_pts?: number | null; gain_pts?: number | null; stop_price?: number | null; target_price?: number | null } | null = null,
+  // Comando existe porque UMA PESSOA liberou o freio na tela, não porque a
+  // regra do sistema permitiu (16/09/2026). Vai marcado no comando para o
+  // extrato real conseguir contar intervenção humana separadamente.
+  liberacaoManual: boolean = false,
 ) {
   if (!REAL_MIRROR_ENABLED) return;
+
 
   // ── PORTÃO DE AUTORIZAÇÃO REAL (nega por padrão) — SÓ ABERTURA ──
   // Sem linha autorizada em b3_prd_authorizations para
@@ -447,7 +452,9 @@ async function mirrorToReal(
       user_id: userId, env: "real", simulation_run_id: runId, mode, variant,
       action, side, symbol, quantity,
       magic_number: magic, idempotency_key: idempotencyKey,
-      requested_by: requestedBy,
+      requested_by: liberacaoManual && requestedBy === "engine_auto" ? "engine_auto_liberado" : requestedBy,
+      liberacao_manual: liberacaoManual,
+
       stop_pts: levels?.stop_pts ?? null,
       gain_pts: levels?.gain_pts ?? null,
       stop_price: levels?.stop_price ?? null,
@@ -2980,6 +2987,21 @@ async function runB3SimulationTickInner(
     const grupoMultiplicador = grupo?.multiplicador ?? 1;
     const grupoTravados: string[] = grupo?.robos_travados ?? [];
 
+    // ── LIBERAÇÃO MANUAL DE FREIO PARA O REAL (16/09/2026) ──
+    // Uma leitura por tique, antes do laço de modos. Não muda decisão nem
+    // simulado: só diz quais freios deixam de barrar o ESPELHO, por robô ou
+    // pelo grupo inteiro. Falha aqui = nenhuma liberação (falha FECHADA).
+    let liberacoesFreio: import("./b3-liberacao-freio.server").Liberacao[] = [];
+    try {
+      const { listLiberacoesAtivas } = await import("./b3-liberacao-freio.server");
+      liberacoesFreio = await listLiberacoesAtivas(supabase, userId);
+    } catch { liberacoesFreio = []; }
+    const { freioLiberado } = await import("./b3-liberacao-freio.server");
+    const freioEstaLiberado = (mode: string, freio: string) =>
+      liberacoesFreio.length > 0 &&
+      !!freioLiberado(liberacoesFreio, rootSymbol(asset.quote_symbol), runVariant, mode, freio);
+
+
     // Timings por modo + isolamento de falha: um modo que estoura não pode
     // derrubar os modos seguintes nem impedir a gravação do snapshot.
     const modeTimings: Record<string, number> = {};
@@ -3445,8 +3467,14 @@ async function runB3SimulationTickInner(
         //
         // NO REAL NADA MUDA: o fechamento continua sendo enfileirado no
         // instante do travamento, uma vez por posição.
-        if (protDec.next.protection_state === "blocked_peak_giveback" && !picoFreioEspelhado.has(open.id)) {
+        // 16/09/2026: com o freio de pico LIBERADO na tela para este robô, o
+        // real também não é fechado — liberar serve justamente para a posição
+        // real seguir o simulado. Nada é marcado como espelhado: se a liberação
+        // for encerrada com a posição ainda aberta, o fechamento sai então.
+        if (protDec.next.protection_state === "blocked_peak_giveback"
+            && !picoFreioEspelhado.has(open.id) && !freioEstaLiberado(mode, "pico")) {
           picoFreioEspelhado.add(open.id);
+
           const peak = Number(protDec.next.day_peak_profit_brl ?? 0);
           const allowed = peak * Number(protCfg.peak_giveback_pct ?? 0.4);
           const givenBack = Math.max(0, peak - markedTodayAtMark);
@@ -3512,7 +3540,9 @@ async function runB3SimulationTickInner(
         // Desde 15/09/2026 o freio de PICO segue a mesma regra (bloco acima).
         // O disjuntor diário real continua fechando de verdade.
 
-        if (grupoNivel >= 2 && grupoTravados.includes(mode) && !grupoFreioEspelhado.has(open.id)) {
+        // Freio de grupo liberado na tela (16/09/2026): o real segue aberto.
+        if (grupoNivel >= 2 && grupoTravados.includes(mode) && !grupoFreioEspelhado.has(open.id)
+            && !freioEstaLiberado(mode, "grupo")) {
           grupoFreioEspelhado.add(open.id);
           const Rgrupo = Number(grupo?.resultado_brl ?? 0);
           const tetoGrupo = Number(grupoLimites?.teto_brl ?? 0);
@@ -4032,6 +4062,14 @@ async function runB3SimulationTickInner(
         ...(freioProtecaoSombra ? [freioProtecaoSombra] : []),
       ];
       const entradaEmSombra = freiosNaSombra.length > 0;
+      // LIBERAÇÃO MANUAL (16/09/2026): a ordem SIMULADA e `freios_na_sombra` não
+      // mudam — a medição da sombra tem que continuar limpa, é ela que dirá se
+      // essa vontade de destravar é boa ideia ao longo de semanas. Muda só quem
+      // barra o ESPELHO: freio liberado pela tela deixa de barrar.
+      const freiosBarrandoReal = freiosNaSombra.filter((f) => !freioEstaLiberado(mode, f));
+      const espelhoBarradoPorFreio = freiosBarrandoReal.length > 0;
+      const entradaSobLiberacao = entradaEmSombra && !espelhoBarradoPorFreio;
+
 
 
       // Diagnóstico visual: rotula o estado atual (sem bloquear gainHit).
@@ -4441,13 +4479,13 @@ async function runB3SimulationTickInner(
         if (!insertedOrder) throw new Error("Falha ao criar ordem simulada");
 
         markAuditEvent(`abertura:${mode}:${effectiveSide}`);
-        if (entradaEmSombra) {
+        if (espelhoBarradoPorFreio) {
           // NO REAL, NADA MUDA: o espelho recusa a abertura quando QUALQUER
           // freio está acionado. A recusa é registrada — sem isso não há como
           // contar quantas entradas reais foram puladas, e a diferença entre o
           // resultado simulado e o real pareceria erro de conciliação.
-          const freiosTexto = freiosNaSombra.map((f) => FREIO_LABEL[f] ?? f).join(" + ");
-          markAuditEvent(`espelho_barrado:${mode}:${freiosNaSombra.join("+")}`);
+          const freiosTexto = freiosBarrandoReal.map((f) => FREIO_LABEL[f] ?? f).join(" + ");
+          markAuditEvent(`espelho_barrado:${mode}:${freiosBarrandoReal.join("+")}`);
           try {
             await supabase.from("system_logs").insert({
               event_type: "b3_espelho_barrado_freio",
@@ -4463,6 +4501,7 @@ async function runB3SimulationTickInner(
                 symbol: rootSymbol(asset.quote_symbol), quote_symbol: asset.quote_symbol,
                 variant: runVariant, mode,
                 freios_na_sombra: freiosNaSombra,
+                freios_barrando_real: freiosBarrandoReal,
                 grupo_nivel: grupoNivel,
                 grupo_multiplicador: grupoMultiplicador,
                 grupo_resultado_brl: Number(grupo?.resultado_brl ?? 0),
@@ -4474,14 +4513,17 @@ async function runB3SimulationTickInner(
             });
             // Contagem única de recusas de abertura real (14/09/2026): todo
             // motivo cai no mesmo event_type, para dar para contar num lugar só.
+            const motivoRecusa = freiosBarrandoReal.includes("grupo")
+              ? "freio_de_grupo" : `freio_${freiosBarrandoReal[0]}`;
             await supabase.from("system_logs").insert({
               event_type: "b3_espelho_nao_abriu",
               source: `b3_real_mirror:${asset.quote_symbol}:${runVariant}:${mode}`,
               severity: "warning",
-              message: `Abertura real NÃO enfileirada (${sombraFreioGrupo ? "freio_de_grupo" : `freio_${freiosNaSombra[0]}`}): ${freiosTexto}.`,
+              message: `Abertura real NÃO enfileirada (${motivoRecusa}): ${freiosTexto}.`,
               technical_data: {
-                motivo: sombraFreioGrupo ? "freio_de_grupo" : `freio_${freiosNaSombra[0]}`,
+                motivo: motivoRecusa,
                 freios_na_sombra: freiosNaSombra,
+                freios_barrando_real: freiosBarrandoReal,
                 symbol: asset.quote_symbol, variant: runVariant, mode, side: effectiveSide,
                 run_id: runId, grupo_nivel: grupoNivel, grupo_multiplicador: grupoMultiplicador,
                 protection_state: protDec.next.protection_state,
@@ -4495,8 +4537,26 @@ async function runB3SimulationTickInner(
             gain_pts: gainPtsFrozen > 0 ? gainPtsFrozen : null,
             stop_price: stopPriceFrozen,
             target_price: targetPriceFrozen,
-          });
+          }, entradaSobLiberacao);
+          if (entradaSobLiberacao) {
+            // Ordem real que existe por decisão de UMA PESSOA, não por regra do
+            // sistema. Fica contável ao lado de manual_close_user.
+            try {
+              await supabase.from("system_logs").insert({
+                event_type: "b3_espelho_abriu_sob_liberacao",
+                source: `b3_real_mirror:${asset.quote_symbol}:${runVariant}:${mode}`,
+                severity: "warning",
+                message: `Abertura real enfileirada SOB LIBERAÇÃO MANUAL (${freiosNaSombra.join(", ")} ignorado(s)) — ${asset.quote_symbol}/${runVariant}/${mode}.`,
+                technical_data: {
+                  freios_na_sombra: freiosNaSombra, liberacao_manual: true,
+                  symbol: asset.quote_symbol, variant: runVariant, mode, side: effectiveSide,
+                  run_id: runId, simulation_order_id: insertedOrder.id,
+                } as any,
+              });
+            } catch { /* registro nunca derruba o motor */ }
+          }
         }
+
 
         providerStats.last_entry_price = entry;
         openOrdersCache = null; ordersMutated = true;

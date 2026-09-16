@@ -984,6 +984,15 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
       .eq("user_id", userId).eq("enabled", true)
       .select("symbol, variant, mode");
 
+    // Pânico derruba TODA liberação manual de freio (16/09/2026): sem real
+    // ligado não há o que liberar, e liberação esquecida deixaria o próximo
+    // pregão exposto sem ninguém perceber.
+    let liberacoesDerrubadas = 0;
+    try {
+      const { encerrarTodasLiberacoes } = await import("./b3-liberacao-freio.server");
+      liberacoesDerrubadas = await encerrarTodasLiberacoes(supabase, userId, "disjuntor_armado");
+    } catch { /* best-effort: a zeragem já aconteceu */ }
+
     try {
       await (supabase as any).from("system_logs").insert({
         event_type: "zeragem_real_pelo_painel",
@@ -994,9 +1003,11 @@ export const closeRealPositionNow = createServerFn({ method: "POST" })
           comandos: commands.map((c) => ({ symbol: c.symbol, side: c.side, quantity: c.quantity, magic_number: c.magic_number })),
           fontes: positions.map((p) => ({ magic_number: p.magic_number, fonte: p.fonte })),
           autorizacoes_desligadas: rows ?? [],
+          liberacoes_derrubadas: liberacoesDerrubadas,
         } as any,
       });
     } catch { /* best-effort */ }
+
 
     return {
       ok: true as const,

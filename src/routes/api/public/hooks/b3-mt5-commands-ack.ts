@@ -161,6 +161,10 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-ack")({
             gain_pts: cmd.gain_pts ?? null,
             stop_price: cmd.stop_price ?? null,
             target_price: cmd.target_price ?? null,
+            // Ordem real que só existe porque uma pessoa liberou o freio na
+            // tela (16/09/2026): a marca acompanha o comando.
+            liberacao_manual: cmd.liberacao_manual ?? false,
+
           });
           if (insErr) return json({ ok: false, error: insErr.message }, 500);
         } else {
