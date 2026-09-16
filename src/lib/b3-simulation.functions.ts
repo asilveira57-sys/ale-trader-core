@@ -502,16 +502,16 @@ interface ModeDefaults {
   trailing_activation_pts?: number; trailing_giveback_pts?: number; trailing_mode?: string;
 }
 const MODE_DEFAULTS: Record<Mode, ModeDefaults> = {
-  conservador:    { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  moderado:       { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  equilibrado:    { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 62, min_score: 62, max_contracts: 3, stop_pts: 220, gain_pts: 440, max_volatility_pct: 3.8, daily_loss_limit_brl: 500, daily_gain_target_brl: 700, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  semi_agressivo: { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  agressivo:      { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  conservador:    { entry_style: 'indicador', min_approve_votes: 3, min_confidence: 70, min_score: 75, max_contracts: 1, stop_pts: 100, gain_pts: 200, max_volatility_pct: 2.5, daily_loss_limit_brl: 100, daily_gain_target_brl: 200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  moderado:       { entry_style: 'indicador', min_approve_votes: 3, min_confidence: 62, min_score: 65, max_contracts: 2, stop_pts: 150, gain_pts: 300, max_volatility_pct: 3.5, daily_loss_limit_brl: 300, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  equilibrado:    { entry_style: 'indicador', min_approve_votes: 3, min_confidence: 62, min_score: 62, max_contracts: 3, stop_pts: 220, gain_pts: 440, max_volatility_pct: 3.8, daily_loss_limit_brl: 500, daily_gain_target_brl: 700, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  semi_agressivo: { entry_style: 'indicador', min_approve_votes: 3, min_confidence: 60, min_score: 60, max_contracts: 4, stop_pts: 300, gain_pts: 600, max_volatility_pct: 4.0, daily_loss_limit_brl: 800, daily_gain_target_brl: 1000, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  agressivo:      { entry_style: 'indicador', min_approve_votes: 3, min_confidence: 55, min_score: 55, max_contracts: 3, stop_pts: 200, gain_pts: 400, max_volatility_pct: 4.5, daily_loss_limit_brl: 600, daily_gain_target_brl: 1200, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
   // Fallback de fábrica dos três modos novos. NÃO sobrescreve nada já salvo:
   // só é usado quando não existe linha em b3_simulation_mode_settings.
-  cauteloso:      { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 66, min_score: 70, max_contracts: 1, stop_pts: 120, gain_pts: 240, max_volatility_pct: 3.0, daily_loss_limit_brl: 200, daily_gain_target_brl: 350, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  arrojado:       { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 60, min_score: 60, max_contracts: 3, stop_pts: 260, gain_pts: 520, max_volatility_pct: 4.0, daily_loss_limit_brl: 600, daily_gain_target_brl: 900, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
-  enoir:          { entry_style: 'indicador', min_approve_votes: 4, min_confidence: 58, min_score: 58, max_contracts: 2, stop_pts: 480, gain_pts: 240, max_volatility_pct: 4.5, daily_loss_limit_brl: 700, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  cauteloso:      { entry_style: 'indicador', min_approve_votes: 3, min_confidence: 66, min_score: 70, max_contracts: 1, stop_pts: 120, gain_pts: 240, max_volatility_pct: 3.0, daily_loss_limit_brl: 200, daily_gain_target_brl: 350, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  arrojado:       { entry_style: 'indicador', min_approve_votes: 3, min_confidence: 60, min_score: 60, max_contracts: 3, stop_pts: 260, gain_pts: 520, max_volatility_pct: 4.0, daily_loss_limit_brl: 600, daily_gain_target_brl: 900, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
+  enoir:          { entry_style: 'indicador', min_approve_votes: 3, min_confidence: 58, min_score: 58, max_contracts: 2, stop_pts: 480, gain_pts: 240, max_volatility_pct: 4.5, daily_loss_limit_brl: 700, daily_gain_target_brl: 500, trailing_activation_pts: 0, trailing_giveback_pts: 0, trailing_mode: 'fixed' },
 };
 
 function hhmmToMin(s: string) { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; }
@@ -3378,13 +3378,19 @@ async function runB3SimulationTickInner(
       addCheck("mode_enabled", "Robô habilitado", cfg.enabled !== false, cfg.enabled === false ? "Modo desativado nas configurações." : "habilitado");
       addCheck("volatility", "Volatilidade", ctx.volatility_pct <= Number(cfg.max_volatility_pct), `${ctx.volatility_pct.toFixed(2)}% / limite ${Number(cfg.max_volatility_pct).toFixed(2)}%`);
       addCheck("max_trades", "Máximo trades", !open && 1 <= Number(cfg.max_contracts), open ? "Já existe posição aberta neste robô." : `1 / ${Number(cfg.max_contracts)} contrato(s)`);
-      addCheck("daily_loss", "Loss diário", realizedToday > -Number(cfg.daily_loss_limit_brl), `${realizedToday.toFixed(2)} / -${Number(cfg.daily_loss_limit_brl).toFixed(2)} BRL`);
+      // Freios de RESULTADO no simulado são RÓTULO, não portão (16/09/2026):
+      // `blocking: false`. Enquanto ficaram como bloqueantes, `firstStop` os
+      // elegia e o diagnóstico gravava estágio `protecao` com o texto do freio,
+      // mesmo quando a entrada seguiu adiante e foi recusada pelo setup ou pelo
+      // comitê — dois caminhos aparentes para o mesmo freio, um liberando e o
+      // outro parecendo barrar. No REAL o bloqueio vive no espelho, não aqui.
+      addCheck("daily_loss", "Loss diário", realizedToday > -Number(cfg.daily_loss_limit_brl), `${realizedToday.toFixed(2)} / -${Number(cfg.daily_loss_limit_brl).toFixed(2)} BRL`, false);
       const realizedTodayTotal = Object.values(realizedTodayByMode).reduce((a: number, b: any) => a + Number(b ?? 0), 0);
       addCheck("daily_loss_aggregate", "Perda diária agregada (conta)", realizedTodayTotal > -globalDailyLossLimitBrl,
-        `${realizedTodayTotal.toFixed(2)} / -${globalDailyLossLimitBrl.toFixed(2)} BRL (5 modos somados)`);
-      addCheck("daily_target", "Meta diária", realizedToday < Number(cfg.daily_gain_target_brl) || protDec.allow_new_entry, `${realizedToday.toFixed(2)} / ${Number(cfg.daily_gain_target_brl).toFixed(2)} BRL`);
+        `${realizedTodayTotal.toFixed(2)} / -${globalDailyLossLimitBrl.toFixed(2)} BRL (5 modos somados)`, false);
+      addCheck("daily_target", "Meta diária", realizedToday < Number(cfg.daily_gain_target_brl) || protDec.allow_new_entry, `${realizedToday.toFixed(2)} / ${Number(cfg.daily_gain_target_brl).toFixed(2)} BRL`, false);
       addCheck("position_open", "Posição aberta", !open, open ? `ordem ${open.id}` : "NÃO", false);
-      addCheck("protection_engine", "Proteção diária", protDec.allow_new_entry, protDec.next.protection_block_reason ?? protDec.next.protection_state);
+      addCheck("protection_engine", "Proteção diária", protDec.allow_new_entry, protDec.next.protection_block_reason ?? protDec.next.protection_state, false);
 
       if (cfg.enabled === false) {
         await recordStatusIfChanged(mode, m, "pausado", "paused",
@@ -4015,10 +4021,15 @@ async function runB3SimulationTickInner(
       // Os demais bloqueios da proteção continuam bloqueando: falha
       // operacional, volatilidade extrema e drawdown não são freios de
       // resultado — não há contrafactual a medir neles.
+      // 16/09/2026 (2ª passada): `blocked_drawdown` também é freio de RESULTADO
+      // — entra na sombra. Continuam bloqueando de verdade apenas os que não são
+      // de resultado: falha operacional e volatilidade extrema (mecânica da
+      // ordem, não desempenho).
       const SOMBRA_POR_ESTADO: Record<string, string> = {
         blocked_peak_giveback: "pico",
         blocked_post_target_loss: "pos_meta",
         blocked_stop: "stop_diario",
+        blocked_drawdown: "drawdown",
       };
       const freioProtecaoSombra = protDec.allow_new_entry
         ? null
