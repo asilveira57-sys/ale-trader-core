@@ -870,10 +870,17 @@ function CockpitPage() {
                     </span>
                   );
                 })()}
+                {/* Um freio de GRUPO trava todos os robôs do grupo de uma vez:
+                    desfazer de um em um seriam sete cliques para uma decisão só. */}
+                <LiberacaoBloco
+                  escopo="grupo" root={root} variant={variant} mode={null}
+                  libs={liberacoes} liberarM={liberarM} travarM={travarM} defaultFreio="grupo"
+                />
                 <Button size="sm" variant="outline" className="h-6 text-[10px] ml-auto"
                   onClick={() => copyCards(cards, `${root} · ${variantLabel(variant).toLowerCase()}`)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo + modalidade
                 </Button>
+
               </h3>
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
