@@ -1089,7 +1089,30 @@ function CockpitPage() {
                       </button>
 
 
+                      {/* ── Liberar o REAL deste robô (senha mestra) ──
+                          Fora do <button> do card para não aninhar botões. O
+                          simulado não muda: o freio já está em sombra. */}
+                      <div className="px-3 pb-2">
+                        <LiberacaoBloco
+                          escopo="robo"
+                          root={rootSymbol(c.symbol)}
+                          variant={c.variant ?? "indicador"}
+                          mode={c.mode}
+                          libs={liberacoes}
+                          liberarM={liberarM}
+                          travarM={travarM}
+                          defaultFreio={
+                            c.grupo?.travado ? "grupo"
+                              : String(c.current_status ?? "").includes("peak") || String(c.current_status ?? "").includes("pico") ? "pico"
+                              : String(c.current_status ?? "").includes("post_target") || String(c.current_status ?? "").includes("pos_meta") ? "pos_meta"
+                              : String(c.current_status ?? "").includes("stop") ? "stop_diario"
+                              : "grupo"
+                          }
+                        />
+                      </div>
+
                       {/* ── Fechar posição: sempre visível quando há posição ── */}
+
                       {hasPosition && (
                         <div className="px-3 pb-3 space-y-2">
                           {c.pending_stop && (
