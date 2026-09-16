@@ -48,10 +48,11 @@ function robotBlock(c: any): string {
   lines.push(`${rootSymbol(c.symbol)} · ${variantLabel(c.variant ?? "indicador")} · ${modeLabel(c.mode)}`);
 
   if (isRiskBlocked(c)) {
+    // No simulado o freio não bloqueia: é rótulo. A cópia diz isso.
     const motivo = c.current_status === "blocked_stop"
       ? "stop diário atingido"
       : (c.protection_block_reason ?? "trava de risco");
-    lines.push(`  BLOQUEADO: ${motivo}`);
+    lines.push(`  FREIO ACIONADO (sombra, segue entrando): ${motivo}`);
   } else if (c.open) {
     const side = c.open.side === "buy" ? "COMPRA" : "VENDA";
     const pts = Number(c.unrealized_pts ?? 0);
