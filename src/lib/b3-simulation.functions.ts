@@ -5872,6 +5872,23 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           protection_state: mode?.protection_state ?? null,
           protection_block_reason: mode?.protection_block_reason ?? null,
           daily_loss_limit_brl: lossLimitByMode[m] ?? null,
+          // Freios de resultado acionados AGORA neste robô, com o horário do
+          // primeiro acionamento do dia. O robô continua entrando (sombra) — o
+          // card existe para dizer que ele roda APESAR do freio.
+          freios_acionados: (() => {
+            const desde = freiosAcionadosByRunMode[`${run.id}|${m}`] ?? {};
+            const estado = String(mode?.protection_state ?? "");
+            const limite = lossLimitByMode[m];
+            const ativo: Record<string, boolean> = {
+              pico: estado === "blocked_peak_giveback",
+              pos_meta: estado === "blocked_post_target_loss",
+              stop_diario: estado === "blocked_stop"
+                || (limite != null && limite > 0 && realizedToday <= -limite),
+            };
+            return Object.entries(ativo)
+              .filter(([f, on]) => on && desde[f])
+              .map(([f]) => ({ freio: f, desde: desde[f]! }));
+          })(),
           // Pico do dia e limite de devolução: canal visual próprio no card
           // (a cor da linha continua significando constância).
           day_peak_profit_brl: mode?.day_peak_profit_brl == null ? null : Number(mode.day_peak_profit_brl),
