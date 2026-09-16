@@ -312,6 +312,33 @@ function CockpitPage() {
   const disableModes = useServerFn(disableAllModes);
   const resetStop = useServerFn(resetB3DailyStop);
   const updEnabled = useServerFn(updateB3ModeSettings);
+  // Liberação manual de freio para o real: leitura leve e independente do
+  // overview (nada do motor é tocado por esta tela).
+  const listLibs = useServerFn(listLiberacoesFreio);
+  const liberarFn = useServerFn(liberarFreioReal);
+  const travarFn = useServerFn(travarFreioReal);
+  const lq = useQuery({
+    queryKey: ["b3-liberacoes-freio"],
+    queryFn: () => listLibs(),
+    refetchInterval: useVisibleRefetchInterval(30_000),
+    refetchIntervalInBackground: false,
+  });
+  const liberacoes: Lib[] = ((lq.data as any)?.liberacoes ?? []) as Lib[];
+  const invalidarLib = () => {
+    qc.invalidateQueries({ queryKey: ["b3-liberacoes-freio"] });
+    qc.invalidateQueries({ queryKey: ["b3-cockpit"] });
+  };
+  const liberarM = useMutation({
+    mutationFn: (v: any) => liberarFn({ data: v }),
+    onSuccess: () => { invalidarLib(); toast.success("Freio liberado no real. Acompanhe a tela — a liberação não atravessa o pregão."); },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao liberar"),
+  });
+  const travarM = useMutation({
+    mutationFn: (v: any) => travarFn({ data: v }),
+    onSuccess: () => { invalidarLib(); toast.success("Freio travado de volta. Ele volta a valer para o real imediatamente."); },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao travar de volta"),
+  });
+
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState<SavedFilters>(DEFAULT_FILTERS);
   const [hydrated, setHydrated] = useState(false);
