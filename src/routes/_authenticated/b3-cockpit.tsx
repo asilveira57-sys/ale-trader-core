@@ -23,6 +23,8 @@ import {
   resetB3DailyStop, updateB3ModeSettings,
 } from "@/lib/b3-simulation.functions";
 import { getB3SimPeriodSummary } from "@/lib/b3-sim-period.functions";
+import { listLiberacoesFreio, liberarFreioReal, travarFreioReal } from "@/lib/b3-liberacao-freio.functions";
+
 import {
   PeriodBar, HistoricalBanner, NoMovementNotice, TruncatedNotice, PerDayTable,
   DEFAULT_PERIOD, type PeriodInput,
