@@ -161,7 +161,9 @@ export async function registrarLiberacao(
     source: "cockpit_simulado",
     severity: "warning",
     message: `LIBERAÇÃO MANUAL: ${FREIO_LIBERAVEL_LABEL[lib.freio]} ignorado no REAL para ${alvo}. O simulado não muda; o espelho volta a enfileirar comando real.`,
-    technical_data: { user_id: userId, ...full, estado_do_freio: estadoDoFreio } as any,
+    // `entry_style` é o mesmo valor de `variant` — repetido com o nome usado no
+    // log de decisão de entrada, para o cruzamento não depender de tradução.
+    technical_data: { user_id: userId, ...full, entry_style: full.variant, estado_do_freio: estadoDoFreio } as any,
   });
   return full;
 }
@@ -175,7 +177,10 @@ export async function encerrarLiberacoes(
     source: "cockpit_simulado",
     severity: "info",
     message: `Liberação encerrada (${MOTIVO_FIM_LABEL[motivo]}): ${FREIO_LIBERAVEL_LABEL[l.freio]} volta a bloquear o REAL em ${l.symbol}/${l.variant}/${l.mode ?? "grupo inteiro"}.`,
-    technical_data: { user_id: userId, ...l, motivo_fim: motivo } as any,
+    technical_data: {
+      user_id: userId, ...l, entry_style: l.variant,
+      inicio: l.desde, fim: new Date().toISOString(), motivo_fim: motivo,
+    } as any,
   }));
   try {
     await supabase.from("system_logs").insert(rows);
