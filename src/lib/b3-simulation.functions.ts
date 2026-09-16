@@ -4054,12 +4054,24 @@ async function runB3SimulationTickInner(
         });
       }
 
+      // ── STOP DIÁRIO POR ROBÔ TAMBÉM EM SOMBRA (16/09/2026) ──
+      // O stop diário barrava a entrada por um caminho que a sombra não cobria:
+      // o agente Risco recebia `daily_loss_limit` e VETAVA, e o veto derruba o
+      // score do comitê para 25 — ou seja, o robô parava de entrar sem que
+      // nenhum gate de freio aparecesse. Foi o que calou Amanda às 10:11 de
+      // 16/09. Agora o limite diário vira RÓTULO no simulado: o estado continua
+      // sendo gravado, a ordem nasce marcada com `stop_diario`, e o Risco deixa
+      // de vetar por ele (ver `risk` abaixo). No REAL nada muda: o espelho
+      // continua recusando comando para qualquer freio acionado.
+      const lossHit = realizedToday <= -Number(cfg.daily_loss_limit_brl);
+
       // Todos os freios que teriam barrado ESTA entrada. Uma entrada pode ser
       // barrada por mais de um ao mesmo tempo — é o que permite julgar um
       // freio contra o outro na medição diária.
       const freiosNaSombra: string[] = [
         ...(sombraFreioGrupo ? ["grupo"] : []),
         ...(freioProtecaoSombra ? [freioProtecaoSombra] : []),
+        ...(lossHit && freioProtecaoSombra !== "stop_diario" ? ["stop_diario"] : []),
       ];
       const entradaEmSombra = freiosNaSombra.length > 0;
       // LIBERAÇÃO MANUAL (16/09/2026): a ordem SIMULADA e `freios_na_sombra` não
