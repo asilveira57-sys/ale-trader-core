@@ -550,6 +550,15 @@ function CockpitPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Liberação de freio ativa: some da vista se ficar sutil. */}
+          {robosLiberados > 0 && (
+            <span className="inline-flex items-center gap-1 rounded border border-amber-400 bg-amber-500/25 px-2 py-1 text-xs font-bold text-amber-100">
+              <Unlock className="h-3.5 w-3.5" />
+              {robosLiberados} {robosLiberados === 1 ? "robô com freio liberado" : "robôs com freio liberado"}
+            </span>
+          )}
+
+
 
           <Button size="sm" variant="outline" onClick={() => q.refetch()}>
             <RefreshCw className="w-4 h-4 mr-1" />Atualizar
