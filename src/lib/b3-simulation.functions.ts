@@ -4015,10 +4015,15 @@ async function runB3SimulationTickInner(
       // Os demais bloqueios da proteção continuam bloqueando: falha
       // operacional, volatilidade extrema e drawdown não são freios de
       // resultado — não há contrafactual a medir neles.
+      // 16/09/2026 (2ª passada): `blocked_drawdown` também é freio de RESULTADO
+      // — entra na sombra. Continuam bloqueando de verdade apenas os que não são
+      // de resultado: falha operacional e volatilidade extrema (mecânica da
+      // ordem, não desempenho).
       const SOMBRA_POR_ESTADO: Record<string, string> = {
         blocked_peak_giveback: "pico",
         blocked_post_target_loss: "pos_meta",
         blocked_stop: "stop_diario",
+        blocked_drawdown: "drawdown",
       };
       const freioProtecaoSombra = protDec.allow_new_entry
         ? null
