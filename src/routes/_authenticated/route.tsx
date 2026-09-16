@@ -325,9 +325,13 @@ function AuthedLayout() {
         <header className="sticky top-0 z-40 flex items-center gap-2 border-b border-sidebar-border bg-background/95 px-2 py-2 backdrop-blur md:hidden">
           <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Abrir menu">
+              {/* No celular o botão preto sobre fundo preto desaparecia da tela:
+                  retangular, cantos arredondados, fundo branco, letra preta. */}
+              <Button aria-label="Abrir menu"
+                className="h-9 w-auto rounded-md bg-white px-3 text-black hover:bg-white/90">
                 <Menu className="size-5" />
               </Button>
+
             </SheetTrigger>
             <SheetContent side="left" className="w-[17rem] bg-sidebar p-0 text-sidebar-foreground">
               <div className="flex h-full flex-col">
