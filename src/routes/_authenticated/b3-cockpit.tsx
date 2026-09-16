@@ -225,7 +225,11 @@ function LiberacaoBloco({
   liberarM: any; travarM: any;
   defaultFreio?: FreioLib;
 }) {
-  const [freio, setFreio] = useState<FreioLib>(defaultFreio ?? "grupo");
+  // Seleção MÚLTIPLA (16/09/2026): liberar não é escolher um freio, é definir um
+  // estado — vários freios podem estar soltos ao mesmo tempo.
+  const [freios, setFreios] = useState<FreioLib[]>(defaultFreio ? [defaultFreio] : []);
+  const toggleFreio = (v: FreioLib) =>
+    setFreios((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
   const [senha, setSenha] = useState("");
   const [open, setOpen] = useState(false);
   // No card do robô só aparecem as liberações que o afetam; no card do grupo,
