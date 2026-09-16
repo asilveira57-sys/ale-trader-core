@@ -3000,6 +3000,16 @@ async function runB3SimulationTickInner(
     const freioEstaLiberado = (mode: string, freio: string) =>
       liberacoesFreio.length > 0 &&
       !!freioLiberado(liberacoesFreio, rootSymbol(asset.quote_symbol), runVariant, mode, freio);
+    // CARIMBO DO CONJUNTO LIBERADO (16/09/2026): com seleção múltipla, o que
+    // estava solto muda ao longo do mesmo pregão. Sem carimbar o conjunto no
+    // instante da entrada não há como interpretar depois a comparação real x
+    // simulado. Vai no registro da ordem real e no log de decisão de entrada.
+    const freiosLiberadosDoRobo = (mode: string) => liberacoesFreio
+      .filter((l) => l.symbol === rootSymbol(asset.quote_symbol) && l.variant === runVariant
+        && (l.escopo === "grupo" || l.mode === mode))
+      .map((l) => l.freio)
+      .filter((f, i, a) => a.indexOf(f) === i)
+      .sort();
 
 
     // Timings por modo + isolamento de falha: um modo que estoura não pode
@@ -4578,6 +4588,21 @@ async function runB3SimulationTickInner(
             target_price: targetPriceFrozen,
           }, entradaSobLiberacao);
           if (entradaSobLiberacao) {
+            const freiosLiberadosAgora = freiosLiberadosDoRobo(mode);
+            entryStageRows.push({
+              user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+              symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+              estagio: "espelho_sob_liberacao",
+              motivo: `Abertura real enfileirada sob liberação manual — freios liberados: ${freiosLiberadosAgora.join(", ")}.`,
+              detalhe: {
+                liberacao_manual: true,
+                freios_liberados: freiosLiberadosAgora,
+                freios_na_sombra: freiosNaSombra,
+                idempotency_key: `open-${insertedOrder.id}`,
+                simulation_order_id: insertedOrder.id,
+                side: effectiveSide,
+              },
+            });
             // Ordem real que existe por decisão de UMA PESSOA, não por regra do
             // sistema. Fica contável ao lado de manual_close_user.
             try {
@@ -4588,7 +4613,12 @@ async function runB3SimulationTickInner(
                 message: `Abertura real enfileirada SOB LIBERAÇÃO MANUAL (${freiosNaSombra.join(", ")} ignorado(s)) — ${asset.quote_symbol}/${runVariant}/${mode}.`,
                 technical_data: {
                   freios_na_sombra: freiosNaSombra, liberacao_manual: true,
-                  symbol: asset.quote_symbol, variant: runVariant, mode, side: effectiveSide,
+                  // Conjunto liberado NAQUELE instante + chave do comando real:
+                  // é o par que permite reconstruir a ordem real depois.
+                  freios_liberados: freiosLiberadosDoRobo(mode),
+                  idempotency_key: `open-${insertedOrder.id}`,
+                  symbol: asset.quote_symbol, variant: runVariant, mode,
+                  entry_style: runVariant, side: effectiveSide,
                   run_id: runId, simulation_order_id: insertedOrder.id,
                 } as any,
               });
