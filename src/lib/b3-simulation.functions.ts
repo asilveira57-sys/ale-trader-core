@@ -4085,7 +4085,7 @@ async function runB3SimulationTickInner(
 
 
       // Diagnóstico visual: rotula o estado atual (sem bloquear gainHit).
-      const lossHit = realizedToday <= -Number(cfg.daily_loss_limit_brl);
+      // `lossHit` já foi calculado acima, junto do vetor de freios em sombra.
       if (lossHit) {
         await recordStatusIfChanged(mode, m, "bloqueado_perda_diaria", "daily_loss",
           { observed: realizedToday, limit: -Number(cfg.daily_loss_limit_brl), pnl: realizedToday,
