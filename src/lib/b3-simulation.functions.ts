@@ -3389,7 +3389,7 @@ async function runB3SimulationTickInner(
       addCheck("daily_loss_aggregate", "Perda diária agregada (conta)", realizedTodayTotal > -globalDailyLossLimitBrl,
         `${realizedTodayTotal.toFixed(2)} / -${globalDailyLossLimitBrl.toFixed(2)} BRL (5 modos somados)`, false);
       addCheck("daily_target", "Meta diária", realizedToday < Number(cfg.daily_gain_target_brl) || protDec.allow_new_entry, `${realizedToday.toFixed(2)} / ${Number(cfg.daily_gain_target_brl).toFixed(2)} BRL`, false);
-      addCheck("position_open", "Posição aberta", !open, open ? `ordem ${open.id}` : "NÃO", false);
+      addCheck("position_open", "Posição aberta", !open, open ? `ordem ${open.id}` : "NÃO");
       addCheck("protection_engine", "Proteção diária", protDec.allow_new_entry, protDec.next.protection_block_reason ?? protDec.next.protection_state, false);
 
       if (cfg.enabled === false) {
@@ -4031,9 +4031,21 @@ async function runB3SimulationTickInner(
         blocked_stop: "stop_diario",
         blocked_drawdown: "drawdown",
       };
+      // 16/09/2026 (3ª passada) — CAMINHO RESIDUAL FECHADO: enquanto a sombra era
+      // uma LISTA DE ESTADOS conhecidos, qualquer estado de bloqueio fora dela
+      // caía no gate abaixo e barrava a entrada de verdade, em paralelo ao
+      // registro de sombra do mesmo freio (era o estágio `protecao` aparecendo
+      // no log de decisão com o texto do pico ou do stop diário). Agora a regra
+      // é invertida: no simulado só bloqueiam os dois estados MECÂNICOS — falha
+      // operacional e volatilidade extrema, que não são desempenho e não têm
+      // contrafactual a medir. Todo o resto é freio de RESULTADO e vira sombra,
+      // inclusive estados novos que apareçam depois.
+      const BLOQUEIO_MECANICO = new Set(["blocked_ops_failure", "blocked_volatility"]);
       const freioProtecaoSombra = protDec.allow_new_entry
         ? null
-        : (SOMBRA_POR_ESTADO[protDec.next.protection_state] ?? null);
+        : BLOQUEIO_MECANICO.has(protDec.next.protection_state)
+          ? null
+          : (SOMBRA_POR_ESTADO[protDec.next.protection_state] ?? "protecao_resultado");
 
       // Bloqueio de proteção B3 substitui o antigo gate "meta atingida".
       if (!protDec.allow_new_entry && !freioProtecaoSombra) {
@@ -4046,7 +4058,7 @@ async function runB3SimulationTickInner(
 
       if (freioProtecaoSombra) {
         const motivoProt = protDec.next.protection_block_reason ?? protDec.next.protection_state;
-        const msgProt = `${FREIO_LABEL[freioProtecaoSombra]} (SOMBRA — entrada liberada no simulado): ${motivoProt} Nenhum comando real será enfileirado.`;
+        const msgProt = `${FREIO_LABEL[freioProtecaoSombra] ?? freioProtecaoSombra} (SOMBRA — entrada liberada no simulado): ${motivoProt} Nenhum comando real será enfileirado.`;
         await recordStatusIfChanged(mode, m, `sombra_${freioProtecaoSombra}`, `${protDec.next.protection_state}_sombra`,
           { pnl: realizedToday, message: msgProt });
         log.push({ mode, action: `sombra_${freioProtecaoSombra}`, estado: protDec.next.protection_state });

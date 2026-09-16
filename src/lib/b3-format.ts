@@ -123,9 +123,10 @@ export const FREIO_LABEL: Record<string, string> = {
   stop_diario: "Stop diário",
   drawdown: "Drawdown máximo",
   grupo: "Freio de grupo",
+  protecao_resultado: "Proteção de resultado",
 };
 // Ordem fixa na tela e na cópia: do mais frequente ao menos.
-export const FREIO_ORDEM = ["pico", "pos_meta", "stop_diario", "drawdown", "grupo"] as const;
+export const FREIO_ORDEM = ["pico", "pos_meta", "stop_diario", "drawdown", "protecao_resultado", "grupo"] as const;
 
 export interface SombraFreio {
   resultado_sombra_brl: number;
