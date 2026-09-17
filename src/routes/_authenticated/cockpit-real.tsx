@@ -2,7 +2,7 @@
 // degradação para celular. Somente leitura + três ações explícitas:
 // parar novas entradas (sem senha), religar (com senha mestra) e zerar posição.
 // Nada aqui toca no motor de simulação, no comitê, nos classificadores ou nos freios.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -19,10 +19,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
-import { useRealPositionAlerts } from "@/hooks/use-real-position-alerts";
+import { useRealAlerts } from "@/hooks/use-real-alerts";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
-  getB3RealCockpit, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
+  getB3RealCockpit, getB3RealCockpitLive, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
   closeAllRealPositionsKeepRunning,
 
   closeRealPositionByBroker, getRealCommandStatus, setRealAccountPeakConfig,
