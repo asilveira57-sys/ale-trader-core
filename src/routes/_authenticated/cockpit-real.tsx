@@ -930,7 +930,7 @@ function CockpitRealPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-black tracking-tight">Cockpit Real</h1>
           <p className="text-xs text-muted-foreground">
-            Dinheiro real na XP · pregão {d?.session_date ?? "—"} · atualiza sozinho a cada 15s
+            Dinheiro real na XP · pregão {d?.session_date ?? "—"} · posição e executor atualizam a cada 5s
             {d?.server_time ? ` · dados de ${hhmmss(d.server_time)}` : ""}
           </p>
         </div>
