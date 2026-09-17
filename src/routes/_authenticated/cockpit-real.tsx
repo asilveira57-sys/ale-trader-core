@@ -648,6 +648,24 @@ function CockpitRealPage() {
     liberacoesEncerradas,
   });
 
+  // O histórico do dia (payload pesado) não fica em polling — mas quando a
+  // corretora ABRE ou FECHA posição, ele mudou de verdade e vale a releitura.
+  // É o único gatilho automático do pesado: um por mudança de exposição.
+  const exposicaoKey = brokerPositions
+    .map((p: any) => `${p.symbol}|${p.side}|${p.quantity}|${p.ticket ?? p.magic_number}`)
+    .sort()
+    .join(",");
+  const exposicaoRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!liveOn || !broker.reported) return;
+    if (exposicaoRef.current === null) { exposicaoRef.current = exposicaoKey; return; }
+    if (exposicaoRef.current === exposicaoKey) return;
+    exposicaoRef.current = exposicaoKey;
+    void q.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exposicaoKey, liveOn, broker.reported]);
+
+
   const AlertToggle = () => (
     <div className="flex shrink-0 items-center gap-1">
       <button
