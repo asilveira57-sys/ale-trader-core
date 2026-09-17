@@ -793,6 +793,7 @@ function CockpitRealPage() {
         <PeriodBar value={period} onChange={setPeriod} resolved={per} busy={q.isFetching} />
         <HistoricalBanner resolved={per} />
         <StaleBanner />
+        <AudioBanner />
 
         {/* 1) Tenho posição aberta? */}
         {!vivo ? null : !brokerPositions.length ? (
@@ -902,8 +903,9 @@ function CockpitRealPage() {
         </div>
       </div>
 
-      <div className="hidden md:block">
+      <div className="hidden space-y-2 md:block">
         <StaleBanner />
+        <AudioBanner />
       </div>
 
       <header className="mt-3 hidden flex-wrap items-start justify-between gap-3 md:flex">
