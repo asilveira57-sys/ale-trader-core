@@ -390,6 +390,7 @@ function CockpitRealPage() {
   const apelidos = useModeApelidos();
   const qc = useQueryClient();
   const load = useServerFn(getB3RealCockpit);
+  const loadLive = useServerFn(getB3RealCockpitLive);
   const stopEntries = useServerFn(stopRealNewEntries);
   const resumeReal = useServerFn(resumeRealExecution);
   const closeNow = useServerFn(closeRealPositionNow);
