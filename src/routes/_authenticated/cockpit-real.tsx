@@ -609,53 +609,109 @@ function CockpitRealPage() {
   const reportAgeS = broker.report_age_s == null ? null : Math.round(Number(broker.report_age_s));
   const reportStale = !broker.reported || (reportAgeS != null && reportAgeS > 60);
 
-  // Idade do dado NA TELA: segundos desde a última leitura bem-sucedida. Sobe
-  // de 1 em 1 segundo sem consultar nada.
+  // Idade do dado NA TELA: segundos desde a última leitura bem-sucedida do
+  // payload LEVE (é ele que traz posição, executor e resultado em aberto).
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-  const dataAgeS = q.dataUpdatedAt ? Math.max(0, Math.round((nowTick - q.dataUpdatedAt) / 1000)) : null;
+  const liveUpdatedAt = liveOn ? lq.dataUpdatedAt : q.dataUpdatedAt;
+  const dataAgeS = liveUpdatedAt ? Math.max(0, Math.round((nowTick - liveUpdatedAt) / 1000)) : null;
+  const heavyAgeS = q.dataUpdatedAt ? Math.max(0, Math.round((nowTick - q.dataUpdatedAt) / 1000)) : null;
 
-  // AVISO SONORO / NOTIFICAÇÃO de abertura e fechamento de posição REAL.
-  // Fonte: as posições reportadas pelo executor (verdade da corretora), nunca o
-  // momento em que o app manda espelhar. Só simulado nenhum: esta tela é real.
-  const alerta = useRealPositionAlerts(broker.reported ? brokerPositions : undefined, broker.reported_at ?? null);
+  // AVISO ATIVO: som + notificação do navegador. Fonte: só o payload LEVE
+  // (executor, corretora, disjuntor, freio de grupo, liberações) e as posições
+  // reportadas pelo executor. Nada aqui decide entrada, saída ou freio.
+  const grupoNiveis = useMemo(
+    () => ((live?.grupo_estados ?? []) as any[])
+      .filter((g) => Number(g.nivel ?? 0) > 0)
+      .map((g) => ({
+        key: `${g.symbol}|${g.variant}`,
+        label: `${assetLabel(g.symbol)} · ${g.variant}`,
+        nivel: Number(g.nivel ?? 0),
+      })),
+    [live?.grupo_estados],
+  );
+  const liberacoesEncerradas = useMemo(
+    () => ((live?.liberacoes_encerradas ?? []) as any[]).map((l) => ({
+      key: String(l.key), label: String(l.label), motivo: String(l.motivo),
+    })),
+    [live?.liberacoes_encerradas],
+  );
+  const alerta = useRealAlerts({
+    pregaoOpen: live?.pregao_open === true,
+    alerts: (d?.alerts ?? []) as any[],
+    brokerPositions: broker.reported ? brokerPositions : undefined,
+    reportedAt: broker.reported_at ?? null,
+    grupoNiveis,
+    liberacoesEncerradas,
+  });
 
   const AlertToggle = () => (
-    <button
-      type="button"
-      onClick={() => alerta.setLigado(!alerta.ligado)}
-      className="flex h-9 shrink-0 items-center gap-1 rounded-lg border-2 border-border px-2 text-[11px] font-bold"
-      title={alerta.armado ? "Som liberado neste aparelho" : "Toque em qualquer lugar para liberar o som"}
-    >
-      {alerta.ligado ? <Bell className="size-4 text-emerald-400" /> : <BellOff className="size-4 text-muted-foreground" />}
-      <span className="hidden sm:inline">{alerta.ligado ? (alerta.armado ? "Aviso ligado" : "Aviso: toque p/ liberar som") : "Aviso mudo"}</span>
-    </button>
+    <div className="flex shrink-0 items-center gap-1">
+      <button
+        type="button"
+        onClick={() => alerta.setLigado(!alerta.ligado)}
+        className="flex h-9 shrink-0 items-center gap-1 rounded-lg border-2 border-border px-2 text-[11px] font-bold"
+        title={alerta.ligado ? "Avisos ligados" : "Avisos no mudo"}
+      >
+        {alerta.ligado ? <Bell className="size-4 text-emerald-400" /> : <BellOff className="size-4 text-muted-foreground" />}
+        <span className="hidden sm:inline">{alerta.ligado ? "Aviso ligado" : "Aviso mudo"}</span>
+      </button>
+      {alerta.ligado && !alerta.armado ? (
+        <button
+          type="button"
+          onClick={alerta.armar}
+          className="flex h-9 shrink-0 items-center gap-1 rounded-lg border-2 border-amber-300 bg-amber-400 px-2 text-[11px] font-black text-black"
+          title="O navegador só toca som depois deste toque"
+        >
+          <Volume2 className="size-4" /> Liberar som
+        </button>
+      ) : null}
+    </div>
   );
 
-  // PRECISÃO SOB DEMANDA (15/09/2026). A recarga de fundo segue em 15s; quem vai
-  // decidir fechar aperta aqui e vê o dado do instante. A idade fica AO LADO do
-  // botão — onde a decisão é tomada. Nunca desabilita nada: idade é informação,
-  // não trava.
+  // O navegador não toca nada sem um toque explícito antes. Se o som não estiver
+  // liberado, quem está longe da tela não vai ser avisado — e precisa saber.
+  const AudioBanner = () =>
+    !alerta.ligado || alerta.armado ? null : (
+      <button
+        type="button"
+        onClick={alerta.armar}
+        className="w-full rounded-xl border-2 border-amber-300 bg-amber-400 px-3 py-2 text-left text-black"
+      >
+        <p className="flex items-center gap-2 text-[13px] font-black leading-tight">
+          <Volume2 className="size-5 shrink-0" /> SOM AINDA NÃO LIBERADO — toque aqui para ouvir os avisos
+        </p>
+        <p className="mt-0.5 text-[11px] font-semibold leading-snug">
+          Sem este toque o navegador não toca som nem mostra notificação. Fora do horário de pregão nada
+          toca, mesmo liberado.
+        </p>
+      </button>
+    );
+
+  // PRECISÃO SOB DEMANDA (15/09/2026). O leve recarrega sozinho a cada 5s; este
+  // botão busca o dado do instante — e também recarrega o histórico do dia, que
+  // fora daqui só vem no primeiro carregamento.
+  const fetching = q.isFetching || lq.isFetching;
   const RefreshNow = ({ className = "" }: { className?: string }) => (
     <div className={`flex items-center gap-2 ${className}`}>
       <Button
         size="sm"
         variant="outline"
         className="h-9 gap-1 border-2 text-[12px] font-black"
-        onClick={() => q.refetch()}
+        onClick={() => { void q.refetch(); void lq.refetch(); }}
       >
-        <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
-        {q.isFetching ? "Atualizando…" : "Atualizar agora"}
+        <RefreshCw className={`size-4 ${fetching ? "animate-spin" : ""}`} />
+        {fetching ? "Atualizando…" : "Atualizar agora"}
       </Button>
       <span className="text-[11px] font-semibold text-muted-foreground">
-        {q.isFetching
+        {fetching
           ? "buscando…"
           : dataAgeS == null
             ? "sem dado"
-            : `atualizado ${ageText(dataAgeS)}`}
+            : `ao vivo ${ageText(dataAgeS)}${heavyAgeS != null && heavyAgeS > 60 ? ` · histórico ${ageText(heavyAgeS)}` : ""}`}
       </span>
     </div>
   );
