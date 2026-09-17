@@ -417,19 +417,82 @@ function CockpitRealPage() {
   const [stopStep, setStopStep] = useState<1 | 2>(1);
   const [closeStep, setCloseStep] = useState<1 | 2>(1);
 
-  // Ao vivo: sem cache de posição nem de cotação.
-  const refetchInterval = useVisibleRefetchInterval(15_000);
+  // ── LEVE x PESADO (17/09/2026) ────────────────────────────────────────────
+  // O payload PESADO (histórico do dia, robôs, séries, diagnóstico) é lido no
+  // primeiro carregamento e depois só sob demanda: é dado que quase não muda e
+  // custa IO no banco. O payload LEVE (executor, corretora, posição aberta,
+  // disjuntor, freios, liberações) é o que recarrega de poucos em poucos
+  // segundos. Os números da tela são os mesmos — mudou de onde vêm.
   const q = useQuery({
     queryKey: ["cockpit-real", period.preset, period.start, period.end],
     queryFn: () => load({ data: period as never }),
-    refetchInterval,
+    refetchOnWindowFocus: false,
+    gcTime: 0,
+    staleTime: 0,
+  });
+  const heavy = q.data as any;
+  // Fora de "hoje" (modo histórico) não existe nada vivo para buscar.
+  const liveOn = heavy?.period ? heavy.period.includes_today !== false : true;
+  const liveInterval = useVisibleRefetchInterval(5_000);
+  const lq = useQuery({
+    queryKey: ["cockpit-real-live"],
+    queryFn: () => loadLive({}),
+    enabled: liveOn,
+    refetchInterval: liveInterval,
     refetchIntervalInBackground: false,
     gcTime: 0,
     staleTime: 0,
   });
-  const d = q.data as any;
+  const live = lq.data as any;
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["cockpit-real"] });
+  const d = useMemo(() => {
+    if (!heavy) return heavy;
+    if (!live || !liveOn) return heavy;
+    const openBrl = live.open_profit_brl;
+    const today = {
+      ...(heavy.today ?? {}),
+      unrealized_brl: openBrl != null ? openBrl : heavy.today?.unrealized_brl,
+      total_brl: openBrl != null ? Number(heavy.today?.realized_brl ?? 0) + Number(openBrl) : heavy.today?.total_brl,
+      saldo_conta_brl: live.broker?.balance_brl ?? heavy.today?.saldo_conta_brl,
+      capital_liquido_brl: live.broker?.equity_brl ?? heavy.today?.capital_liquido_brl,
+      margem_livre_brl: live.broker?.free_margin_brl ?? heavy.today?.margem_livre_brl,
+    };
+    // Divergência corretora x livro por comandos só existe no payload pesado
+    // (é ele que monta o livro). Do leve vem a frescura do relatório.
+    const broker = {
+      ...(live.broker ?? {}),
+      divergences: heavy.broker?.divergences ?? [],
+      magic_divergences: heavy.broker?.magic_divergences ?? [],
+      has_divergence: heavy.broker?.has_divergence ?? false,
+      divergencia_critica: heavy.broker?.divergencia_critica === true && live.broker?.stale === false,
+    };
+    const alerts = [...(live.alerts ?? []), ...(heavy.alerts ?? [])];
+    const seen = new Set<string>();
+    const uniq = alerts.filter((a: any) => {
+      const k = `${a.kind}|${a.at ?? a.title}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return {
+      ...heavy,
+      server_time: live.server_time ?? heavy.server_time,
+      real_state: live.real_state ?? heavy.real_state,
+      executor: live.executor ?? heavy.executor,
+      broker,
+      today,
+      daily_circuit: live.daily_circuit ?? heavy.daily_circuit,
+      account_peak: { ...(heavy.account_peak ?? {}), ...(live.account_peak ?? {}) },
+      alerts: uniq
+        .sort((a: any, b: any) => (a.severity === "critical" ? 0 : 1) - (b.severity === "critical" ? 0 : 1))
+        .slice(0, 12),
+    };
+  }, [heavy, live, liveOn]);
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["cockpit-real"] });
+    qc.invalidateQueries({ queryKey: ["cockpit-real-live"] });
+  };
 
   const mStop = useMutation({
     mutationFn: () => stopEntries({ data: {} }),
