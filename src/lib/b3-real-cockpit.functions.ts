@@ -650,6 +650,226 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
 
   });
 
+// ───────────────────── PAYLOAD LEVE (polling de segundos) ─────────────────────
+// SEPARAÇÃO LEVE x PESADO (17/09/2026). O payload único do Cockpit Real
+// arrastava, a cada 15s, histórico do dia, robôs, diagnóstico e séries — dado
+// que quase nunca muda — e a instância já acendeu alerta de IO.
+//
+// Este endpoint responde SÓ o que muda de segundo em segundo:
+//   executor vivo/parado · posição real aberta e resultado não realizado ·
+//   disjuntor e freios · liberações manuais ativas.
+//
+// Custo: nenhuma tabela grande. Não toca b3_simulation_agent_votes,
+// b3_entry_decision_log nem b3_simulation_block_events. Os comandos são lidos
+// numa janela curta (últimos 20 min) só para saber se o executor está vivo e se
+// alguma ordem foi recusada ou algum stop ficou pendurado.
+//
+// Não escreve nada além do que já era escrito antes: o encerramento de liberação
+// expirada por fim de pregão (registro obrigatório desde 16/09).
+const LIVE_WINDOW_MS = 20 * MINUTE;
+// Stop/fechamento enfileirado que passa disso sem execução é stop NÃO EXECUTADO.
+const STOP_PENDENTE_S = 90;
+
+export const getB3RealCockpitLive = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const now = new Date();
+    const nowMs = now.getTime();
+    const sessionDate = saoPauloDate(now);
+    const pregaoOpen = isPregaoOpen(now);
+    const sinceIso = new Date(nowMs - LIVE_WINDOW_MS).toISOString();
+
+    const [{ data: cmds }, { data: stateRow }, { data: brokerRow }, { data: grupos }] = await Promise.all([
+      supabase.from("b3_mt5_commands")
+        .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, magic_number")
+        .eq("user_id", userId).eq("env", "real")
+        .gte("created_at", sinceIso)
+        .order("created_at", { ascending: true }).limit(300),
+      supabase.from("b3_real_execution_state")
+        .select("real_enabled, stopped_at, stopped_reason, resumed_at, updated_at")
+        .eq("user_id", userId).maybeSingle(),
+      supabase.from("b3_mt5_account_state")
+        .select("reportado_em, saldo, capital_liquido, margem_livre, negociacao_permitida, posicoes, account_login, server_name, modo_conta")
+        .eq("user_id", userId).maybeSingle(),
+      // Estado JÁ MATERIALIZADO do freio de grupo do dia — sem recalcular nada.
+      (supabase as any).from("b3_grupo_estado_dia")
+        .select("symbol, variant, nivel_atual, multiplicador, resultado_brl, robos_travados")
+        .eq("user_id", userId).eq("trade_date", sessionDate).limit(60),
+    ]);
+
+    const commands = ((cmds ?? []) as unknown as RealCommandRow[]);
+    const profileFor = await loadAssetProfiles(supabase);
+
+    // ── 1. Real ligado/desligado ──
+    const realEnabled = stateRow ? (stateRow as any).real_enabled !== false : true;
+    const realState = {
+      real_enabled: realEnabled,
+      stopped_at: (stateRow as any)?.stopped_at ?? null,
+      stopped_reason: (stateRow as any)?.stopped_reason ?? null,
+      resumed_at: (stateRow as any)?.resumed_at ?? null,
+    };
+
+    // ── 2. Executor vivo/parado ──
+    // A verdade do "vivo" é o relatório da conta (a cada ~2s); os comandos da
+    // janela curta só dizem o que ele fez por último.
+    const desc = [...commands].reverse();
+    const lastAny = desc[0] ?? null;
+    const lastFilled = desc.find((c) => c.status === "filled") ?? null;
+    const lastDryRun = desc.find((c) => /DRY_RUN/i.test(String(c.error_message ?? ""))) ?? null;
+    const executorRef = lastFilled ?? lastDryRun ?? lastAny;
+    const executorState: "real_ativo" | "modo_teste" | "sem_sinal" | "sem_comando" =
+      lastFilled ? "real_ativo"
+        : lastDryRun ? "modo_teste"
+          : lastAny ? "sem_sinal"
+            : pregaoOpen ? "sem_sinal" : "sem_comando";
+    const executor = {
+      state: executorState,
+      pregao_open: pregaoOpen,
+      last_command_at: executorRef?.created_at ?? null,
+      last_command_age_s: executorRef?.created_at
+        ? Math.round((nowMs - new Date(executorRef.created_at).getTime()) / 1000)
+        : null,
+      last_command: executorRef
+        ? {
+            action: executorRef.action, side: executorRef.side, symbol: executorRef.symbol,
+            quantity: Number(executorRef.quantity ?? 0), status: executorRef.status,
+            mode: executorRef.mode, variant: executorRef.variant,
+            error_message: executorRef.error_message ?? null,
+          }
+        : null,
+    };
+
+    // ── 3. Corretora: posição aberta e resultado não realizado ──
+    // Sem livro FIFO: aqui a verdade é o relatório do MT5, e só ele.
+    const broker = buildBrokerState(brokerRow as any, [], profileFor, nowMs);
+    const brokerFresh = broker.reported && !broker.stale;
+    const openProfitBrl = broker.reported ? broker.open_profit_brl : null;
+
+    // ── 4. Disjuntor diário e freio de pico da conta ──
+    const { readDailyCircuit } = await import("@/lib/b3-real-daily-circuit.server");
+    const dailyCircuit = await readDailyCircuit(supabase, userId, now);
+    const totalBrl = Number(dailyCircuit.realized_brl ?? 0) + Number(openProfitBrl ?? 0);
+    const { readAccountPeak } = await import("@/lib/b3-real-account-peak.server");
+    const accountPeak = await readAccountPeak(supabase, userId, totalBrl, now);
+
+    // ── 5. Freio de grupo (estado do dia, já materializado) ──
+    const grupoEstados = ((grupos ?? []) as any[]).map((g) => ({
+      symbol: rootSymbol(String(g.symbol)),
+      variant: String(g.variant ?? "indicador"),
+      nivel: Number(g.nivel_atual ?? 0) || 0,
+      multiplicador: g.multiplicador == null ? null : Number(g.multiplicador),
+      resultado_brl: g.resultado_brl == null ? null : Number(g.resultado_brl),
+      robos_travados: Array.isArray(g.robos_travados) ? g.robos_travados.length : 0,
+    }));
+
+    // ── 6. Liberações manuais ativas (e as que acabaram de expirar) ──
+    const {
+      listLiberacoesAbertas, separarLiberacoes, encerrarLiberacoes, chaveLiberacao,
+      FREIO_LIBERAVEL_LABEL, MOTIVO_FIM_LABEL,
+    } = await import("@/lib/b3-liberacao-freio.server");
+    const abertas = await listLiberacoesAbertas(supabase, userId);
+    const { ativas, expiradas } = separarLiberacoes(abertas, now);
+    if (expiradas.length) await encerrarLiberacoes(supabase, userId, expiradas, "fim_do_pregao");
+    const liberacoesEncerradas = expiradas.map((l) => ({
+      key: chaveLiberacao(l),
+      label: `${FREIO_LIBERAVEL_LABEL[l.freio]} em ${l.symbol}/${l.variant}/${l.mode ?? "grupo inteiro"}`,
+      motivo: MOTIVO_FIM_LABEL.fim_do_pregao,
+    }));
+
+    // ── 7. Avisos que valem som/notificação ──
+    const alerts: any[] = [];
+    if (!realEnabled) {
+      alerts.push({
+        kind: "real_parado",
+        severity: pregaoOpen ? "critical" : "warning",
+        title: pregaoOpen ? "REAL DESLIGADO COM O PREGÃO ABERTO" : "Real parado pela tela",
+        detail: pregaoOpen
+          ? `Nenhuma entrada real será executada.${realState.stopped_reason ? ` Motivo: ${realState.stopped_reason}.` : ""}`
+          : "Novas entradas reais bloqueadas. A simulação segue coletando normalmente.",
+        at: realState.stopped_at,
+      });
+    }
+    if (!broker.reported) {
+      alerts.push({
+        kind: "sem_relatorio_executor", severity: "warning",
+        title: "Executor nunca reportou o estado da conta",
+        detail: "Sem relatório da corretora não há confirmação de posição.", at: null,
+      });
+    } else if (broker.stale) {
+      alerts.push({
+        kind: "relatorio_executor_velho", severity: "critical",
+        title: `Executor pode estar parado — último relatório há ${broker.report_age_s ?? "?"}s`,
+        detail: `O relatório da corretora tem mais de ${STALE_REPORT_S}s. Posição e saldo podem não ser os atuais.`,
+        at: broker.reported_at,
+      });
+    }
+    for (const c of desc) {
+      if (c.status === "rejected" || c.status === "error") {
+        if (/DRY_RUN/i.test(String(c.error_message ?? ""))) continue;
+        alerts.push({
+          kind: "ordem_real_recusada", severity: "critical",
+          title: `Ordem real ${c.action === "open" ? "de entrada" : "de fechamento"} recusada`,
+          detail: `${String(c.side ?? "").toUpperCase()} ${c.quantity}x ${c.symbol} — ${c.error_message ?? "sem detalhe do executor"}`,
+          at: c.created_at,
+        });
+      }
+      // Stop pendente NÃO EXECUTADO: fechamento enfileirado que o executor não
+      // levou adiante. É o pior tipo de silêncio — posição sem saída.
+      const ageS = Math.round((nowMs - new Date(c.created_at).getTime()) / 1000);
+      if (c.action === "close" && (c.status === "pending" || c.status === "claimed") && ageS > STOP_PENDENTE_S) {
+        alerts.push({
+          kind: "stop_pendente_nao_executado", severity: "critical",
+          title: `Fechamento pendente há ${ageS}s sem execução`,
+          detail: `${String(c.side ?? "").toUpperCase()} ${c.quantity}x ${c.symbol} — comando ${c.status}. A posição pode estar sem saída.`,
+          at: c.created_at,
+        });
+      }
+    }
+    if (dailyCircuit.armed) {
+      alerts.push({
+        kind: "disjuntor_diario_armado", severity: "critical",
+        title: dailyCircuit.armed_kind === "meta_ganho"
+          ? "Disjuntor diário: META DE GANHO atingida — dia travado"
+          : "Disjuntor diário: TETO DE PERDA atingido — novas entradas reais bloqueadas",
+        detail: `Realizado R$ ${Number(dailyCircuit.realized_brl ?? 0).toFixed(2)}. Nenhum robô real abre até o próximo pregão.`,
+        at: dailyCircuit.armed_at,
+      });
+    }
+    if (accountPeak.armed) {
+      alerts.push({
+        kind: "freio_pico_conta_armado", severity: "critical",
+        title: "Freio de pico da CONTA armado",
+        detail: "Novas aberturas reais bloqueadas até o fim do pregão. Fechamento e simulação seguem normais.",
+        at: accountPeak.armed_at,
+      });
+    }
+
+    return {
+      live: true as const,
+      server_time: now.toISOString(),
+      session_date: sessionDate,
+      pregao_open: pregaoOpen,
+      real_state: realState,
+      executor,
+      broker,
+      broker_fresh: brokerFresh,
+      open_profit_brl: openProfitBrl,
+      realized_brl: Number(dailyCircuit.realized_brl ?? 0),
+      total_brl: totalBrl,
+      daily_circuit: dailyCircuit,
+      account_peak: accountPeak,
+      grupo_estados: grupoEstados,
+      liberacoes: ativas,
+      liberacoes_encerradas: liberacoesEncerradas,
+      alerts: alerts
+        .slice()
+        .sort((a, b) => (a.severity === "critical" ? 0 : 1) - (b.severity === "critical" ? 0 : 1))
+        .slice(0, 12),
+    };
+  });
+
+
 // ─────────── ajuste do freio de pico da CONTA (só a configuração) ───────────
 // Não toca em NENHUM parâmetro de robô: nem stop, nem alvo, nem trailing, nem
 // o freio de pico POR ROBÔ. Só a devolução (35%) e o piso da camada da conta.
