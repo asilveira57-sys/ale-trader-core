@@ -6312,39 +6312,6 @@ export type Database = {
         }
         Relationships: []
       }
-      market_snapshots: {
-        Row: {
-          captured_at: string
-          change_percent_24h: number | null
-          high_24h: number | null
-          id: string
-          low_24h: number | null
-          pair: string
-          price: number
-          volume_24h: number | null
-        }
-        Insert: {
-          captured_at?: string
-          change_percent_24h?: number | null
-          high_24h?: number | null
-          id?: string
-          low_24h?: number | null
-          pair: string
-          price: number
-          volume_24h?: number | null
-        }
-        Update: {
-          captured_at?: string
-          change_percent_24h?: number | null
-          high_24h?: number | null
-          id?: string
-          low_24h?: number | null
-          pair?: string
-          price?: number
-          volume_24h?: number | null
-        }
-        Relationships: []
-      }
       monitored_assets: {
         Row: {
           active: boolean
@@ -7813,21 +7780,16 @@ export type Database = {
               variant: string
             }[]
           }
-      b3_retencao_diaria:
-        | {
-            Args: never
-            Returns: {
-              apagadas: number
-              tabela: string
-            }[]
-          }
-        | {
-            Args: { p_lote?: number; p_max_lotes?: number }
-            Returns: {
-              apagadas: number
-              tabela: string
-            }[]
-          }
+      b3_retencao_diaria: {
+        Args: { p_lote?: number; p_max_lotes?: number }
+        Returns: {
+          apagadas: number
+          atingiu_teto: boolean
+          duracao: string
+          erro: string
+          tabela: string
+        }[]
+      }
       b3_rotular_regime: { Args: { p_date?: string }; Returns: number }
       b3_vigiar_tique: { Args: never; Returns: string }
       has_role: {
