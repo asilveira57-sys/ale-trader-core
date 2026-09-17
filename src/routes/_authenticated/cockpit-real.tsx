@@ -2,14 +2,14 @@
 // degradação para celular. Somente leitura + três ações explícitas:
 // parar novas entradas (sem senha), religar (com senha mestra) e zerar posição.
 // Nada aqui toca no motor de simulação, no comitê, nos classificadores ou nos freios.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   AlertTriangle, Bell, BellOff, CheckCircle2, CircleSlash, Clock, Hand, KeyRound, LayoutDashboard,
-  Play, RefreshCw, ShieldOff, XOctagon, Radio, GitCompareArrows, TrendingDown,
+  Play, RefreshCw, ShieldOff, Volume2, XOctagon, Radio, GitCompareArrows, TrendingDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,10 +19,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
-import { useRealPositionAlerts } from "@/hooks/use-real-position-alerts";
+import { useRealAlerts } from "@/hooks/use-real-alerts";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
-  getB3RealCockpit, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
+  getB3RealCockpit, getB3RealCockpitLive, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
   closeAllRealPositionsKeepRunning,
 
   closeRealPositionByBroker, getRealCommandStatus, setRealAccountPeakConfig,
@@ -390,6 +390,7 @@ function CockpitRealPage() {
   const apelidos = useModeApelidos();
   const qc = useQueryClient();
   const load = useServerFn(getB3RealCockpit);
+  const loadLive = useServerFn(getB3RealCockpitLive);
   const stopEntries = useServerFn(stopRealNewEntries);
   const resumeReal = useServerFn(resumeRealExecution);
   const closeNow = useServerFn(closeRealPositionNow);
@@ -417,19 +418,82 @@ function CockpitRealPage() {
   const [stopStep, setStopStep] = useState<1 | 2>(1);
   const [closeStep, setCloseStep] = useState<1 | 2>(1);
 
-  // Ao vivo: sem cache de posição nem de cotação.
-  const refetchInterval = useVisibleRefetchInterval(15_000);
+  // ── LEVE x PESADO (17/09/2026) ────────────────────────────────────────────
+  // O payload PESADO (histórico do dia, robôs, séries, diagnóstico) é lido no
+  // primeiro carregamento e depois só sob demanda: é dado que quase não muda e
+  // custa IO no banco. O payload LEVE (executor, corretora, posição aberta,
+  // disjuntor, freios, liberações) é o que recarrega de poucos em poucos
+  // segundos. Os números da tela são os mesmos — mudou de onde vêm.
   const q = useQuery({
     queryKey: ["cockpit-real", period.preset, period.start, period.end],
     queryFn: () => load({ data: period as never }),
-    refetchInterval,
+    refetchOnWindowFocus: false,
+    gcTime: 0,
+    staleTime: 0,
+  });
+  const heavy = q.data as any;
+  // Fora de "hoje" (modo histórico) não existe nada vivo para buscar.
+  const liveOn = heavy?.period ? heavy.period.includes_today !== false : true;
+  const liveInterval = useVisibleRefetchInterval(5_000);
+  const lq = useQuery({
+    queryKey: ["cockpit-real-live"],
+    queryFn: () => loadLive({}),
+    enabled: liveOn,
+    refetchInterval: liveInterval,
     refetchIntervalInBackground: false,
     gcTime: 0,
     staleTime: 0,
   });
-  const d = q.data as any;
+  const live = lq.data as any;
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["cockpit-real"] });
+  const d = useMemo(() => {
+    if (!heavy) return heavy;
+    if (!live || !liveOn) return heavy;
+    const openBrl = live.open_profit_brl;
+    const today = {
+      ...(heavy.today ?? {}),
+      unrealized_brl: openBrl != null ? openBrl : heavy.today?.unrealized_brl,
+      total_brl: openBrl != null ? Number(heavy.today?.realized_brl ?? 0) + Number(openBrl) : heavy.today?.total_brl,
+      saldo_conta_brl: live.broker?.balance_brl ?? heavy.today?.saldo_conta_brl,
+      capital_liquido_brl: live.broker?.equity_brl ?? heavy.today?.capital_liquido_brl,
+      margem_livre_brl: live.broker?.free_margin_brl ?? heavy.today?.margem_livre_brl,
+    };
+    // Divergência corretora x livro por comandos só existe no payload pesado
+    // (é ele que monta o livro). Do leve vem a frescura do relatório.
+    const broker = {
+      ...(live.broker ?? {}),
+      divergences: heavy.broker?.divergences ?? [],
+      magic_divergences: heavy.broker?.magic_divergences ?? [],
+      has_divergence: heavy.broker?.has_divergence ?? false,
+      divergencia_critica: heavy.broker?.divergencia_critica === true && live.broker?.stale === false,
+    };
+    const alerts = [...(live.alerts ?? []), ...(heavy.alerts ?? [])];
+    const seen = new Set<string>();
+    const uniq = alerts.filter((a: any) => {
+      const k = `${a.kind}|${a.at ?? a.title}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return {
+      ...heavy,
+      server_time: live.server_time ?? heavy.server_time,
+      real_state: live.real_state ?? heavy.real_state,
+      executor: live.executor ?? heavy.executor,
+      broker,
+      today,
+      daily_circuit: live.daily_circuit ?? heavy.daily_circuit,
+      account_peak: { ...(heavy.account_peak ?? {}), ...(live.account_peak ?? {}) },
+      alerts: uniq
+        .sort((a: any, b: any) => (a.severity === "critical" ? 0 : 1) - (b.severity === "critical" ? 0 : 1))
+        .slice(0, 12),
+    };
+  }, [heavy, live, liveOn]);
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["cockpit-real"] });
+    qc.invalidateQueries({ queryKey: ["cockpit-real-live"] });
+  };
 
   const mStop = useMutation({
     mutationFn: () => stopEntries({ data: {} }),
@@ -545,53 +609,127 @@ function CockpitRealPage() {
   const reportAgeS = broker.report_age_s == null ? null : Math.round(Number(broker.report_age_s));
   const reportStale = !broker.reported || (reportAgeS != null && reportAgeS > 60);
 
-  // Idade do dado NA TELA: segundos desde a última leitura bem-sucedida. Sobe
-  // de 1 em 1 segundo sem consultar nada.
+  // Idade do dado NA TELA: segundos desde a última leitura bem-sucedida do
+  // payload LEVE (é ele que traz posição, executor e resultado em aberto).
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-  const dataAgeS = q.dataUpdatedAt ? Math.max(0, Math.round((nowTick - q.dataUpdatedAt) / 1000)) : null;
+  const liveUpdatedAt = liveOn ? lq.dataUpdatedAt : q.dataUpdatedAt;
+  const dataAgeS = liveUpdatedAt ? Math.max(0, Math.round((nowTick - liveUpdatedAt) / 1000)) : null;
+  const heavyAgeS = q.dataUpdatedAt ? Math.max(0, Math.round((nowTick - q.dataUpdatedAt) / 1000)) : null;
 
-  // AVISO SONORO / NOTIFICAÇÃO de abertura e fechamento de posição REAL.
-  // Fonte: as posições reportadas pelo executor (verdade da corretora), nunca o
-  // momento em que o app manda espelhar. Só simulado nenhum: esta tela é real.
-  const alerta = useRealPositionAlerts(broker.reported ? brokerPositions : undefined, broker.reported_at ?? null);
+  // AVISO ATIVO: som + notificação do navegador. Fonte: só o payload LEVE
+  // (executor, corretora, disjuntor, freio de grupo, liberações) e as posições
+  // reportadas pelo executor. Nada aqui decide entrada, saída ou freio.
+  const grupoNiveis = useMemo(
+    () => ((live?.grupo_estados ?? []) as any[])
+      .filter((g) => Number(g.nivel ?? 0) > 0)
+      .map((g) => ({
+        key: `${g.symbol}|${g.variant}`,
+        label: `${assetLabel(g.symbol)} · ${g.variant}`,
+        nivel: Number(g.nivel ?? 0),
+      })),
+    [live?.grupo_estados],
+  );
+  const liberacoesEncerradas = useMemo(
+    () => ((live?.liberacoes_encerradas ?? []) as any[]).map((l) => ({
+      key: String(l.key), label: String(l.label), motivo: String(l.motivo),
+    })),
+    [live?.liberacoes_encerradas],
+  );
+  const alerta = useRealAlerts({
+    pregaoOpen: live?.pregao_open === true,
+    alerts: (d?.alerts ?? []) as any[],
+    brokerPositions: broker.reported ? brokerPositions : undefined,
+    reportedAt: broker.reported_at ?? null,
+    grupoNiveis,
+    liberacoesEncerradas,
+  });
+
+  // O histórico do dia (payload pesado) não fica em polling — mas quando a
+  // corretora ABRE ou FECHA posição, ele mudou de verdade e vale a releitura.
+  // É o único gatilho automático do pesado: um por mudança de exposição.
+  const exposicaoKey = brokerPositions
+    .map((p: any) => `${p.symbol}|${p.side}|${p.quantity}|${p.ticket ?? p.magic_number}`)
+    .sort()
+    .join(",");
+  const exposicaoRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!liveOn || !broker.reported) return;
+    if (exposicaoRef.current === null) { exposicaoRef.current = exposicaoKey; return; }
+    if (exposicaoRef.current === exposicaoKey) return;
+    exposicaoRef.current = exposicaoKey;
+    void q.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exposicaoKey, liveOn, broker.reported]);
+
 
   const AlertToggle = () => (
-    <button
-      type="button"
-      onClick={() => alerta.setLigado(!alerta.ligado)}
-      className="flex h-9 shrink-0 items-center gap-1 rounded-lg border-2 border-border px-2 text-[11px] font-bold"
-      title={alerta.armado ? "Som liberado neste aparelho" : "Toque em qualquer lugar para liberar o som"}
-    >
-      {alerta.ligado ? <Bell className="size-4 text-emerald-400" /> : <BellOff className="size-4 text-muted-foreground" />}
-      <span className="hidden sm:inline">{alerta.ligado ? (alerta.armado ? "Aviso ligado" : "Aviso: toque p/ liberar som") : "Aviso mudo"}</span>
-    </button>
+    <div className="flex shrink-0 items-center gap-1">
+      <button
+        type="button"
+        onClick={() => alerta.setLigado(!alerta.ligado)}
+        className="flex h-9 shrink-0 items-center gap-1 rounded-lg border-2 border-border px-2 text-[11px] font-bold"
+        title={alerta.ligado ? "Avisos ligados" : "Avisos no mudo"}
+      >
+        {alerta.ligado ? <Bell className="size-4 text-emerald-400" /> : <BellOff className="size-4 text-muted-foreground" />}
+        <span className="hidden sm:inline">{alerta.ligado ? "Aviso ligado" : "Aviso mudo"}</span>
+      </button>
+      {alerta.ligado && !alerta.armado ? (
+        <button
+          type="button"
+          onClick={alerta.armar}
+          className="flex h-9 shrink-0 items-center gap-1 rounded-lg border-2 border-amber-300 bg-amber-400 px-2 text-[11px] font-black text-black"
+          title="O navegador só toca som depois deste toque"
+        >
+          <Volume2 className="size-4" /> Liberar som
+        </button>
+      ) : null}
+    </div>
   );
 
-  // PRECISÃO SOB DEMANDA (15/09/2026). A recarga de fundo segue em 15s; quem vai
-  // decidir fechar aperta aqui e vê o dado do instante. A idade fica AO LADO do
-  // botão — onde a decisão é tomada. Nunca desabilita nada: idade é informação,
-  // não trava.
+  // O navegador não toca nada sem um toque explícito antes. Se o som não estiver
+  // liberado, quem está longe da tela não vai ser avisado — e precisa saber.
+  const AudioBanner = () =>
+    !alerta.ligado || alerta.armado ? null : (
+      <button
+        type="button"
+        onClick={alerta.armar}
+        className="w-full rounded-xl border-2 border-amber-300 bg-amber-400 px-3 py-2 text-left text-black"
+      >
+        <p className="flex items-center gap-2 text-[13px] font-black leading-tight">
+          <Volume2 className="size-5 shrink-0" /> SOM AINDA NÃO LIBERADO — toque aqui para ouvir os avisos
+        </p>
+        <p className="mt-0.5 text-[11px] font-semibold leading-snug">
+          Sem este toque o navegador não toca som nem mostra notificação. Fora do horário de pregão nada
+          toca, mesmo liberado.
+        </p>
+      </button>
+    );
+
+  // PRECISÃO SOB DEMANDA (15/09/2026). O leve recarrega sozinho a cada 5s; este
+  // botão busca o dado do instante — e também recarrega o histórico do dia, que
+  // fora daqui só vem no primeiro carregamento.
+  const fetching = q.isFetching || lq.isFetching;
   const RefreshNow = ({ className = "" }: { className?: string }) => (
     <div className={`flex items-center gap-2 ${className}`}>
       <Button
         size="sm"
         variant="outline"
         className="h-9 gap-1 border-2 text-[12px] font-black"
-        onClick={() => q.refetch()}
+        onClick={() => { void q.refetch(); void lq.refetch(); }}
       >
-        <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
-        {q.isFetching ? "Atualizando…" : "Atualizar agora"}
+        <RefreshCw className={`size-4 ${fetching ? "animate-spin" : ""}`} />
+        {fetching ? "Atualizando…" : "Atualizar agora"}
       </Button>
       <span className="text-[11px] font-semibold text-muted-foreground">
-        {q.isFetching
+        {fetching
           ? "buscando…"
           : dataAgeS == null
             ? "sem dado"
-            : `atualizado ${ageText(dataAgeS)}`}
+            : `ao vivo ${ageText(dataAgeS)}${heavyAgeS != null && heavyAgeS > 60 ? ` · histórico ${ageText(heavyAgeS)}` : ""}`}
       </span>
     </div>
   );
@@ -673,6 +811,7 @@ function CockpitRealPage() {
         <PeriodBar value={period} onChange={setPeriod} resolved={per} busy={q.isFetching} />
         <HistoricalBanner resolved={per} />
         <StaleBanner />
+        <AudioBanner />
 
         {/* 1) Tenho posição aberta? */}
         {!vivo ? null : !brokerPositions.length ? (
@@ -782,15 +921,16 @@ function CockpitRealPage() {
         </div>
       </div>
 
-      <div className="hidden md:block">
+      <div className="hidden space-y-2 md:block">
         <StaleBanner />
+        <AudioBanner />
       </div>
 
       <header className="mt-3 hidden flex-wrap items-start justify-between gap-3 md:flex">
         <div className="min-w-0">
           <h1 className="text-2xl font-black tracking-tight">Cockpit Real</h1>
           <p className="text-xs text-muted-foreground">
-            Dinheiro real na XP · pregão {d?.session_date ?? "—"} · atualiza sozinho a cada 15s
+            Dinheiro real na XP · pregão {d?.session_date ?? "—"} · posição e executor atualizam a cada 5s
             {d?.server_time ? ` · dados de ${hhmmss(d.server_time)}` : ""}
           </p>
         </div>
