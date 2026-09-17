@@ -9,7 +9,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   AlertTriangle, Bell, BellOff, CheckCircle2, CircleSlash, Clock, Hand, KeyRound, LayoutDashboard,
-  Play, RefreshCw, ShieldOff, XOctagon, Radio, GitCompareArrows, TrendingDown,
+  Play, RefreshCw, ShieldOff, Volume2, XOctagon, Radio, GitCompareArrows, TrendingDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
