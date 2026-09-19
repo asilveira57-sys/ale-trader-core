@@ -1154,6 +1154,42 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_executor_heartbeat: {
+        Row: {
+          detalhe: Json
+          env: string
+          hostname: string | null
+          iniciado_em: string
+          instance_id: string
+          pid: number | null
+          ultimo_batimento: string
+          user_id: string | null
+          versao: string | null
+        }
+        Insert: {
+          detalhe?: Json
+          env?: string
+          hostname?: string | null
+          iniciado_em?: string
+          instance_id: string
+          pid?: number | null
+          ultimo_batimento?: string
+          user_id?: string | null
+          versao?: string | null
+        }
+        Update: {
+          detalhe?: Json
+          env?: string
+          hostname?: string | null
+          iniciado_em?: string
+          instance_id?: string
+          pid?: number | null
+          ultimo_batimento?: string
+          user_id?: string | null
+          versao?: string | null
+        }
+        Relationships: []
+      }
       b3_grupo_estado_dia: {
         Row: {
           multiplicador: number
