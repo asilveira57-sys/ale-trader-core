@@ -122,14 +122,29 @@ if (typeof window !== "undefined") {
 
   const maybeReload = (value: unknown) => {
     try {
-      const msg = String((value as any)?.message ?? value ?? "");
+      const msg = String((value as any)?.message ?? value ?? "").trim();
       const isModuleFail =
         /dynamically imported module|Importing a module script failed|Loading chunk|ChunkLoadError|Failed to fetch dynamically|error loading|Unexpected token '<'|MIME type/i.test(msg);
-      if (!isModuleFail) {
-        if (!msg || msg === "undefined") void reloadIfStaleDeploy();
+      if (isModuleFail) {
+        if (canReloadNow()) hardReload();
         return;
       }
-      if (canReloadNow()) hardReload();
+      // Erro sem conteúdo útil: o browser pode entregar "", "undefined" ou
+      // "Uncaught undefined"/"uncaught exception: undefined" (Firefox/Safari).
+      // Antes só as duas primeiras formas acionavam a rede de segurança, então
+      // a tela branca do deploy obsoleto ficava de pé sem nenhum aviso.
+      const isEmptyError = !msg || /^(uncaught (exception: )?)?undefined$/i.test(msg);
+      if (isEmptyError) {
+        void reloadIfStaleDeploy();
+        return;
+      }
+      // Qualquer outro erro que tenha deixado a tela sem conteúdo também precisa
+      // de saída: recarga única com cache-bust ou o aviso clicável.
+      setTimeout(() => {
+        if ((document.body?.innerText ?? "").trim().length > 0) return;
+        if (canReloadNow()) hardReload();
+        else showBlankScreenFallback();
+      }, 600);
     } catch {
       /* nunca derrubar a página por causa da rede de segurança */
     }
