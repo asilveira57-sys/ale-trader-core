@@ -253,7 +253,9 @@ function RootComponent() {
   }, [router, queryClient]);
   return (
     <QueryClientProvider client={queryClient}>
-      <Outlet />
+      <AppErrorBoundary>
+        <Outlet />
+      </AppErrorBoundary>
       <Toaster richColors position="top-right" />
     </QueryClientProvider>
   );
