@@ -3601,8 +3601,8 @@ async function runB3SimulationTickInner(
         // alvo, trailing ou zeragem (todos ativos — não há risco novo), e a
         // medição diária diz quanto o freio pouparia ou custaria.
         //
-        // NO REAL NADA MUDA: o fechamento continua sendo enfileirado no
-        // instante do travamento, uma vez por posição.
+        // NO REAL, o fechamento só é enfileirado quando o freio de pico da
+        // CONTA REAL estiver armado; o estado simulado sozinho nunca fecha real.
         // 16/09/2026: com o freio de pico LIBERADO na tela para este robô, o
         // real também não é fechado — liberar serve justamente para a posição
         // real seguir o simulado. Nada é marcado como espelhado: se a liberação
@@ -3638,7 +3638,7 @@ async function runB3SimulationTickInner(
                 pico_real_brl: picoRealDia.pico_brl,
                 open_mtm_brl: openMtmBrlAtMark,
                 marked_today_brl: markedTodayAtMark,
-                day_peak_profit_brl: peak,
+                pico_simulado_brl: peak,
                 mark_price: markPrice,
                 close_reason: null, simulado: "mantido", real: "fechado",
               } as any,
@@ -3658,7 +3658,7 @@ async function runB3SimulationTickInner(
                 origem_decisao_espelho: "conta_real",
                 pico_real_brl: picoRealDia.pico_brl,
                 realized_today_brl: realizedToday, open_mtm_brl: openMtmBrlAtMark,
-                marked_today_brl: markedTodayAtMark, day_peak_profit_brl: peak,
+                marcado_simulado_brl: markedTodayAtMark, pico_simulado_brl: peak,
                 limit_brl: allowed, mark_price: markPrice,
               } as any,
             });
@@ -3676,9 +3676,8 @@ async function runB3SimulationTickInner(
         // que é. A posição segue até stop, alvo, trailing ou zeragem, como
         // qualquer outra (todos continuam ativos: não há risco novo).
         //
-        // No REAL nada muda: o comando de fechamento continua sendo enfileirado
-        // no travamento, uma vez por ordem. Essa é uma decisão de risco
-        // separada, a ser revista com b3_grupo_sombra_dia em mãos.
+        // No REAL, o fechamento só é enfileirado quando o resultado REAL deste
+        // grupo atinge o nível correspondente. O estado simulado fica em sombra.
         //
         // Desde 15/09/2026 o freio de PICO segue a mesma regra (bloco acima).
         // O disjuntor diário real continua fechando de verdade.
@@ -3708,7 +3707,7 @@ async function runB3SimulationTickInner(
               message: `Freio de grupo ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; posição simulada MANTIDA (sombra) e fechamento enviado ao real (resultado do grupo ${Rgrupo.toFixed(2)} BRL).`,
               diagnostic_payload: {
                 sombra: true,
-                grupo_nivel: grupoNivel, grupo_resultado_brl: Rgrupo, grupo_teto_brl: tetoGrupo,
+                grupo_nivel_simulado: grupoNivel, grupo_teto_brl: tetoGrupo,
                 valor_simulado_brl: Rgrupo,
                 valor_real_brl: realFreiosDia.grupo_resultado_brl,
                 origem_decisao_espelho: "conta_real",
@@ -3727,7 +3726,7 @@ async function runB3SimulationTickInner(
               message: `Freio de grupo nível ${grupoNivel} em ${run.symbol}/${runVariant}: posição ${open.side} MANTIDA no simulado (sombra) e encerrada no real (grupo ${Rgrupo.toFixed(2)} BRL, teto ${tetoGrupo.toFixed(2)} BRL).`,
               technical_data: {
                 order_id: open.id, run_id: runId, mode, symbol: asset.symbol,
-                variant: runVariant, grupo_nivel: grupoNivel, grupo_resultado_brl: Rgrupo,
+                variant: runVariant, grupo_nivel_simulado: grupoNivel,
                 valor_simulado_brl: Rgrupo,
                 valor_real_brl: realFreiosDia.grupo_resultado_brl,
                 origem_decisao_espelho: "conta_real",
@@ -4154,7 +4153,7 @@ async function runB3SimulationTickInner(
           estagio: "freio_grupo_sombra",
           motivo: msg.slice(0, 500),
           detalhe: {
-            sombra: true, grupo_nivel: grupoNivel, grupo_multiplicador: grupoMultiplicador,
+            sombra: true, grupo_nivel_simulado: grupoNivel, grupo_multiplicador_simulado: grupoMultiplicador,
             valor_simulado_brl: Number(grupo?.resultado_brl ?? 0),
             valor_real_brl: realFreiosDia.grupo_resultado_brl,
             origem_decisao_espelho: "conta_real",
@@ -4731,9 +4730,8 @@ async function runB3SimulationTickInner(
                 variant: runVariant, mode,
                 freios_na_sombra: freiosNaSombra,
                 freios_barrando_real: freiosBarrandoReal,
-                grupo_nivel: grupoNivel,
-                grupo_multiplicador: grupoMultiplicador,
-                grupo_resultado_brl: Number(grupo?.resultado_brl ?? 0),
+                grupo_nivel_simulado: grupoNivel,
+                grupo_multiplicador_simulado: grupoMultiplicador,
                 valor_simulado_brl: freiosBarrandoReal.includes("grupo")
                   ? Number(grupo?.resultado_brl ?? 0) : realizedToday,
                 valor_real_brl: freiosBarrandoReal.includes("grupo")
