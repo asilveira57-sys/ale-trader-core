@@ -1,6 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
+- [ ] Separar freios de grupo/stop diário e fechamento por pico: decisões do espelho usam somente resultado da conta real; sombra simulada permanece intacta.
 - [ ] Redução de VOLUME do banco (votos só nas aprovadas, resumo diário do diário de decisões, retenção 48h) — **só depois das 18:00**, exige migração em tabela grande.
 
 
