@@ -3011,6 +3011,53 @@ async function runB3SimulationTickInner(
       .filter((f, i, a) => a.indexOf(f) === i)
       .sort();
 
+    // ── FREIO DE PICO: A CONTA REAL É OUTRA CONTA (21/09/2026) ──
+    // Em 21/09 o real não executou NADA: 2.333 entradas barradas por um pico de
+    // R$ 1.612 marcado a mercado do robô SIMULADO, numa conta real de R$ 944
+    // que nem tinha linha em b3_real_account_peak no dia. O freio de pico da
+    // simulação continua igual (sombra, não bloqueia o simulado); quem barra o
+    // ESPELHO passa a olhar só os números da CONTA REAL: pico do dia em
+    // b3_real_account_peak e o realizado real. Sem pico real registrado no dia
+    // — ou pico abaixo do piso — não há devolução possível e o real NÃO é
+    // barrado pelo pico. Piso e percentual não mudam: muda a FONTE.
+    let picoRealDia: {
+      existe: boolean; pico_brl: number; realizado_brl: number;
+      piso_brl: number; armado: boolean;
+    } = { existe: false, pico_brl: 0, realizado_brl: 0, piso_brl: 0, armado: false };
+    try {
+      const { normalizeConfig } = await import("./b3-real-account-peak.server");
+      const { saoPauloDate } = await import("./b3-real-cockpit.server");
+      const hojeBrt = saoPauloDate(new Date());
+      const [{ data: execCfgRow }, { data: picoRow }] = await Promise.all([
+        supabase.from("b3_real_execution_state")
+          .select("peak_giveback_pct, peak_min_brl").eq("user_id", userId).maybeSingle(),
+        supabase.from("b3_real_account_peak")
+          .select("peak_brl, last_result_brl, armed")
+          .eq("user_id", userId).eq("session_date", hojeBrt).maybeSingle(),
+      ]);
+      const cfgPico = normalizeConfig(execCfgRow);
+      const picoBrl = Number((picoRow as any)?.peak_brl ?? NaN);
+      picoRealDia = {
+        existe: !!picoRow && Number.isFinite(picoBrl),
+        pico_brl: Number.isFinite(picoBrl) ? picoBrl : 0,
+        realizado_brl: Number((picoRow as any)?.last_result_brl ?? 0),
+        piso_brl: cfgPico.peak_min_brl,
+        armado: (picoRow as any)?.armed === true,
+      };
+    } catch {
+      // Falha de leitura não inventa pico: sem número real o pico não barra.
+      picoRealDia = { existe: false, pico_brl: 0, realizado_brl: 0, piso_brl: 0, armado: false };
+    }
+    // O freio de pico da CONTA real continua sendo aplicado em mirrorToReal
+    // (refreshAccountPeak, com os números reais). Aqui só se decide se o freio
+    // de pico do SIMULADO tem o direito de barrar o espelho — e ele não tem.
+    const picoBarraReal = picoRealDia.existe
+      && picoRealDia.pico_brl >= picoRealDia.piso_brl
+      && picoRealDia.pico_brl > 0
+      && picoRealDia.armado;
+
+
+
 
     // Timings por modo + isolamento de falha: um modo que estoura não pode
     // derrubar os modos seguintes nem impedir a gravação do snapshot.
@@ -4068,7 +4115,13 @@ async function runB3SimulationTickInner(
 
       if (freioProtecaoSombra) {
         const motivoProt = protDec.next.protection_block_reason ?? protDec.next.protection_state;
-        const msgProt = `${FREIO_LABEL[freioProtecaoSombra] ?? freioProtecaoSombra} (SOMBRA — entrada liberada no simulado): ${motivoProt} Nenhum comando real será enfileirado.`;
+        // O pico do SIMULADO não barra mais o real: a frase sobre o espelho só
+        // aparece quando o freio realmente vale para a conta real.
+        const picoBarraEsteReal = freioProtecaoSombra !== "pico" || picoBarraReal;
+        const msgProt = `${FREIO_LABEL[freioProtecaoSombra] ?? freioProtecaoSombra} (SOMBRA — entrada liberada no simulado): ${motivoProt}`
+          + (picoBarraEsteReal
+            ? " Nenhum comando real será enfileirado."
+            : " Freio do simulado; a conta real não tem pico registrado no dia — o espelho segue livre.");
         await recordStatusIfChanged(mode, m, `sombra_${freioProtecaoSombra}`, `${protDec.next.protection_state}_sombra`,
           { pnl: realizedToday, message: msgProt });
         log.push({ mode, action: `sombra_${freioProtecaoSombra}`, estado: protDec.next.protection_state });
@@ -4081,11 +4134,22 @@ async function runB3SimulationTickInner(
             sombra: true, freio: freioProtecaoSombra,
             protection_state: protDec.next.protection_state,
             realizado_hoje_brl: realizedToday,
+            // Simulado (marcado a mercado do robô) — nome explícito para não se
+            // confundir nunca mais com o pico da conta real.
+            pico_simulado_brl: Number(protDec.next.day_peak_profit_brl ?? 0),
             pico_do_dia_brl: Number(protDec.next.day_peak_profit_brl ?? 0),
-            espelho_real: "barrado",
+            origem_pico: "robo_simulado",
+            // Conta real: os números que decidem o espelho.
+            pico_real_brl: picoRealDia.existe ? picoRealDia.pico_brl : null,
+            realizado_real_brl: picoRealDia.existe ? picoRealDia.realizado_brl : null,
+            pico_real_registrado: picoRealDia.existe,
+            piso_pico_real_brl: picoRealDia.piso_brl,
+            origem_pico_espelho: "conta_real",
+            espelho_real: picoBarraEsteReal ? "barrado" : "livre",
           },
         });
       }
+
 
       // ── STOP DIÁRIO POR ROBÔ TAMBÉM EM SOMBRA (16/09/2026) ──
       // O stop diário barrava a entrada por um caminho que a sombra não cobria:
@@ -4111,7 +4175,12 @@ async function runB3SimulationTickInner(
       // mudam — a medição da sombra tem que continuar limpa, é ela que dirá se
       // essa vontade de destravar é boa ideia ao longo de semanas. Muda só quem
       // barra o ESPELHO: freio liberado pela tela deixa de barrar.
-      const freiosBarrandoReal = freiosNaSombra.filter((f) => !freioEstaLiberado(mode, f));
+      // 21/09/2026: "pico" só barra o espelho quando a CONTA REAL tem pico do dia
+      // registrado, acima do piso e armado — o pico marcado a mercado do robô
+      // simulado nunca mais barra dinheiro real.
+      const freiosBarrandoReal = freiosNaSombra.filter((f) =>
+        !freioEstaLiberado(mode, f) && (f !== "pico" || picoBarraReal));
+
       const espelhoBarradoPorFreio = freiosBarrandoReal.length > 0;
       const entradaSobLiberacao = entradaEmSombra && !espelhoBarradoPorFreio;
 
