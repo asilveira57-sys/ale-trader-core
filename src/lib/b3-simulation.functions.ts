@@ -3056,6 +3056,79 @@ async function runB3SimulationTickInner(
       && picoRealDia.pico_brl > 0
       && picoRealDia.armado;
 
+    // ── GRUPO E STOP DIÁRIO: O REAL USA SOMENTE A CONTA REAL (21/09/2026) ──
+    // O estado de sombra continua sendo calculado e gravado acima/abaixo com os
+    // números simulados. Para decidir o ESPELHO, reconstruímos o resultado real
+    // por magic. Sem execução/posição real no grupo, o grupo não pode travar.
+    // O stop diário usa o realizado da conta retornado pela mesma leitura do
+    // disjuntor diário real; sem operação encerrada com resultado, não trava.
+    let realFreiosDia: {
+      resultado_conta_realizado_brl: number;
+      stop_tem_atividade_realizada: boolean;
+      grupo_tem_atividade: boolean;
+      grupo_resultado_brl: number;
+      grupo_nivel: number;
+      grupo_travados: string[];
+      resultado_por_modo: Record<string, number>;
+    } = {
+      resultado_conta_realizado_brl: 0,
+      stop_tem_atividade_realizada: false,
+      grupo_tem_atividade: false,
+      grupo_resultado_brl: 0,
+      grupo_nivel: 0,
+      grupo_travados: [],
+      resultado_por_modo: {},
+    };
+    try {
+      const [{ readDailyCircuit }, realDayResult, authResult] = await Promise.all([
+        import("./b3-real-daily-circuit.server"),
+        loadRealDayResult(supabase, userId),
+        supabase.from("b3_prd_authorizations")
+          .select("mode, magic_number")
+          .eq("user_id", userId)
+          .eq("symbol", grupoRoot)
+          .eq("variant", runVariant),
+      ]);
+      const circuitReal = await readDailyCircuit(supabase, userId);
+      const resultadoPorModoReal: Record<string, number> = {};
+      let grupoTemAtividade = false;
+      for (const row of (authResult.data ?? []) as any[]) {
+        const magic = Number(row.magic_number ?? 0);
+        const robotMode = String(row.mode ?? "");
+        if (!robotMode || magic <= 0) continue;
+        resultadoPorModoReal[robotMode] = Number(realDayResult.by_magic.get(magic) ?? 0);
+        if (realDayResult.active_magics.has(magic)) grupoTemAtividade = true;
+      }
+      const grupoResultadoReal = Object.values(resultadoPorModoReal).reduce((sum, value) => sum + value, 0);
+      const grupoRealDecision = grupoLimites && grupoTemAtividade
+        ? decideB3Grupo({
+            limites: grupoLimites,
+            estado: {
+              resultado_brl: 0, pior_do_dia_brl: 0, nivel_atual: 0,
+              multiplicador: 1, ultima_mudanca_ts: null, robos_travados: [],
+            },
+            resultadoPorModo: resultadoPorModoReal,
+            R: grupoResultadoReal,
+            nowIso: new Date().toISOString(),
+          })
+        : null;
+      realFreiosDia = {
+        resultado_conta_realizado_brl: Number(circuitReal.realized_brl ?? 0),
+        stop_tem_atividade_realizada: realDayResult.realized_magics.size > 0,
+        grupo_tem_atividade: grupoTemAtividade,
+        grupo_resultado_brl: grupoResultadoReal,
+        grupo_nivel: grupoRealDecision?.nivel ?? 0,
+        grupo_travados: grupoRealDecision?.robos_travados ?? [],
+        resultado_por_modo: resultadoPorModoReal,
+      };
+    } catch {
+      // Sem números reais comprovados, nenhum número simulado ganha o direito
+      // de barrar ou encerrar posição real por estes freios de resultado.
+    }
+    const grupoBarraReal = (mode: string) => realFreiosDia.grupo_tem_atividade
+      && realFreiosDia.grupo_nivel >= 2
+      && realFreiosDia.grupo_travados.includes(mode);
+
 
 
 
@@ -3528,13 +3601,13 @@ async function runB3SimulationTickInner(
         // alvo, trailing ou zeragem (todos ativos — não há risco novo), e a
         // medição diária diz quanto o freio pouparia ou custaria.
         //
-        // NO REAL NADA MUDA: o fechamento continua sendo enfileirado no
-        // instante do travamento, uma vez por posição.
+        // NO REAL, o fechamento só é enfileirado quando o freio de pico da
+        // CONTA REAL estiver armado; o estado simulado sozinho nunca fecha real.
         // 16/09/2026: com o freio de pico LIBERADO na tela para este robô, o
         // real também não é fechado — liberar serve justamente para a posição
         // real seguir o simulado. Nada é marcado como espelhado: se a liberação
         // for encerrada com a posição ainda aberta, o fechamento sai então.
-        if (protDec.next.protection_state === "blocked_peak_giveback"
+        if (protDec.next.protection_state === "blocked_peak_giveback" && picoBarraReal
             && !picoFreioEspelhado.has(open.id) && !freioEstaLiberado(mode, "pico")) {
           picoFreioEspelhado.add(open.id);
 
@@ -3555,14 +3628,17 @@ async function runB3SimulationTickInner(
               observed_value: givenBack,
               limit_value: allowed,
               pnl_at_moment: markedTodayAtMark,
-              message: `Freio de devolução de pico: devolução ${givenBack.toFixed(2)} BRL / limite ${allowed.toFixed(2)} BRL — posição simulada MANTIDA (sombra) e fechamento enviado ao real.`,
+              message: `Freio de devolução de pico: posição simulada MANTIDA (sombra); posição real encerrada porque o freio da CONTA REAL está armado.`,
               diagnostic_payload: {
                 sombra: true,
                 freio: "pico",
-                realized_today_brl: realizedToday,
+                valor_simulado_brl: markedTodayAtMark,
+                valor_real_brl: picoRealDia.realizado_brl,
+                origem_decisao_espelho: "conta_real",
+                pico_real_brl: picoRealDia.pico_brl,
                 open_mtm_brl: openMtmBrlAtMark,
                 marked_today_brl: markedTodayAtMark,
-                day_peak_profit_brl: peak,
+                pico_simulado_brl: peak,
                 mark_price: markPrice,
                 close_reason: null, simulado: "mantido", real: "fechado",
               } as any,
@@ -3577,8 +3653,12 @@ async function runB3SimulationTickInner(
               technical_data: {
                 order_id: open.id, run_id: runId, mode, symbol: asset.symbol,
                 variant: runVariant,
+                valor_simulado_brl: markedTodayAtMark,
+                valor_real_brl: picoRealDia.realizado_brl,
+                origem_decisao_espelho: "conta_real",
+                pico_real_brl: picoRealDia.pico_brl,
                 realized_today_brl: realizedToday, open_mtm_brl: openMtmBrlAtMark,
-                marked_today_brl: markedTodayAtMark, day_peak_profit_brl: peak,
+                marcado_simulado_brl: markedTodayAtMark, pico_simulado_brl: peak,
                 limit_brl: allowed, mark_price: markPrice,
               } as any,
             });
@@ -3596,15 +3676,15 @@ async function runB3SimulationTickInner(
         // que é. A posição segue até stop, alvo, trailing ou zeragem, como
         // qualquer outra (todos continuam ativos: não há risco novo).
         //
-        // No REAL nada muda: o comando de fechamento continua sendo enfileirado
-        // no travamento, uma vez por ordem. Essa é uma decisão de risco
-        // separada, a ser revista com b3_grupo_sombra_dia em mãos.
+        // No REAL, o fechamento só é enfileirado quando o resultado REAL deste
+        // grupo atinge o nível correspondente. O estado simulado fica em sombra.
         //
         // Desde 15/09/2026 o freio de PICO segue a mesma regra (bloco acima).
         // O disjuntor diário real continua fechando de verdade.
 
         // Freio de grupo liberado na tela (16/09/2026): o real segue aberto.
-        if (grupoNivel >= 2 && grupoTravados.includes(mode) && !grupoFreioEspelhado.has(open.id)
+        if (grupoNivel >= 2 && grupoTravados.includes(mode) && grupoBarraReal(mode)
+            && !grupoFreioEspelhado.has(open.id)
             && !freioEstaLiberado(mode, "grupo")) {
           grupoFreioEspelhado.add(open.id);
           const Rgrupo = Number(grupo?.resultado_brl ?? 0);
@@ -3627,7 +3707,11 @@ async function runB3SimulationTickInner(
               message: `Freio de grupo ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; posição simulada MANTIDA (sombra) e fechamento enviado ao real (resultado do grupo ${Rgrupo.toFixed(2)} BRL).`,
               diagnostic_payload: {
                 sombra: true,
-                grupo_nivel: grupoNivel, grupo_resultado_brl: Rgrupo, grupo_teto_brl: tetoGrupo,
+                grupo_nivel_simulado: grupoNivel, grupo_teto_brl: tetoGrupo,
+                valor_simulado_brl: Rgrupo,
+                valor_real_brl: realFreiosDia.grupo_resultado_brl,
+                origem_decisao_espelho: "conta_real",
+                grupo_nivel_real: realFreiosDia.grupo_nivel,
                 realized_today_brl: realizedToday, open_mtm_brl: openMtmBrlAtMark,
                 marked_today_brl: markedTodayAtMark, mark_price: markPrice,
                 close_reason: null, simulado: "mantido", real: "fechado",
@@ -3642,7 +3726,11 @@ async function runB3SimulationTickInner(
               message: `Freio de grupo nível ${grupoNivel} em ${run.symbol}/${runVariant}: posição ${open.side} MANTIDA no simulado (sombra) e encerrada no real (grupo ${Rgrupo.toFixed(2)} BRL, teto ${tetoGrupo.toFixed(2)} BRL).`,
               technical_data: {
                 order_id: open.id, run_id: runId, mode, symbol: asset.symbol,
-                variant: runVariant, grupo_nivel: grupoNivel, grupo_resultado_brl: Rgrupo,
+                variant: runVariant, grupo_nivel_simulado: grupoNivel,
+                valor_simulado_brl: Rgrupo,
+                valor_real_brl: realFreiosDia.grupo_resultado_brl,
+                origem_decisao_espelho: "conta_real",
+                grupo_nivel_real: realFreiosDia.grupo_nivel,
                 grupo_teto_brl: tetoGrupo, marked_today_brl: markedTodayAtMark,
                 mark_price: markPrice,
               } as any,
@@ -4049,7 +4137,11 @@ async function runB3SimulationTickInner(
       // bloqueando de verdade.
       const sombraFreioGrupo = grupoNivel >= 2 && grupoTravados.includes(mode);
       if (sombraFreioGrupo) {
-        const msg = `Freio de grupo nível ${grupoNivel} (SOMBRA — entrada liberada no simulado) ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; resultado do grupo ${Number(grupo?.resultado_brl ?? 0).toFixed(2)} BRL. Nenhum comando real será enfileirado.`;
+        const grupoBarraEsteReal = grupoBarraReal(mode);
+        const msg = `Freio de grupo nível ${grupoNivel} (SOMBRA — entrada liberada no simulado) ${run.symbol}/${runVariant} — ${textoNivelGrupo(grupoNivel, grupoMultiplicador)}; resultado do grupo simulado ${Number(grupo?.resultado_brl ?? 0).toFixed(2)} BRL.`
+          + (grupoBarraEsteReal
+            ? " Nenhum comando real será enfileirado."
+            : " O grupo real não atingiu este freio — o espelho segue livre.");
         await recordStatusIfChanged(mode, m, "sombra_grupo", `grupo_nivel_${grupoNivel}_sombra`,
           { observed: Number(grupo?.resultado_brl ?? 0), pnl: realizedToday, message: msg });
         log.push({ mode, action: "sombra_grupo", nivel: grupoNivel });
@@ -4061,9 +4153,14 @@ async function runB3SimulationTickInner(
           estagio: "freio_grupo_sombra",
           motivo: msg.slice(0, 500),
           detalhe: {
-            sombra: true, grupo_nivel: grupoNivel, grupo_multiplicador: grupoMultiplicador,
-            grupo_resultado_brl: Number(grupo?.resultado_brl ?? 0),
-            travados: grupoTravados, espelho_real: "barrado",
+            sombra: true, grupo_nivel_simulado: grupoNivel, grupo_multiplicador_simulado: grupoMultiplicador,
+            valor_simulado_brl: Number(grupo?.resultado_brl ?? 0),
+            valor_real_brl: realFreiosDia.grupo_resultado_brl,
+            origem_decisao_espelho: "conta_real",
+            grupo_real_tem_atividade: realFreiosDia.grupo_tem_atividade,
+            grupo_nivel_real: realFreiosDia.grupo_nivel,
+            resultado_real_por_modo: realFreiosDia.resultado_por_modo,
+            travados: grupoTravados, espelho_real: grupoBarraEsteReal ? "barrado" : "livre",
           },
         });
       }
@@ -4117,11 +4214,15 @@ async function runB3SimulationTickInner(
         const motivoProt = protDec.next.protection_block_reason ?? protDec.next.protection_state;
         // O pico do SIMULADO não barra mais o real: a frase sobre o espelho só
         // aparece quando o freio realmente vale para a conta real.
+        const stopDiarioBarraEsteReal = freioProtecaoSombra !== "stop_diario"
+          || (realFreiosDia.stop_tem_atividade_realizada
+            && realFreiosDia.resultado_conta_realizado_brl <= -Number(cfg.daily_loss_limit_brl));
         const picoBarraEsteReal = freioProtecaoSombra !== "pico" || picoBarraReal;
+        const protecaoBarraEsteReal = picoBarraEsteReal && stopDiarioBarraEsteReal;
         const msgProt = `${FREIO_LABEL[freioProtecaoSombra] ?? freioProtecaoSombra} (SOMBRA — entrada liberada no simulado): ${motivoProt}`
-          + (picoBarraEsteReal
+          + (protecaoBarraEsteReal
             ? " Nenhum comando real será enfileirado."
-            : " Freio do simulado; a conta real não tem pico registrado no dia — o espelho segue livre.");
+            : " Freio do simulado; a conta real não atingiu este freio — o espelho segue livre.");
         await recordStatusIfChanged(mode, m, `sombra_${freioProtecaoSombra}`, `${protDec.next.protection_state}_sombra`,
           { pnl: realizedToday, message: msgProt });
         log.push({ mode, action: `sombra_${freioProtecaoSombra}`, estado: protDec.next.protection_state });
@@ -4133,11 +4234,10 @@ async function runB3SimulationTickInner(
           detalhe: {
             sombra: true, freio: freioProtecaoSombra,
             protection_state: protDec.next.protection_state,
-            realizado_hoje_brl: realizedToday,
+            realizado_simulado_brl: realizedToday,
             // Simulado (marcado a mercado do robô) — nome explícito para não se
             // confundir nunca mais com o pico da conta real.
             pico_simulado_brl: Number(protDec.next.day_peak_profit_brl ?? 0),
-            pico_do_dia_brl: Number(protDec.next.day_peak_profit_brl ?? 0),
             origem_pico: "robo_simulado",
             // Conta real: os números que decidem o espelho.
             pico_real_brl: picoRealDia.existe ? picoRealDia.pico_brl : null,
@@ -4145,7 +4245,12 @@ async function runB3SimulationTickInner(
             pico_real_registrado: picoRealDia.existe,
             piso_pico_real_brl: picoRealDia.piso_brl,
             origem_pico_espelho: "conta_real",
-            espelho_real: picoBarraEsteReal ? "barrado" : "livre",
+            valor_simulado_brl: realizedToday,
+            valor_real_brl: realFreiosDia.resultado_conta_realizado_brl,
+            origem_decisao_espelho: "conta_real",
+            stop_real_tem_atividade_realizada: realFreiosDia.stop_tem_atividade_realizada,
+            limite_stop_diario_brl: Number(cfg.daily_loss_limit_brl),
+            espelho_real: protecaoBarraEsteReal ? "barrado" : "livre",
           },
         });
       }
@@ -4161,6 +4266,8 @@ async function runB3SimulationTickInner(
       // de vetar por ele (ver `risk` abaixo). No REAL nada muda: o espelho
       // continua recusando comando para qualquer freio acionado.
       const lossHit = realizedToday <= -Number(cfg.daily_loss_limit_brl);
+      const stopDiarioBarraReal = realFreiosDia.stop_tem_atividade_realizada
+        && realFreiosDia.resultado_conta_realizado_brl <= -Number(cfg.daily_loss_limit_brl);
 
       // Todos os freios que teriam barrado ESTA entrada. Uma entrada pode ser
       // barrada por mais de um ao mesmo tempo — é o que permite julgar um
@@ -4179,7 +4286,10 @@ async function runB3SimulationTickInner(
       // registrado, acima do piso e armado — o pico marcado a mercado do robô
       // simulado nunca mais barra dinheiro real.
       const freiosBarrandoReal = freiosNaSombra.filter((f) =>
-        !freioEstaLiberado(mode, f) && (f !== "pico" || picoBarraReal));
+        !freioEstaLiberado(mode, f)
+        && (f !== "pico" || picoBarraReal)
+        && (f !== "grupo" || grupoBarraReal(mode))
+        && (f !== "stop_diario" || stopDiarioBarraReal));
 
       const espelhoBarradoPorFreio = freiosBarrandoReal.length > 0;
       const entradaSobLiberacao = entradaEmSombra && !espelhoBarradoPorFreio;
@@ -4620,9 +4730,16 @@ async function runB3SimulationTickInner(
                 variant: runVariant, mode,
                 freios_na_sombra: freiosNaSombra,
                 freios_barrando_real: freiosBarrandoReal,
-                grupo_nivel: grupoNivel,
-                grupo_multiplicador: grupoMultiplicador,
-                grupo_resultado_brl: Number(grupo?.resultado_brl ?? 0),
+                grupo_nivel_simulado: grupoNivel,
+                grupo_multiplicador_simulado: grupoMultiplicador,
+                valor_simulado_brl: freiosBarrandoReal.includes("grupo")
+                  ? Number(grupo?.resultado_brl ?? 0) : realizedToday,
+                valor_real_brl: freiosBarrandoReal.includes("grupo")
+                  ? realFreiosDia.grupo_resultado_brl : realFreiosDia.resultado_conta_realizado_brl,
+                origem_decisao_espelho: "conta_real",
+                grupo_nivel_real: realFreiosDia.grupo_nivel,
+                grupo_real_tem_atividade: realFreiosDia.grupo_tem_atividade,
+                stop_real_tem_atividade_realizada: realFreiosDia.stop_tem_atividade_realizada,
                 protection_state: protDec.next.protection_state,
                 simulation_order_id: insertedOrder.id,
                 quantidade_simulada: qty, quantidade_se_freio_valesse: qtySeFreioValesse,
@@ -4644,6 +4761,11 @@ async function runB3SimulationTickInner(
                 freios_barrando_real: freiosBarrandoReal,
                 symbol: asset.quote_symbol, variant: runVariant, mode, side: effectiveSide,
                 run_id: runId, grupo_nivel: grupoNivel, grupo_multiplicador: grupoMultiplicador,
+                valor_simulado_brl: freiosBarrandoReal.includes("grupo")
+                  ? Number(grupo?.resultado_brl ?? 0) : realizedToday,
+                valor_real_brl: freiosBarrandoReal.includes("grupo")
+                  ? realFreiosDia.grupo_resultado_brl : realFreiosDia.resultado_conta_realizado_brl,
+                origem_decisao_espelho: "conta_real",
                 protection_state: protDec.next.protection_state,
                 simulation_order_id: insertedOrder.id,
               } as any,

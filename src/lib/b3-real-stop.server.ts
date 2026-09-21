@@ -171,6 +171,10 @@ export interface RealDayLoss {
   total_brl: number;
   /** por magic number do robô */
   by_magic: Map<number, number>;
+  /** magics com execução preenchida ou posição reportada hoje */
+  active_magics: Set<number>;
+  /** magics com resultado realizado calculável hoje */
+  realized_magics: Set<number>;
 }
 
 /**
@@ -203,22 +207,38 @@ export async function loadRealDayResult(supabase: SupabaseClient, userId: string
   const { trades } = buildRealLedger(commands, profileFor);
 
   const byMagic = new Map<number, number>();
+  const activeMagics = new Set<number>();
+  const realizedMagics = new Set<number>();
   let total = 0;
+  for (const c of commands) {
+    if (c.status !== "filled") continue;
+    const magic = Number(c.magic_number ?? 0);
+    if (magic > 0) activeMagics.add(magic);
+  }
   for (const t of trades) {
     if (t.result_brl == null) continue;
     total += t.result_brl;
     byMagic.set(t.magic_number, (byMagic.get(t.magic_number) ?? 0) + t.result_brl);
+    if (t.magic_number > 0) realizedMagics.add(t.magic_number);
   }
 
   for (const p of ((stateRes.data as any)?.posicoes ?? []) as any[]) {
+    const magic = Number(p?.magic ?? 0);
+    if (magic > 0) activeMagics.add(magic);
     const mtm = Number(p?.resultado ?? 0);
     if (!Number.isFinite(mtm) || mtm === 0) continue;
     total += mtm;
-    const magic = Number(p?.magic ?? 0);
-    if (magic > 0) byMagic.set(magic, (byMagic.get(magic) ?? 0) + mtm);
+    if (magic > 0) {
+      byMagic.set(magic, (byMagic.get(magic) ?? 0) + mtm);
+    }
   }
 
-  return { total_brl: Math.round(total * 100) / 100, by_magic: byMagic };
+  return {
+    total_brl: Math.round(total * 100) / 100,
+    by_magic: byMagic,
+    active_magics: activeMagics,
+    realized_magics: realizedMagics,
+  };
 }
 
 // ───── Piso do freio de pico da CONTA como % do STOP GLOBAL (01/09/2026) ─────
