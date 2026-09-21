@@ -4115,7 +4115,13 @@ async function runB3SimulationTickInner(
 
       if (freioProtecaoSombra) {
         const motivoProt = protDec.next.protection_block_reason ?? protDec.next.protection_state;
-        const msgProt = `${FREIO_LABEL[freioProtecaoSombra] ?? freioProtecaoSombra} (SOMBRA — entrada liberada no simulado): ${motivoProt} Nenhum comando real será enfileirado.`;
+        // O pico do SIMULADO não barra mais o real: a frase sobre o espelho só
+        // aparece quando o freio realmente vale para a conta real.
+        const picoBarraEsteReal = freioProtecaoSombra !== "pico" || picoBarraReal;
+        const msgProt = `${FREIO_LABEL[freioProtecaoSombra] ?? freioProtecaoSombra} (SOMBRA — entrada liberada no simulado): ${motivoProt}`
+          + (picoBarraEsteReal
+            ? " Nenhum comando real será enfileirado."
+            : " Freio do simulado; a conta real não tem pico registrado no dia — o espelho segue livre.");
         await recordStatusIfChanged(mode, m, `sombra_${freioProtecaoSombra}`, `${protDec.next.protection_state}_sombra`,
           { pnl: realizedToday, message: msgProt });
         log.push({ mode, action: `sombra_${freioProtecaoSombra}`, estado: protDec.next.protection_state });
@@ -4128,11 +4134,22 @@ async function runB3SimulationTickInner(
             sombra: true, freio: freioProtecaoSombra,
             protection_state: protDec.next.protection_state,
             realizado_hoje_brl: realizedToday,
+            // Simulado (marcado a mercado do robô) — nome explícito para não se
+            // confundir nunca mais com o pico da conta real.
+            pico_simulado_brl: Number(protDec.next.day_peak_profit_brl ?? 0),
             pico_do_dia_brl: Number(protDec.next.day_peak_profit_brl ?? 0),
-            espelho_real: "barrado",
+            origem_pico: "robo_simulado",
+            // Conta real: os números que decidem o espelho.
+            pico_real_brl: picoRealDia.existe ? picoRealDia.pico_brl : null,
+            realizado_real_brl: picoRealDia.existe ? picoRealDia.realizado_brl : null,
+            pico_real_registrado: picoRealDia.existe,
+            piso_pico_real_brl: picoRealDia.piso_brl,
+            origem_pico_espelho: "conta_real",
+            espelho_real: picoBarraEsteReal ? "barrado" : "livre",
           },
         });
       }
+
 
       // ── STOP DIÁRIO POR ROBÔ TAMBÉM EM SOMBRA (16/09/2026) ──
       // O stop diário barrava a entrada por um caminho que a sombra não cobria:
