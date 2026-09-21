@@ -1,7 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
-- [ ] Apresentação do efeito diário dos freios no Cockpit: valores crus, conta explícita e resumos por robô/modalidade/ativo — somente leitura.
+- [x] Apresentação do efeito diário dos freios no Cockpit: valores crus, conta explícita e resumos por robô/modalidade/ativo — somente leitura.
 - [ ] Redução de VOLUME do banco (votos só nas aprovadas, resumo diário do diário de decisões, retenção 48h) — **só depois das 18:00**, exige migração em tabela grande.
 
 
