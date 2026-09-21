@@ -223,12 +223,12 @@ export async function loadRealDayResult(supabase: SupabaseClient, userId: string
   }
 
   for (const p of ((stateRes.data as any)?.posicoes ?? []) as any[]) {
+    const magic = Number(p?.magic ?? 0);
+    if (magic > 0) activeMagics.add(magic);
     const mtm = Number(p?.resultado ?? 0);
     if (!Number.isFinite(mtm) || mtm === 0) continue;
     total += mtm;
-    const magic = Number(p?.magic ?? 0);
     if (magic > 0) {
-      activeMagics.add(magic);
       byMagic.set(magic, (byMagic.get(magic) ?? 0) + mtm);
     }
   }

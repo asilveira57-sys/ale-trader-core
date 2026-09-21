@@ -3092,14 +3092,12 @@ async function runB3SimulationTickInner(
       const circuitReal = await readDailyCircuit(supabase, userId);
       const resultadoPorModoReal: Record<string, number> = {};
       let grupoTemAtividade = false;
-      let stopTemAtividadeRealizada = false;
       for (const row of (authResult.data ?? []) as any[]) {
         const magic = Number(row.magic_number ?? 0);
         const robotMode = String(row.mode ?? "");
         if (!robotMode || magic <= 0) continue;
         resultadoPorModoReal[robotMode] = Number(realDayResult.by_magic.get(magic) ?? 0);
         if (realDayResult.active_magics.has(magic)) grupoTemAtividade = true;
-        if (realDayResult.realized_magics.has(magic)) stopTemAtividadeRealizada = true;
       }
       const grupoResultadoReal = Object.values(resultadoPorModoReal).reduce((sum, value) => sum + value, 0);
       const grupoRealDecision = grupoLimites && grupoTemAtividade
@@ -3116,7 +3114,7 @@ async function runB3SimulationTickInner(
         : null;
       realFreiosDia = {
         resultado_conta_realizado_brl: Number(circuitReal.realized_brl ?? 0),
-        stop_tem_atividade_realizada: stopTemAtividadeRealizada,
+        stop_tem_atividade_realizada: realDayResult.realized_magics.size > 0,
         grupo_tem_atividade: grupoTemAtividade,
         grupo_resultado_brl: grupoResultadoReal,
         grupo_nivel: grupoRealDecision?.nivel ?? 0,
@@ -4157,7 +4155,6 @@ async function runB3SimulationTickInner(
           motivo: msg.slice(0, 500),
           detalhe: {
             sombra: true, grupo_nivel: grupoNivel, grupo_multiplicador: grupoMultiplicador,
-            grupo_resultado_brl: Number(grupo?.resultado_brl ?? 0),
             valor_simulado_brl: Number(grupo?.resultado_brl ?? 0),
             valor_real_brl: realFreiosDia.grupo_resultado_brl,
             origem_decisao_espelho: "conta_real",
@@ -4238,11 +4235,10 @@ async function runB3SimulationTickInner(
           detalhe: {
             sombra: true, freio: freioProtecaoSombra,
             protection_state: protDec.next.protection_state,
-            realizado_hoje_brl: realizedToday,
+            realizado_simulado_brl: realizedToday,
             // Simulado (marcado a mercado do robô) — nome explícito para não se
             // confundir nunca mais com o pico da conta real.
             pico_simulado_brl: Number(protDec.next.day_peak_profit_brl ?? 0),
-            pico_do_dia_brl: Number(protDec.next.day_peak_profit_brl ?? 0),
             origem_pico: "robo_simulado",
             // Conta real: os números que decidem o espelho.
             pico_real_brl: picoRealDia.existe ? picoRealDia.pico_brl : null,
