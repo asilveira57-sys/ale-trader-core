@@ -895,6 +895,10 @@ function CockpitPage() {
                 </Button>
               </div>
             </div>
+            <EfeitoDia
+              sombra={somarSombrasDia((hdr?.por_modalidade ?? []).map((m: any) => m.sombra))}
+              compacto
+            />
           </div>
 
           {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
@@ -919,19 +923,6 @@ function CockpitPage() {
                     </span>
                   </>
                 )}
-                {/* Medição do freio do GRUPO inteiro: aqui, ao lado de pico e
-                    resultado do dia, o número de grupo faz sentido. */}
-                {sub?.sombra && sub.sombra.ops_livre > 0 && (() => {
-                  const sg = sombraLinhas(sub.sombra);
-                  return (
-                    <span className="font-normal text-muted-foreground">
-                      grupo: operou {sg.operou} · com freio {sg.comFreio} ·{" "}
-                      <span className={sg.tom === "bom" ? "text-emerald-300" : sg.tom === "ruim" ? "text-rose-300" : ""}>
-                        {sg.veredito}
-                      </span>
-                    </span>
-                  );
-                })()}
                 {/* Um freio de GRUPO trava todos os robôs do grupo de uma vez:
                     desfazer de um em um seriam sete cliques para uma decisão só. */}
                 <LiberacaoBloco
@@ -944,6 +935,7 @@ function CockpitPage() {
                 </Button>
 
               </h3>
+              <EfeitoDia sombra={sub?.sombra} compacto grupoNivel={cards[0]?.grupo?.nivel ?? null} />
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
                   mede a largura real disponível — inclusive após recolher o menu
@@ -1126,45 +1118,11 @@ function CockpitPage() {
                             </div>
                           );
                         })()}
-                        {/* Livre × sombra DESTE robô: o que ele operou e o que
-                            teria operado com os freios ligados. Abaixo, uma
-                            linha por freio que efetivamente agiu hoje — sem
-                            atribuição não dá para julgar um freio contra o
-                            outro. Freio que não agiu é omitido. */}
-                        {c.grupo?.sombra && c.grupo.sombra.ops_livre > 0 && (() => {
-                          const sl = sombraLinhas(c.grupo.sombra);
-                          const freios: ReturnType<typeof sombraFreiosQueAgiram> = sombraFreiosQueAgiram(c.grupo.sombra.por_freio);
-                          return (
-                            <div className="text-[10px] space-y-0.5 pt-1 border-t border-border/40">
-                              <div className="flex justify-between gap-2">
-                                <span className="text-muted-foreground">Operou</span>
-                                <span className="font-mono">{sl.operou}</span>
-                              </div>
-                              <div className="flex justify-between gap-2">
-                                <span className="text-muted-foreground">Com freio</span>
-                                <span className="font-mono">{sl.comFreio}</span>
-                              </div>
-                              {freios.length > 0 ? (
-                                freios.map((f) => (
-                                  <div key={f.freio} className="flex justify-between gap-2">
-                                    <span className="text-muted-foreground">{f.rotulo}</span>
-                                    <span className={`font-mono ${
-                                      f.tom === "bom" ? "text-emerald-300" : f.tom === "ruim" ? "text-rose-300" : "text-muted-foreground"
-                                    }`}>
-                                      {f.texto}
-                                    </span>
-                                  </div>
-                                ))
-                              ) : (
-                                <div className={`font-semibold ${
-                                  sl.tom === "bom" ? "text-emerald-300" : sl.tom === "ruim" ? "text-rose-300" : "text-muted-foreground"
-                                }`}>
-                                  {sl.veredito}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
+                        <EfeitoDia
+                          sombra={c.grupo?.sombra}
+                          horarios={Object.fromEntries((c.freios_acionados ?? []).map((f: any) => [f.freio, f.desde]).concat([["grupo", c.grupo?.desde ?? null]]))}
+                          grupoNivel={c.grupo?.nivel ?? null}
+                        />
 
                       </button>
 

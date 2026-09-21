@@ -179,14 +179,18 @@ export const somarSombrasDia = (sombras: Array<SombraDia | null | undefined>): S
   const validas = sombras.filter((s): s is SombraDia => Boolean(s));
   if (!validas.length) return null;
   const por_freio: Record<string, SombraFreio> = {};
-  for (const s of validas) {
-    for (const [freio, f] of Object.entries(s.por_freio ?? {})) {
-      const a = por_freio[freio] ?? { resultado_sombra_brl: 0, ops_sombra: 0, ops_barradas: 0, diferenca_brl: 0 };
-      a.resultado_sombra_brl += Number(f.resultado_sombra_brl ?? 0);
-      a.ops_sombra += Number(f.ops_sombra ?? 0);
-      a.ops_barradas += Number(f.ops_barradas ?? 0);
-      por_freio[freio] = a;
+  const freios = new Set(validas.flatMap((s) => Object.keys(s.por_freio ?? {})));
+  for (const freio of freios) {
+    const a: SombraFreio = { resultado_sombra_brl: 0, ops_sombra: 0, ops_barradas: 0, diferenca_brl: 0 };
+    for (const s of validas) {
+      const f = s.por_freio?.[freio];
+      // Se o freio não acionou neste recorte, todas as entradas dele continuam
+      // no cenário isolado daquele freio ao consolidar modalidade/ativo.
+      a.resultado_sombra_brl += Number(f?.resultado_sombra_brl ?? s.resultado_livre_brl ?? 0);
+      a.ops_sombra += Number(f?.ops_sombra ?? s.ops_livre ?? 0);
+      a.ops_barradas += Number(f?.ops_barradas ?? 0);
     }
+    por_freio[freio] = a;
   }
   const resultado_livre_brl = validas.reduce((n, s) => n + Number(s.resultado_livre_brl ?? 0), 0);
   for (const f of Object.values(por_freio)) f.diferenca_brl = f.resultado_sombra_brl - resultado_livre_brl;
