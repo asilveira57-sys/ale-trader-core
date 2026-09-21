@@ -4175,7 +4175,12 @@ async function runB3SimulationTickInner(
       // mudam — a medição da sombra tem que continuar limpa, é ela que dirá se
       // essa vontade de destravar é boa ideia ao longo de semanas. Muda só quem
       // barra o ESPELHO: freio liberado pela tela deixa de barrar.
-      const freiosBarrandoReal = freiosNaSombra.filter((f) => !freioEstaLiberado(mode, f));
+      // 21/09/2026: "pico" só barra o espelho quando a CONTA REAL tem pico do dia
+      // registrado, acima do piso e armado — o pico marcado a mercado do robô
+      // simulado nunca mais barra dinheiro real.
+      const freiosBarrandoReal = freiosNaSombra.filter((f) =>
+        !freioEstaLiberado(mode, f) && (f !== "pico" || picoBarraReal));
+
       const espelhoBarradoPorFreio = freiosBarrandoReal.length > 0;
       const entradaSobLiberacao = entradaEmSombra && !espelhoBarradoPorFreio;
 
