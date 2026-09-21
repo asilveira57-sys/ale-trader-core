@@ -187,6 +187,7 @@ function NotFoundComponent() {
 }
 
 import { RouteErrorFallback } from "@/components/RouteErrorFallback";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 
 
 
