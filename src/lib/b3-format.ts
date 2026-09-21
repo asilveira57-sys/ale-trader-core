@@ -95,6 +95,7 @@ export interface SombraDia {
   ops_livre: number;
   ops_sombra: number;
   diferenca_brl: number;
+  por_freio?: Record<string, SombraFreio>;
 }
 
 export const sombraLinhas = (s: SombraDia) => {
@@ -134,6 +135,77 @@ export interface SombraFreio {
   ops_barradas: number;
   diferenca_brl: number;
 }
+
+export interface EfeitoFreioDia {
+  freio: string;
+  rotulo: string;
+  no_acionamento_brl: number;
+  fim_do_dia_brl: number;
+  ops_barradas: number;
+  ops_total: number;
+  diferenca_brl: number;
+  tom: "bom" | "ruim" | "neutro";
+}
+
+/** Valores crus da medição diária, sem inferência de estratégia. */
+export const efeitosFreiosDia = (s: SombraDia | null | undefined): EfeitoFreioDia[] => {
+  if (!s) return [];
+  const p = s.por_freio ?? {};
+  const chaves = [
+    ...FREIO_ORDEM.filter((f) => p[f]),
+    ...Object.keys(p).filter((f) => !(FREIO_ORDEM as readonly string[]).includes(f)),
+  ];
+  return chaves.flatMap((freio) => {
+    const f = p[freio];
+    if (!f || Number(f.ops_barradas ?? 0) <= 0) return [];
+    const antes = Number(f.resultado_sombra_brl ?? 0);
+    const fim = Number(s.resultado_livre_brl ?? 0);
+    const diferenca = antes - fim;
+    return [{
+      freio,
+      rotulo: FREIO_LABEL[freio] ?? freio,
+      no_acionamento_brl: antes,
+      fim_do_dia_brl: fim,
+      ops_barradas: Number(f.ops_barradas ?? 0),
+      ops_total: Number(s.ops_livre ?? 0),
+      diferenca_brl: diferenca,
+      tom: Math.round(diferenca * 100) === 0 ? "neutro" : diferenca > 0 ? "bom" : "ruim",
+    } satisfies EfeitoFreioDia];
+  });
+};
+
+/** Soma recortes de robôs/modalidades sem consultar nem gravar nada. */
+export const somarSombrasDia = (sombras: Array<SombraDia | null | undefined>): SombraDia | null => {
+  const validas = sombras.filter((s): s is SombraDia => Boolean(s));
+  if (!validas.length) return null;
+  const por_freio: Record<string, SombraFreio> = {};
+  for (const s of validas) {
+    for (const [freio, f] of Object.entries(s.por_freio ?? {})) {
+      const a = por_freio[freio] ?? { resultado_sombra_brl: 0, ops_sombra: 0, ops_barradas: 0, diferenca_brl: 0 };
+      a.resultado_sombra_brl += Number(f.resultado_sombra_brl ?? 0);
+      a.ops_sombra += Number(f.ops_sombra ?? 0);
+      a.ops_barradas += Number(f.ops_barradas ?? 0);
+      por_freio[freio] = a;
+    }
+  }
+  const resultado_livre_brl = validas.reduce((n, s) => n + Number(s.resultado_livre_brl ?? 0), 0);
+  for (const f of Object.values(por_freio)) f.diferenca_brl = f.resultado_sombra_brl - resultado_livre_brl;
+  const resultado_sombra_brl = validas.reduce((n, s) => n + Number(s.resultado_sombra_brl ?? 0), 0);
+  return {
+    resultado_livre_brl,
+    resultado_sombra_brl,
+    ops_livre: validas.reduce((n, s) => n + Number(s.ops_livre ?? 0), 0),
+    ops_sombra: validas.reduce((n, s) => n + Number(s.ops_sombra ?? 0), 0),
+    diferenca_brl: resultado_sombra_brl - resultado_livre_brl,
+    por_freio,
+  };
+};
+
+export const efeitoVeredito = (diferenca: number) => {
+  const d = Number(diferenca ?? 0);
+  if (Math.round(d * 100) === 0) return "sem diferença no dia";
+  return d > 0 ? `teria poupado ${BRL(Math.abs(d))}` : `teria custado ${BRL(Math.abs(d))}`;
+};
 
 /** Linha de um freio: "pouparia R$ X", "custaria R$ Y" ou "não agiu hoje". */
 export const sombraFreioLinha = (freio: string, s: SombraFreio) => {
