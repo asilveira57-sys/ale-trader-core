@@ -1,7 +1,7 @@
 // Geração do texto de "copiar" do Cockpit. Somente apresentação:
 // nada aqui participa do motor de simulação, nem lê/escreve no banco.
 
-import { decimalsForTick, openSinceText, rootSymbol, sombraLinhas, sombraFreiosQueAgiram, freiosAcionadosTexto, PX } from "./b3-format";
+import { decimalsForTick, efeitosFreiosDia, efeitoVeredito, freiosAcionadosTexto, openSinceText, PX, rootSymbol, somarSombrasDia } from "./b3-format";
 import { modeFullLabel } from "./mode-nick-registry";
 
 const BRL = (v: number | null | undefined) =>
@@ -99,15 +99,18 @@ function robotBlock(c: any): string {
     lines.push("  entradas continuam, marcadas como sombra");
   }
   if (c.grupo?.sombra && Number(c.grupo.sombra.ops_livre) > 0) {
-    const sl = sombraLinhas(c.grupo.sombra);
-    lines.push(`  operou ${sl.operou}`);
-    lines.push(`  com freio ${sl.comFreio}`);
-    // Uma linha por freio que agiu na sombra, na mesma ordem do card.
-    const freios = sombraFreiosQueAgiram(c.grupo.sombra.por_freio);
-    if (freios.length > 0) {
-      for (const f of freios) lines.push(`  ${f.rotulo.toLowerCase()} ${f.texto}`);
-    } else {
-      lines.push(`  ${sl.veredito.toLowerCase()}`);
+    const sombra = c.grupo.sombra;
+    const acionados = new Map((c.freios_acionados ?? []).map((f: any) => [f.freio, f.desde]));
+    lines.push("  EFEITO NO DIA");
+    for (const f of efeitosFreiosDia(sombra)) {
+      const desde = f.freio === "grupo" ? c.grupo?.desde : acionados.get(f.freio);
+      const hora = desde ? new Date(String(desde)).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }) : null;
+      const nivel = f.freio === "grupo" && Number(c.grupo?.nivel ?? 0) > 0 ? ` (nível ${Number(c.grupo.nivel)})` : "";
+      lines.push(`  ${f.rotulo}${hora ? ` — acionou ${hora}` : ""}${nivel}`);
+      lines.push(`    no acionamento  ${SIGNED_BRL(f.no_acionamento_brl)}`);
+      lines.push(`    fim do dia      ${SIGNED_BRL(f.fim_do_dia_brl)}`);
+      lines.push(`    ${efeitoVeredito(f.diferenca_brl)}`);
+      lines.push(`    teria barrado ${f.ops_barradas} de ${f.ops_total} entradas`);
     }
   }
 
@@ -120,6 +123,18 @@ function scoreboardLine(sb: any): string | null {
   return `Placar: saldo do dia ${SIGNED_BRL(sb.saldo_dia_brl)} · exposição ${BRL(sb.exposicao_atual_brl)} · ${sb.robots_posicionados ?? 0} de ${sb.robots_total ?? 0} posicionados`;
 }
 
+function summaryBlock(cards: any[]): string | null {
+  const sombra = somarSombrasDia(cards.map((c) => c.grupo?.sombra));
+  if (!sombra || sombra.ops_livre <= 0) return null;
+  const lines = ["EFEITO NO DIA — RESUMO"];
+  for (const f of efeitosFreiosDia(sombra)) {
+    lines.push(`  ${f.rotulo}: ${SIGNED_BRL(f.no_acionamento_brl)} · ${efeitoVeredito(f.diferenca_brl)} · barraria ${f.ops_barradas} de ${f.ops_total}`);
+  }
+  const todos = sombra.ops_sombra === 0 ? "não teria operado" : SIGNED_BRL(sombra.resultado_sombra_brl);
+  lines.push(`  Todos os freios valendo: ${todos} · ${efeitoVeredito(sombra.diferenca_brl)} · ${sombra.ops_sombra} de ${sombra.ops_livre} entradas`);
+  return lines.join("\n");
+}
+
 export function buildCockpitCopyText(
   cards: any[],
   opts: { scope: string; scoreboard?: any; includeScoreboard?: boolean },
@@ -129,6 +144,10 @@ export function buildCockpitCopyText(
   if (opts.includeScoreboard) {
     const sl = scoreboardLine(opts.scoreboard);
     if (sl) parts.push(sl);
+  }
+  if (cards.length > 1) {
+    const resumo = summaryBlock(cards);
+    if (resumo) parts.push(resumo);
   }
   const body = cards.map(robotBlock).join("\n\n");
   return `${parts.join("\n")}\n\n${body}`.trimEnd();
