@@ -16,7 +16,7 @@ import {
 import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, Unlock, AlertTriangle, Copy } from "lucide-react";
 
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
-import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, efeitosFreiosDia, efeitoVeredito, freiosAcionadosTexto, somarSombrasDia, type SombraDia } from "@/lib/b3-format";
+import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, freiosAcionadosTexto, somarSombrasDia, type SombraDia } from "@/lib/b3-format";
 import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
@@ -152,50 +152,18 @@ const VARIANT_SHORT: Record<string, string> = {
 const roboShort = (r: any) =>
   !r ? "—" : `${VARIANT_SHORT[r.variant] ?? r.variant} ${String(r.mode).replace("_", "-")} ${SIGNED_HDR(r.brl)}`;
 
-const horaFreio = (iso: string | null | undefined) => iso
-  ? new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })
-  : null;
-
-function EfeitoDia({ sombra, compacto = false, horarios, grupoNivel }: {
+function EfeitoDia({ sombra, compacto = false }: {
   sombra: SombraDia | null | undefined;
   compacto?: boolean;
-  horarios?: Record<string, string | null | undefined>;
-  grupoNivel?: number | null;
 }) {
-  if (!sombra || Number(sombra.ops_livre ?? 0) <= 0) return null;
-  const freios = efeitosFreiosDia(sombra);
-  if (!freios.length && Number(sombra.ops_sombra ?? 0) === Number(sombra.ops_livre ?? 0)) return null;
-  const tom = (d: number) => d > 0 ? "text-emerald-300" : d < 0 ? "text-rose-300" : "text-muted-foreground";
+  const comFreio = Number(sombra?.resultado_sombra_brl ?? 0);
+  const semFreio = Number(sombra?.resultado_livre_brl ?? 0);
   return (
     <div className={`border-t border-border/40 ${compacto ? "mt-2 pt-2" : "pt-1"}`}>
       <p className="mb-1 text-[9px] font-semibold uppercase text-muted-foreground">Efeito no dia</p>
-      <div className={compacto ? "grid gap-2 lg:grid-cols-2 2xl:grid-cols-3" : "space-y-2"}>
-        {freios.map((f) => {
-          const hora = horaFreio(horarios?.[f.freio]);
-          const nivel = f.freio === "grupo" && Number(grupoNivel ?? 0) > 0 ? ` (nível ${grupoNivel})` : "";
-          return (
-            <div key={f.freio} className="min-w-0 text-[10px]">
-              <p className="font-semibold">{f.rotulo}{hora ? ` — acionou ${hora}` : ""}{nivel}</p>
-              <div className="grid grid-cols-[auto_1fr] gap-x-2">
-                <span className="text-muted-foreground">no acionamento</span><span className="text-right font-mono">{SIGNED_HDR(f.no_acionamento_brl)}</span>
-                <span className="text-muted-foreground">fim do dia</span><span className="text-right font-mono">{SIGNED_HDR(f.fim_do_dia_brl)}</span>
-                <span className={tom(f.diferenca_brl)}>{f.diferenca_brl > 0 ? "teria poupado" : f.diferenca_brl < 0 ? "teria custado" : "diferença"}</span>
-                <span className={`text-right font-mono ${tom(f.diferenca_brl)}`}>{Math.round(f.diferenca_brl * 100) === 0 ? "—" : BRL(Math.abs(f.diferenca_brl))}</span>
-                <span className="col-span-2 text-muted-foreground">teria barrado {f.ops_barradas} de {f.ops_total} entradas</span>
-              </div>
-            </div>
-          );
-        })}
-        {compacto && (
-          <div className="min-w-0 text-[10px]">
-            <p className="font-semibold">Todos os freios valendo</p>
-            <p className={`font-mono ${sombra.ops_sombra === 0 ? "text-amber-300" : moneyColor(sombra.resultado_sombra_brl)}`}>
-              {sombra.ops_sombra === 0 ? "não teria operado" : SIGNED_HDR(sombra.resultado_sombra_brl)}
-            </p>
-            <p className={tom(sombra.diferenca_brl)}>{efeitoVeredito(sombra.diferenca_brl)}</p>
-            <p className="text-muted-foreground">{sombra.ops_sombra} de {sombra.ops_livre} entradas</p>
-          </div>
-        )}
+      <div className="grid grid-cols-[auto_1fr] gap-x-2 text-[10px]">
+        <span className="text-muted-foreground">Com freio</span><span className={`text-right font-mono ${moneyColor(comFreio)}`}>{BRL(comFreio)}</span>
+        <span className="text-muted-foreground">Sem freio</span><span className={`text-right font-mono ${moneyColor(semFreio)}`}>{BRL(semFreio)}</span>
       </div>
     </div>
   );
@@ -935,7 +903,7 @@ function CockpitPage() {
                 </Button>
 
               </h3>
-              <EfeitoDia sombra={sub?.sombra} compacto grupoNivel={cards[0]?.grupo?.nivel ?? null} />
+              <EfeitoDia sombra={sub?.sombra} compacto />
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
                   mede a largura real disponível — inclusive após recolher o menu
@@ -1120,8 +1088,6 @@ function CockpitPage() {
                         })()}
                         <EfeitoDia
                           sombra={c.grupo?.sombra}
-                          horarios={Object.fromEntries((c.freios_acionados ?? []).map((f: any) => [f.freio, f.desde]).concat([["grupo", c.grupo?.desde ?? null]]))}
-                          grupoNivel={c.grupo?.nivel ?? null}
                         />
 
                       </button>
@@ -1271,24 +1237,45 @@ function CockpitPage() {
 
 // ── Placar digital do dia: poucos números grandes, o resto em linha secundária.
 // Somente leitura; nada aqui altera o motor de simulação.
-const SIGNED = (v: number) => `${v > 0 ? "+" : ""}${BRL(v)}`;
 const pnlColorOf = (v: number) => (v >= 0 ? "text-emerald-400" : "text-rose-400");
 
-function RobotLine({ label, robot }: { label: string; robot: any }) {
-  if (!robot) return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-xs text-muted-foreground">—</p>
-    </div>
-  );
+function PairedMoney({ label, comFreio, semFreio, large = false }: {
+  label: string; comFreio: number; semFreio: number; large?: boolean;
+}) {
+  const comFreioExibido = Math.round(comFreio);
+  const semFreioExibido = Math.round(semFreio);
   return (
     <div>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-xs">
-        <span className="font-medium">{rootSymbol(robot.symbol)}</span>
-        <span className="text-muted-foreground"> · {variantLabel(robot.variant).toLowerCase()} · {robot.mode} </span>
-        <span className={`font-mono ${pnlColorOf(Number(robot.brl))}`}>{SIGNED(Number(robot.brl))}</span>
-      </p>
+      <div className={`grid grid-cols-[auto_1fr] gap-x-3 ${large ? "text-lg sm:text-xl" : "text-xs"}`}>
+        <span className="text-muted-foreground">Com freio</span>
+        <span className={`text-right font-mono font-semibold ${pnlColorOf(comFreioExibido)}`}>{BRL(comFreioExibido)}</span>
+        <span className="text-muted-foreground">Sem freio</span>
+        <span className={`text-right font-mono font-semibold ${pnlColorOf(semFreioExibido)}`}>{BRL(semFreioExibido)}</span>
+      </div>
+    </div>
+  );
+}
+
+function RobotValue({ robot }: { robot: any }) {
+  if (!robot) return <span className="font-mono">R$ 0,00</span>;
+  return (
+    <span className="min-w-0">
+      <span className="font-medium">{rootSymbol(robot.symbol)}</span>
+      <span className="text-muted-foreground"> · {variantLabel(robot.variant).toLowerCase()} · {robot.mode} </span>
+      <span className={`font-mono ${pnlColorOf(Number(robot.brl))}`}>{BRL(Number(robot.brl))}</span>
+    </span>
+  );
+}
+
+function RobotPair({ label, comFreio, semFreio }: { label: string; comFreio: any; semFreio: any }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 text-xs">
+        <span className="text-muted-foreground">Com freio</span><RobotValue robot={comFreio} />
+        <span className="text-muted-foreground">Sem freio</span><RobotValue robot={semFreio} />
+      </div>
     </div>
   );
 }
@@ -1307,12 +1294,6 @@ function Scoreboard({ filterArgs, filterKey }: {
   const d: any = q.data;
   if (!d) return <section className="rounded-lg border border-border/60 bg-card p-4 text-sm text-muted-foreground">Carregando placar do dia...</section>;
 
-  const capital = Number(d.capital_disponivel_brl ?? 0);
-  const exposicao = Number(d.exposicao_atual_brl ?? 0);
-  const pico = Number(d.pico_exposicao_brl ?? 0);
-  const overNow = capital > 0 && exposicao > capital;
-  const overPeak = capital > 0 && pico > capital;
-
   const stopsPendentes = Number(d.stops_pendentes ?? 0);
   const quotes: any[] = d.quotes_health ?? [];
   const guardLimit = Number(d.quote_guard_limit_s ?? 45);
@@ -1329,64 +1310,24 @@ function Scoreboard({ filterArgs, filterKey }: {
 
       {/* Linha 1 — números em corpo muito grande */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div>
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Saldo do dia</p>
-          <p className={`font-mono font-bold text-3xl sm:text-4xl leading-tight ${pnlColorOf(Number(d.saldo_dia_brl))}`}>
-            {SIGNED(Number(d.saldo_dia_brl))}
-          </p>
-        </div>
-        <div>
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Se fechasse agora</p>
-          <p className={`font-mono font-bold text-3xl sm:text-4xl leading-tight ${pnlColorOf(Number(d.se_fechasse_agora_brl))}`}>
-            {SIGNED(Number(d.se_fechasse_agora_brl))}
-          </p>
-        </div>
-        <div>
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Exposição atual</p>
-          <p className={`font-mono font-bold text-3xl sm:text-4xl leading-tight ${overNow ? "text-rose-400" : ""}`}>
-            {BRL(exposicao)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {d.robots_posicionados} de {d.robots_total} posicionados
-          </p>
-          {overNow && (
-            <p className="text-[11px] text-rose-400">exposição acima do capital disponível</p>
-          )}
-        </div>
+        <PairedMoney label="Saldo do dia" comFreio={Number(d.saldo_dia_com_freio_brl)} semFreio={Number(d.saldo_dia_brl)} large />
+        <PairedMoney label="Se fechasse agora" comFreio={Number(d.se_fechasse_agora_com_freio_brl)} semFreio={Number(d.se_fechasse_agora_brl)} large />
+        <PairedMoney label="Exposição atual" comFreio={Number(d.exposicao_atual_com_freio_brl)} semFreio={Number(d.exposicao_atual_brl)} large />
       </div>
 
       {/* Linha 2 — corpo médio */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border/40 pt-3">
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Lucro bruto do dia</p>
-          <p className="font-mono text-lg text-emerald-400">{BRL(Number(d.lucro_bruto_brl))}</p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Prejuízo bruto do dia</p>
-          <p className="font-mono text-lg text-rose-400">{BRL(Number(d.prejuizo_bruto_brl))}</p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Aberto positivo</p>
-          <p className="font-mono text-lg text-emerald-400">{BRL(Number(d.aberto_positivo_brl))}</p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Aberto negativo</p>
-          <p className="font-mono text-lg text-rose-400">{BRL(Number(d.aberto_negativo_brl))}</p>
-        </div>
+        <PairedMoney label="Lucro bruto do dia" comFreio={Number(d.lucro_bruto_com_freio_brl)} semFreio={Number(d.lucro_bruto_brl)} />
+        <PairedMoney label="Prejuízo bruto do dia" comFreio={Number(d.prejuizo_bruto_com_freio_brl)} semFreio={Number(d.prejuizo_bruto_brl)} />
+        <PairedMoney label="Aberto positivo" comFreio={Number(d.aberto_positivo_com_freio_brl)} semFreio={Number(d.aberto_positivo_brl)} />
+        <PairedMoney label="Aberto negativo" comFreio={Number(d.aberto_negativo_com_freio_brl)} semFreio={Number(d.aberto_negativo_brl)} />
       </div>
 
       {/* Linha 3 — corpo pequeno */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-border/40 pt-3">
-        <RobotLine label="Melhor robô do dia" robot={d.melhor_robo} />
-        <RobotLine label="Pior robô do dia" robot={d.pior_robo} />
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Pico de exposição do dia</p>
-          <p className={`text-xs font-mono ${overPeak ? "text-rose-400" : ""}`}>
-            {BRL(pico)}{d.pico_exposicao_hora ? ` às ${d.pico_exposicao_hora}` : ""}
-            <span className="text-muted-foreground font-sans"> · máx. {d.pico_posicoes} posições</span>
-          </p>
-          {overPeak && <p className="text-[11px] text-rose-400">exposição acima do capital disponível</p>}
-        </div>
+        <RobotPair label="Melhor robô do dia" comFreio={d.melhor_robo_com_freio} semFreio={d.melhor_robo} />
+        <RobotPair label="Pior robô do dia" comFreio={d.pior_robo_com_freio} semFreio={d.pior_robo} />
+        <PairedMoney label="Pico de exposição do dia" comFreio={Number(d.pico_exposicao_com_freio_brl)} semFreio={Number(d.pico_exposicao_brl)} />
       </div>
 
       {/* Saúde da cotação — idade do último tick por ativo */}

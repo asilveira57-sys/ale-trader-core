@@ -5,6 +5,7 @@
 
 
 ## Concluído
+- [x] Testeira e comparativos de freio (22/09): todos os resultados passaram a mostrar os pares “Com freio” e “Sem freio”, sem linguagem de diferença — somente apresentação.
 - [x] Exportação noturna (22/09): CSV de bloqueios agregados, dossiê de ordens + votos e decisões agregadas gravados no arquivo `b3-arquivo` (AAAA/MM), montados dentro do banco, disparados por cron 18:30–18:50 e registrados em `system_logs`. Retenção saiu do fim da curadoria e virou cron próprio às 19:00. Backfill rodado à mão: 16 a 22/09 salvos, incluindo 17 e 18/09.
 - [x] Apresentação do efeito diário dos freios no Cockpit: valores crus, conta explícita e resumos por robô/modalidade/ativo — somente leitura.
 - [x] Freios de grupo/stop diário e fechamento por pico separados por conta (21/09): decisões do espelho usam somente resultados reais; sem atividade real não bloqueiam; sombra simulada permanece intacta e logs identificam a origem.
