@@ -6415,11 +6415,17 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     for (const r of runList) runById[r.id] = r;
 
     // Mesmo recorte que os cards: fechadas hoje pela saída + todas as abertas.
-    const [{ data: closedOrders }, { data: openOrders }, { data: snaps }] = await Promise.all([
+    // A API entrega no máximo 1.000 linhas por página; o pregão de 22/09 teve
+    // 1.171 fechamentos. Buscar páginas explícitas evita cortar a testeira.
+    const [{ data: closedOrders0 }, { data: closedOrders1 }, { data: openOrders }, { data: snaps }] = await Promise.all([
       (supabase as any).from("b3_simulation_orders")
         .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at, freios_na_sombra")
         .eq("user_id", userId).in("simulation_run_id", runIds).eq("status", "closed")
-        .gte("exit_time", dayStartUtc),
+        .gte("exit_time", dayStartUtc).order("exit_time", { ascending: true }).range(0, 999),
+      (supabase as any).from("b3_simulation_orders")
+        .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at, freios_na_sombra")
+        .eq("user_id", userId).in("simulation_run_id", runIds).eq("status", "closed")
+        .gte("exit_time", dayStartUtc).order("exit_time", { ascending: true }).range(1000, 1999),
       (supabase as any).from("b3_simulation_orders")
         .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at, freios_na_sombra")
         .eq("user_id", userId).in("simulation_run_id", runIds).eq("status", "open"),
@@ -6428,7 +6434,7 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
         .eq("user_id", userId).in("simulation_run_id", runIds)
         .order("market_time", { ascending: false }).limit(400),
     ]);
-    const orders: any[] = [...(closedOrders ?? []), ...(openOrders ?? [])];
+    const orders: any[] = [...(closedOrders0 ?? []), ...(closedOrders1 ?? []), ...(openOrders ?? [])];
 
     const priceByRun: Record<string, number> = {};
     for (const s of snaps ?? []) {
