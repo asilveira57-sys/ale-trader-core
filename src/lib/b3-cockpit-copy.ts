@@ -1,7 +1,7 @@
 // Geração do texto de "copiar" do Cockpit. Somente apresentação:
 // nada aqui participa do motor de simulação, nem lê/escreve no banco.
 
-import { decimalsForTick, efeitosFreiosDia, freiosAcionadosTexto, openSinceText, PX, rootSymbol, somarSombrasDia } from "./b3-format";
+import { decimalsForTick, freiosAcionadosTexto, openSinceText, PX, rootSymbol, somarSombrasDia } from "./b3-format";
 import { modeFullLabel } from "./mode-nick-registry";
 
 const BRL = (v: number | null | undefined) =>
@@ -100,16 +100,9 @@ function robotBlock(c: any): string {
   }
   if (c.grupo?.sombra && Number(c.grupo.sombra.ops_livre) > 0) {
     const sombra = c.grupo.sombra;
-    const acionados = new Map((c.freios_acionados ?? []).map((f: any) => [f.freio, f.desde]));
     lines.push("  EFEITO NO DIA");
-    for (const f of efeitosFreiosDia(sombra)) {
-      const desde = f.freio === "grupo" ? c.grupo?.desde : acionados.get(f.freio);
-      const hora = desde ? new Date(String(desde)).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }) : null;
-      const nivel = f.freio === "grupo" && Number(c.grupo?.nivel ?? 0) > 0 ? ` (nível ${Number(c.grupo.nivel)})` : "";
-      lines.push(`  ${f.rotulo}${hora ? ` — acionou ${hora}` : ""}${nivel}`);
-      lines.push(`    Com freio  ${BRL(f.no_acionamento_brl)}`);
-      lines.push(`    Sem freio  ${BRL(f.fim_do_dia_brl)}`);
-    }
+    lines.push(`    Com freio  ${BRL(sombra.resultado_sombra_brl)}`);
+    lines.push(`    Sem freio  ${BRL(sombra.resultado_livre_brl)}`);
   }
 
 
@@ -125,14 +118,8 @@ function summaryBlock(cards: any[]): string | null {
   const sombra = somarSombrasDia(cards.map((c) => c.grupo?.sombra));
   if (!sombra || sombra.ops_livre <= 0) return null;
   const lines = ["EFEITO NO DIA — RESUMO"];
-  for (const f of efeitosFreiosDia(sombra)) {
-    lines.push(`  ${f.rotulo}`);
-    lines.push(`    Com freio  ${BRL(f.no_acionamento_brl)}`);
-    lines.push(`    Sem freio  ${BRL(f.fim_do_dia_brl)}`);
-  }
-  lines.push("  Todos os freios valendo");
-  lines.push(`    Com freio  ${BRL(sombra.resultado_sombra_brl)}`);
-  lines.push(`    Sem freio  ${BRL(sombra.resultado_livre_brl)}`);
+  lines.push(`  Com freio  ${BRL(sombra.resultado_sombra_brl)}`);
+  lines.push(`  Sem freio  ${BRL(sombra.resultado_livre_brl)}`);
   return lines.join("\n");
 }
 

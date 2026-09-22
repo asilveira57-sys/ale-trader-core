@@ -16,7 +16,7 @@ import {
 import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, Unlock, AlertTriangle, Copy } from "lucide-react";
 
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
-import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, efeitosFreiosDia, freiosAcionadosTexto, somarSombrasDia, type SombraDia } from "@/lib/b3-format";
+import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, freiosAcionadosTexto, somarSombrasDia, type SombraDia } from "@/lib/b3-format";
 import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
@@ -162,35 +162,14 @@ function EfeitoDia({ sombra, compacto = false, horarios, grupoNivel }: {
   horarios?: Record<string, string | null | undefined>;
   grupoNivel?: number | null;
 }) {
-  if (!sombra || Number(sombra.ops_livre ?? 0) <= 0) return null;
-  const freios = efeitosFreiosDia(sombra);
-  if (!freios.length && Number(sombra.ops_sombra ?? 0) === Number(sombra.ops_livre ?? 0)) return null;
+  const comFreio = Number(sombra?.resultado_sombra_brl ?? 0);
+  const semFreio = Number(sombra?.resultado_livre_brl ?? 0);
   return (
     <div className={`border-t border-border/40 ${compacto ? "mt-2 pt-2" : "pt-1"}`}>
       <p className="mb-1 text-[9px] font-semibold uppercase text-muted-foreground">Efeito no dia</p>
-      <div className={compacto ? "grid gap-2 lg:grid-cols-2 2xl:grid-cols-3" : "space-y-2"}>
-        {freios.map((f) => {
-          const hora = horaFreio(horarios?.[f.freio]);
-          const nivel = f.freio === "grupo" && Number(grupoNivel ?? 0) > 0 ? ` (nível ${grupoNivel})` : "";
-          return (
-            <div key={f.freio} className="min-w-0 text-[10px]">
-              <p className="font-semibold">{f.rotulo}{hora ? ` — acionou ${hora}` : ""}{nivel}</p>
-              <div className="grid grid-cols-[auto_1fr] gap-x-2">
-                <span className="text-muted-foreground">Com freio</span><span className={`text-right font-mono ${moneyColor(f.no_acionamento_brl)}`}>{BRL(f.no_acionamento_brl)}</span>
-                <span className="text-muted-foreground">Sem freio</span><span className={`text-right font-mono ${moneyColor(f.fim_do_dia_brl)}`}>{BRL(f.fim_do_dia_brl)}</span>
-              </div>
-            </div>
-          );
-        })}
-        {compacto && (
-          <div className="min-w-0 text-[10px]">
-            <p className="font-semibold">Todos os freios valendo</p>
-            <div className="grid grid-cols-[auto_1fr] gap-x-2">
-              <span className="text-muted-foreground">Com freio</span><span className={`text-right font-mono ${moneyColor(sombra.resultado_sombra_brl)}`}>{BRL(sombra.resultado_sombra_brl)}</span>
-              <span className="text-muted-foreground">Sem freio</span><span className={`text-right font-mono ${moneyColor(sombra.resultado_livre_brl)}`}>{BRL(sombra.resultado_livre_brl)}</span>
-            </div>
-          </div>
-        )}
+      <div className="grid grid-cols-[auto_1fr] gap-x-2 text-[10px]">
+        <span className="text-muted-foreground">Com freio</span><span className={`text-right font-mono ${moneyColor(comFreio)}`}>{BRL(comFreio)}</span>
+        <span className="text-muted-foreground">Sem freio</span><span className={`text-right font-mono ${moneyColor(semFreio)}`}>{BRL(semFreio)}</span>
       </div>
     </div>
   );
