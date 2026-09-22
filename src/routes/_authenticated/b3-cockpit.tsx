@@ -16,7 +16,7 @@ import {
 import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, Unlock, AlertTriangle, Copy } from "lucide-react";
 
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
-import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, efeitosFreiosDia, efeitoVeredito, freiosAcionadosTexto, somarSombrasDia, type SombraDia } from "@/lib/b3-format";
+import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, efeitosFreiosDia, freiosAcionadosTexto, somarSombrasDia, type SombraDia } from "@/lib/b3-format";
 import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
@@ -165,7 +165,6 @@ function EfeitoDia({ sombra, compacto = false, horarios, grupoNivel }: {
   if (!sombra || Number(sombra.ops_livre ?? 0) <= 0) return null;
   const freios = efeitosFreiosDia(sombra);
   if (!freios.length && Number(sombra.ops_sombra ?? 0) === Number(sombra.ops_livre ?? 0)) return null;
-  const tom = (d: number) => d > 0 ? "text-emerald-300" : d < 0 ? "text-rose-300" : "text-muted-foreground";
   return (
     <div className={`border-t border-border/40 ${compacto ? "mt-2 pt-2" : "pt-1"}`}>
       <p className="mb-1 text-[9px] font-semibold uppercase text-muted-foreground">Efeito no dia</p>
@@ -177,11 +176,8 @@ function EfeitoDia({ sombra, compacto = false, horarios, grupoNivel }: {
             <div key={f.freio} className="min-w-0 text-[10px]">
               <p className="font-semibold">{f.rotulo}{hora ? ` — acionou ${hora}` : ""}{nivel}</p>
               <div className="grid grid-cols-[auto_1fr] gap-x-2">
-                <span className="text-muted-foreground">no acionamento</span><span className="text-right font-mono">{SIGNED_HDR(f.no_acionamento_brl)}</span>
-                <span className="text-muted-foreground">fim do dia</span><span className="text-right font-mono">{SIGNED_HDR(f.fim_do_dia_brl)}</span>
-                <span className={tom(f.diferenca_brl)}>{f.diferenca_brl > 0 ? "teria poupado" : f.diferenca_brl < 0 ? "teria custado" : "diferença"}</span>
-                <span className={`text-right font-mono ${tom(f.diferenca_brl)}`}>{Math.round(f.diferenca_brl * 100) === 0 ? "—" : BRL(Math.abs(f.diferenca_brl))}</span>
-                <span className="col-span-2 text-muted-foreground">teria barrado {f.ops_barradas} de {f.ops_total} entradas</span>
+                <span className="text-muted-foreground">Com freio</span><span className={`text-right font-mono ${moneyColor(f.no_acionamento_brl)}`}>{BRL(f.no_acionamento_brl)}</span>
+                <span className="text-muted-foreground">Sem freio</span><span className={`text-right font-mono ${moneyColor(f.fim_do_dia_brl)}`}>{BRL(f.fim_do_dia_brl)}</span>
               </div>
             </div>
           );
@@ -189,11 +185,10 @@ function EfeitoDia({ sombra, compacto = false, horarios, grupoNivel }: {
         {compacto && (
           <div className="min-w-0 text-[10px]">
             <p className="font-semibold">Todos os freios valendo</p>
-            <p className={`font-mono ${sombra.ops_sombra === 0 ? "text-amber-300" : moneyColor(sombra.resultado_sombra_brl)}`}>
-              {sombra.ops_sombra === 0 ? "não teria operado" : SIGNED_HDR(sombra.resultado_sombra_brl)}
-            </p>
-            <p className={tom(sombra.diferenca_brl)}>{efeitoVeredito(sombra.diferenca_brl)}</p>
-            <p className="text-muted-foreground">{sombra.ops_sombra} de {sombra.ops_livre} entradas</p>
+            <div className="grid grid-cols-[auto_1fr] gap-x-2">
+              <span className="text-muted-foreground">Com freio</span><span className={`text-right font-mono ${moneyColor(sombra.resultado_sombra_brl)}`}>{BRL(sombra.resultado_sombra_brl)}</span>
+              <span className="text-muted-foreground">Sem freio</span><span className={`text-right font-mono ${moneyColor(sombra.resultado_livre_brl)}`}>{BRL(sombra.resultado_livre_brl)}</span>
+            </div>
           </div>
         )}
       </div>

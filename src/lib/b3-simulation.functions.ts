@@ -6388,11 +6388,18 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
       session_date: sessionDate,
       filtro_ativo: f.active,
       capital_disponivel_brl: capitalDisponivelBrl,
-      saldo_dia_brl: 0, se_fechasse_agora_brl: 0,
-      exposicao_atual_brl: 0, robots_posicionados: 0, robots_total: runList.length * modesVisiveis.length,
-      lucro_bruto_brl: 0, prejuizo_bruto_brl: 0, aberto_positivo_brl: 0, aberto_negativo_brl: 0,
-      melhor_robo: null as any, pior_robo: null as any,
-      pico_exposicao_brl: 0, pico_exposicao_hora: null as string | null, pico_posicoes: 0,
+      saldo_dia_brl: 0, saldo_dia_com_freio_brl: 0,
+      se_fechasse_agora_brl: 0, se_fechasse_agora_com_freio_brl: 0,
+      exposicao_atual_brl: 0, exposicao_atual_com_freio_brl: 0,
+      robots_posicionados: 0, robots_total: runList.length * modesVisiveis.length,
+      lucro_bruto_brl: 0, lucro_bruto_com_freio_brl: 0,
+      prejuizo_bruto_brl: 0, prejuizo_bruto_com_freio_brl: 0,
+      aberto_positivo_brl: 0, aberto_positivo_com_freio_brl: 0,
+      aberto_negativo_brl: 0, aberto_negativo_com_freio_brl: 0,
+      melhor_robo: null as any, melhor_robo_com_freio: null as any,
+      pior_robo: null as any, pior_robo_com_freio: null as any,
+      pico_exposicao_brl: 0, pico_exposicao_com_freio_brl: 0,
+      pico_exposicao_hora: null as string | null, pico_posicoes: 0,
       stops_pendentes: 0,
       quotes_health: [] as { symbol: string; age_s: number | null; stale: boolean }[],
       quote_guard_limit_s: 45,
@@ -6410,7 +6417,7 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     // Ordens do dia (abertas + fechadas hoje) e último preço por run.
     const [{ data: orders }, { data: snaps }] = await Promise.all([
       (supabase as any).from("b3_simulation_orders")
-        .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at")
+        .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at, freios_na_sombra")
         .eq("user_id", userId).in("simulation_run_id", runIds).in("status", ["open", "closed"])
         .gte("entry_time", dayStartUtc),
       (supabase as any).from("b3_simulation_market_snapshots")
@@ -6428,9 +6435,13 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
 
     const nowMs = Date.now();
     let saldoDia = 0, lucroBruto = 0, prejuizoBruto = 0;
+    let saldoDiaComFreio = 0, lucroBrutoComFreio = 0, prejuizoBrutoComFreio = 0;
     let abertoPos = 0, abertoNeg = 0, exposicaoAtual = 0, posicionados = 0;
+    let abertoPosComFreio = 0, abertoNegComFreio = 0, exposicaoAtualComFreio = 0;
     const byRobot = new Map<string, { symbol: string; variant: string; mode: string; brl: number }>();
+    const byRobotComFreio = new Map<string, { symbol: string; variant: string; mode: string; brl: number }>();
     const events: { t: number; dm: number; dq: number }[] = [];
+    const eventsComFreio: { t: number; dm: number; dq: number }[] = [];
 
     for (const o of orders ?? []) {
       const run = runById[o.simulation_run_id];
@@ -6445,6 +6456,10 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
       if (!byRobot.has(key)) {
         byRobot.set(key, { symbol: run.symbol, variant: run.variant ?? "indicador", mode: o.mode, brl: 0 });
       }
+      const comFreio = !Array.isArray(o.freios_na_sombra) || o.freios_na_sombra.length === 0;
+      if (comFreio && !byRobotComFreio.has(key)) {
+        byRobotComFreio.set(key, { symbol: run.symbol, variant: run.variant ?? "indicador", mode: o.mode, brl: 0 });
+      }
 
       // Margem exigida pela posição, conforme o modelo do ativo.
       const margem = String(asset.margin_model ?? "per_contract") === "per_contract"
@@ -6455,21 +6470,39 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
       const tOut = o.exit_time ? new Date(o.exit_time).getTime() : nowMs;
       events.push({ t: tIn, dm: margem, dq: 1 });
       events.push({ t: tOut, dm: -margem, dq: -1 });
+      if (comFreio) {
+        eventsComFreio.push({ t: tIn, dm: margem, dq: 1 });
+        eventsComFreio.push({ t: tOut, dm: -margem, dq: -1 });
+      }
 
       if (o.status === "closed") {
         const net = Number(o.net_result_brl ?? 0);
         saldoDia += net;
         if (net >= 0) lucroBruto += net; else prejuizoBruto += net;
-        byRobot.get(key)!.brl += net;
+        const robot = byRobot.get(key);
+        if (robot) robot.brl += net;
+        if (comFreio) {
+          saldoDiaComFreio += net;
+          if (net >= 0) lucroBrutoComFreio += net; else prejuizoBrutoComFreio += net;
+          const robotComFreio = byRobotComFreio.get(key);
+          if (robotComFreio) robotComFreio.brl += net;
+        }
       } else {
         posicionados += 1;
         exposicaoAtual += margem;
+        if (comFreio) exposicaoAtualComFreio += margem;
         const live = priceByRun[o.simulation_run_id];
         if (live != null) {
           const dir = o.side === "buy" ? 1 : -1;
           const brl = (live - entry) * dir * Number(asset.tick_value_brl ?? POINT_VALUE_BRL) * qty;
           if (brl >= 0) abertoPos += brl; else abertoNeg += brl;
-          byRobot.get(key)!.brl += brl;
+          const robot = byRobot.get(key);
+          if (robot) robot.brl += brl;
+          if (comFreio) {
+            if (brl >= 0) abertoPosComFreio += brl; else abertoNegComFreio += brl;
+            const robotComFreio = byRobotComFreio.get(key);
+            if (robotComFreio) robotComFreio.brl += brl;
+          }
         }
       }
     }
@@ -6483,8 +6516,14 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
       if (accM > picoM) { picoM = accM; picoT = e.t; }
       if (accQ > picoQ) picoQ = accQ;
     }
+    let accMComFreio = 0, picoMComFreio = 0;
+    for (const e of eventsComFreio.sort((a, b) => a.t - b.t || b.dq - a.dq)) {
+      accMComFreio += e.dm;
+      if (accMComFreio > picoMComFreio) picoMComFreio = accMComFreio;
+    }
 
     const ranked = Array.from(byRobot.values()).sort((a, b) => b.brl - a.brl);
+    const rankedComFreio = Array.from(byRobotComFreio.values()).sort((a, b) => b.brl - a.brl);
     const horaPico = picoT == null ? null : new Intl.DateTimeFormat("pt-BR", {
       timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit",
     }).format(new Date(picoT));
@@ -6544,16 +6583,26 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     return {
       ...empty,
       saldo_dia_brl: saldoDia,
+      saldo_dia_com_freio_brl: saldoDiaComFreio,
       se_fechasse_agora_brl: saldoDia + abertoPos + abertoNeg,
+      se_fechasse_agora_com_freio_brl: saldoDiaComFreio + abertoPosComFreio + abertoNegComFreio,
       exposicao_atual_brl: exposicaoAtual * 1.3,
+      exposicao_atual_com_freio_brl: exposicaoAtualComFreio * 1.3,
       robots_posicionados: posicionados,
       lucro_bruto_brl: lucroBruto,
+      lucro_bruto_com_freio_brl: lucroBrutoComFreio,
       prejuizo_bruto_brl: prejuizoBruto,
+      prejuizo_bruto_com_freio_brl: prejuizoBrutoComFreio,
       aberto_positivo_brl: abertoPos,
+      aberto_positivo_com_freio_brl: abertoPosComFreio,
       aberto_negativo_brl: abertoNeg,
+      aberto_negativo_com_freio_brl: abertoNegComFreio,
       melhor_robo: ranked[0] ?? null,
+      melhor_robo_com_freio: rankedComFreio[0] ?? null,
       pior_robo: ranked.length > 1 ? ranked[ranked.length - 1] : null,
+      pior_robo_com_freio: rankedComFreio.length > 1 ? rankedComFreio[rankedComFreio.length - 1] : (rankedComFreio[0] ?? null),
       pico_exposicao_brl: picoM * 1.3,
+      pico_exposicao_com_freio_brl: picoMComFreio * 1.3,
       pico_exposicao_hora: horaPico,
       pico_posicoes: picoQ,
       stops_pendentes: stopsPendentes,

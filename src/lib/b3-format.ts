@@ -86,9 +86,7 @@ export const shortBRL = (v: number) => {
 };
 
 // ── Medição do freio (livre × sombra) ─────────────────────────────────────
-// Uma única fonte de texto para a tela e para o texto copiado: se o card muda,
-// a cópia muda junto. A terceira linha NUNCA mostra número com sinal — a
-// palavra ("pouparia", "custaria") carrega a direção.
+// Uma única fonte de números para a tela e para o texto copiado.
 export interface SombraDia {
   resultado_livre_brl: number;
   resultado_sombra_brl: number;
@@ -99,19 +97,9 @@ export interface SombraDia {
 }
 
 export const sombraLinhas = (s: SombraDia) => {
-  const dif = Number(s.diferenca_brl ?? 0);
-  const veredito =
-    Math.round(dif * 100) === 0
-      ? "Freio não agiu hoje"
-      : dif > 0
-        ? `Freio pouparia ${BRL(Math.abs(dif))}`
-        : `Freio custaria ${BRL(Math.abs(dif))}`;
   return {
-    operou: `${s.ops_livre} entradas · ${SIGNED_BRL(s.resultado_livre_brl)}`,
-    comFreio: `${s.ops_sombra} entradas · ${SIGNED_BRL(s.resultado_sombra_brl)}`,
-    veredito,
-    // Cor só do veredito: verde quando o freio pouparia, vermelho quando custaria.
-    tom: Math.round(dif * 100) === 0 ? "neutro" : dif > 0 ? "bom" : "ruim",
+    comFreio: BRL(s.resultado_sombra_brl),
+    semFreio: BRL(s.resultado_livre_brl),
   } as const;
 };
 
@@ -205,26 +193,13 @@ export const somarSombrasDia = (sombras: Array<SombraDia | null | undefined>): S
   };
 };
 
-export const efeitoVeredito = (diferenca: number) => {
-  const d = Number(diferenca ?? 0);
-  if (Math.round(d * 100) === 0) return "sem diferença no dia";
-  return d > 0 ? `teria poupado ${BRL(Math.abs(d))}` : `teria custado ${BRL(Math.abs(d))}`;
-};
-
-/** Linha de um freio: "pouparia R$ X", "custaria R$ Y" ou "não agiu hoje". */
+/** Linha de um freio com os dois resultados, sem interpretar a diferença. */
 export const sombraFreioLinha = (freio: string, s: SombraFreio) => {
-  const dif = Number(s.diferenca_brl ?? 0);
-  const zero = Math.round(dif * 100) === 0;
   return {
     freio,
     rotulo: FREIO_LABEL[freio] ?? freio,
     agiu: Number(s.ops_barradas ?? 0) > 0,
-    texto: zero
-      ? "não agiu hoje"
-      : dif > 0
-        ? `pouparia ${BRL(Math.abs(dif))}`
-        : `custaria ${BRL(Math.abs(dif))}`,
-    tom: zero ? "neutro" : dif > 0 ? "bom" : "ruim",
+    comFreio: BRL(s.resultado_sombra_brl),
   } as const;
 };
 

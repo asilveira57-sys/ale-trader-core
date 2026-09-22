@@ -1,7 +1,7 @@
 // Geração do texto de "copiar" do Cockpit. Somente apresentação:
 // nada aqui participa do motor de simulação, nem lê/escreve no banco.
 
-import { decimalsForTick, efeitosFreiosDia, efeitoVeredito, freiosAcionadosTexto, openSinceText, PX, rootSymbol, somarSombrasDia } from "./b3-format";
+import { decimalsForTick, efeitosFreiosDia, freiosAcionadosTexto, openSinceText, PX, rootSymbol, somarSombrasDia } from "./b3-format";
 import { modeFullLabel } from "./mode-nick-registry";
 
 const BRL = (v: number | null | undefined) =>
@@ -107,10 +107,8 @@ function robotBlock(c: any): string {
       const hora = desde ? new Date(String(desde)).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }) : null;
       const nivel = f.freio === "grupo" && Number(c.grupo?.nivel ?? 0) > 0 ? ` (nível ${Number(c.grupo.nivel)})` : "";
       lines.push(`  ${f.rotulo}${hora ? ` — acionou ${hora}` : ""}${nivel}`);
-      lines.push(`    no acionamento  ${SIGNED_BRL(f.no_acionamento_brl)}`);
-      lines.push(`    fim do dia      ${SIGNED_BRL(f.fim_do_dia_brl)}`);
-      lines.push(`    ${efeitoVeredito(f.diferenca_brl)}`);
-      lines.push(`    teria barrado ${f.ops_barradas} de ${f.ops_total} entradas`);
+      lines.push(`    Com freio  ${BRL(f.no_acionamento_brl)}`);
+      lines.push(`    Sem freio  ${BRL(f.fim_do_dia_brl)}`);
     }
   }
 
@@ -120,7 +118,7 @@ function robotBlock(c: any): string {
 
 function scoreboardLine(sb: any): string | null {
   if (!sb) return null;
-  return `Placar: saldo do dia ${SIGNED_BRL(sb.saldo_dia_brl)} · exposição ${BRL(sb.exposicao_atual_brl)} · ${sb.robots_posicionados ?? 0} de ${sb.robots_total ?? 0} posicionados`;
+  return `Placar — saldo do dia\n  Com freio  ${BRL(sb.saldo_dia_com_freio_brl)}\n  Sem freio  ${BRL(sb.saldo_dia_brl)}`;
 }
 
 function summaryBlock(cards: any[]): string | null {
@@ -128,10 +126,13 @@ function summaryBlock(cards: any[]): string | null {
   if (!sombra || sombra.ops_livre <= 0) return null;
   const lines = ["EFEITO NO DIA — RESUMO"];
   for (const f of efeitosFreiosDia(sombra)) {
-    lines.push(`  ${f.rotulo}: ${SIGNED_BRL(f.no_acionamento_brl)} · ${efeitoVeredito(f.diferenca_brl)} · barraria ${f.ops_barradas} de ${f.ops_total}`);
+    lines.push(`  ${f.rotulo}`);
+    lines.push(`    Com freio  ${BRL(f.no_acionamento_brl)}`);
+    lines.push(`    Sem freio  ${BRL(f.fim_do_dia_brl)}`);
   }
-  const todos = sombra.ops_sombra === 0 ? "não teria operado" : SIGNED_BRL(sombra.resultado_sombra_brl);
-  lines.push(`  Todos os freios valendo: ${todos} · ${efeitoVeredito(sombra.diferenca_brl)} · ${sombra.ops_sombra} de ${sombra.ops_livre} entradas`);
+  lines.push("  Todos os freios valendo");
+  lines.push(`    Com freio  ${BRL(sombra.resultado_sombra_brl)}`);
+  lines.push(`    Sem freio  ${BRL(sombra.resultado_livre_brl)}`);
   return lines.join("\n");
 }
 
