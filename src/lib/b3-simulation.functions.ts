@@ -6414,17 +6414,21 @@ export const getB3CockpitScoreboard = createServerFn({ method: "GET" })
     const runById: Record<string, any> = {};
     for (const r of runList) runById[r.id] = r;
 
-    // Ordens do dia (abertas + fechadas hoje) e último preço por run.
-    const [{ data: orders }, { data: snaps }] = await Promise.all([
+    // Mesmo recorte que os cards: fechadas hoje pela saída + todas as abertas.
+    const [{ data: closedOrders }, { data: openOrders }, { data: snaps }] = await Promise.all([
       (supabase as any).from("b3_simulation_orders")
         .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at, freios_na_sombra")
-        .eq("user_id", userId).in("simulation_run_id", runIds).in("status", ["open", "closed"])
-        .gte("entry_time", dayStartUtc),
+        .eq("user_id", userId).in("simulation_run_id", runIds).eq("status", "closed")
+        .gte("exit_time", dayStartUtc),
+      (supabase as any).from("b3_simulation_orders")
+        .select("id, simulation_run_id, mode, side, status, quantity, entry_price, entry_time, exit_time, net_result_brl, created_at, freios_na_sombra")
+        .eq("user_id", userId).in("simulation_run_id", runIds).eq("status", "open"),
       (supabase as any).from("b3_simulation_market_snapshots")
         .select("simulation_run_id, price, market_time")
         .eq("user_id", userId).in("simulation_run_id", runIds)
         .order("market_time", { ascending: false }).limit(400),
     ]);
+    const orders: any[] = [...(closedOrders ?? []), ...(openOrders ?? [])];
 
     const priceByRun: Record<string, number> = {};
     for (const s of snaps ?? []) {
