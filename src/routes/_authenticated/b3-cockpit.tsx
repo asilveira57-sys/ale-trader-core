@@ -1269,21 +1269,41 @@ function CockpitPage() {
 const SIGNED = (v: number) => `${v > 0 ? "+" : ""}${BRL(v)}`;
 const pnlColorOf = (v: number) => (v >= 0 ? "text-emerald-400" : "text-rose-400");
 
-function RobotLine({ label, robot }: { label: string; robot: any }) {
-  if (!robot) return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-xs text-muted-foreground">—</p>
-    </div>
-  );
+function PairedMoney({ label, comFreio, semFreio, large = false }: {
+  label: string; comFreio: number; semFreio: number; large?: boolean;
+}) {
   return (
     <div>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-xs">
-        <span className="font-medium">{rootSymbol(robot.symbol)}</span>
-        <span className="text-muted-foreground"> · {variantLabel(robot.variant).toLowerCase()} · {robot.mode} </span>
-        <span className={`font-mono ${pnlColorOf(Number(robot.brl))}`}>{SIGNED(Number(robot.brl))}</span>
-      </p>
+      <div className={`grid grid-cols-[auto_1fr] gap-x-3 ${large ? "text-lg sm:text-xl" : "text-xs"}`}>
+        <span className="text-muted-foreground">Com freio</span>
+        <span className={`text-right font-mono font-semibold ${pnlColorOf(comFreio)}`}>{BRL(comFreio)}</span>
+        <span className="text-muted-foreground">Sem freio</span>
+        <span className={`text-right font-mono font-semibold ${pnlColorOf(semFreio)}`}>{BRL(semFreio)}</span>
+      </div>
+    </div>
+  );
+}
+
+function RobotValue({ robot }: { robot: any }) {
+  if (!robot) return <span className="font-mono">R$ 0,00</span>;
+  return (
+    <span className="min-w-0">
+      <span className="font-medium">{rootSymbol(robot.symbol)}</span>
+      <span className="text-muted-foreground"> · {variantLabel(robot.variant).toLowerCase()} · {robot.mode} </span>
+      <span className={`font-mono ${pnlColorOf(Number(robot.brl))}`}>{BRL(Number(robot.brl))}</span>
+    </span>
+  );
+}
+
+function RobotPair({ label, comFreio, semFreio }: { label: string; comFreio: any; semFreio: any }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 text-xs">
+        <span className="text-muted-foreground">Com freio</span><RobotValue robot={comFreio} />
+        <span className="text-muted-foreground">Sem freio</span><RobotValue robot={semFreio} />
+      </div>
     </div>
   );
 }
@@ -1304,10 +1324,6 @@ function Scoreboard({ filterArgs, filterKey }: {
 
   const capital = Number(d.capital_disponivel_brl ?? 0);
   const exposicao = Number(d.exposicao_atual_brl ?? 0);
-  const pico = Number(d.pico_exposicao_brl ?? 0);
-  const overNow = capital > 0 && exposicao > capital;
-  const overPeak = capital > 0 && pico > capital;
-
   const stopsPendentes = Number(d.stops_pendentes ?? 0);
   const quotes: any[] = d.quotes_health ?? [];
   const guardLimit = Number(d.quote_guard_limit_s ?? 45);
@@ -1324,64 +1340,24 @@ function Scoreboard({ filterArgs, filterKey }: {
 
       {/* Linha 1 — números em corpo muito grande */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div>
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Saldo do dia</p>
-          <p className={`font-mono font-bold text-3xl sm:text-4xl leading-tight ${pnlColorOf(Number(d.saldo_dia_brl))}`}>
-            {SIGNED(Number(d.saldo_dia_brl))}
-          </p>
-        </div>
-        <div>
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Se fechasse agora</p>
-          <p className={`font-mono font-bold text-3xl sm:text-4xl leading-tight ${pnlColorOf(Number(d.se_fechasse_agora_brl))}`}>
-            {SIGNED(Number(d.se_fechasse_agora_brl))}
-          </p>
-        </div>
-        <div>
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Exposição atual</p>
-          <p className={`font-mono font-bold text-3xl sm:text-4xl leading-tight ${overNow ? "text-rose-400" : ""}`}>
-            {BRL(exposicao)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {d.robots_posicionados} de {d.robots_total} posicionados
-          </p>
-          {overNow && (
-            <p className="text-[11px] text-rose-400">exposição acima do capital disponível</p>
-          )}
-        </div>
+        <PairedMoney label="Saldo do dia" comFreio={Number(d.saldo_dia_com_freio_brl)} semFreio={Number(d.saldo_dia_brl)} large />
+        <PairedMoney label="Se fechasse agora" comFreio={Number(d.se_fechasse_agora_com_freio_brl)} semFreio={Number(d.se_fechasse_agora_brl)} large />
+        <PairedMoney label="Exposição atual" comFreio={Number(d.exposicao_atual_com_freio_brl)} semFreio={Number(d.exposicao_atual_brl)} large />
       </div>
 
       {/* Linha 2 — corpo médio */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border/40 pt-3">
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Lucro bruto do dia</p>
-          <p className="font-mono text-lg text-emerald-400">{BRL(Number(d.lucro_bruto_brl))}</p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Prejuízo bruto do dia</p>
-          <p className="font-mono text-lg text-rose-400">{BRL(Number(d.prejuizo_bruto_brl))}</p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Aberto positivo</p>
-          <p className="font-mono text-lg text-emerald-400">{BRL(Number(d.aberto_positivo_brl))}</p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Aberto negativo</p>
-          <p className="font-mono text-lg text-rose-400">{BRL(Number(d.aberto_negativo_brl))}</p>
-        </div>
+        <PairedMoney label="Lucro bruto do dia" comFreio={Number(d.lucro_bruto_com_freio_brl)} semFreio={Number(d.lucro_bruto_brl)} />
+        <PairedMoney label="Prejuízo bruto do dia" comFreio={Number(d.prejuizo_bruto_com_freio_brl)} semFreio={Number(d.prejuizo_bruto_brl)} />
+        <PairedMoney label="Aberto positivo" comFreio={Number(d.aberto_positivo_com_freio_brl)} semFreio={Number(d.aberto_positivo_brl)} />
+        <PairedMoney label="Aberto negativo" comFreio={Number(d.aberto_negativo_com_freio_brl)} semFreio={Number(d.aberto_negativo_brl)} />
       </div>
 
       {/* Linha 3 — corpo pequeno */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-border/40 pt-3">
-        <RobotLine label="Melhor robô do dia" robot={d.melhor_robo} />
-        <RobotLine label="Pior robô do dia" robot={d.pior_robo} />
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Pico de exposição do dia</p>
-          <p className={`text-xs font-mono ${overPeak ? "text-rose-400" : ""}`}>
-            {BRL(pico)}{d.pico_exposicao_hora ? ` às ${d.pico_exposicao_hora}` : ""}
-            <span className="text-muted-foreground font-sans"> · máx. {d.pico_posicoes} posições</span>
-          </p>
-          {overPeak && <p className="text-[11px] text-rose-400">exposição acima do capital disponível</p>}
-        </div>
+        <RobotPair label="Melhor robô do dia" comFreio={d.melhor_robo_com_freio} semFreio={d.melhor_robo} />
+        <RobotPair label="Pior robô do dia" comFreio={d.pior_robo_com_freio} semFreio={d.pior_robo} />
+        <PairedMoney label="Pico de exposição do dia" comFreio={Number(d.pico_exposicao_com_freio_brl)} semFreio={Number(d.pico_exposicao_brl)} />
       </div>
 
       {/* Saúde da cotação — idade do último tick por ativo */}

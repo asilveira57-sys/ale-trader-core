@@ -3599,7 +3599,7 @@ async function runB3SimulationTickInner(
         // pior instante, antes de se saber se recuperaria, e a medição ficava
         // enviesada a favor do freio. Agora a posição simulada SEGUE até stop,
         // alvo, trailing ou zeragem (todos ativos — não há risco novo), e a
-        // medição diária diz quanto o freio pouparia ou custaria.
+        // medição diária mantém os dois resultados crus para comparação.
         //
         // NO REAL, o fechamento só é enfileirado quando o freio de pico da
         // CONTA REAL estiver armado; o estado simulado sozinho nunca fecha real.
