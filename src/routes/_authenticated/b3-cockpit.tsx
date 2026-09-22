@@ -1242,14 +1242,16 @@ const pnlColorOf = (v: number) => (v >= 0 ? "text-emerald-400" : "text-rose-400"
 function PairedMoney({ label, comFreio, semFreio, large = false }: {
   label: string; comFreio: number; semFreio: number; large?: boolean;
 }) {
+  const comFreioExibido = Math.round(comFreio);
+  const semFreioExibido = Math.round(semFreio);
   return (
     <div>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <div className={`grid grid-cols-[auto_1fr] gap-x-3 ${large ? "text-lg sm:text-xl" : "text-xs"}`}>
         <span className="text-muted-foreground">Com freio</span>
-        <span className={`text-right font-mono font-semibold ${pnlColorOf(comFreio)}`}>{BRL(comFreio)}</span>
+        <span className={`text-right font-mono font-semibold ${pnlColorOf(comFreioExibido)}`}>{BRL(comFreioExibido)}</span>
         <span className="text-muted-foreground">Sem freio</span>
-        <span className={`text-right font-mono font-semibold ${pnlColorOf(semFreio)}`}>{BRL(semFreio)}</span>
+        <span className={`text-right font-mono font-semibold ${pnlColorOf(semFreioExibido)}`}>{BRL(semFreioExibido)}</span>
       </div>
     </div>
   );
