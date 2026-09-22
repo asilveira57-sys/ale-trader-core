@@ -88,6 +88,7 @@ import { Route as ApiPublicHooksB3Mt5EstadoRealRouteImport } from './routes/api/
 import { Route as ApiPublicHooksB3Mt5CommandsPendingRouteImport } from './routes/api/public/hooks/b3-mt5-commands-pending'
 import { Route as ApiPublicHooksB3Mt5CommandsAckRouteImport } from './routes/api/public/hooks/b3-mt5-commands-ack'
 import { Route as ApiPublicHooksB3GuardiaoSaidaRouteImport } from './routes/api/public/hooks/b3-guardiao-saida'
+import { Route as ApiPublicHooksB3ExportacaoNoturnaRouteImport } from './routes/api/public/hooks/b3-exportacao-noturna'
 import { Route as ApiPublicHooksAutoTickRouteImport } from './routes/api/public/hooks/auto-tick'
 import { Route as AuthenticatedB3AtivoSymbolRouteImport } from './routes/_authenticated/b3_.ativo.$symbol'
 
@@ -524,6 +525,12 @@ const ApiPublicHooksB3GuardiaoSaidaRoute =
     path: '/api/public/hooks/b3-guardiao-saida',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksB3ExportacaoNoturnaRoute =
+  ApiPublicHooksB3ExportacaoNoturnaRouteImport.update({
+    id: '/api/public/hooks/b3-exportacao-noturna',
+    path: '/api/public/hooks/b3-exportacao-noturna',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksAutoTickRoute = ApiPublicHooksAutoTickRouteImport.update({
   id: '/api/public/hooks/auto-tick',
   path: '/api/public/hooks/auto-tick',
@@ -605,6 +612,7 @@ export interface FileRoutesByFullPath {
   '/backtest/': typeof AuthenticatedBacktestIndexRoute
   '/b3/ativo/$symbol': typeof AuthenticatedB3AtivoSymbolRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
+  '/api/public/hooks/b3-exportacao-noturna': typeof ApiPublicHooksB3ExportacaoNoturnaRoute
   '/api/public/hooks/b3-guardiao-saida': typeof ApiPublicHooksB3GuardiaoSaidaRoute
   '/api/public/hooks/b3-mt5-commands-ack': typeof ApiPublicHooksB3Mt5CommandsAckRoute
   '/api/public/hooks/b3-mt5-commands-pending': typeof ApiPublicHooksB3Mt5CommandsPendingRoute
@@ -687,6 +695,7 @@ export interface FileRoutesByTo {
   '/backtest': typeof AuthenticatedBacktestIndexRoute
   '/b3/ativo/$symbol': typeof AuthenticatedB3AtivoSymbolRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
+  '/api/public/hooks/b3-exportacao-noturna': typeof ApiPublicHooksB3ExportacaoNoturnaRoute
   '/api/public/hooks/b3-guardiao-saida': typeof ApiPublicHooksB3GuardiaoSaidaRoute
   '/api/public/hooks/b3-mt5-commands-ack': typeof ApiPublicHooksB3Mt5CommandsAckRoute
   '/api/public/hooks/b3-mt5-commands-pending': typeof ApiPublicHooksB3Mt5CommandsPendingRoute
@@ -771,6 +780,7 @@ export interface FileRoutesById {
   '/_authenticated/backtest/': typeof AuthenticatedBacktestIndexRoute
   '/_authenticated/b3_/ativo/$symbol': typeof AuthenticatedB3AtivoSymbolRoute
   '/api/public/hooks/auto-tick': typeof ApiPublicHooksAutoTickRoute
+  '/api/public/hooks/b3-exportacao-noturna': typeof ApiPublicHooksB3ExportacaoNoturnaRoute
   '/api/public/hooks/b3-guardiao-saida': typeof ApiPublicHooksB3GuardiaoSaidaRoute
   '/api/public/hooks/b3-mt5-commands-ack': typeof ApiPublicHooksB3Mt5CommandsAckRoute
   '/api/public/hooks/b3-mt5-commands-pending': typeof ApiPublicHooksB3Mt5CommandsPendingRoute
@@ -855,6 +865,7 @@ export interface FileRouteTypes {
     | '/backtest/'
     | '/b3/ativo/$symbol'
     | '/api/public/hooks/auto-tick'
+    | '/api/public/hooks/b3-exportacao-noturna'
     | '/api/public/hooks/b3-guardiao-saida'
     | '/api/public/hooks/b3-mt5-commands-ack'
     | '/api/public/hooks/b3-mt5-commands-pending'
@@ -937,6 +948,7 @@ export interface FileRouteTypes {
     | '/backtest'
     | '/b3/ativo/$symbol'
     | '/api/public/hooks/auto-tick'
+    | '/api/public/hooks/b3-exportacao-noturna'
     | '/api/public/hooks/b3-guardiao-saida'
     | '/api/public/hooks/b3-mt5-commands-ack'
     | '/api/public/hooks/b3-mt5-commands-pending'
@@ -1020,6 +1032,7 @@ export interface FileRouteTypes {
     | '/_authenticated/backtest/'
     | '/_authenticated/b3_/ativo/$symbol'
     | '/api/public/hooks/auto-tick'
+    | '/api/public/hooks/b3-exportacao-noturna'
     | '/api/public/hooks/b3-guardiao-saida'
     | '/api/public/hooks/b3-mt5-commands-ack'
     | '/api/public/hooks/b3-mt5-commands-pending'
@@ -1039,6 +1052,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   ApiPublicHooksAutoTickRoute: typeof ApiPublicHooksAutoTickRoute
+  ApiPublicHooksB3ExportacaoNoturnaRoute: typeof ApiPublicHooksB3ExportacaoNoturnaRoute
   ApiPublicHooksB3GuardiaoSaidaRoute: typeof ApiPublicHooksB3GuardiaoSaidaRoute
   ApiPublicHooksB3Mt5CommandsAckRoute: typeof ApiPublicHooksB3Mt5CommandsAckRoute
   ApiPublicHooksB3Mt5CommandsPendingRoute: typeof ApiPublicHooksB3Mt5CommandsPendingRoute
@@ -1608,6 +1622,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksB3GuardiaoSaidaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/b3-exportacao-noturna': {
+      id: '/api/public/hooks/b3-exportacao-noturna'
+      path: '/api/public/hooks/b3-exportacao-noturna'
+      fullPath: '/api/public/hooks/b3-exportacao-noturna'
+      preLoaderRoute: typeof ApiPublicHooksB3ExportacaoNoturnaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/auto-tick': {
       id: '/api/public/hooks/auto-tick'
       path: '/api/public/hooks/auto-tick'
@@ -1796,6 +1817,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   ApiPublicHooksAutoTickRoute: ApiPublicHooksAutoTickRoute,
+  ApiPublicHooksB3ExportacaoNoturnaRoute:
+    ApiPublicHooksB3ExportacaoNoturnaRoute,
   ApiPublicHooksB3GuardiaoSaidaRoute: ApiPublicHooksB3GuardiaoSaidaRoute,
   ApiPublicHooksB3Mt5CommandsAckRoute: ApiPublicHooksB3Mt5CommandsAckRoute,
   ApiPublicHooksB3Mt5CommandsPendingRoute:
