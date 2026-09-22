@@ -7706,6 +7706,7 @@ export type Database = {
         }[]
       }
       b3_diagnosticar_dia: { Args: { p_date: string }; Returns: number }
+      b3_disparar_exportacao: { Args: never; Returns: string }
       b3_disparar_guardiao: { Args: never; Returns: string }
       b3_disparar_tique: { Args: never; Returns: string }
       b3_export_csv_bloqueios: {
