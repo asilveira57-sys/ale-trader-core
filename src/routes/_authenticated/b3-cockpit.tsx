@@ -152,15 +152,9 @@ const VARIANT_SHORT: Record<string, string> = {
 const roboShort = (r: any) =>
   !r ? "—" : `${VARIANT_SHORT[r.variant] ?? r.variant} ${String(r.mode).replace("_", "-")} ${SIGNED_HDR(r.brl)}`;
 
-const horaFreio = (iso: string | null | undefined) => iso
-  ? new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })
-  : null;
-
-function EfeitoDia({ sombra, compacto = false, horarios, grupoNivel }: {
+function EfeitoDia({ sombra, compacto = false }: {
   sombra: SombraDia | null | undefined;
   compacto?: boolean;
-  horarios?: Record<string, string | null | undefined>;
-  grupoNivel?: number | null;
 }) {
   const comFreio = Number(sombra?.resultado_sombra_brl ?? 0);
   const semFreio = Number(sombra?.resultado_livre_brl ?? 0);
@@ -909,7 +903,7 @@ function CockpitPage() {
                 </Button>
 
               </h3>
-              <EfeitoDia sombra={sub?.sombra} compacto grupoNivel={cards[0]?.grupo?.nivel ?? null} />
+              <EfeitoDia sombra={sub?.sombra} compacto />
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
                   mede a largura real disponível — inclusive após recolher o menu
@@ -1094,8 +1088,6 @@ function CockpitPage() {
                         })()}
                         <EfeitoDia
                           sombra={c.grupo?.sombra}
-                          horarios={Object.fromEntries((c.freios_acionados ?? []).map((f: any) => [f.freio, f.desde]).concat([["grupo", c.grupo?.desde ?? null]]))}
-                          grupoNivel={c.grupo?.nivel ?? null}
                         />
 
                       </button>
@@ -1245,7 +1237,6 @@ function CockpitPage() {
 
 // ── Placar digital do dia: poucos números grandes, o resto em linha secundária.
 // Somente leitura; nada aqui altera o motor de simulação.
-const SIGNED = (v: number) => `${v > 0 ? "+" : ""}${BRL(v)}`;
 const pnlColorOf = (v: number) => (v >= 0 ? "text-emerald-400" : "text-rose-400");
 
 function PairedMoney({ label, comFreio, semFreio, large = false }: {
@@ -1301,8 +1292,6 @@ function Scoreboard({ filterArgs, filterKey }: {
   const d: any = q.data;
   if (!d) return <section className="rounded-lg border border-border/60 bg-card p-4 text-sm text-muted-foreground">Carregando placar do dia...</section>;
 
-  const capital = Number(d.capital_disponivel_brl ?? 0);
-  const exposicao = Number(d.exposicao_atual_brl ?? 0);
   const stopsPendentes = Number(d.stops_pendentes ?? 0);
   const quotes: any[] = d.quotes_health ?? [];
   const guardLimit = Number(d.quote_guard_limit_s ?? 45);
