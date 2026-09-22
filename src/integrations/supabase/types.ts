@@ -7689,6 +7689,8 @@ export type Database = {
           variant: string
         }[]
       }
+      b3_csv_num: { Args: { v: number }; Returns: string }
+      b3_csv_txt: { Args: { t: string }; Returns: string }
       b3_detectar_ordens_fantasma: {
         Args: never
         Returns: {
@@ -7706,6 +7708,42 @@ export type Database = {
       b3_diagnosticar_dia: { Args: { p_date: string }; Returns: number }
       b3_disparar_guardiao: { Args: never; Returns: string }
       b3_disparar_tique: { Args: never; Returns: string }
+      b3_export_csv_bloqueios: {
+        Args: { p_ativo: string; p_date: string }
+        Returns: {
+          csv: string
+          linhas: number
+        }[]
+      }
+      b3_export_csv_decisoes: {
+        Args: { p_date: string }
+        Returns: {
+          csv: string
+          linhas: number
+        }[]
+      }
+      b3_export_csv_dossie_ordens: {
+        Args: { p_date: string }
+        Returns: {
+          csv: string
+          linhas: number
+        }[]
+      }
+      b3_export_csv_dossie_votos: {
+        Args: { p_date: string }
+        Returns: {
+          csv: string
+          linhas: number
+        }[]
+      }
+      b3_export_dias: {
+        Args: { p_desde?: string }
+        Returns: {
+          ativos: string[]
+          dia: string
+        }[]
+      }
+      b3_export_raiz: { Args: { p: string }; Returns: string }
       b3_gravar_cenario_horario: {
         Args: { p_dia?: string; p_hora?: number }
         Returns: number
