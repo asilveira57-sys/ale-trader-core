@@ -19,10 +19,16 @@ import { roundToTick } from "./b3-tick";
 export const CONFIRMACAO_PADRAO = { pct_stop: 50, janela_s: 180 } as const;
 
 export type ConfirmacaoConfig = {
-  confirmacao_ativa?: boolean | null;
+  // DUAS chaves independentes (23/09/2026, segunda emenda): o simulado e o real
+  // podem esperar confirmação separadamente. Padrão: as duas desligadas.
+  confirmacao_ativa_simulado?: boolean | null;
+  confirmacao_ativa_real?: boolean | null;
   confirmacao_pct_stop?: number | null;
   confirmacao_janela_s?: number | null;
 };
+
+/** Lado em que a confirmação pode valer (os parâmetros são compartilhados). */
+export type LadoConfirmacao = "simulado" | "real";
 
 /** Limiar em pontos para este robô nesta entrada (0 = sem stop congelado). */
 export function confirmacaoExigidaPts(stopPts: number, pctStop: number | null | undefined): number {
