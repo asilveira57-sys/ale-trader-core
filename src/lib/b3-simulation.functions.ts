@@ -3593,6 +3593,23 @@ async function runB3SimulationTickInner(
         const openMtmBrlAtMark = markOpenOrderBrl(open, markPrice);
         const markedTodayAtMark = realizedToday + (openMtmBrlAtMark ?? 0);
 
+        // ── CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026) ──
+        // Somente REGISTRO: marca se o preço andou a favor o percentual do stop
+        // dentro da janela, e onde stop/alvo ficariam se a entrada fosse no
+        // preço de confirmação. Nenhuma decisão abaixo lê esses campos; a
+        // posição segue gerida pelo stop e pelo alvo contratados na abertura.
+        // Escrita só quando o estado muda (nulo → confirmou/não confirmou).
+        {
+          const patchConf = avaliarConfirmacao(open, markPrice, Number(asset.tick_size));
+          if (patchConf) {
+            try {
+              await supabase.from("b3_simulation_orders").update(patchConf)
+                .eq("id", open.id).eq("user_id", userId).eq("status", "open");
+              Object.assign(open, patchConf);
+            } catch { /* medição nunca derruba o motor */ }
+          }
+        }
+
         // ── FREIO DE PICO EM SOMBRA NO SIMULADO (15/09/2026) ──
         // Até aqui o freio de pico fechava a posição simulada a mercado. Isso
         // censura o caminho livre exatamente como o bloqueio de entrada
