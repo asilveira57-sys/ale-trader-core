@@ -27,7 +27,10 @@ import { b3WindowState } from "./b3-window.server";
 import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobotSizing } from "./b3-real-stop.server";
 
 import { roundToTick } from "./b3-tick";
-import { avaliarConfirmacao, confirmacaoNaAbertura } from "./b3-confirmacao-entrada";
+import {
+  avaliarConfirmacao, confirmacaoNaAbertura, confirmacaoArmada, avaliarPendente,
+  criarPendente, motivoNaoConfirmou, type ConfirmacaoPendente,
+} from "./b3-confirmacao-entrada";
 import {
   decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
   type B3GrupoLimites, type B3GrupoEstado, type B3GrupoDecision,
@@ -3195,6 +3198,61 @@ async function runB3SimulationTickInner(
       const openMtmBrlForProtection = markOpenOrderBrl(open, openMarkPriceForProtection);
       const markedTodayForProtection = realizedToday + (openMtmBrlForProtection ?? 0);
 
+      // ── SINAL EM ESPERA DE CONFIRMAÇÃO (23/09/2026, emenda) ──────────────
+      // Só existe quando a regra está LIGADA para este robô (padrão: desligada
+      // em todos). O estado mora na carteira do robô porque o tique é sem
+      // memória. Gravação direta e só quando muda de verdade — `patchMode` não
+      // sabe comparar jsonb.
+      const confArmada = confirmacaoArmada(cfg as any);
+      const gravarPendente = async (pend: ConfirmacaoPendente | null) => {
+        const atual = JSON.stringify((m as any).confirmacao_pendente ?? null);
+        const novo = JSON.stringify(pend ?? null);
+        if (atual === novo) return;
+        (m as any).confirmacao_pendente = pend;
+        try {
+          await (supabase as any).from("b3_simulation_modes")
+            .update({ confirmacao_pendente: pend })
+            .eq("id", m.id).eq("user_id", userId);
+        } catch { /* estado de espera nunca derruba o tique */ }
+      };
+      const registrarDescarte = (pend: any, av: ReturnType<typeof avaliarPendente>) => {
+        const motivo = motivoNaoConfirmou(pend, av, (cfg as any).confirmacao_pct_stop);
+        entryStageRows.push({
+          user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+          symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+          estagio: "confirmacao_nao_atingida",
+          motivo: motivo.slice(0, 500),
+          detalhe: {
+            exigido_pts: Math.round(av.exigido_pts),
+            andou_pts: Math.round(av.melhor_pts),
+            janela_s: Number(pend?.janela_s) || null,
+            preco_sinal: Number(pend?.preco_sinal) || null,
+            side: String(pend?.side ?? ""),
+            decorrido_s: Math.round(av.decorrido_s),
+          },
+        });
+      };
+      if (!confArmada) {
+        // Regra desligada com espera pendurada (foi desligada no meio): o
+        // estado é limpo sem descartar nada — a entrada já seguiu o fluxo normal.
+        if ((m as any).confirmacao_pendente) await gravarPendente(null);
+      } else if ((m as any).confirmacao_pendente) {
+        const pend = (m as any).confirmacao_pendente;
+        const av = avaliarPendente(pend, Number(ctx.price), now.getTime());
+        if (av.estado === "invalido") {
+          await gravarPendente(null);
+        } else if (av.estado === "expirou") {
+          // Não confirmou na janela: a entrada é descartada, e o descarte fica
+          // contável e olhável um por um no log de decisão.
+          registrarDescarte(pend, av);
+          await gravarPendente(null);
+        } else if (av.estado === "aguardando" && av.melhor_pts > Number(pend.melhor_pts ?? 0)) {
+          // Melhor avanço a favor, para o registro do descarte dizer quanto o
+          // preço realmente andou. Só grava quando melhora.
+          await gravarPendente({ ...pend, melhor_pts: av.melhor_pts });
+        }
+      }
+
       const loadedConfig = normalizeModeConfig(cfg);
       const cfgCompare = configComparison(cfg, loadedConfig);
       const checks: any[] = [];
@@ -4537,6 +4595,59 @@ async function runB3SimulationTickInner(
           setup: setupInfo,
         });
       } else if (decision.final === "approved") {
+        // ── CONFIRMAÇÃO DE ENTRADA LIGADA (23/09/2026, emenda) ─────────────
+        // Desligada (padrão de todos os robôs) este bloco não existe. Ligada, o
+        // sinal NÃO abre na hora: espera o preço andar a favor o percentual
+        // configurado do stop dentro da janela. Confirmou → abre AGORA, no preço
+        // deste instante (o preço da confirmação), e o espelho enfileira o
+        // comando real no MESMO instante, mais abaixo. Não confirmou → a entrada
+        // é descartada, com linha própria no log de decisão. A regra decide SE
+        // abre; nunca fecha posição aberta.
+        let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number } | null = null;
+        if (confArmada) {
+          const stopPtsSinal = Math.max(0, Number(setupInfo.stop_pts_override ?? cfg.stop_pts ?? 0) || 0);
+          const gainPtsSinal = Math.max(0, Number(setupInfo.gain_pts_override ?? cfg.gain_pts ?? 0) || 0);
+          const pendAtual = (m as any).confirmacao_pendente;
+          const mesmoLado = Boolean(pendAtual) && String(pendAtual.side) === effectiveSide;
+          const av = mesmoLado ? avaliarPendente(pendAtual, Number(ctx.price), now.getTime()) : null;
+          if (av?.estado === "confirmou") {
+            confirmadaAgora = { em: now.toISOString(), exigido_pts: av.exigido_pts, andou_pts: av.andou_pts };
+            await gravarPendente(null);
+          } else {
+            if (av?.estado === "expirou") {
+              registrarDescarte(pendAtual, av);
+              await gravarPendente(null);
+            } else if (pendAtual && !mesmoLado) {
+              // O lado virou antes de confirmar: o sinal antigo morre registrado.
+              registrarDescarte(pendAtual, avaliarPendente(pendAtual, Number(ctx.price), now.getTime()));
+              await gravarPendente(null);
+            }
+            if (av?.estado !== "aguardando") {
+              const novo = criarPendente({
+                side: effectiveSide, precoSinal: Number(ctx.price),
+                stopPtsFrozen: stopPtsSinal, gainPtsFrozen: gainPtsSinal,
+                cfg: cfg as any, agoraMs: now.getTime(),
+              });
+              if (novo) await gravarPendente(novo);
+            }
+            const pendVigente = (m as any).confirmacao_pendente;
+            const exigidoTxt = Math.round(Number(pendVigente?.exigido_pts ?? 0));
+            log.push({ mode, action: "skip", reason: "aguardando_confirmacao", side: effectiveSide });
+            finalizeAudit(
+              `Aguardando confirmação de entrada: preço precisa andar ${exigidoTxt} pts a favor em ${Math.round(Number(pendVigente?.janela_s ?? 0))}s.`,
+              {
+                last_analysis: decision.justification,
+                last_score: decision.score,
+                last_confidence: decision.avg_confidence,
+                last_setup: `${setupInfo.name} ${effectiveSide.toUpperCase()} aguardando confirmação`,
+                signals: { evaluated_side: effectiveSide, buy: false, sell: false },
+                committee: decision,
+                setup: setupInfo,
+              },
+            );
+            continue;
+          }
+        }
         let entryAudit: B3QuoteExecutionAudit;
         try {
           entryAudit = getB3ExecutionAudit(priceSrc, effectiveSide, "entry", "runB3SimulationTick.openOrder");
@@ -4633,6 +4744,16 @@ async function runB3SimulationTickInner(
           // janela. `confirmou` nasce nulo e é preenchido depois, a mercado.
           // Nada aqui impede, atrasa ou reduz esta entrada.
           ...confirmacaoNaAbertura(cfg, stopPtsFrozen),
+          // Regra LIGADA: esta ordem só existe porque o preço confirmou. O preço
+          // de entrada JÁ É o preço da confirmação, e por isso stop e alvo acima
+          // nascem medidos a partir dele, com a mesma distância em pontos.
+          ...(confirmadaAgora ? {
+            confirmou: true,
+            confirmou_em: confirmadaAgora.em,
+            preco_confirmacao: entryRounded,
+            stop_recalculado: stopPriceFrozen,
+            alvo_recalculado: targetPriceFrozen,
+          } : {}),
 
           ...orderAuditPatch(entryAudit),
         };
