@@ -276,6 +276,29 @@ export function RobotConfigDialog({
                 </div>
               ))}
 
+              {/* CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026).
+                  Enquanto estiver em sombra a regra só mede: não impede,
+                  não atrasa e não reduz nenhuma entrada. */}
+              <div className="rounded border border-border/50 p-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Confirmação de entrada</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      O preço precisa andar a favor um pedaço do stop deste robô, dentro da janela.
+                      Em sombra: nada é impedido, só medido.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={f.confirmacao_ativa === true}
+                    onCheckedChange={(v) => set("confirmacao_ativa", v)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {numField("confirmacao_pct_stop", 5)}
+                  {numField("confirmacao_janela_s", 30)}
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Horários</p>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
