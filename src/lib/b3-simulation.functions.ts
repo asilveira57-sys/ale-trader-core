@@ -5033,9 +5033,10 @@ async function runB3SimulationTickInner(
             });
           } catch { /* registro nunca derruba o motor */ }
         } else if (realJaEnviadoNoSinal) {
-          // Combinação 2 (simulado ligado, real desligado): o comando real já
-          // saiu no instante do sinal, antes de qualquer confirmação. Repetir
-          // aqui criaria uma segunda posição real.
+          // Combinações 1 e 2 (chave do real desligada): o comando real já saiu
+          // no instante do SINAL, antes de qualquer confirmação. Repetir aqui
+          // criaria uma segunda posição real.
+
           log.push({ mode, action: "mirror_skip", reason: "real_enfileirado_no_sinal", side: effectiveSide });
         } else if (confRealArmada && !confSimArmada) {
           // Combinação 3 (simulado desligado, real ligado): a ordem simulada
