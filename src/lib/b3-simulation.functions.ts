@@ -4653,16 +4653,17 @@ async function runB3SimulationTickInner(
           setup: setupInfo,
         });
       } else if (decision.final === "approved") {
-        // ── CONFIRMAÇÃO DE ENTRADA LIGADA (23/09/2026, emenda) ─────────────
-        // Desligada (padrão de todos os robôs) este bloco não existe. Ligada, o
-        // sinal NÃO abre na hora: espera o preço andar a favor o percentual
-        // configurado do stop dentro da janela. Confirmou → abre AGORA, no preço
-        // deste instante (o preço da confirmação), e o espelho enfileira o
-        // comando real no MESMO instante, mais abaixo. Não confirmou → a entrada
-        // é descartada, com linha própria no log de decisão. A regra decide SE
-        // abre; nunca fecha posição aberta.
+        // ── CONFIRMAÇÃO DE ENTRADA, DOIS LADOS (23/09/2026, segunda emenda) ─
+        // Chave do SIMULADO ligada: o sinal NÃO abre na hora — espera o preço
+        // andar a favor o percentual configurado do stop dentro da janela; ao
+        // confirmar abre AGORA, no preço deste instante, e stop e alvo nascem
+        // medidos dele. Se a chave do REAL estiver desligada, o comando real
+        // sai no instante do SINAL, como hoje (combinação 2).
+        // Chave do SIMULADO desligada e do REAL ligada: o simulado abre na hora
+        // e só o comando real espera (tratado na pré-passada, acima).
+        // A regra decide SE abre; nunca fecha posição aberta.
         let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number } | null = null;
-        if (confArmada) {
+        if (confSimArmada) {
           const stopPtsSinal = Math.max(0, Number(setupInfo.stop_pts_override ?? cfg.stop_pts ?? 0) || 0);
           const gainPtsSinal = Math.max(0, Number(setupInfo.gain_pts_override ?? cfg.gain_pts ?? 0) || 0);
           const pendAtual = (m as any).confirmacao_pendente;
@@ -4670,6 +4671,9 @@ async function runB3SimulationTickInner(
           const av = mesmoLado ? avaliarPendente(pendAtual, Number(ctx.price), now.getTime()) : null;
           if (av?.estado === "confirmou") {
             confirmadaAgora = { em: now.toISOString(), exigido_pts: av.exigido_pts, andou_pts: av.andou_pts };
+            // Combinação 2: o comando real já saiu no instante do sinal — o
+            // espelho abaixo não pode enfileirar um segundo.
+            realJaEnviadoNoSinal = pendAtual?.real_enviado === true;
             await gravarPendente(null);
           } else {
             if (av?.estado === "expirou") {
@@ -4685,8 +4689,34 @@ async function runB3SimulationTickInner(
                 side: effectiveSide, precoSinal: Number(ctx.price),
                 stopPtsFrozen: stopPtsSinal, gainPtsFrozen: gainPtsSinal,
                 cfg: cfg as any, agoraMs: now.getTime(),
+                aguardaSimulado: true, aguardaReal: confRealArmada,
+                // Chave do real desligada: o real não espera — o comando sai
+                // agora, no preço do sinal, exatamente como hoje.
+                realEnviado: !confRealArmada,
+                sobLiberacao: entradaSobLiberacao,
               });
-              if (novo) await gravarPendente(novo);
+              if (novo) {
+                await gravarPendente(novo);
+                if (!confRealArmada && !espelhoBarradoPorFreio) {
+                  const tickSinal = Number(asset.tick_size);
+                  const precoSinalTick = roundToTick(Number(ctx.price), tickSinal);
+                  const dirSinal = effectiveSide === "buy" ? 1 : -1;
+                  try {
+                    await mirrorToReal(
+                      supabase, userId, runId, mode as Mode, "open", effectiveSide,
+                      `open-sig-${m.id}-${novo.criado_em}`, "engine_auto",
+                      asset.quote_symbol, runVariant,
+                      {
+                        stop_pts: stopPtsSinal > 0 ? stopPtsSinal : null,
+                        gain_pts: gainPtsSinal > 0 ? gainPtsSinal : null,
+                        stop_price: stopPtsSinal > 0 ? roundToTick(precoSinalTick - dirSinal * stopPtsSinal, tickSinal) : null,
+                        target_price: gainPtsSinal > 0 ? roundToTick(precoSinalTick + dirSinal * gainPtsSinal, tickSinal) : null,
+                      },
+                      entradaSobLiberacao,
+                    );
+                  } catch { /* espelho nunca derruba o tique */ }
+                }
+              }
             }
             const pendVigente = (m as any).confirmacao_pendente;
             const exigidoTxt = Math.round(Number(pendVigente?.exigido_pts ?? 0));
