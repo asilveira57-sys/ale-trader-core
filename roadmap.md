@@ -30,3 +30,7 @@
 
 ## Invariantes
 - Não alterar decisão de entrada, parâmetros dos modos, guardião de saída, ponte MT5 nem endpoint de ingestão.
+
+## Correção estrutural (24/09/2026) — gatilho do real
+- O comando real nasce do SINAL APROVADO, não da ordem simulada: `confirmacao_ativa_simulado` e `confirmacao_ativa_real` decidem lados independentes (OFF/OFF e ON/OFF enfileiram o real no instante do sinal; OFF/ON e ON/ON esperam a confirmação).
+- Motivo de `confirmacao_nao_atingida` mede o avanço DENTRO da janela; excursão total em `andou_pts_total`.
