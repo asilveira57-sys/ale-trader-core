@@ -68,3 +68,39 @@ describe("confirmação de entrada em sombra", () => {
     expect(confirmacaoRegraTexto(25, 30)).toBe("25% do stop em 30 s");
   });
 });
+
+// ── Regra LIGADA: espera, confirmação e descarte ──────────────────────────────
+describe("regra ligada", () => {
+  const cfg = { confirmacao_ativa: true, confirmacao_pct_stop: 50, confirmacao_janela_s: 180 };
+
+  it("armada só quando ligada com percentual e janela úteis", () => {
+    expect(confirmacaoArmada(cfg)).toBe(true);
+    expect(confirmacaoArmada({ ...cfg, confirmacao_ativa: false })).toBe(false);
+    expect(confirmacaoArmada({ ...cfg, confirmacao_pct_stop: 0 })).toBe(false);
+  });
+
+  it("aguarda, confirma e expira", () => {
+    const t0 = Date.parse("2026-09-23T13:00:00Z");
+    const pend = criarPendente({ side: "buy", precoSinal: 100_000, stopPtsFrozen: 280, gainPtsFrozen: 400, cfg, agoraMs: t0 })!;
+    expect(pend.exigido_pts).toBe(140);
+    expect(avaliarPendente(pend, 100_034, t0 + 30_000).estado).toBe("aguardando");
+    expect(avaliarPendente(pend, 100_140, t0 + 60_000).estado).toBe("confirmou");
+    expect(avaliarPendente(pend, 100_034, t0 + 200_000).estado).toBe("expirou");
+  });
+
+  it("venda confirma quando o preço cai", () => {
+    const t0 = Date.parse("2026-09-23T13:00:00Z");
+    const pend = criarPendente({ side: "sell", precoSinal: 100_000, stopPtsFrozen: 200, gainPtsFrozen: 300, cfg, agoraMs: t0 })!;
+    expect(avaliarPendente(pend, 99_890, t0 + 10_000).estado).toBe("confirmou");
+    expect(avaliarPendente(pend, 100_050, t0 + 10_000).estado).toBe("aguardando");
+  });
+
+  it("motivo do descarte diz quanto andou contra o exigido", () => {
+    const t0 = Date.parse("2026-09-23T13:00:00Z");
+    const pend = criarPendente({ side: "buy", precoSinal: 100_000, stopPtsFrozen: 280, gainPtsFrozen: 400, cfg, agoraMs: t0 })!;
+    const av = avaliarPendente({ ...pend, melhor_pts: 34 }, 100_010, t0 + 200_000);
+    expect(motivoNaoConfirmou(pend, av, 50)).toBe(
+      "Preço andou 34 pts a favor; exigido 140 pts (50% do stop) em 180s. Entrada descartada.",
+    );
+  });
+});
