@@ -150,7 +150,11 @@ export function RobotConfigDialog({
     onSuccess: (src: any) => {
       const s = src?.settings ?? {};
       const next: Record<string, any> = { ...f };
-      for (const k of Object.keys(B3_ROBOT_FIELD_LABEL)) if (k in s && k !== "enabled") next[k] = s[k];
+      // `enabled` e `confirmacao_ativa` NÃO são copiados: ligar robô ou regra
+      // por engano é decisão de dinheiro, não de cópia de valores.
+      for (const k of Object.keys(B3_ROBOT_FIELD_LABEL)) {
+        if (k in s && k !== "enabled" && k !== "confirmacao_ativa") next[k] = s[k];
+      }
       setForm(next);
       toast.success("Valores copiados — revise e salve");
     },
