@@ -112,6 +112,101 @@ export function avaliarConfirmacao(
   return null;
 }
 
+// ── REGRA LIGADA (23/09/2026, emenda) ────────────────────────────────────────
+// Desligada (padrão de todos os robôs) nada muda: só medição, acima.
+// LIGADA, para AQUELE robô, vale nos dois — simulado e real: o sinal não abre na
+// hora; espera o preço andar a favor o percentual configurado do stop dentro da
+// janela. Confirmou → abre no preço da confirmação (o comando real sai NESSE
+// instante, junto). Não confirmou → a entrada é descartada e fica registrada.
+// A regra decide SE abre; nunca fecha posição aberta. Não é freio.
+
+/** Regra ligada para este robô? (percentual e janela precisam ser úteis) */
+export function confirmacaoArmada(cfg: ConfirmacaoConfig): boolean {
+  if (!cfg?.confirmacao_ativa) return false;
+  const pct = Number(cfg.confirmacao_pct_stop ?? CONFIRMACAO_PADRAO.pct_stop);
+  const jan = Number(cfg.confirmacao_janela_s ?? CONFIRMACAO_PADRAO.janela_s);
+  return Number.isFinite(pct) && pct > 0 && Number.isFinite(jan) && jan > 0;
+}
+
+/** Sinal aguardando confirmação — o que fica gravado entre tiques. */
+export type ConfirmacaoPendente = {
+  side: string;
+  preco_sinal: number;
+  exigido_pts: number;
+  janela_s: number;
+  criado_em: string;
+  stop_pts: number | null;
+  gain_pts: number | null;
+  melhor_pts: number;
+};
+
+export function criarPendente(args: {
+  side: string;
+  precoSinal: number;
+  stopPtsFrozen: number;
+  gainPtsFrozen: number;
+  cfg: ConfirmacaoConfig;
+  agoraMs?: number;
+}): ConfirmacaoPendente | null {
+  const exigido = confirmacaoExigidaPts(args.stopPtsFrozen, args.cfg?.confirmacao_pct_stop);
+  const preco = Number(args.precoSinal);
+  if (!(exigido > 0) || !Number.isFinite(preco) || preco <= 0) return null;
+  const janRaw = Number(args.cfg?.confirmacao_janela_s);
+  const janela = Number.isFinite(janRaw) && janRaw > 0 ? Math.round(janRaw) : CONFIRMACAO_PADRAO.janela_s;
+  return {
+    side: String(args.side),
+    preco_sinal: preco,
+    exigido_pts: exigido,
+    janela_s: janela,
+    criado_em: new Date(args.agoraMs ?? Date.now()).toISOString(),
+    stop_pts: args.stopPtsFrozen > 0 ? args.stopPtsFrozen : null,
+    gain_pts: args.gainPtsFrozen > 0 ? args.gainPtsFrozen : null,
+    melhor_pts: 0,
+  };
+}
+
+export type AvaliacaoPendente = {
+  estado: "aguardando" | "confirmou" | "expirou" | "invalido";
+  andou_pts: number;
+  melhor_pts: number;
+  exigido_pts: number;
+  decorrido_s: number;
+};
+
+/** Onde o sinal em espera está agora. Não escreve nada; só julga. */
+export function avaliarPendente(
+  pend: any,
+  precoAtual: number,
+  agoraMs: number = Date.now(),
+): AvaliacaoPendente {
+  const vazio: AvaliacaoPendente = { estado: "invalido", andou_pts: 0, melhor_pts: 0, exigido_pts: 0, decorrido_s: 0 };
+  if (!pend || typeof pend !== "object") return vazio;
+  const exigido = Number(pend.exigido_pts);
+  const sinal = Number(pend.preco_sinal);
+  const preco = Number(precoAtual);
+  const criadoMs = pend.criado_em ? new Date(pend.criado_em).getTime() : NaN;
+  if (!(exigido > 0) || !(sinal > 0) || !Number.isFinite(criadoMs)) return vazio;
+
+  const dir = pend.side === "buy" ? 1 : -1;
+  const andou = Number.isFinite(preco) && preco > 0 ? (preco - sinal) * dir : 0;
+  const melhor = Math.max(Number(pend.melhor_pts) || 0, andou);
+  const decorrido = (agoraMs - criadoMs) / 1000;
+  const janela = Number(pend.janela_s) > 0 ? Number(pend.janela_s) : CONFIRMACAO_PADRAO.janela_s;
+
+  const base = { andou_pts: andou, melhor_pts: melhor, exigido_pts: exigido, decorrido_s: decorrido };
+  if (andou >= exigido) return { estado: "confirmou", ...base };
+  if (decorrido > janela) return { estado: "expirou", ...base };
+  return { estado: "aguardando", ...base };
+}
+
+/** Motivo curto do descarte, para o log de decisão. */
+export function motivoNaoConfirmou(pend: any, av: AvaliacaoPendente, pctStop: number | null | undefined): string {
+  const pct = Number(pctStop);
+  const p = Number.isFinite(pct) && pct > 0 ? pct : CONFIRMACAO_PADRAO.pct_stop;
+  const andou = Math.round(av.melhor_pts);
+  return `Preço andou ${andou} pts a favor; exigido ${Math.round(av.exigido_pts)} pts (${Math.round(p)}% do stop) em ${Math.round(Number(pend?.janela_s) || CONFIRMACAO_PADRAO.janela_s)}s. Entrada descartada.`;
+}
+
 /** Rótulo curto da regra para a tela: "50% do stop em 3 min". */
 export function confirmacaoRegraTexto(pctStop: number | null | undefined, janelaS: number | null | undefined): string {
   const pct = Number(pctStop);
