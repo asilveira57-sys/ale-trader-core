@@ -174,10 +174,16 @@ export function criarPendente(args: {
   gainPtsFrozen: number;
   cfg: ConfirmacaoConfig;
   agoraMs?: number;
+  aguardaSimulado: boolean;
+  aguardaReal: boolean;
+  simulationOrderId?: string | null;
+  realEnviado?: boolean;
+  sobLiberacao?: boolean;
 }): ConfirmacaoPendente | null {
   const exigido = confirmacaoExigidaPts(args.stopPtsFrozen, args.cfg?.confirmacao_pct_stop);
   const preco = Number(args.precoSinal);
   if (!(exigido > 0) || !Number.isFinite(preco) || preco <= 0) return null;
+  if (!args.aguardaSimulado && !args.aguardaReal) return null;
   const janRaw = Number(args.cfg?.confirmacao_janela_s);
   const janela = Number.isFinite(janRaw) && janRaw > 0 ? Math.round(janRaw) : CONFIRMACAO_PADRAO.janela_s;
   return {
@@ -189,6 +195,11 @@ export function criarPendente(args: {
     stop_pts: args.stopPtsFrozen > 0 ? args.stopPtsFrozen : null,
     gain_pts: args.gainPtsFrozen > 0 ? args.gainPtsFrozen : null,
     melhor_pts: 0,
+    aguarda_simulado: args.aguardaSimulado,
+    aguarda_real: args.aguardaReal,
+    simulation_order_id: args.simulationOrderId ?? null,
+    real_enviado: args.realEnviado === true,
+    sob_liberacao: args.sobLiberacao === true,
   };
 }
 
