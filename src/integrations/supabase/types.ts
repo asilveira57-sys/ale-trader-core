@@ -3959,6 +3959,7 @@ export type Database = {
         Row: {
           committee_approvals: number
           committee_rejections: number
+          confirmacao_pendente: Json | null
           consecutive_losses_after_target: number
           contracts_traded: number
           created_at: string
@@ -3999,6 +4000,7 @@ export type Database = {
         Insert: {
           committee_approvals?: number
           committee_rejections?: number
+          confirmacao_pendente?: Json | null
           consecutive_losses_after_target?: number
           contracts_traded?: number
           created_at?: string
@@ -4039,6 +4041,7 @@ export type Database = {
         Update: {
           committee_approvals?: number
           committee_rejections?: number
+          confirmacao_pendente?: Json | null
           consecutive_losses_after_target?: number
           contracts_traded?: number
           created_at?: string
