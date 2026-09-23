@@ -147,17 +147,21 @@ export type ConfirmacaoPendente = {
   criado_em: string;
   stop_pts: number | null;
   gain_pts: number | null;
+  /** Melhor avanço a favor desde o sinal, inclusive DEPOIS da janela. */
   melhor_pts: number;
+  /** Melhor avanço a favor DENTRO da janela — é este que a regra exige. */
+  melhor_janela_pts: number;
   /** Lados que estão esperando esta confirmação. */
   aguarda_simulado: boolean;
   aguarda_real: boolean;
   /** Combinação 3: a ordem simulada já abriu; só o real espera. */
   simulation_order_id?: string | null;
-  /** Combinação 2: o comando real já saiu no instante do sinal. */
+  /** Comando real já enfileirado no instante do sinal (chave do real desligada). */
   real_enviado?: boolean;
   /** Liberação manual vigente no instante do sinal (carimbo, não decisão). */
   sob_liberacao?: boolean;
 };
+
 
 /** Em qual lado o descarte deve ser registrado. */
 export function ladoDoPendente(pend: any): "simulado" | "real" | "ambos" {
@@ -195,6 +199,8 @@ export function criarPendente(args: {
     stop_pts: args.stopPtsFrozen > 0 ? args.stopPtsFrozen : null,
     gain_pts: args.gainPtsFrozen > 0 ? args.gainPtsFrozen : null,
     melhor_pts: 0,
+    melhor_janela_pts: 0,
+
     aguarda_simulado: args.aguardaSimulado,
     aguarda_real: args.aguardaReal,
     simulation_order_id: args.simulationOrderId ?? null,
@@ -206,7 +212,10 @@ export function criarPendente(args: {
 export type AvaliacaoPendente = {
   estado: "aguardando" | "confirmou" | "expirou" | "invalido";
   andou_pts: number;
+  /** Melhor avanço a favor desde o sinal (inclui o que veio DEPOIS da janela). */
   melhor_pts: number;
+  /** Melhor avanço a favor DENTRO da janela — é o que a regra mede. */
+  melhor_janela_pts: number;
   exigido_pts: number;
   decorrido_s: number;
 };
@@ -217,7 +226,7 @@ export function avaliarPendente(
   precoAtual: number,
   agoraMs: number = Date.now(),
 ): AvaliacaoPendente {
-  const vazio: AvaliacaoPendente = { estado: "invalido", andou_pts: 0, melhor_pts: 0, exigido_pts: 0, decorrido_s: 0 };
+  const vazio: AvaliacaoPendente = { estado: "invalido", andou_pts: 0, melhor_pts: 0, melhor_janela_pts: 0, exigido_pts: 0, decorrido_s: 0 };
   if (!pend || typeof pend !== "object") return vazio;
   const exigido = Number(pend.exigido_pts);
   const sinal = Number(pend.preco_sinal);
@@ -230,8 +239,16 @@ export function avaliarPendente(
   const melhor = Math.max(Number(pend.melhor_pts) || 0, andou);
   const decorrido = (agoraMs - criadoMs) / 1000;
   const janela = Number(pend.janela_s) > 0 ? Number(pend.janela_s) : CONFIRMACAO_PADRAO.janela_s;
+  // DENTRO DA JANELA é outra medida (24/09/2026): o total até o descarte fazia o
+  // motivo do log parecer contradição ("andou 775, exigia 120, descartou") —
+  // o 775 tinha vindo meia hora depois da janela fechar.
+  const dentroDaJanela = decorrido <= janela;
+  const melhorJanela = Math.max(
+    Number(pend.melhor_janela_pts) || 0,
+    dentroDaJanela ? andou : 0,
+  );
 
-  const base = { andou_pts: andou, melhor_pts: melhor, exigido_pts: exigido, decorrido_s: decorrido };
+  const base = { andou_pts: andou, melhor_pts: melhor, melhor_janela_pts: melhorJanela, exigido_pts: exigido, decorrido_s: decorrido };
   if (andou >= exigido) return { estado: "confirmou", ...base };
   if (decorrido > janela) return { estado: "expirou", ...base };
   return { estado: "aguardando", ...base };
@@ -241,11 +258,18 @@ export function avaliarPendente(
 export function motivoNaoConfirmou(pend: any, av: AvaliacaoPendente, pctStop: number | null | undefined): string {
   const pct = Number(pctStop);
   const p = Number.isFinite(pct) && pct > 0 ? pct : CONFIRMACAO_PADRAO.pct_stop;
-  const andou = Math.round(av.melhor_pts);
+  const janela = Math.round(Number(pend?.janela_s) || CONFIRMACAO_PADRAO.janela_s);
+  const dentro = Math.round(av.melhor_janela_pts);
+  const total = Math.round(av.melhor_pts);
   const lado = ladoDoPendente(pend);
   const onde = lado === "ambos" ? "no simulado e no real" : `no ${lado}`;
-  return `Preço andou ${andou} pts a favor; exigido ${Math.round(av.exigido_pts)} pts (${Math.round(p)}% do stop) em ${Math.round(Number(pend?.janela_s) || CONFIRMACAO_PADRAO.janela_s)}s. Entrada descartada ${onde}.`;
+  // Excursão total fica em frase separada: é informação, não é o que a regra mediu.
+  const depois = total > dentro
+    ? ` (Depois da janela chegou a ${total} pts em ${Math.round(av.decorrido_s / 60)} min.)`
+    : "";
+  return `Dentro de ${janela}s andou ${dentro} pts; exigido ${Math.round(av.exigido_pts)} pts (${Math.round(p)}% do stop). Entrada descartada ${onde}.${depois}`;
 }
+
 
 /** Rótulo curto da regra para a tela: "50% do stop em 3 min". */
 export function confirmacaoRegraTexto(pctStop: number | null | undefined, janelaS: number | null | undefined): string {

@@ -121,15 +121,26 @@ describe("regra ligada", () => {
     expect(ladoDoPendente(criarPendente({ ...base, aguardaSimulado: false, aguardaReal: true }))).toBe("real");
   });
 
-  it("motivo do descarte diz quanto andou, o exigido e o lado", () => {
+  it("motivo mede o que andou DENTRO da janela e separa a excursão total", () => {
     const t0 = Date.parse("2026-09-23T13:00:00Z");
     const soSim = criarPendente({ side: "buy", precoSinal: 100_000, stopPtsFrozen: 280, gainPtsFrozen: 400, cfg, agoraMs: t0, aguardaSimulado: true, aguardaReal: false })!;
-    const av = avaliarPendente({ ...soSim, melhor_pts: 34 }, 100_010, t0 + 200_000);
+    const av = avaliarPendente({ ...soSim, melhor_pts: 775, melhor_janela_pts: 40 }, 100_010, t0 + 1_666_000);
     expect(motivoNaoConfirmou(soSim, av, 50)).toBe(
-      "Preço andou 34 pts a favor; exigido 140 pts (50% do stop) em 180s. Entrada descartada no simulado.",
+      "Dentro de 180s andou 40 pts; exigido 140 pts (50% do stop). Entrada descartada no simulado. (Depois da janela chegou a 775 pts em 28 min.)",
     );
     const soReal = { ...soSim, aguarda_simulado: false, aguarda_real: true };
     expect(motivoNaoConfirmou(soReal, av, 50)).toContain("descartada no real.");
     expect(motivoNaoConfirmou({ ...soSim, aguarda_real: true }, av, 50)).toContain("no simulado e no real.");
   });
+
+  it("avanço depois da janela não conta como avanço dentro da janela", () => {
+    const t0 = Date.parse("2026-09-23T13:00:00Z");
+    const pend = criarPendente({ side: "buy", precoSinal: 100_000, stopPtsFrozen: 280, gainPtsFrozen: 400, cfg, agoraMs: t0, aguardaSimulado: true, aguardaReal: false })!;
+    const dentro = avaliarPendente(pend, 100_040, t0 + 60_000);
+    expect(dentro.melhor_janela_pts).toBe(40);
+    const depois = avaliarPendente({ ...pend, melhor_janela_pts: 40, melhor_pts: 40 }, 100_775, t0 + 1_666_000);
+    expect(depois.melhor_janela_pts).toBe(40);
+    expect(depois.melhor_pts).toBe(775);
+  });
 });
+

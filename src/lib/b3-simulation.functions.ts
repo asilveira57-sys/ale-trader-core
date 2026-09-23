@@ -3229,12 +3229,17 @@ async function runB3SimulationTickInner(
             // linha só, com lado 'ambos'.
             lado: ladoDoPendente(pend),
             exigido_pts: Math.round(av.exigido_pts),
-            andou_pts: Math.round(av.melhor_pts),
+            // O que a regra mede é o avanço DENTRO da janela; a excursão total
+            // (que pode vir muito depois) fica em campo próprio (24/09/2026).
+            andou_pts_na_janela: Math.round(av.melhor_janela_pts),
+            andou_pts_total: Math.round(av.melhor_pts),
+            andou_pts: Math.round(av.melhor_janela_pts),
             janela_s: Number(pend?.janela_s) || null,
             preco_sinal: Number(pend?.preco_sinal) || null,
             side: String(pend?.side ?? ""),
             decorrido_s: Math.round(av.decorrido_s),
           },
+
         });
       };
       // Combinação 3 (simulado desligado, real ligado): a ordem simulada já
@@ -3304,10 +3309,11 @@ async function runB3SimulationTickInner(
         } else if (av.estado === "confirmou" && pend.aguarda_real === true && pend.real_enviado !== true && pend.aguarda_simulado !== true) {
           try { await enfileirarRealConfirmado(pend); } catch { /* espelho nunca derruba o tique */ }
           await gravarPendente(null);
-        } else if (av.estado === "aguardando" && av.melhor_pts > Number(pend.melhor_pts ?? 0)) {
-          // Melhor avanço a favor, para o registro do descarte dizer quanto o
-          // preço realmente andou. Só grava quando melhora.
-          await gravarPendente({ ...pend, melhor_pts: av.melhor_pts });
+        } else if (av.melhor_pts > Number(pend.melhor_pts ?? 0) || av.melhor_janela_pts > Number(pend.melhor_janela_pts ?? 0)) {
+          // Melhor avanço a favor, dentro da janela e no total, para o registro
+          // do descarte dizer as duas coisas. Só grava quando melhora.
+          await gravarPendente({ ...pend, melhor_pts: av.melhor_pts, melhor_janela_pts: av.melhor_janela_pts });
+
         }
       }
 
@@ -4663,20 +4669,60 @@ async function runB3SimulationTickInner(
         // e só o comando real espera (tratado na pré-passada, acima).
         // A regra decide SE abre; nunca fecha posição aberta.
         let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number } | null = null;
-        // Combinação 2 (simulado ligado, real desligado): o comando real já saiu
-        // no instante do sinal — o espelho da abertura não repete.
+        // ── O GATILHO DO REAL É O SINAL, NÃO A ORDEM SIMULADA (24/09/2026) ──
+        // Correção estrutural: o comando real nascia da ordem simulada aberta,
+        // então qualquer coisa que impedisse o simulado de abrir (inclusive a
+        // confirmação do SIMULADO) matava o real junto — mesmo com a chave do
+        // real desligada. Agora as duas decisões são independentes.
         let realJaEnviadoNoSinal = false;
+        const stopPtsSinal = Math.max(0, Number(setupInfo.stop_pts_override ?? cfg.stop_pts ?? 0) || 0);
+        const gainPtsSinal = Math.max(0, Number(setupInfo.gain_pts_override ?? cfg.gain_pts ?? 0) || 0);
+        const pendAtual = (m as any).confirmacao_pendente;
+        const mesmoLado = Boolean(pendAtual) && String(pendAtual.side) === effectiveSide;
+
+        // Enfileira o comando real AGORA, no preço do sinal, sem depender de
+        // existir ordem simulada. Stop e alvo saem do próprio sinal.
+        const enfileirarRealNoSinal = async (chave: string) => {
+          const tickSinal = Number(asset.tick_size);
+          const precoSinalTick = roundToTick(Number(ctx.price), tickSinal);
+          const dirSinal = effectiveSide === "buy" ? 1 : -1;
+          await mirrorToReal(
+            supabase, userId, runId, mode as Mode, "open", effectiveSide,
+            chave, "engine_auto", asset.quote_symbol, runVariant,
+            {
+              stop_pts: stopPtsSinal > 0 ? stopPtsSinal : null,
+              gain_pts: gainPtsSinal > 0 ? gainPtsSinal : null,
+              stop_price: stopPtsSinal > 0 ? roundToTick(precoSinalTick - dirSinal * stopPtsSinal, tickSinal) : null,
+              target_price: gainPtsSinal > 0 ? roundToTick(precoSinalTick + dirSinal * gainPtsSinal, tickSinal) : null,
+            },
+            entradaSobLiberacao,
+          );
+        };
+
+        // Chave do real DESLIGADA: o real entra no instante do sinal, como
+        // sempre. Só não sai quando um freio real barra o espelho (nada muda no
+        // real) ou quando já saiu para este mesmo sinal em espera.
+        const realJaSaiuNesteSinal = Boolean(mesmoLado) && pendAtual?.real_enviado === true;
+        realJaEnviadoNoSinal = realJaSaiuNesteSinal;
+        if (!confRealArmada && !realJaSaiuNesteSinal && !espelhoBarradoPorFreio) {
+          // Chave por minuto do sinal: repetições do MESMO sinal dentro do
+          // minuto colapsam na idempotência, sem criar comando duplicado.
+          const minutoSinal = now.toISOString().slice(0, 16).replace(/[-:T]/g, "");
+          try {
+            await enfileirarRealNoSinal(`open-sig-${m.id}-${effectiveSide}-${minutoSinal}`);
+            realJaEnviadoNoSinal = true;
+          } catch { /* espelho nunca derruba o tique */ }
+        }
+
+        // ── CONFIRMAÇÃO DE ENTRADA NO SIMULADO (23/09/2026, segunda emenda) ─
+        // Chave do SIMULADO ligada: o sinal NÃO abre na hora — espera o preço
+        // andar a favor o percentual configurado do stop dentro da janela; ao
+        // confirmar abre AGORA, no preço deste instante, e stop e alvo nascem
+        // medidos dele. A regra decide SE abre; nunca fecha posição aberta.
         if (confSimArmada) {
-          const stopPtsSinal = Math.max(0, Number(setupInfo.stop_pts_override ?? cfg.stop_pts ?? 0) || 0);
-          const gainPtsSinal = Math.max(0, Number(setupInfo.gain_pts_override ?? cfg.gain_pts ?? 0) || 0);
-          const pendAtual = (m as any).confirmacao_pendente;
-          const mesmoLado = Boolean(pendAtual) && String(pendAtual.side) === effectiveSide;
           const av = mesmoLado ? avaliarPendente(pendAtual, Number(ctx.price), now.getTime()) : null;
           if (av?.estado === "confirmou") {
             confirmadaAgora = { em: now.toISOString(), exigido_pts: av.exigido_pts, andou_pts: av.andou_pts };
-            // Combinação 2: o comando real já saiu no instante do sinal — o
-            // espelho abaixo não pode enfileirar um segundo.
-            realJaEnviadoNoSinal = pendAtual?.real_enviado === true;
             await gravarPendente(null);
           } else {
             if (av?.estado === "expirou") {
@@ -4693,33 +4739,11 @@ async function runB3SimulationTickInner(
                 stopPtsFrozen: stopPtsSinal, gainPtsFrozen: gainPtsSinal,
                 cfg: cfg as any, agoraMs: now.getTime(),
                 aguardaSimulado: true, aguardaReal: confRealArmada,
-                // Chave do real desligada: o real não espera — o comando sai
-                // agora, no preço do sinal, exatamente como hoje.
-                realEnviado: !confRealArmada,
+                // Carimbo do que já aconteceu no lado real neste sinal.
+                realEnviado: realJaEnviadoNoSinal,
                 sobLiberacao: entradaSobLiberacao,
               });
-              if (novo) {
-                await gravarPendente(novo);
-                if (!confRealArmada && !espelhoBarradoPorFreio) {
-                  const tickSinal = Number(asset.tick_size);
-                  const precoSinalTick = roundToTick(Number(ctx.price), tickSinal);
-                  const dirSinal = effectiveSide === "buy" ? 1 : -1;
-                  try {
-                    await mirrorToReal(
-                      supabase, userId, runId, mode as Mode, "open", effectiveSide,
-                      `open-sig-${m.id}-${novo.criado_em}`, "engine_auto",
-                      asset.quote_symbol, runVariant,
-                      {
-                        stop_pts: stopPtsSinal > 0 ? stopPtsSinal : null,
-                        gain_pts: gainPtsSinal > 0 ? gainPtsSinal : null,
-                        stop_price: stopPtsSinal > 0 ? roundToTick(precoSinalTick - dirSinal * stopPtsSinal, tickSinal) : null,
-                        target_price: gainPtsSinal > 0 ? roundToTick(precoSinalTick + dirSinal * gainPtsSinal, tickSinal) : null,
-                      },
-                      entradaSobLiberacao,
-                    );
-                  } catch { /* espelho nunca derruba o tique */ }
-                }
-              }
+              if (novo) await gravarPendente(novo);
             }
             const pendVigente = (m as any).confirmacao_pendente;
             const exigidoTxt = Math.round(Number(pendVigente?.exigido_pts ?? 0));
@@ -4739,6 +4763,7 @@ async function runB3SimulationTickInner(
             continue;
           }
         }
+
         let entryAudit: B3QuoteExecutionAudit;
         try {
           entryAudit = getB3ExecutionAudit(priceSrc, effectiveSide, "entry", "runB3SimulationTick.openOrder");
@@ -5008,9 +5033,10 @@ async function runB3SimulationTickInner(
             });
           } catch { /* registro nunca derruba o motor */ }
         } else if (realJaEnviadoNoSinal) {
-          // Combinação 2 (simulado ligado, real desligado): o comando real já
-          // saiu no instante do sinal, antes de qualquer confirmação. Repetir
-          // aqui criaria uma segunda posição real.
+          // Combinações 1 e 2 (chave do real desligada): o comando real já saiu
+          // no instante do SINAL, antes de qualquer confirmação. Repetir aqui
+          // criaria uma segunda posição real.
+
           log.push({ mode, action: "mirror_skip", reason: "real_enfileirado_no_sinal", side: effectiveSide });
         } else if (confRealArmada && !confSimArmada) {
           // Combinação 3 (simulado desligado, real ligado): a ordem simulada
