@@ -4595,6 +4595,59 @@ async function runB3SimulationTickInner(
           setup: setupInfo,
         });
       } else if (decision.final === "approved") {
+        // ── CONFIRMAÇÃO DE ENTRADA LIGADA (23/09/2026, emenda) ─────────────
+        // Desligada (padrão de todos os robôs) este bloco não existe. Ligada, o
+        // sinal NÃO abre na hora: espera o preço andar a favor o percentual
+        // configurado do stop dentro da janela. Confirmou → abre AGORA, no preço
+        // deste instante (o preço da confirmação), e o espelho enfileira o
+        // comando real no MESMO instante, mais abaixo. Não confirmou → a entrada
+        // é descartada, com linha própria no log de decisão. A regra decide SE
+        // abre; nunca fecha posição aberta.
+        let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number } | null = null;
+        if (confArmada) {
+          const stopPtsSinal = Math.max(0, Number(setupInfo.stop_pts_override ?? cfg.stop_pts ?? 0) || 0);
+          const gainPtsSinal = Math.max(0, Number(setupInfo.gain_pts_override ?? cfg.gain_pts ?? 0) || 0);
+          const pendAtual = (m as any).confirmacao_pendente;
+          const mesmoLado = Boolean(pendAtual) && String(pendAtual.side) === effectiveSide;
+          const av = mesmoLado ? avaliarPendente(pendAtual, Number(ctx.price), now.getTime()) : null;
+          if (av?.estado === "confirmou") {
+            confirmadaAgora = { em: now.toISOString(), exigido_pts: av.exigido_pts, andou_pts: av.andou_pts };
+            await gravarPendente(null);
+          } else {
+            if (av?.estado === "expirou") {
+              registrarDescarte(pendAtual, av);
+              await gravarPendente(null);
+            } else if (pendAtual && !mesmoLado) {
+              // O lado virou antes de confirmar: o sinal antigo morre registrado.
+              registrarDescarte(pendAtual, avaliarPendente(pendAtual, Number(ctx.price), now.getTime()));
+              await gravarPendente(null);
+            }
+            if (av?.estado !== "aguardando") {
+              const novo = criarPendente({
+                side: effectiveSide, precoSinal: Number(ctx.price),
+                stopPtsFrozen: stopPtsSinal, gainPtsFrozen: gainPtsSinal,
+                cfg: cfg as any, agoraMs: now.getTime(),
+              });
+              if (novo) await gravarPendente(novo);
+            }
+            const pendVigente = (m as any).confirmacao_pendente;
+            const exigidoTxt = Math.round(Number(pendVigente?.exigido_pts ?? 0));
+            log.push({ mode, action: "skip", reason: "aguardando_confirmacao", side: effectiveSide });
+            finalizeAudit(
+              `Aguardando confirmação de entrada: preço precisa andar ${exigidoTxt} pts a favor em ${Math.round(Number(pendVigente?.janela_s ?? 0))}s.`,
+              {
+                last_analysis: decision.justification,
+                last_score: decision.score,
+                last_confidence: decision.avg_confidence,
+                last_setup: `${setupInfo.name} ${effectiveSide.toUpperCase()} aguardando confirmação`,
+                signals: { evaluated_side: effectiveSide, buy: false, sell: false },
+                committee: decision,
+                setup: setupInfo,
+              },
+            );
+            continue;
+          }
+        }
         let entryAudit: B3QuoteExecutionAudit;
         try {
           entryAudit = getB3ExecutionAudit(priceSrc, effectiveSide, "entry", "runB3SimulationTick.openOrder");
