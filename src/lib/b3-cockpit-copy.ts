@@ -3,6 +3,7 @@
 
 import { decimalsForTick, freiosAcionadosTexto, openSinceText, PX, rootSymbol, somarSombrasDia } from "./b3-format";
 import { modeFullLabel } from "./mode-nick-registry";
+import { confirmacaoRegraTexto } from "./b3-confirmacao-entrada";
 
 const BRL = (v: number | null | undefined) =>
   Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
