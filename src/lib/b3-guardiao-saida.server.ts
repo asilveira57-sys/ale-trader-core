@@ -35,6 +35,7 @@ import {
   type B3QuoteExecutionAudit,
 } from "@/lib/b3-price-source.server";
 import { b3WindowState } from "@/lib/b3-window.server";
+import { avaliarConfirmacao } from "@/lib/b3-confirmacao-entrada";
 
 
 export interface GuardiaoResultado {
@@ -456,13 +457,20 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
         const novoMfe = Math.round(Math.max(favorAgora, jaMfe ?? favorAgora, 0));
         const novoMae = Math.round(Math.max(contraAgora, jaMae ?? contraAgora, 0));
 
-        const patch: Record<string, number> = {};
+        const patch: Record<string, any> = {};
         if (jaPts !== unrealPts || jaBrl !== unrealBrl) {
           patch.unrealized_points = unrealPts;
           patch.unrealized_brl = unrealBrl;
         }
         if (jaMfe === null || novoMfe > Math.round(jaMfe)) patch.mfe_pts = novoMfe;
         if (jaMae === null || novoMae > Math.round(jaMae)) patch.mae_pts = novoMae;
+
+        // CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026): mesma coleta de dado
+        // do MFE/MAE, na mesma gravação. Nenhuma decisão de saída lê isso — o
+        // guardião continua fechando só por stop, alvo, trailing, zero a zero,
+        // oposição prolongada e zeragem.
+        const confPatch = avaliarConfirmacao(open, markPrice, Number(asset.tick_size));
+        if (confPatch) Object.assign(patch, confPatch);
 
         if (Object.keys(patch).length) {
           try {

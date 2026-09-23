@@ -17,6 +17,7 @@ import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lo
 
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, freiosAcionadosTexto, somarSombrasDia, type SombraDia } from "@/lib/b3-format";
+import { confirmacaoRegraTexto } from "@/lib/b3-confirmacao-entrada";
 import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
@@ -165,6 +166,31 @@ function EfeitoDia({ sombra, compacto = false }: {
         <span className="text-muted-foreground">Com freio</span><span className={`text-right font-mono ${moneyColor(comFreio)}`}>{BRL(comFreio)}</span>
         <span className="text-muted-foreground">Sem freio</span><span className={`text-right font-mono ${moneyColor(semFreio)}`}>{BRL(semFreio)}</span>
       </div>
+    </div>
+  );
+}
+
+// CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026). Só leitura do que o motor
+// gravou. A regra não bloqueia nada, em lugar nenhum: os dois valores são o
+// resultado das ordens que teriam confirmado e o de todas as ordens do dia.
+function ConfirmacaoDia({ conf }: { conf: any }) {
+  if (!conf || Number(conf.entradas ?? 0) <= 0) return null;
+  const com = Number(conf.com_confirmacao_brl ?? 0);
+  const sem = Number(conf.sem_confirmacao_brl ?? 0);
+  return (
+    <div className="mt-2 border-t border-border/40 pt-2">
+      <p className="mb-1 text-[9px] font-semibold uppercase text-muted-foreground">
+        Confirmação de entrada (sombra) — {confirmacaoRegraTexto(conf.pct_stop, conf.janela_s)}
+      </p>
+      <div className="grid grid-cols-[auto_1fr] gap-x-2 text-[10px]">
+        <span className="text-muted-foreground">Com confirmação</span>
+        <span className={`text-right font-mono ${moneyColor(com)}`}>{BRL(com)}</span>
+        <span className="text-muted-foreground">Sem confirmação</span>
+        <span className={`text-right font-mono ${moneyColor(sem)}`}>{BRL(sem)}</span>
+      </div>
+      <p className="mt-1 text-[9px] text-muted-foreground">
+        entradas: {conf.entradas} no dia, {conf.confirmadas} teriam confirmado
+      </p>
     </div>
   );
 }
@@ -1089,6 +1115,8 @@ function CockpitPage() {
                         <EfeitoDia
                           sombra={c.grupo?.sombra}
                         />
+                        <ConfirmacaoDia conf={c.confirmacao} />
+
 
                       </button>
 

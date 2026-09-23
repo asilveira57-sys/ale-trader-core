@@ -27,6 +27,7 @@ import { b3WindowState } from "./b3-window.server";
 import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobotSizing } from "./b3-real-stop.server";
 
 import { roundToTick } from "./b3-tick";
+import { avaliarConfirmacao, confirmacaoNaAbertura } from "./b3-confirmacao-entrada";
 import {
   decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
   type B3GrupoLimites, type B3GrupoEstado, type B3GrupoDecision,
@@ -3592,6 +3593,23 @@ async function runB3SimulationTickInner(
         const openMtmBrlAtMark = markOpenOrderBrl(open, markPrice);
         const markedTodayAtMark = realizedToday + (openMtmBrlAtMark ?? 0);
 
+        // ── CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026) ──
+        // Somente REGISTRO: marca se o preço andou a favor o percentual do stop
+        // dentro da janela, e onde stop/alvo ficariam se a entrada fosse no
+        // preço de confirmação. Nenhuma decisão abaixo lê esses campos; a
+        // posição segue gerida pelo stop e pelo alvo contratados na abertura.
+        // Escrita só quando o estado muda (nulo → confirmou/não confirmou).
+        {
+          const patchConf = avaliarConfirmacao(open, markPrice, Number(asset.tick_size));
+          if (patchConf) {
+            try {
+              await supabase.from("b3_simulation_orders").update(patchConf)
+                .eq("id", open.id).eq("user_id", userId).eq("status", "open");
+              Object.assign(open, patchConf);
+            } catch { /* medição nunca derruba o motor */ }
+          }
+        }
+
         // ── FREIO DE PICO EM SOMBRA NO SIMULADO (15/09/2026) ──
         // Até aqui o freio de pico fechava a posição simulada a mercado. Isso
         // censura o caminho livre exatamente como o bloqueio de entrada
@@ -4609,6 +4627,12 @@ async function runB3SimulationTickInner(
           bloqueado_na_sombra: entradaEmSombra,
           freios_na_sombra: freiosNaSombra,
           nivel_freio_na_abertura: grupoNivel,
+
+          // ── CONFIRMAÇÃO DE ENTRADA EM SOMBRA (23/09/2026) ──
+          // Só registro: o limiar em pontos (percentual do stop DESTE robô) e a
+          // janela. `confirmou` nasce nulo e é preenchido depois, a mercado.
+          // Nada aqui impede, atrasa ou reduz esta entrada.
+          ...confirmacaoNaAbertura(cfg, stopPtsFrozen),
 
           ...orderAuditPatch(entryAudit),
         };
@@ -5984,7 +6008,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         (supabase as any).from("b3_simulation_modes")
           .select("mode, initial_balance, current_balance, current_status, protection_state, protection_block_reason, day_peak_profit_brl")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
-        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl, peak_giveback_pct")
+        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl, peak_giveback_pct, confirmacao_ativa, confirmacao_pct_stop, confirmacao_janela_s")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, entry_time, created_at")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
@@ -5992,7 +6016,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         // etapa que barrou), então projetamos esse caminho do JSON.
         (supabase as any).from("b3_simulation_market_snapshots").select("price, engine_digest:extra->engine_digest, engine_modes:extra->engine_audit->modes")
           .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1),
-        (supabase as any).from("b3_simulation_orders").select("mode, net_result_brl")
+        (supabase as any).from("b3_simulation_orders").select("mode, net_result_brl, confirmou")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "closed")
           .gte("exit_time", dayStartUtc),
       ]);
@@ -6012,10 +6036,18 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       const enabledByMode: Record<string, boolean> = {};
       const lossLimitByMode: Record<string, number | null> = {};
       const givebackByMode: Record<string, number | null> = {};
+      // Configuração da confirmação de entrada em sombra (23/09/2026): só
+      // apresentação — a regra não bloqueia nada enquanto estiver em sombra.
+      const confCfgByMode: Record<string, { ativo: boolean; pct_stop: number | null; janela_s: number | null }> = {};
       for (const s of settings ?? []) {
         enabledByMode[s.mode] = s.enabled !== false;
         lossLimitByMode[s.mode] = s.daily_loss_limit_brl == null ? null : Number(s.daily_loss_limit_brl);
         givebackByMode[s.mode] = s.peak_giveback_pct == null ? null : Number(s.peak_giveback_pct);
+        confCfgByMode[s.mode] = {
+          ativo: s.confirmacao_ativa === true,
+          pct_stop: s.confirmacao_pct_stop == null ? null : Number(s.confirmacao_pct_stop),
+          janela_s: s.confirmacao_janela_s == null ? null : Number(s.confirmacao_janela_s),
+        };
       }
       const openByMode: Record<string, any> = {};
       for (const o of openOrders ?? []) openByMode[o.mode] = o;
@@ -6069,8 +6101,18 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       for (const a of auditModes) auditByMode[a.mode] = a;
       // Realizado do dia por modo: soma do net das ordens fechadas hoje.
       const realizedTodayByMode: Record<string, number> = {};
+      // CONFIRMAÇÃO DE ENTRADA EM SOMBRA: dois resultados em reais por robô.
+      // "com confirmação" soma só as ordens que teriam confirmado; "sem
+      // confirmação" soma todas as ordens fechadas do dia (a regra desligada,
+      // que é como o robô opera de fato). Leitura pura do que foi gravado.
+      const confDiaByMode: Record<string, { com_brl: number; sem_brl: number; entradas: number; confirmadas: number }> = {};
       for (const o of closedToday ?? []) {
         realizedTodayByMode[o.mode] = (realizedTodayByMode[o.mode] ?? 0) + Number(o.net_result_brl ?? 0);
+        const net = Number(o.net_result_brl ?? 0);
+        const acc = (confDiaByMode[o.mode] ??= { com_brl: 0, sem_brl: 0, entradas: 0, confirmadas: 0 });
+        acc.sem_brl += net;
+        acc.entradas += 1;
+        if (o.confirmou === true) { acc.com_brl += net; acc.confirmadas += 1; }
       }
       const variant = (run.variant ?? "indicador") as string;
 
@@ -6141,6 +6183,21 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           score: audit?.last_score ?? null, confidence: audit?.last_confidence ?? null,
           blocked_reason: open ? null : (audit?.first_stop?.label ?? audit?.last_refusal_reason ?? null),
           pending_stop: open ? (pendingByMode[m] ?? null) : null,
+          // CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026). Só medição: a regra
+          // não bloqueia nada e nasce desligada em todos os robôs.
+          confirmacao: (() => {
+            const cfgConf = confCfgByMode[m] ?? { ativo: false, pct_stop: null, janela_s: null };
+            const dia = confDiaByMode[m] ?? { com_brl: 0, sem_brl: 0, entradas: 0, confirmadas: 0 };
+            return {
+              ativo: cfgConf.ativo,
+              pct_stop: cfgConf.pct_stop,
+              janela_s: cfgConf.janela_s,
+              com_confirmacao_brl: dia.com_brl,
+              sem_confirmacao_brl: dia.sem_brl,
+              entradas: dia.entradas,
+              confirmadas: dia.confirmadas,
+            };
+          })(),
           grupo: (() => {
             const chaveGrupo = `${rootSymbol(run.symbol)}|${variant}`;
             // Sombra DESTE robô — o número do grupo vive na testeira da modalidade.

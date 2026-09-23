@@ -3820,6 +3820,9 @@ export type Database = {
           breakeven_ativa_pts: number | null
           breakeven_folga_pts: number | null
           breakout_min_clearance_pts: number | null
+          confirmacao_ativa: boolean
+          confirmacao_janela_s: number
+          confirmacao_pct_stop: number
           consecutive_loss_after_target: number
           created_at: string
           daily_gain_target_brl: number
@@ -3860,6 +3863,9 @@ export type Database = {
           breakeven_ativa_pts?: number | null
           breakeven_folga_pts?: number | null
           breakout_min_clearance_pts?: number | null
+          confirmacao_ativa?: boolean
+          confirmacao_janela_s?: number
+          confirmacao_pct_stop?: number
           consecutive_loss_after_target?: number
           created_at?: string
           daily_gain_target_brl?: number
@@ -3900,6 +3906,9 @@ export type Database = {
           breakeven_ativa_pts?: number | null
           breakeven_folga_pts?: number | null
           breakout_min_clearance_pts?: number | null
+          confirmacao_ativa?: boolean
+          confirmacao_janela_s?: number
+          confirmacao_pct_stop?: number
           consecutive_loss_after_target?: number
           created_at?: string
           daily_gain_target_brl?: number
@@ -4079,8 +4088,13 @@ export type Database = {
       }
       b3_simulation_orders: {
         Row: {
+          alvo_recalculado: number | null
           bloqueado_na_sombra: boolean
           close_reason: string | null
+          confirmacao_exigida_pts: number | null
+          confirmacao_janela_s: number | null
+          confirmou: boolean | null
+          confirmou_em: string | null
           contract_code: string
           created_at: string
           diagnostic_payload: Json
@@ -4107,6 +4121,7 @@ export type Database = {
           mode: string
           net_result_brl: number
           nivel_freio_na_abertura: number | null
+          preco_confirmacao: number | null
           provider_name: string
           quantity: number
           quote_ask: number | null
@@ -4123,6 +4138,7 @@ export type Database = {
           stop_excedido_pts: number | null
           stop_price: number | null
           stop_pts: number | null
+          stop_recalculado: number | null
           stop_violado: boolean
           symbol: string
           target_price: number | null
@@ -4132,8 +4148,13 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          alvo_recalculado?: number | null
           bloqueado_na_sombra?: boolean
           close_reason?: string | null
+          confirmacao_exigida_pts?: number | null
+          confirmacao_janela_s?: number | null
+          confirmou?: boolean | null
+          confirmou_em?: string | null
           contract_code?: string
           created_at?: string
           diagnostic_payload?: Json
@@ -4160,6 +4181,7 @@ export type Database = {
           mode: string
           net_result_brl?: number
           nivel_freio_na_abertura?: number | null
+          preco_confirmacao?: number | null
           provider_name?: string
           quantity?: number
           quote_ask?: number | null
@@ -4176,6 +4198,7 @@ export type Database = {
           stop_excedido_pts?: number | null
           stop_price?: number | null
           stop_pts?: number | null
+          stop_recalculado?: number | null
           stop_violado?: boolean
           symbol?: string
           target_price?: number | null
@@ -4185,8 +4208,13 @@ export type Database = {
           user_id: string
         }
         Update: {
+          alvo_recalculado?: number | null
           bloqueado_na_sombra?: boolean
           close_reason?: string | null
+          confirmacao_exigida_pts?: number | null
+          confirmacao_janela_s?: number | null
+          confirmou?: boolean | null
+          confirmou_em?: string | null
           contract_code?: string
           created_at?: string
           diagnostic_payload?: Json
@@ -4213,6 +4241,7 @@ export type Database = {
           mode?: string
           net_result_brl?: number
           nivel_freio_na_abertura?: number | null
+          preco_confirmacao?: number | null
           provider_name?: string
           quantity?: number
           quote_ask?: number | null
@@ -4229,6 +4258,7 @@ export type Database = {
           stop_excedido_pts?: number | null
           stop_price?: number | null
           stop_pts?: number | null
+          stop_recalculado?: number | null
           stop_violado?: boolean
           symbol?: string
           target_price?: number | null
