@@ -3309,10 +3309,11 @@ async function runB3SimulationTickInner(
         } else if (av.estado === "confirmou" && pend.aguarda_real === true && pend.real_enviado !== true && pend.aguarda_simulado !== true) {
           try { await enfileirarRealConfirmado(pend); } catch { /* espelho nunca derruba o tique */ }
           await gravarPendente(null);
-        } else if (av.estado === "aguardando" && av.melhor_pts > Number(pend.melhor_pts ?? 0)) {
-          // Melhor avanço a favor, para o registro do descarte dizer quanto o
-          // preço realmente andou. Só grava quando melhora.
-          await gravarPendente({ ...pend, melhor_pts: av.melhor_pts });
+        } else if (av.melhor_pts > Number(pend.melhor_pts ?? 0) || av.melhor_janela_pts > Number(pend.melhor_janela_pts ?? 0)) {
+          // Melhor avanço a favor, dentro da janela e no total, para o registro
+          // do descarte dizer as duas coisas. Só grava quando melhora.
+          await gravarPendente({ ...pend, melhor_pts: av.melhor_pts, melhor_janela_pts: av.melhor_janela_pts });
+
         }
       }
 
