@@ -6101,8 +6101,18 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       for (const a of auditModes) auditByMode[a.mode] = a;
       // Realizado do dia por modo: soma do net das ordens fechadas hoje.
       const realizedTodayByMode: Record<string, number> = {};
+      // CONFIRMAÇÃO DE ENTRADA EM SOMBRA: dois resultados em reais por robô.
+      // "com confirmação" soma só as ordens que teriam confirmado; "sem
+      // confirmação" soma todas as ordens fechadas do dia (a regra desligada,
+      // que é como o robô opera de fato). Leitura pura do que foi gravado.
+      const confDiaByMode: Record<string, { com_brl: number; sem_brl: number; entradas: number; confirmadas: number }> = {};
       for (const o of closedToday ?? []) {
         realizedTodayByMode[o.mode] = (realizedTodayByMode[o.mode] ?? 0) + Number(o.net_result_brl ?? 0);
+        const net = Number(o.net_result_brl ?? 0);
+        const acc = (confDiaByMode[o.mode] ??= { com_brl: 0, sem_brl: 0, entradas: 0, confirmadas: 0 });
+        acc.sem_brl += net;
+        acc.entradas += 1;
+        if (o.confirmou === true) { acc.com_brl += net; acc.confirmadas += 1; }
       }
       const variant = (run.variant ?? "indicador") as string;
 
