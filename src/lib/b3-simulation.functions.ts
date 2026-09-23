@@ -5007,6 +5007,38 @@ async function runB3SimulationTickInner(
               } as any,
             });
           } catch { /* registro nunca derruba o motor */ }
+        } else if (realJaEnviadoNoSinal) {
+          // Combinação 2 (simulado ligado, real desligado): o comando real já
+          // saiu no instante do sinal, antes de qualquer confirmação. Repetir
+          // aqui criaria uma segunda posição real.
+          log.push({ mode, action: "mirror_skip", reason: "real_enfileirado_no_sinal", side: effectiveSide });
+        } else if (confRealArmada && !confSimArmada) {
+          // Combinação 3 (simulado desligado, real ligado): a ordem simulada
+          // abriu agora, no preço do sinal; o comando real só é enfileirado
+          // quando o preço confirmar — na pré-passada dos próximos tiques.
+          // Preço de entrada diferente entre simulado e real é esperado aqui.
+          const pendReal = criarPendente({
+            side: effectiveSide, precoSinal: entryRounded,
+            stopPtsFrozen, gainPtsFrozen, cfg: cfg as any, agoraMs: now.getTime(),
+            aguardaSimulado: false, aguardaReal: true,
+            simulationOrderId: insertedOrder.id,
+            sobLiberacao: entradaSobLiberacao,
+          });
+          if (pendReal) await gravarPendente(pendReal);
+          entryStageRows.push({
+            user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+            symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+            estagio: "confirmacao_real_aguardando",
+            motivo: `Ordem simulada aberta; comando real aguarda confirmação de ${Math.round(Number(pendReal?.exigido_pts ?? 0))} pts a favor em ${Math.round(Number(pendReal?.janela_s ?? 0))}s.`,
+            detalhe: {
+              lado: "real",
+              preco_sinal: entryRounded,
+              exigido_pts: Math.round(Number(pendReal?.exigido_pts ?? 0)),
+              janela_s: Number(pendReal?.janela_s ?? null),
+              side: effectiveSide,
+              simulation_order_id: insertedOrder.id,
+            },
+          });
         } else {
           await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant, {
             stop_pts: stopPtsFrozen > 0 ? stopPtsFrozen : null,
