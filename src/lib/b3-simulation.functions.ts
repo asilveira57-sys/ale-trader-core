@@ -27,6 +27,7 @@ import { b3WindowState } from "./b3-window.server";
 import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobotSizing } from "./b3-real-stop.server";
 
 import { roundToTick } from "./b3-tick";
+import { avaliarConfirmacao, confirmacaoNaAbertura } from "./b3-confirmacao-entrada";
 import {
   decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
   type B3GrupoLimites, type B3GrupoEstado, type B3GrupoDecision,
