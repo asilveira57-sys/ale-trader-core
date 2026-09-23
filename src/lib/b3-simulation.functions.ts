@@ -6040,6 +6040,11 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         enabledByMode[s.mode] = s.enabled !== false;
         lossLimitByMode[s.mode] = s.daily_loss_limit_brl == null ? null : Number(s.daily_loss_limit_brl);
         givebackByMode[s.mode] = s.peak_giveback_pct == null ? null : Number(s.peak_giveback_pct);
+        confCfgByMode[s.mode] = {
+          ativo: s.confirmacao_ativa === true,
+          pct_stop: s.confirmacao_pct_stop == null ? null : Number(s.confirmacao_pct_stop),
+          janela_s: s.confirmacao_janela_s == null ? null : Number(s.confirmacao_janela_s),
+        };
       }
       const openByMode: Record<string, any> = {};
       for (const o of openOrders ?? []) openByMode[o.mode] = o;
