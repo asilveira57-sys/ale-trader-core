@@ -4663,6 +4663,9 @@ async function runB3SimulationTickInner(
         // e só o comando real espera (tratado na pré-passada, acima).
         // A regra decide SE abre; nunca fecha posição aberta.
         let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number } | null = null;
+        // Combinação 2 (simulado ligado, real desligado): o comando real já saiu
+        // no instante do sinal — o espelho da abertura não repete.
+        let realJaEnviadoNoSinal = false;
         if (confSimArmada) {
           const stopPtsSinal = Math.max(0, Number(setupInfo.stop_pts_override ?? cfg.stop_pts ?? 0) || 0);
           const gainPtsSinal = Math.max(0, Number(setupInfo.gain_pts_override ?? cfg.gain_pts ?? 0) || 0);
