@@ -177,10 +177,15 @@ function ConfirmacaoDia({ conf }: { conf: any }) {
   if (!conf || Number(conf.entradas ?? 0) <= 0) return null;
   const com = Number(conf.com_confirmacao_brl ?? 0);
   const sem = Number(conf.sem_confirmacao_brl ?? 0);
+  const sim = conf.ativo_simulado === true;
+  const real = conf.ativo_real === true;
+  const onde = sim && real ? "ligada no simulado e no real"
+    : sim ? "ligada no simulado"
+    : real ? "ligada no real" : "sombra";
   return (
     <div className="mt-2 border-t border-border/40 pt-2">
       <p className="mb-1 text-[9px] font-semibold uppercase text-muted-foreground">
-        Confirmação de entrada (sombra) — {confirmacaoRegraTexto(conf.pct_stop, conf.janela_s)}
+        Confirmação de entrada ({onde}) — {confirmacaoRegraTexto(conf.pct_stop, conf.janela_s)}
       </p>
       <div className="grid grid-cols-[auto_1fr] gap-x-2 text-[10px]">
         <span className="text-muted-foreground">Com confirmação</span>

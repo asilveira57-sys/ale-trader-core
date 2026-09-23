@@ -29,7 +29,7 @@ import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobot
 import { roundToTick } from "./b3-tick";
 import {
   avaliarConfirmacao, confirmacaoNaAbertura, confirmacaoArmada, avaliarPendente,
-  criarPendente, motivoNaoConfirmou, type ConfirmacaoPendente,
+  criarPendente, motivoNaoConfirmou, ladoDoPendente, type ConfirmacaoPendente,
 } from "./b3-confirmacao-entrada";
 import {
   decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
@@ -3198,12 +3198,14 @@ async function runB3SimulationTickInner(
       const openMtmBrlForProtection = markOpenOrderBrl(open, openMarkPriceForProtection);
       const markedTodayForProtection = realizedToday + (openMtmBrlForProtection ?? 0);
 
-      // ── SINAL EM ESPERA DE CONFIRMAÇÃO (23/09/2026, emenda) ──────────────
-      // Só existe quando a regra está LIGADA para este robô (padrão: desligada
-      // em todos). O estado mora na carteira do robô porque o tique é sem
-      // memória. Gravação direta e só quando muda de verdade — `patchMode` não
-      // sabe comparar jsonb.
-      const confArmada = confirmacaoArmada(cfg as any);
+      // ── SINAL EM ESPERA DE CONFIRMAÇÃO (23/09/2026, segunda emenda) ──────
+      // Duas chaves independentes: a espera pode valer só no simulado, só no
+      // real, nos dois, ou em nenhum (padrão de entrega). O estado mora na
+      // carteira do robô porque o tique é sem memória. Gravação direta e só
+      // quando muda de verdade — `patchMode` não sabe comparar jsonb.
+      const confSimArmada = confirmacaoArmada(cfg as any, "simulado");
+      const confRealArmada = confirmacaoArmada(cfg as any, "real");
+      const confArmada = confSimArmada || confRealArmada;
       const gravarPendente = async (pend: ConfirmacaoPendente | null) => {
         const atual = JSON.stringify((m as any).confirmacao_pendente ?? null);
         const novo = JSON.stringify(pend ?? null);
@@ -3223,6 +3225,9 @@ async function runB3SimulationTickInner(
           estagio: "confirmacao_nao_atingida",
           motivo: motivo.slice(0, 500),
           detalhe: {
+            // Lado em que o sinal foi descartado. Descartado nos dois → uma
+            // linha só, com lado 'ambos'.
+            lado: ladoDoPendente(pend),
             exigido_pts: Math.round(av.exigido_pts),
             andou_pts: Math.round(av.melhor_pts),
             janela_s: Number(pend?.janela_s) || null,
@@ -3232,19 +3237,72 @@ async function runB3SimulationTickInner(
           },
         });
       };
+      // Combinação 3 (simulado desligado, real ligado): a ordem simulada já
+      // abriu no instante do sinal e só o comando real espera. Quando confirma,
+      // o comando real sai AQUI — nesse instante, com stop e alvo medidos do
+      // preço de confirmação. Preço de entrada diferente do simulado é esperado.
+      const enfileirarRealConfirmado = async (pend: any) => {
+        const tick = Number(asset.tick_size);
+        const precoConf = roundToTick(Number(ctx.price), tick);
+        const dir = String(pend.side) === "buy" ? 1 : -1;
+        const stopPts = Number(pend.stop_pts) > 0 ? Number(pend.stop_pts) : null;
+        const gainPts = Number(pend.gain_pts) > 0 ? Number(pend.gain_pts) : null;
+        await mirrorToReal(
+          supabase, userId, runId, mode as Mode, "open", String(pend.side) as any,
+          `open-conf-${m.id}-${pend.criado_em}`, "engine_auto",
+          asset.quote_symbol, runVariant,
+          {
+            stop_pts: stopPts, gain_pts: gainPts,
+            stop_price: stopPts ? roundToTick(precoConf - dir * stopPts, tick) : null,
+            target_price: gainPts ? roundToTick(precoConf + dir * gainPts, tick) : null,
+          },
+          pend.sob_liberacao === true,
+        );
+        entryStageRows.push({
+          user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+          symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+          estagio: "confirmacao_real_enfileirada",
+          motivo: `Confirmação atingida: comando real enfileirado a ${precoConf}.`,
+          detalhe: {
+            lado: "real",
+            preco_sinal: Number(pend.preco_sinal) || null,
+            preco_confirmacao: precoConf,
+            exigido_pts: Math.round(Number(pend.exigido_pts) || 0),
+            janela_s: Number(pend.janela_s) || null,
+            side: String(pend.side),
+            simulation_order_id: pend.simulation_order_id ?? null,
+            idempotency_key: `open-conf-${m.id}-${pend.criado_em}`,
+          },
+        });
+      };
       if (!confArmada) {
         // Regra desligada com espera pendurada (foi desligada no meio): o
         // estado é limpo sem descartar nada — a entrada já seguiu o fluxo normal.
         if ((m as any).confirmacao_pendente) await gravarPendente(null);
       } else if ((m as any).confirmacao_pendente) {
         const pend = (m as any).confirmacao_pendente;
+        const ordemVinculada = pend.simulation_order_id ?? null;
         const av = avaliarPendente(pend, Number(ctx.price), now.getTime());
         if (av.estado === "invalido") {
           await gravarPendente(null);
+        } else if (ordemVinculada && (!open || open.id !== ordemVinculada)) {
+          // A ordem simulada que o comando real espelharia já não está aberta:
+          // abrir real agora seria abrir posição que o simulado não tem.
+          entryStageRows.push({
+            user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+            symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+            estagio: "confirmacao_cancelada_ordem_fechada",
+            motivo: "Ordem simulada fechou antes de o preço confirmar; nenhum comando real foi enfileirado.",
+            detalhe: { lado: "real", simulation_order_id: ordemVinculada, side: String(pend.side) },
+          });
+          await gravarPendente(null);
         } else if (av.estado === "expirou") {
-          // Não confirmou na janela: a entrada é descartada, e o descarte fica
-          // contável e olhável um por um no log de decisão.
+          // Não confirmou na janela: a entrada é descartada NO LADO que
+          // esperava, e o descarte fica contável e olhável um por um no log.
           registrarDescarte(pend, av);
+          await gravarPendente(null);
+        } else if (av.estado === "confirmou" && pend.aguarda_real === true && pend.real_enviado !== true && pend.aguarda_simulado !== true) {
+          try { await enfileirarRealConfirmado(pend); } catch { /* espelho nunca derruba o tique */ }
           await gravarPendente(null);
         } else if (av.estado === "aguardando" && av.melhor_pts > Number(pend.melhor_pts ?? 0)) {
           // Melhor avanço a favor, para o registro do descarte dizer quanto o
@@ -4595,16 +4653,20 @@ async function runB3SimulationTickInner(
           setup: setupInfo,
         });
       } else if (decision.final === "approved") {
-        // ── CONFIRMAÇÃO DE ENTRADA LIGADA (23/09/2026, emenda) ─────────────
-        // Desligada (padrão de todos os robôs) este bloco não existe. Ligada, o
-        // sinal NÃO abre na hora: espera o preço andar a favor o percentual
-        // configurado do stop dentro da janela. Confirmou → abre AGORA, no preço
-        // deste instante (o preço da confirmação), e o espelho enfileira o
-        // comando real no MESMO instante, mais abaixo. Não confirmou → a entrada
-        // é descartada, com linha própria no log de decisão. A regra decide SE
-        // abre; nunca fecha posição aberta.
+        // ── CONFIRMAÇÃO DE ENTRADA, DOIS LADOS (23/09/2026, segunda emenda) ─
+        // Chave do SIMULADO ligada: o sinal NÃO abre na hora — espera o preço
+        // andar a favor o percentual configurado do stop dentro da janela; ao
+        // confirmar abre AGORA, no preço deste instante, e stop e alvo nascem
+        // medidos dele. Se a chave do REAL estiver desligada, o comando real
+        // sai no instante do SINAL, como hoje (combinação 2).
+        // Chave do SIMULADO desligada e do REAL ligada: o simulado abre na hora
+        // e só o comando real espera (tratado na pré-passada, acima).
+        // A regra decide SE abre; nunca fecha posição aberta.
         let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number } | null = null;
-        if (confArmada) {
+        // Combinação 2 (simulado ligado, real desligado): o comando real já saiu
+        // no instante do sinal — o espelho da abertura não repete.
+        let realJaEnviadoNoSinal = false;
+        if (confSimArmada) {
           const stopPtsSinal = Math.max(0, Number(setupInfo.stop_pts_override ?? cfg.stop_pts ?? 0) || 0);
           const gainPtsSinal = Math.max(0, Number(setupInfo.gain_pts_override ?? cfg.gain_pts ?? 0) || 0);
           const pendAtual = (m as any).confirmacao_pendente;
@@ -4612,6 +4674,9 @@ async function runB3SimulationTickInner(
           const av = mesmoLado ? avaliarPendente(pendAtual, Number(ctx.price), now.getTime()) : null;
           if (av?.estado === "confirmou") {
             confirmadaAgora = { em: now.toISOString(), exigido_pts: av.exigido_pts, andou_pts: av.andou_pts };
+            // Combinação 2: o comando real já saiu no instante do sinal — o
+            // espelho abaixo não pode enfileirar um segundo.
+            realJaEnviadoNoSinal = pendAtual?.real_enviado === true;
             await gravarPendente(null);
           } else {
             if (av?.estado === "expirou") {
@@ -4627,8 +4692,34 @@ async function runB3SimulationTickInner(
                 side: effectiveSide, precoSinal: Number(ctx.price),
                 stopPtsFrozen: stopPtsSinal, gainPtsFrozen: gainPtsSinal,
                 cfg: cfg as any, agoraMs: now.getTime(),
+                aguardaSimulado: true, aguardaReal: confRealArmada,
+                // Chave do real desligada: o real não espera — o comando sai
+                // agora, no preço do sinal, exatamente como hoje.
+                realEnviado: !confRealArmada,
+                sobLiberacao: entradaSobLiberacao,
               });
-              if (novo) await gravarPendente(novo);
+              if (novo) {
+                await gravarPendente(novo);
+                if (!confRealArmada && !espelhoBarradoPorFreio) {
+                  const tickSinal = Number(asset.tick_size);
+                  const precoSinalTick = roundToTick(Number(ctx.price), tickSinal);
+                  const dirSinal = effectiveSide === "buy" ? 1 : -1;
+                  try {
+                    await mirrorToReal(
+                      supabase, userId, runId, mode as Mode, "open", effectiveSide,
+                      `open-sig-${m.id}-${novo.criado_em}`, "engine_auto",
+                      asset.quote_symbol, runVariant,
+                      {
+                        stop_pts: stopPtsSinal > 0 ? stopPtsSinal : null,
+                        gain_pts: gainPtsSinal > 0 ? gainPtsSinal : null,
+                        stop_price: stopPtsSinal > 0 ? roundToTick(precoSinalTick - dirSinal * stopPtsSinal, tickSinal) : null,
+                        target_price: gainPtsSinal > 0 ? roundToTick(precoSinalTick + dirSinal * gainPtsSinal, tickSinal) : null,
+                      },
+                      entradaSobLiberacao,
+                    );
+                  } catch { /* espelho nunca derruba o tique */ }
+                }
+              }
             }
             const pendVigente = (m as any).confirmacao_pendente;
             const exigidoTxt = Math.round(Number(pendVigente?.exigido_pts ?? 0));
@@ -4916,6 +5007,38 @@ async function runB3SimulationTickInner(
               } as any,
             });
           } catch { /* registro nunca derruba o motor */ }
+        } else if (realJaEnviadoNoSinal) {
+          // Combinação 2 (simulado ligado, real desligado): o comando real já
+          // saiu no instante do sinal, antes de qualquer confirmação. Repetir
+          // aqui criaria uma segunda posição real.
+          log.push({ mode, action: "mirror_skip", reason: "real_enfileirado_no_sinal", side: effectiveSide });
+        } else if (confRealArmada && !confSimArmada) {
+          // Combinação 3 (simulado desligado, real ligado): a ordem simulada
+          // abriu agora, no preço do sinal; o comando real só é enfileirado
+          // quando o preço confirmar — na pré-passada dos próximos tiques.
+          // Preço de entrada diferente entre simulado e real é esperado aqui.
+          const pendReal = criarPendente({
+            side: effectiveSide, precoSinal: entryRounded,
+            stopPtsFrozen, gainPtsFrozen, cfg: cfg as any, agoraMs: now.getTime(),
+            aguardaSimulado: false, aguardaReal: true,
+            simulationOrderId: insertedOrder.id,
+            sobLiberacao: entradaSobLiberacao,
+          });
+          if (pendReal) await gravarPendente(pendReal);
+          entryStageRows.push({
+            user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+            symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+            estagio: "confirmacao_real_aguardando",
+            motivo: `Ordem simulada aberta; comando real aguarda confirmação de ${Math.round(Number(pendReal?.exigido_pts ?? 0))} pts a favor em ${Math.round(Number(pendReal?.janela_s ?? 0))}s.`,
+            detalhe: {
+              lado: "real",
+              preco_sinal: entryRounded,
+              exigido_pts: Math.round(Number(pendReal?.exigido_pts ?? 0)),
+              janela_s: Number(pendReal?.janela_s ?? null),
+              side: effectiveSide,
+              simulation_order_id: insertedOrder.id,
+            },
+          });
         } else {
           await mirrorToReal(supabase, userId, runId, mode as Mode, "open", effectiveSide, `open-${insertedOrder.id}`, "engine_auto", asset.quote_symbol, runVariant, {
             stop_pts: stopPtsFrozen > 0 ? stopPtsFrozen : null,
@@ -6129,7 +6252,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         (supabase as any).from("b3_simulation_modes")
           .select("mode, initial_balance, current_balance, current_status, protection_state, protection_block_reason, day_peak_profit_brl")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
-        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl, peak_giveback_pct, confirmacao_ativa, confirmacao_pct_stop, confirmacao_janela_s")
+        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl, peak_giveback_pct, confirmacao_ativa_simulado, confirmacao_ativa_real, confirmacao_pct_stop, confirmacao_janela_s")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, entry_time, created_at")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
@@ -6159,13 +6282,14 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       const givebackByMode: Record<string, number | null> = {};
       // Configuração da confirmação de entrada em sombra (23/09/2026): só
       // apresentação — a regra não bloqueia nada enquanto estiver em sombra.
-      const confCfgByMode: Record<string, { ativo: boolean; pct_stop: number | null; janela_s: number | null }> = {};
+      const confCfgByMode: Record<string, { ativo_simulado: boolean; ativo_real: boolean; pct_stop: number | null; janela_s: number | null }> = {};
       for (const s of settings ?? []) {
         enabledByMode[s.mode] = s.enabled !== false;
         lossLimitByMode[s.mode] = s.daily_loss_limit_brl == null ? null : Number(s.daily_loss_limit_brl);
         givebackByMode[s.mode] = s.peak_giveback_pct == null ? null : Number(s.peak_giveback_pct);
         confCfgByMode[s.mode] = {
-          ativo: s.confirmacao_ativa === true,
+          ativo_simulado: s.confirmacao_ativa_simulado === true,
+          ativo_real: s.confirmacao_ativa_real === true,
           pct_stop: s.confirmacao_pct_stop == null ? null : Number(s.confirmacao_pct_stop),
           janela_s: s.confirmacao_janela_s == null ? null : Number(s.confirmacao_janela_s),
         };
@@ -6307,10 +6431,11 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           // CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026). Só medição: a regra
           // não bloqueia nada e nasce desligada em todos os robôs.
           confirmacao: (() => {
-            const cfgConf = confCfgByMode[m] ?? { ativo: false, pct_stop: null, janela_s: null };
+            const cfgConf = confCfgByMode[m] ?? { ativo_simulado: false, ativo_real: false, pct_stop: null, janela_s: null };
             const dia = confDiaByMode[m] ?? { com_brl: 0, sem_brl: 0, entradas: 0, confirmadas: 0 };
             return {
-              ativo: cfgConf.ativo,
+              ativo_simulado: cfgConf.ativo_simulado,
+              ativo_real: cfgConf.ativo_real,
               pct_stop: cfgConf.pct_stop,
               janela_s: cfgConf.janela_s,
               com_confirmacao_brl: dia.com_brl,

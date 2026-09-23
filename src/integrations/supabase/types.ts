@@ -3820,7 +3820,8 @@ export type Database = {
           breakeven_ativa_pts: number | null
           breakeven_folga_pts: number | null
           breakout_min_clearance_pts: number | null
-          confirmacao_ativa: boolean
+          confirmacao_ativa_real: boolean
+          confirmacao_ativa_simulado: boolean
           confirmacao_janela_s: number
           confirmacao_pct_stop: number
           consecutive_loss_after_target: number
@@ -3863,7 +3864,8 @@ export type Database = {
           breakeven_ativa_pts?: number | null
           breakeven_folga_pts?: number | null
           breakout_min_clearance_pts?: number | null
-          confirmacao_ativa?: boolean
+          confirmacao_ativa_real?: boolean
+          confirmacao_ativa_simulado?: boolean
           confirmacao_janela_s?: number
           confirmacao_pct_stop?: number
           consecutive_loss_after_target?: number
@@ -3906,7 +3908,8 @@ export type Database = {
           breakeven_ativa_pts?: number | null
           breakeven_folga_pts?: number | null
           breakout_min_clearance_pts?: number | null
-          confirmacao_ativa?: boolean
+          confirmacao_ativa_real?: boolean
+          confirmacao_ativa_simulado?: boolean
           confirmacao_janela_s?: number
           confirmacao_pct_stop?: number
           consecutive_loss_after_target?: number

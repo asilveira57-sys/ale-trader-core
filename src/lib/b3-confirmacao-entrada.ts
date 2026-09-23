@@ -19,10 +19,16 @@ import { roundToTick } from "./b3-tick";
 export const CONFIRMACAO_PADRAO = { pct_stop: 50, janela_s: 180 } as const;
 
 export type ConfirmacaoConfig = {
-  confirmacao_ativa?: boolean | null;
+  // DUAS chaves independentes (23/09/2026, segunda emenda): o simulado e o real
+  // podem esperar confirmação separadamente. Padrão: as duas desligadas.
+  confirmacao_ativa_simulado?: boolean | null;
+  confirmacao_ativa_real?: boolean | null;
   confirmacao_pct_stop?: number | null;
   confirmacao_janela_s?: number | null;
 };
+
+/** Lado em que a confirmação pode valer (os parâmetros são compartilhados). */
+export type LadoConfirmacao = "simulado" | "real";
 
 /** Limiar em pontos para este robô nesta entrada (0 = sem stop congelado). */
 export function confirmacaoExigidaPts(stopPts: number, pctStop: number | null | undefined): number {
@@ -112,17 +118,21 @@ export function avaliarConfirmacao(
   return null;
 }
 
-// ── REGRA LIGADA (23/09/2026, emenda) ────────────────────────────────────────
-// Desligada (padrão de todos os robôs) nada muda: só medição, acima.
-// LIGADA, para AQUELE robô, vale nos dois — simulado e real: o sinal não abre na
-// hora; espera o preço andar a favor o percentual configurado do stop dentro da
-// janela. Confirmou → abre no preço da confirmação (o comando real sai NESSE
-// instante, junto). Não confirmou → a entrada é descartada e fica registrada.
+// ── REGRA LIGADA, LADO A LADO (23/09/2026, segunda emenda) ───────────────────
+// Duas chaves independentes por robô: simulado e real. Quatro combinações:
+//   desligada/desligada → sombra pura (padrão de entrega): só medição, acima.
+//   simulado ligado     → o simulado só abre depois de confirmar.
+//   real ligado         → o comando real só é enfileirado depois de confirmar.
+// No lado em que vale: a abertura é no preço da confirmação, stop e alvo medidos
+// desse preço com a MESMA distância em pontos, e o sinal que não confirma na
+// janela é descartado NAQUELE lado, com linha no log de decisão.
+// No lado em que não vale, nada muda em relação a hoje.
 // A regra decide SE abre; nunca fecha posição aberta. Não é freio.
 
-/** Regra ligada para este robô? (percentual e janela precisam ser úteis) */
-export function confirmacaoArmada(cfg: ConfirmacaoConfig): boolean {
-  if (!cfg?.confirmacao_ativa) return false;
+/** Regra ligada neste lado? (percentual e janela precisam ser úteis) */
+export function confirmacaoArmada(cfg: ConfirmacaoConfig, lado: LadoConfirmacao): boolean {
+  const chave = lado === "real" ? cfg?.confirmacao_ativa_real : cfg?.confirmacao_ativa_simulado;
+  if (!chave) return false;
   const pct = Number(cfg.confirmacao_pct_stop ?? CONFIRMACAO_PADRAO.pct_stop);
   const jan = Number(cfg.confirmacao_janela_s ?? CONFIRMACAO_PADRAO.janela_s);
   return Number.isFinite(pct) && pct > 0 && Number.isFinite(jan) && jan > 0;
@@ -138,7 +148,24 @@ export type ConfirmacaoPendente = {
   stop_pts: number | null;
   gain_pts: number | null;
   melhor_pts: number;
+  /** Lados que estão esperando esta confirmação. */
+  aguarda_simulado: boolean;
+  aguarda_real: boolean;
+  /** Combinação 3: a ordem simulada já abriu; só o real espera. */
+  simulation_order_id?: string | null;
+  /** Combinação 2: o comando real já saiu no instante do sinal. */
+  real_enviado?: boolean;
+  /** Liberação manual vigente no instante do sinal (carimbo, não decisão). */
+  sob_liberacao?: boolean;
 };
+
+/** Em qual lado o descarte deve ser registrado. */
+export function ladoDoPendente(pend: any): "simulado" | "real" | "ambos" {
+  const sim = pend?.aguarda_simulado !== false;
+  const real = pend?.aguarda_real === true;
+  if (sim && real) return "ambos";
+  return real ? "real" : "simulado";
+}
 
 export function criarPendente(args: {
   side: string;
@@ -147,10 +174,16 @@ export function criarPendente(args: {
   gainPtsFrozen: number;
   cfg: ConfirmacaoConfig;
   agoraMs?: number;
+  aguardaSimulado: boolean;
+  aguardaReal: boolean;
+  simulationOrderId?: string | null;
+  realEnviado?: boolean;
+  sobLiberacao?: boolean;
 }): ConfirmacaoPendente | null {
   const exigido = confirmacaoExigidaPts(args.stopPtsFrozen, args.cfg?.confirmacao_pct_stop);
   const preco = Number(args.precoSinal);
   if (!(exigido > 0) || !Number.isFinite(preco) || preco <= 0) return null;
+  if (!args.aguardaSimulado && !args.aguardaReal) return null;
   const janRaw = Number(args.cfg?.confirmacao_janela_s);
   const janela = Number.isFinite(janRaw) && janRaw > 0 ? Math.round(janRaw) : CONFIRMACAO_PADRAO.janela_s;
   return {
@@ -162,6 +195,11 @@ export function criarPendente(args: {
     stop_pts: args.stopPtsFrozen > 0 ? args.stopPtsFrozen : null,
     gain_pts: args.gainPtsFrozen > 0 ? args.gainPtsFrozen : null,
     melhor_pts: 0,
+    aguarda_simulado: args.aguardaSimulado,
+    aguarda_real: args.aguardaReal,
+    simulation_order_id: args.simulationOrderId ?? null,
+    real_enviado: args.realEnviado === true,
+    sob_liberacao: args.sobLiberacao === true,
   };
 }
 
@@ -199,12 +237,14 @@ export function avaliarPendente(
   return { estado: "aguardando", ...base };
 }
 
-/** Motivo curto do descarte, para o log de decisão. */
+/** Motivo curto do descarte, para o log de decisão — com o lado descartado. */
 export function motivoNaoConfirmou(pend: any, av: AvaliacaoPendente, pctStop: number | null | undefined): string {
   const pct = Number(pctStop);
   const p = Number.isFinite(pct) && pct > 0 ? pct : CONFIRMACAO_PADRAO.pct_stop;
   const andou = Math.round(av.melhor_pts);
-  return `Preço andou ${andou} pts a favor; exigido ${Math.round(av.exigido_pts)} pts (${Math.round(p)}% do stop) em ${Math.round(Number(pend?.janela_s) || CONFIRMACAO_PADRAO.janela_s)}s. Entrada descartada.`;
+  const lado = ladoDoPendente(pend);
+  const onde = lado === "ambos" ? "no simulado e no real" : `no ${lado}`;
+  return `Preço andou ${andou} pts a favor; exigido ${Math.round(av.exigido_pts)} pts (${Math.round(p)}% do stop) em ${Math.round(Number(pend?.janela_s) || CONFIRMACAO_PADRAO.janela_s)}s. Entrada descartada ${onde}.`;
 }
 
 /** Rótulo curto da regra para a tela: "50% do stop em 3 min". */

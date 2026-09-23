@@ -27,7 +27,9 @@ export const B3_ROBOT_EDITABLE_FIELDS = [
   "peak_giveback_pct", "peak_lock_min_profit_brl",
   // Confirmação de entrada, EM SOMBRA (23/09/2026): nasce desligada e não
   // bloqueia nada — só registra o que teria acontecido.
-  "confirmacao_ativa", "confirmacao_pct_stop", "confirmacao_janela_s",
+  // Duas chaves independentes (segunda emenda): simulado e real.
+  "confirmacao_ativa_simulado", "confirmacao_ativa_real",
+  "confirmacao_pct_stop", "confirmacao_janela_s",
   // Horários
   "trading_start_time", "entry_cutoff_time", "force_close_time",
   // Liga/desliga
@@ -58,7 +60,8 @@ export const B3_ROBOT_FIELD_LABEL: Record<string, string> = {
   post_target_size_reduction: "Redução de tamanho pós-meta",
   peak_giveback_pct: "Devolução permitida do pico do dia (0-1)",
   peak_lock_min_profit_brl: "Lucro mínimo para armar a trava de pico (R$)",
-  confirmacao_ativa: "Confirmação de entrada ligada",
+  confirmacao_ativa_simulado: "Confirmação no simulado",
+  confirmacao_ativa_real: "Confirmação no real",
   confirmacao_pct_stop: "Confirmação: % do stop",
   confirmacao_janela_s: "Confirmação: janela (segundos)",
   trading_start_time: "Início das entradas",
