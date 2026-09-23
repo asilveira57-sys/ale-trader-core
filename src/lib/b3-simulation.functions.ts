@@ -3195,6 +3195,61 @@ async function runB3SimulationTickInner(
       const openMtmBrlForProtection = markOpenOrderBrl(open, openMarkPriceForProtection);
       const markedTodayForProtection = realizedToday + (openMtmBrlForProtection ?? 0);
 
+      // ── SINAL EM ESPERA DE CONFIRMAÇÃO (23/09/2026, emenda) ──────────────
+      // Só existe quando a regra está LIGADA para este robô (padrão: desligada
+      // em todos). O estado mora na carteira do robô porque o tique é sem
+      // memória. Gravação direta e só quando muda de verdade — `patchMode` não
+      // sabe comparar jsonb.
+      const confArmada = confirmacaoArmada(cfg as any);
+      const gravarPendente = async (pend: ConfirmacaoPendente | null) => {
+        const atual = JSON.stringify((m as any).confirmacao_pendente ?? null);
+        const novo = JSON.stringify(pend ?? null);
+        if (atual === novo) return;
+        (m as any).confirmacao_pendente = pend;
+        try {
+          await (supabase as any).from("b3_simulation_modes")
+            .update({ confirmacao_pendente: pend })
+            .eq("id", m.id).eq("user_id", userId);
+        } catch { /* estado de espera nunca derruba o tique */ }
+      };
+      const registrarDescarte = (pend: any, av: ReturnType<typeof avaliarPendente>) => {
+        const motivo = motivoNaoConfirmou(pend, av, (cfg as any).confirmacao_pct_stop);
+        entryStageRows.push({
+          user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+          symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+          estagio: "confirmacao_nao_atingida",
+          motivo: motivo.slice(0, 500),
+          detalhe: {
+            exigido_pts: Math.round(av.exigido_pts),
+            andou_pts: Math.round(av.melhor_pts),
+            janela_s: Number(pend?.janela_s) || null,
+            preco_sinal: Number(pend?.preco_sinal) || null,
+            side: String(pend?.side ?? ""),
+            decorrido_s: Math.round(av.decorrido_s),
+          },
+        });
+      };
+      if (!confArmada) {
+        // Regra desligada com espera pendurada (foi desligada no meio): o
+        // estado é limpo sem descartar nada — a entrada já seguiu o fluxo normal.
+        if ((m as any).confirmacao_pendente) await gravarPendente(null);
+      } else if ((m as any).confirmacao_pendente) {
+        const pend = (m as any).confirmacao_pendente;
+        const av = avaliarPendente(pend, Number(ctx.price), now.getTime());
+        if (av.estado === "invalido") {
+          await gravarPendente(null);
+        } else if (av.estado === "expirou") {
+          // Não confirmou na janela: a entrada é descartada, e o descarte fica
+          // contável e olhável um por um no log de decisão.
+          registrarDescarte(pend, av);
+          await gravarPendente(null);
+        } else if (av.estado === "aguardando" && av.melhor_pts > Number(pend.melhor_pts ?? 0)) {
+          // Melhor avanço a favor, para o registro do descarte dizer quanto o
+          // preço realmente andou. Só grava quando melhora.
+          await gravarPendente({ ...pend, melhor_pts: av.melhor_pts });
+        }
+      }
+
       const loadedConfig = normalizeModeConfig(cfg);
       const cfgCompare = configComparison(cfg, loadedConfig);
       const checks: any[] = [];
