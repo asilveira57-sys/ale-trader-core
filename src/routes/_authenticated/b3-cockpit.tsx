@@ -17,6 +17,7 @@ import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lo
 
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, freiosAcionadosTexto, somarSombrasDia, type SombraDia } from "@/lib/b3-format";
+import { confirmacaoRegraTexto } from "@/lib/b3-confirmacao-entrada";
 import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
