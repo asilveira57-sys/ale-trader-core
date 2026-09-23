@@ -6008,7 +6008,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         (supabase as any).from("b3_simulation_modes")
           .select("mode, initial_balance, current_balance, current_status, protection_state, protection_block_reason, day_peak_profit_brl")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
-        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl, peak_giveback_pct")
+        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl, peak_giveback_pct, confirmacao_ativa, confirmacao_pct_stop, confirmacao_janela_s")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, entry_time, created_at")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
