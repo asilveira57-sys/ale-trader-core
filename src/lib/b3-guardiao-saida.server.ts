@@ -35,6 +35,7 @@ import {
   type B3QuoteExecutionAudit,
 } from "@/lib/b3-price-source.server";
 import { b3WindowState } from "@/lib/b3-window.server";
+import { avaliarConfirmacao } from "@/lib/b3-confirmacao-entrada";
 
 
 export interface GuardiaoResultado {
