@@ -39,7 +39,7 @@ export function sanitizeRobotPatch(raw: Record<string, any>): Record<string, any
 
 export function formatFieldValue(field: string, value: any): string {
   if (value == null || value === "") return "—";
-  if (field === "enabled") return value ? "ligado" : "desligado";
+  if (BOOLEAN_FIELDS.has(field)) return value ? "ligado" : "desligado";
   if (typeof value === "number") return String(value);
   return String(value);
 }
