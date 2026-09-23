@@ -147,17 +147,21 @@ export type ConfirmacaoPendente = {
   criado_em: string;
   stop_pts: number | null;
   gain_pts: number | null;
+  /** Melhor avanço a favor desde o sinal, inclusive DEPOIS da janela. */
   melhor_pts: number;
+  /** Melhor avanço a favor DENTRO da janela — é este que a regra exige. */
+  melhor_janela_pts: number;
   /** Lados que estão esperando esta confirmação. */
   aguarda_simulado: boolean;
   aguarda_real: boolean;
   /** Combinação 3: a ordem simulada já abriu; só o real espera. */
   simulation_order_id?: string | null;
-  /** Combinação 2: o comando real já saiu no instante do sinal. */
+  /** Comando real já enfileirado no instante do sinal (chave do real desligada). */
   real_enviado?: boolean;
   /** Liberação manual vigente no instante do sinal (carimbo, não decisão). */
   sob_liberacao?: boolean;
 };
+
 
 /** Em qual lado o descarte deve ser registrado. */
 export function ladoDoPendente(pend: any): "simulado" | "real" | "ambos" {
