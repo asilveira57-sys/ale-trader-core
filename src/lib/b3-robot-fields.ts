@@ -25,6 +25,9 @@ export const B3_ROBOT_EDITABLE_FIELDS = [
   "profit_multiplier_before_lock", "post_target_allowed_retracement",
   "consecutive_loss_after_target", "post_target_size_reduction",
   "peak_giveback_pct", "peak_lock_min_profit_brl",
+  // Confirmação de entrada, EM SOMBRA (23/09/2026): nasce desligada e não
+  // bloqueia nada — só registra o que teria acontecido.
+  "confirmacao_ativa", "confirmacao_pct_stop", "confirmacao_janela_s",
   // Horários
   "trading_start_time", "entry_cutoff_time", "force_close_time",
   // Liga/desliga
