@@ -3229,12 +3229,17 @@ async function runB3SimulationTickInner(
             // linha só, com lado 'ambos'.
             lado: ladoDoPendente(pend),
             exigido_pts: Math.round(av.exigido_pts),
-            andou_pts: Math.round(av.melhor_pts),
+            // O que a regra mede é o avanço DENTRO da janela; a excursão total
+            // (que pode vir muito depois) fica em campo próprio (24/09/2026).
+            andou_pts_na_janela: Math.round(av.melhor_janela_pts),
+            andou_pts_total: Math.round(av.melhor_pts),
+            andou_pts: Math.round(av.melhor_janela_pts),
             janela_s: Number(pend?.janela_s) || null,
             preco_sinal: Number(pend?.preco_sinal) || null,
             side: String(pend?.side ?? ""),
             decorrido_s: Math.round(av.decorrido_s),
           },
+
         });
       };
       // Combinação 3 (simulado desligado, real ligado): a ordem simulada já
