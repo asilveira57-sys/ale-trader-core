@@ -237,12 +237,14 @@ export function avaliarPendente(
   return { estado: "aguardando", ...base };
 }
 
-/** Motivo curto do descarte, para o log de decisão. */
+/** Motivo curto do descarte, para o log de decisão — com o lado descartado. */
 export function motivoNaoConfirmou(pend: any, av: AvaliacaoPendente, pctStop: number | null | undefined): string {
   const pct = Number(pctStop);
   const p = Number.isFinite(pct) && pct > 0 ? pct : CONFIRMACAO_PADRAO.pct_stop;
   const andou = Math.round(av.melhor_pts);
-  return `Preço andou ${andou} pts a favor; exigido ${Math.round(av.exigido_pts)} pts (${Math.round(p)}% do stop) em ${Math.round(Number(pend?.janela_s) || CONFIRMACAO_PADRAO.janela_s)}s. Entrada descartada.`;
+  const lado = ladoDoPendente(pend);
+  const onde = lado === "ambos" ? "no simulado e no real" : `no ${lado}`;
+  return `Preço andou ${andou} pts a favor; exigido ${Math.round(av.exigido_pts)} pts (${Math.round(p)}% do stop) em ${Math.round(Number(pend?.janela_s) || CONFIRMACAO_PADRAO.janela_s)}s. Entrada descartada ${onde}.`;
 }
 
 /** Rótulo curto da regra para a tela: "50% do stop em 3 min". */
