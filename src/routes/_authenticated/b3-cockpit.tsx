@@ -1115,6 +1115,8 @@ function CockpitPage() {
                         <EfeitoDia
                           sombra={c.grupo?.sombra}
                         />
+                        <ConfirmacaoDia conf={c.confirmacao} />
+
 
                       </button>
 
