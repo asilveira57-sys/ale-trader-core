@@ -3198,12 +3198,14 @@ async function runB3SimulationTickInner(
       const openMtmBrlForProtection = markOpenOrderBrl(open, openMarkPriceForProtection);
       const markedTodayForProtection = realizedToday + (openMtmBrlForProtection ?? 0);
 
-      // ── SINAL EM ESPERA DE CONFIRMAÇÃO (23/09/2026, emenda) ──────────────
-      // Só existe quando a regra está LIGADA para este robô (padrão: desligada
-      // em todos). O estado mora na carteira do robô porque o tique é sem
-      // memória. Gravação direta e só quando muda de verdade — `patchMode` não
-      // sabe comparar jsonb.
-      const confArmada = confirmacaoArmada(cfg as any);
+      // ── SINAL EM ESPERA DE CONFIRMAÇÃO (23/09/2026, segunda emenda) ──────
+      // Duas chaves independentes: a espera pode valer só no simulado, só no
+      // real, nos dois, ou em nenhum (padrão de entrega). O estado mora na
+      // carteira do robô porque o tique é sem memória. Gravação direta e só
+      // quando muda de verdade — `patchMode` não sabe comparar jsonb.
+      const confSimArmada = confirmacaoArmada(cfg as any, "simulado");
+      const confRealArmada = confirmacaoArmada(cfg as any, "real");
+      const confArmada = confSimArmada || confRealArmada;
       const gravarPendente = async (pend: ConfirmacaoPendente | null) => {
         const atual = JSON.stringify((m as any).confirmacao_pendente ?? null);
         const novo = JSON.stringify(pend ?? null);
@@ -3223,6 +3225,9 @@ async function runB3SimulationTickInner(
           estagio: "confirmacao_nao_atingida",
           motivo: motivo.slice(0, 500),
           detalhe: {
+            // Lado em que o sinal foi descartado. Descartado nos dois → uma
+            // linha só, com lado 'ambos'.
+            lado: ladoDoPendente(pend),
             exigido_pts: Math.round(av.exigido_pts),
             andou_pts: Math.round(av.melhor_pts),
             janela_s: Number(pend?.janela_s) || null,
@@ -3232,19 +3237,72 @@ async function runB3SimulationTickInner(
           },
         });
       };
+      // Combinação 3 (simulado desligado, real ligado): a ordem simulada já
+      // abriu no instante do sinal e só o comando real espera. Quando confirma,
+      // o comando real sai AQUI — nesse instante, com stop e alvo medidos do
+      // preço de confirmação. Preço de entrada diferente do simulado é esperado.
+      const enfileirarRealConfirmado = async (pend: any) => {
+        const tick = Number(asset.tick_size);
+        const precoConf = roundToTick(Number(ctx.price), tick);
+        const dir = String(pend.side) === "buy" ? 1 : -1;
+        const stopPts = Number(pend.stop_pts) > 0 ? Number(pend.stop_pts) : null;
+        const gainPts = Number(pend.gain_pts) > 0 ? Number(pend.gain_pts) : null;
+        await mirrorToReal(
+          supabase, userId, runId, mode as Mode, "open", String(pend.side) as any,
+          `open-conf-${m.id}-${pend.criado_em}`, "engine_auto",
+          asset.quote_symbol, runVariant,
+          {
+            stop_pts: stopPts, gain_pts: gainPts,
+            stop_price: stopPts ? roundToTick(precoConf - dir * stopPts, tick) : null,
+            target_price: gainPts ? roundToTick(precoConf + dir * gainPts, tick) : null,
+          },
+          pend.sob_liberacao === true,
+        );
+        entryStageRows.push({
+          user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+          symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+          estagio: "confirmacao_real_enfileirada",
+          motivo: `Confirmação atingida: comando real enfileirado a ${precoConf}.`,
+          detalhe: {
+            lado: "real",
+            preco_sinal: Number(pend.preco_sinal) || null,
+            preco_confirmacao: precoConf,
+            exigido_pts: Math.round(Number(pend.exigido_pts) || 0),
+            janela_s: Number(pend.janela_s) || null,
+            side: String(pend.side),
+            simulation_order_id: pend.simulation_order_id ?? null,
+            idempotency_key: `open-conf-${m.id}-${pend.criado_em}`,
+          },
+        });
+      };
       if (!confArmada) {
         // Regra desligada com espera pendurada (foi desligada no meio): o
         // estado é limpo sem descartar nada — a entrada já seguiu o fluxo normal.
         if ((m as any).confirmacao_pendente) await gravarPendente(null);
       } else if ((m as any).confirmacao_pendente) {
         const pend = (m as any).confirmacao_pendente;
+        const ordemVinculada = pend.simulation_order_id ?? null;
         const av = avaliarPendente(pend, Number(ctx.price), now.getTime());
         if (av.estado === "invalido") {
           await gravarPendente(null);
+        } else if (ordemVinculada && (!open || open.id !== ordemVinculada)) {
+          // A ordem simulada que o comando real espelharia já não está aberta:
+          // abrir real agora seria abrir posição que o simulado não tem.
+          entryStageRows.push({
+            user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+            symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+            estagio: "confirmacao_cancelada_ordem_fechada",
+            motivo: "Ordem simulada fechou antes de o preço confirmar; nenhum comando real foi enfileirado.",
+            detalhe: { lado: "real", simulation_order_id: ordemVinculada, side: String(pend.side) },
+          });
+          await gravarPendente(null);
         } else if (av.estado === "expirou") {
-          // Não confirmou na janela: a entrada é descartada, e o descarte fica
-          // contável e olhável um por um no log de decisão.
+          // Não confirmou na janela: a entrada é descartada NO LADO que
+          // esperava, e o descarte fica contável e olhável um por um no log.
           registrarDescarte(pend, av);
+          await gravarPendente(null);
+        } else if (av.estado === "confirmou" && pend.aguarda_real === true && pend.real_enviado !== true && pend.aguarda_simulado !== true) {
+          try { await enfileirarRealConfirmado(pend); } catch { /* espelho nunca derruba o tique */ }
           await gravarPendente(null);
         } else if (av.estado === "aguardando" && av.melhor_pts > Number(pend.melhor_pts ?? 0)) {
           // Melhor avanço a favor, para o registro do descarte dizer quanto o
