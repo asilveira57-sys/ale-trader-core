@@ -199,6 +199,8 @@ export function criarPendente(args: {
     stop_pts: args.stopPtsFrozen > 0 ? args.stopPtsFrozen : null,
     gain_pts: args.gainPtsFrozen > 0 ? args.gainPtsFrozen : null,
     melhor_pts: 0,
+    melhor_janela_pts: 0,
+
     aguarda_simulado: args.aguardaSimulado,
     aguarda_real: args.aguardaReal,
     simulation_order_id: args.simulationOrderId ?? null,
