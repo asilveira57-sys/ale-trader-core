@@ -6183,6 +6183,21 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           score: audit?.last_score ?? null, confidence: audit?.last_confidence ?? null,
           blocked_reason: open ? null : (audit?.first_stop?.label ?? audit?.last_refusal_reason ?? null),
           pending_stop: open ? (pendingByMode[m] ?? null) : null,
+          // CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026). Só medição: a regra
+          // não bloqueia nada e nasce desligada em todos os robôs.
+          confirmacao: (() => {
+            const cfgConf = confCfgByMode[m] ?? { ativo: false, pct_stop: null, janela_s: null };
+            const dia = confDiaByMode[m] ?? { com_brl: 0, sem_brl: 0, entradas: 0, confirmadas: 0 };
+            return {
+              ativo: cfgConf.ativo,
+              pct_stop: cfgConf.pct_stop,
+              janela_s: cfgConf.janela_s,
+              com_confirmacao_brl: dia.com_brl,
+              sem_confirmacao_brl: dia.sem_brl,
+              entradas: dia.entradas,
+              confirmadas: dia.confirmadas,
+            };
+          })(),
           grupo: (() => {
             const chaveGrupo = `${rootSymbol(run.symbol)}|${variant}`;
             // Sombra DESTE robô — o número do grupo vive na testeira da modalidade.
