@@ -6016,7 +6016,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         // etapa que barrou), então projetamos esse caminho do JSON.
         (supabase as any).from("b3_simulation_market_snapshots").select("price, engine_digest:extra->engine_digest, engine_modes:extra->engine_audit->modes")
           .eq("simulation_run_id", run.id).eq("user_id", userId).order("market_time", { ascending: false }).limit(1),
-        (supabase as any).from("b3_simulation_orders").select("mode, net_result_brl")
+        (supabase as any).from("b3_simulation_orders").select("mode, net_result_brl, confirmou")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "closed")
           .gte("exit_time", dayStartUtc),
       ]);
