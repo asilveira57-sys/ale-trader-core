@@ -104,6 +104,14 @@ function robotBlock(c: any): string {
     lines.push(`    Com freio  ${BRL(sombra.resultado_sombra_brl)}`);
     lines.push(`    Sem freio  ${BRL(sombra.resultado_livre_brl)}`);
   }
+  // Confirmação de entrada em sombra: a cópia mostra o que o card mostra.
+  if (c.confirmacao && Number(c.confirmacao.entradas ?? 0) > 0) {
+    const cf = c.confirmacao;
+    lines.push(`  CONFIRMAÇÃO DE ENTRADA (sombra) — ${confirmacaoRegraTexto(cf.pct_stop, cf.janela_s)}`);
+    lines.push(`    Com confirmação  ${BRL(cf.com_confirmacao_brl)}`);
+    lines.push(`    Sem confirmação  ${BRL(cf.sem_confirmacao_brl)}`);
+    lines.push(`    entradas: ${cf.entradas} no dia, ${cf.confirmadas} teriam confirmado`);
+  }
 
 
   return lines.join("\n");
