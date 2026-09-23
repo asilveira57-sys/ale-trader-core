@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CONFIRMACAO_PADRAO, avaliarConfirmacao, confirmacaoExigidaPts,
   confirmacaoNaAbertura, confirmacaoRegraTexto,
-  confirmacaoArmada, avaliarPendente, criarPendente, motivoNaoConfirmou,
+  confirmacaoArmada, avaliarPendente, criarPendente, motivoNaoConfirmou, ladoDoPendente,
 } from "./b3-confirmacao-entrada";
 
 const abertura = "2026-09-23T13:00:00.000Z";
