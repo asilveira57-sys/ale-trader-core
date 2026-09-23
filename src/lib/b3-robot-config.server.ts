@@ -14,14 +14,18 @@ const NUMERIC_FIELDS = new Set<string>([
   "minimum_trades_before_profit_lock", "profit_multiplier_before_lock",
   "post_target_allowed_retracement", "consecutive_loss_after_target",
   "post_target_size_reduction", "peak_giveback_pct", "peak_lock_min_profit_brl",
+  // Confirmação de entrada em sombra: só medição.
+  "confirmacao_pct_stop", "confirmacao_janela_s",
 ]);
+
+const BOOLEAN_FIELDS = new Set<string>(["enabled", "confirmacao_ativa"]);
 
 export function sanitizeRobotPatch(raw: Record<string, any>): Record<string, any> {
   const patch: Record<string, any> = {};
   for (const key of B3_ROBOT_EDITABLE_FIELDS) {
     if (!(key in raw)) continue;
     const v = raw[key];
-    if (key === "enabled") { patch[key] = Boolean(v); continue; }
+    if (BOOLEAN_FIELDS.has(key)) { patch[key] = Boolean(v); continue; }
     if (NUMERIC_FIELDS.has(key)) {
       const n = Number(v);
       if (Number.isFinite(n)) patch[key] = n;
