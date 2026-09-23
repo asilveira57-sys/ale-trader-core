@@ -118,17 +118,21 @@ export function avaliarConfirmacao(
   return null;
 }
 
-// ── REGRA LIGADA (23/09/2026, emenda) ────────────────────────────────────────
-// Desligada (padrão de todos os robôs) nada muda: só medição, acima.
-// LIGADA, para AQUELE robô, vale nos dois — simulado e real: o sinal não abre na
-// hora; espera o preço andar a favor o percentual configurado do stop dentro da
-// janela. Confirmou → abre no preço da confirmação (o comando real sai NESSE
-// instante, junto). Não confirmou → a entrada é descartada e fica registrada.
+// ── REGRA LIGADA, LADO A LADO (23/09/2026, segunda emenda) ───────────────────
+// Duas chaves independentes por robô: simulado e real. Quatro combinações:
+//   desligada/desligada → sombra pura (padrão de entrega): só medição, acima.
+//   simulado ligado     → o simulado só abre depois de confirmar.
+//   real ligado         → o comando real só é enfileirado depois de confirmar.
+// No lado em que vale: a abertura é no preço da confirmação, stop e alvo medidos
+// desse preço com a MESMA distância em pontos, e o sinal que não confirma na
+// janela é descartado NAQUELE lado, com linha no log de decisão.
+// No lado em que não vale, nada muda em relação a hoje.
 // A regra decide SE abre; nunca fecha posição aberta. Não é freio.
 
-/** Regra ligada para este robô? (percentual e janela precisam ser úteis) */
-export function confirmacaoArmada(cfg: ConfirmacaoConfig): boolean {
-  if (!cfg?.confirmacao_ativa) return false;
+/** Regra ligada neste lado? (percentual e janela precisam ser úteis) */
+export function confirmacaoArmada(cfg: ConfirmacaoConfig, lado: LadoConfirmacao): boolean {
+  const chave = lado === "real" ? cfg?.confirmacao_ativa_real : cfg?.confirmacao_ativa_simulado;
+  if (!chave) return false;
   const pct = Number(cfg.confirmacao_pct_stop ?? CONFIRMACAO_PADRAO.pct_stop);
   const jan = Number(cfg.confirmacao_janela_s ?? CONFIRMACAO_PADRAO.janela_s);
   return Number.isFinite(pct) && pct > 0 && Number.isFinite(jan) && jan > 0;
@@ -144,7 +148,24 @@ export type ConfirmacaoPendente = {
   stop_pts: number | null;
   gain_pts: number | null;
   melhor_pts: number;
+  /** Lados que estão esperando esta confirmação. */
+  aguarda_simulado: boolean;
+  aguarda_real: boolean;
+  /** Combinação 3: a ordem simulada já abriu; só o real espera. */
+  simulation_order_id?: string | null;
+  /** Combinação 2: o comando real já saiu no instante do sinal. */
+  real_enviado?: boolean;
+  /** Liberação manual vigente no instante do sinal (carimbo, não decisão). */
+  sob_liberacao?: boolean;
 };
+
+/** Em qual lado o descarte deve ser registrado. */
+export function ladoDoPendente(pend: any): "simulado" | "real" | "ambos" {
+  const sim = pend?.aguarda_simulado !== false;
+  const real = pend?.aguarda_real === true;
+  if (sim && real) return "ambos";
+  return real ? "real" : "simulado";
+}
 
 export function criarPendente(args: {
   side: string;
