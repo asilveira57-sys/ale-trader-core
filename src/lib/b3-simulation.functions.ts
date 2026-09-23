@@ -6036,6 +6036,9 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       const enabledByMode: Record<string, boolean> = {};
       const lossLimitByMode: Record<string, number | null> = {};
       const givebackByMode: Record<string, number | null> = {};
+      // Configuração da confirmação de entrada em sombra (23/09/2026): só
+      // apresentação — a regra não bloqueia nada enquanto estiver em sombra.
+      const confCfgByMode: Record<string, { ativo: boolean; pct_stop: number | null; janela_s: number | null }> = {};
       for (const s of settings ?? []) {
         enabledByMode[s.mode] = s.enabled !== false;
         lossLimitByMode[s.mode] = s.daily_loss_limit_brl == null ? null : Number(s.daily_loss_limit_brl);
