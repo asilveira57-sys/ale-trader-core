@@ -4610,6 +4610,12 @@ async function runB3SimulationTickInner(
           freios_na_sombra: freiosNaSombra,
           nivel_freio_na_abertura: grupoNivel,
 
+          // ── CONFIRMAÇÃO DE ENTRADA EM SOMBRA (23/09/2026) ──
+          // Só registro: o limiar em pontos (percentual do stop DESTE robô) e a
+          // janela. `confirmou` nasce nulo e é preenchido depois, a mercado.
+          // Nada aqui impede, atrasa ou reduz esta entrada.
+          ...confirmacaoNaAbertura(cfg, stopPtsFrozen),
+
           ...orderAuditPatch(entryAudit),
         };
         // Instrumentação permanente do veredito do comitê na própria ordem.
