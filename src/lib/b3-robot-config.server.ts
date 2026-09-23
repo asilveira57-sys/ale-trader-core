@@ -80,7 +80,7 @@ export function diffChanges(current: Record<string, any>, patch: Record<string, 
   const changes: Array<{ field: string; from: any; to: any }> = [];
   for (const [field, to] of Object.entries(patch)) {
     const from = current?.[field];
-    const same = field === "enabled"
+    const same = BOOLEAN_FIELDS.has(field)
       ? Boolean(from) === Boolean(to)
       : typeof to === "number"
         ? Number(from) === Number(to)
