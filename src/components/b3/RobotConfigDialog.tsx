@@ -276,23 +276,41 @@ export function RobotConfigDialog({
                 </div>
               ))}
 
-              {/* CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026).
-                  Enquanto estiver em sombra a regra só mede: não impede,
-                  não atrasa e não reduz nenhuma entrada. */}
+              {/* CONFIRMAÇÃO DE ENTRADA — DUAS CHAVES INDEPENDENTES (23/09/2026).
+                  Desligada nos dois lados: só medição. Ligada num lado, naquele
+                  lado o robô só abre depois de o preço andar a favor. */}
               <div className="rounded border border-border/50 p-3 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">Confirmação de entrada</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    O preço precisa andar a favor um pedaço do stop deste robô, dentro da janela.
+                    Desligada nos dois lados, nada é impedido: só medido.
+                  </p>
+                </div>
                 <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium">Confirmação de entrada</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      O preço precisa andar a favor um pedaço do stop deste robô, dentro da janela.
-                      Em sombra: nada é impedido, só medido.
-                    </p>
-                  </div>
+                  <p className="text-sm">Confirmação no simulado</p>
                   <Switch
-                    checked={f.confirmacao_ativa === true}
-                    onCheckedChange={(v) => set("confirmacao_ativa", v)}
+                    checked={f.confirmacao_ativa_simulado === true}
+                    onCheckedChange={(v) => set("confirmacao_ativa_simulado", v)}
                   />
                 </div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm">Confirmação no real</p>
+                  <Switch
+                    checked={f.confirmacao_ativa_real === true}
+                    onCheckedChange={(v) => set("confirmacao_ativa_real", v)}
+                  />
+                </div>
+                {/* Os dois lados diferentes é a situação que mais confunde
+                    depois: a tela diz em voz alta qual é o efeito. */}
+                {(f.confirmacao_ativa_simulado === true) !== (f.confirmacao_ativa_real === true) && (
+                  <p className="rounded border border-amber-500/60 bg-amber-500/10 p-2 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                    Os dois lados estão diferentes.{" "}
+                    {f.confirmacao_ativa_simulado === true
+                      ? "O simulado espera a confirmação; o real entra no instante do sinal."
+                      : "O simulado entra no instante do sinal; o real espera a confirmação, então os preços de entrada vão ficar diferentes."}
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   {numField("confirmacao_pct_stop", 5)}
                   {numField("confirmacao_janela_s", 30)}
