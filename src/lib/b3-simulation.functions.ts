@@ -6252,7 +6252,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
         (supabase as any).from("b3_simulation_modes")
           .select("mode, initial_balance, current_balance, current_status, protection_state, protection_block_reason, day_peak_profit_brl")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
-        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl, peak_giveback_pct, confirmacao_ativa, confirmacao_pct_stop, confirmacao_janela_s")
+        (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl, peak_giveback_pct, confirmacao_ativa_simulado, confirmacao_ativa_real, confirmacao_pct_stop, confirmacao_janela_s")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, entry_time, created_at")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
@@ -6282,13 +6282,14 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       const givebackByMode: Record<string, number | null> = {};
       // Configuração da confirmação de entrada em sombra (23/09/2026): só
       // apresentação — a regra não bloqueia nada enquanto estiver em sombra.
-      const confCfgByMode: Record<string, { ativo: boolean; pct_stop: number | null; janela_s: number | null }> = {};
+      const confCfgByMode: Record<string, { ativo_simulado: boolean; ativo_real: boolean; pct_stop: number | null; janela_s: number | null }> = {};
       for (const s of settings ?? []) {
         enabledByMode[s.mode] = s.enabled !== false;
         lossLimitByMode[s.mode] = s.daily_loss_limit_brl == null ? null : Number(s.daily_loss_limit_brl);
         givebackByMode[s.mode] = s.peak_giveback_pct == null ? null : Number(s.peak_giveback_pct);
         confCfgByMode[s.mode] = {
-          ativo: s.confirmacao_ativa === true,
+          ativo_simulado: s.confirmacao_ativa_simulado === true,
+          ativo_real: s.confirmacao_ativa_real === true,
           pct_stop: s.confirmacao_pct_stop == null ? null : Number(s.confirmacao_pct_stop),
           janela_s: s.confirmacao_janela_s == null ? null : Number(s.confirmacao_janela_s),
         };
@@ -6430,10 +6431,11 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           // CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026). Só medição: a regra
           // não bloqueia nada e nasce desligada em todos os robôs.
           confirmacao: (() => {
-            const cfgConf = confCfgByMode[m] ?? { ativo: false, pct_stop: null, janela_s: null };
+            const cfgConf = confCfgByMode[m] ?? { ativo_simulado: false, ativo_real: false, pct_stop: null, janela_s: null };
             const dia = confDiaByMode[m] ?? { com_brl: 0, sem_brl: 0, entradas: 0, confirmadas: 0 };
             return {
-              ativo: cfgConf.ativo,
+              ativo_simulado: cfgConf.ativo_simulado,
+              ativo_real: cfgConf.ativo_real,
               pct_stop: cfgConf.pct_stop,
               janela_s: cfgConf.janela_s,
               com_confirmacao_brl: dia.com_brl,

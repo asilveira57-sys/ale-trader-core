@@ -18,7 +18,7 @@ const NUMERIC_FIELDS = new Set<string>([
   "confirmacao_pct_stop", "confirmacao_janela_s",
 ]);
 
-const BOOLEAN_FIELDS = new Set<string>(["enabled", "confirmacao_ativa"]);
+const BOOLEAN_FIELDS = new Set<string>(["enabled", "confirmacao_ativa_simulado", "confirmacao_ativa_real"]);
 
 export function sanitizeRobotPatch(raw: Record<string, any>): Record<string, any> {
   const patch: Record<string, any> = {};
