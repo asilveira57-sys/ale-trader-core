@@ -4744,6 +4744,16 @@ async function runB3SimulationTickInner(
           // janela. `confirmou` nasce nulo e é preenchido depois, a mercado.
           // Nada aqui impede, atrasa ou reduz esta entrada.
           ...confirmacaoNaAbertura(cfg, stopPtsFrozen),
+          // Regra LIGADA: esta ordem só existe porque o preço confirmou. O preço
+          // de entrada JÁ É o preço da confirmação, e por isso stop e alvo acima
+          // nascem medidos a partir dele, com a mesma distância em pontos.
+          ...(confirmadaAgora ? {
+            confirmou: true,
+            confirmou_em: confirmadaAgora.em,
+            preco_confirmacao: entryRounded,
+            stop_recalculado: stopPriceFrozen,
+            alvo_recalculado: targetPriceFrozen,
+          } : {}),
 
           ...orderAuditPatch(entryAudit),
         };
