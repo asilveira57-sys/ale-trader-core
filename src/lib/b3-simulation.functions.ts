@@ -29,7 +29,7 @@ import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobot
 import { roundToTick } from "./b3-tick";
 import {
   avaliarConfirmacao, confirmacaoNaAbertura, confirmacaoArmada, avaliarPendente,
-  criarPendente, motivoNaoConfirmou, type ConfirmacaoPendente,
+  criarPendente, motivoNaoConfirmou, ladoDoPendente, type ConfirmacaoPendente,
 } from "./b3-confirmacao-entrada";
 import {
   decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
