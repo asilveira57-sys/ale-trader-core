@@ -10,7 +10,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { brtDate, periodRowLimit, resolvePeriod } from "@/lib/b3-period";
+import { addDays, brtDate, periodRowLimit, resolvePeriod } from "@/lib/b3-period";
 import { rootSymbol } from "@/lib/b3-format";
 
 export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
@@ -126,5 +126,111 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       perdas: robots.reduce((s, r) => s + r.perdas, 0),
       by_day: dias,
       robots,
+    };
+  });
+
+// Faixa fixa do cockpit vivo: hoje + os quatro pregões anteriores com
+// movimento. É uma leitura separada para não alterar nenhuma conta do motor.
+export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      symbols: z.array(z.string()).nullish(),
+      variants: z.array(z.string()).nullish(),
+      modes: z.array(z.string()).nullish(),
+    }).partial().parse(input ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const today = brtDate(new Date());
+    const startUtc = `${addDays(today, -21)}T03:00:00.000Z`;
+    const endUtc = `${addDays(today, 1)}T03:00:00.000Z`;
+
+    const { data: runs } = await (supabase as any)
+      .from("b3_simulation_runs")
+      .select("id, symbol, variant")
+      .eq("user_id", userId);
+    const runById = new Map<string, { root: string; variant: string }>();
+    for (const run of (runs ?? []) as any[]) {
+      runById.set(String(run.id), {
+        root: rootSymbol(String(run.symbol)),
+        variant: String(run.variant ?? "indicador"),
+      });
+    }
+
+    const { data: rows } = await (supabase as any)
+      .from("b3_simulation_orders")
+      .select("simulation_run_id, mode, net_result_brl, exit_time, freios_na_sombra")
+      .eq("user_id", userId)
+      .eq("status", "closed")
+      .gte("exit_time", startUtc)
+      .lt("exit_time", endUtc)
+      .order("exit_time", { ascending: false })
+      .limit(60_000);
+
+    const allDates = new Set<string>([today]);
+    for (const row of (rows ?? []) as any[]) {
+      if (row.exit_time) allDates.add(brtDate(new Date(row.exit_time)));
+    }
+    const dates = Array.from(allDates).filter((date) => date <= today).sort().reverse().slice(0, 5);
+    // Em implantação nova pode ainda não haver quatro datas gravadas. Mantém a
+    // faixa estável com dias úteis anteriores, sempre explicitamente zerados.
+    let cursor = today;
+    while (dates.length < 5) {
+      cursor = addDays(cursor, -1);
+      const weekday = new Date(`${cursor}T12:00:00.000Z`).getUTCDay();
+      if (weekday !== 0 && weekday !== 6 && !dates.includes(cursor)) dates.push(cursor);
+    }
+    dates.sort().reverse();
+    const chosen = new Set(dates);
+    const symbols = data.symbols?.length ? new Set(data.symbols.map(rootSymbol)) : null;
+    const variants = data.variants?.length ? new Set(data.variants) : null;
+    const modes = data.modes?.length ? new Set(data.modes) : null;
+    type Pair = { com_freio_brl: number; sem_freio_brl: number };
+    const blank = (): Pair => ({ com_freio_brl: 0, sem_freio_brl: 0 });
+    const assets = new Map<string, { days: Map<string, Pair>; variants: Map<string, Map<string, Pair>> }>();
+    const ensureAsset = (root: string) => {
+      const current = assets.get(root);
+      if (current) return current;
+      const created = { days: new Map<string, Pair>(), variants: new Map<string, Map<string, Pair>>() };
+      assets.set(root, created);
+      return created;
+    };
+    const add = (map: Map<string, Pair>, date: string, value: number, comFreio: boolean) => {
+      const pair = map.get(date) ?? blank();
+      pair.sem_freio_brl += value;
+      if (comFreio) pair.com_freio_brl += value;
+      map.set(date, pair);
+    };
+
+    for (const row of (rows ?? []) as any[]) {
+      const run = runById.get(String(row.simulation_run_id));
+      if (!run || !row.exit_time) continue;
+      const date = brtDate(new Date(row.exit_time));
+      if (!chosen.has(date)) continue;
+      if (symbols && !symbols.has(run.root)) continue;
+      if (variants && !variants.has(run.variant)) continue;
+      if (modes && !modes.has(String(row.mode ?? ""))) continue;
+      const value = Number(row.net_result_brl ?? 0);
+      const comFreio = !Array.isArray(row.freios_na_sombra) || row.freios_na_sombra.length === 0;
+      const asset = ensureAsset(run.root);
+      add(asset.days, date, value, comFreio);
+      const variantDays = asset.variants.get(run.variant) ?? new Map<string, Pair>();
+      add(variantDays, date, value, comFreio);
+      asset.variants.set(run.variant, variantDays);
+    }
+
+    const shapedDays = (map: Map<string, Pair>) => dates.map((date) => ({ date, ...(map.get(date) ?? blank()) }));
+    return {
+      dates,
+      rows_truncated: (rows ?? []).length >= 60_000,
+      by_asset: Array.from(assets.entries()).map(([symbol, value]) => ({
+        symbol,
+        days: shapedDays(value.days),
+        by_variant: Array.from(value.variants.entries()).map(([variant, variantDays]) => ({
+          variant,
+          days: shapedDays(variantDays),
+        })),
+      })),
     };
   });

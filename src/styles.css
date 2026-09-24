@@ -35,6 +35,14 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
+  --color-asset-win: var(--asset-win);
+  --color-asset-win-foreground: var(--asset-win-foreground);
+  --color-asset-wdo: var(--asset-wdo);
+  --color-asset-wdo-foreground: var(--asset-wdo-foreground);
+  --color-asset-bit: var(--asset-bit);
+  --color-asset-bit-foreground: var(--asset-bit-foreground);
+  --color-asset-other: var(--asset-other);
+  --color-asset-other-foreground: var(--asset-other-foreground);
   --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
@@ -68,6 +76,14 @@
   --sidebar: oklch(0.16 0.02 257);
   --sidebar-foreground: oklch(0.92 0.01 250);
   --sidebar-border: oklch(0.28 0.03 257 / 60%);
+  --asset-win: oklch(0.55 0.2 253);
+  --asset-win-foreground: oklch(0.98 0.01 250);
+  --asset-wdo: oklch(0.59 0.15 155);
+  --asset-wdo-foreground: oklch(0.12 0.03 155);
+  --asset-bit: oklch(0.8 0.16 86);
+  --asset-bit-foreground: oklch(0.2 0.04 75);
+  --asset-other: oklch(0.62 0.16 32);
+  --asset-other-foreground: oklch(0.98 0.01 32);
 }
 
 .dark { color-scheme: dark; }

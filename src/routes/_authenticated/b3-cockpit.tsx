@@ -23,7 +23,7 @@ import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
   resetB3DailyStop, updateB3ModeSettings,
 } from "@/lib/b3-simulation.functions";
-import { getB3SimPeriodSummary } from "@/lib/b3-sim-period.functions";
+import { getB3CockpitFiveSessions, getB3SimPeriodSummary } from "@/lib/b3-sim-period.functions";
 import { listLiberacoesFreio, liberarFreioReal, travarFreioReal } from "@/lib/b3-liberacao-freio.functions";
 
 import {
@@ -153,18 +153,37 @@ const VARIANT_SHORT: Record<string, string> = {
 const roboShort = (r: any) =>
   !r ? "—" : `${VARIANT_SHORT[r.variant] ?? r.variant} ${String(r.mode).replace("_", "-")} ${SIGNED_HDR(r.brl)}`;
 
-function EfeitoDia({ sombra, compacto = false }: {
-  sombra: SombraDia | null | undefined;
-  compacto?: boolean;
-}) {
-  const comFreio = Number(sombra?.resultado_sombra_brl ?? 0);
-  const semFreio = Number(sombra?.resultado_livre_brl ?? 0);
+const ASSET_BAND: Record<string, string> = {
+  WIN: "bg-asset-win text-asset-win-foreground",
+  WDO: "bg-asset-wdo text-asset-wdo-foreground",
+  BIT: "bg-asset-bit text-asset-bit-foreground",
+};
+const assetBand = (root: string) => ASSET_BAND[root] ?? "bg-asset-other text-asset-other-foreground";
+const shortDate = (date: string) => {
+  const [, month, day] = date.split("-");
+  return `${day}/${month}`;
+};
+
+function EfeitoCincoPregoes({ days }: { days: any[] | null | undefined }) {
+  const rows = days ?? [];
+  const totalCom = rows.reduce((sum, day) => sum + Number(day.com_freio_brl ?? 0), 0);
+  const totalSem = rows.reduce((sum, day) => sum + Number(day.sem_freio_brl ?? 0), 0);
   return (
-    <div className={`border-t border-border/40 ${compacto ? "mt-2 pt-2" : "pt-1"}`}>
-      <p className="mb-1 text-[9px] font-semibold uppercase text-muted-foreground">Efeito no dia</p>
-      <div className="grid grid-cols-[auto_1fr] gap-x-2 text-[10px]">
-        <span className="text-muted-foreground">Com freio</span><span className={`text-right font-mono ${moneyColor(comFreio)}`}>{BRL(comFreio)}</span>
-        <span className="text-muted-foreground">Sem freio</span><span className={`text-right font-mono ${moneyColor(semFreio)}`}>{BRL(semFreio)}</span>
+    <div className="border-t border-current/20 px-3 py-2">
+      <p className="mb-2 text-[10px] font-black uppercase">Efeito nos últimos 5 pregões</p>
+      <div className="flex flex-wrap items-stretch justify-start gap-x-5 gap-y-2 text-[10px]">
+        {rows.map((day, index) => (
+          <div key={day.date} className="min-w-[132px] text-left">
+            <p className="mb-0.5 font-bold">{index === 0 ? `Hoje · ${shortDate(day.date)}` : shortDate(day.date)}</p>
+            <p className="whitespace-nowrap">Com freio <strong className="ml-1 font-mono">{BRL(Number(day.com_freio_brl ?? 0))}</strong></p>
+            <p className="whitespace-nowrap">Sem freio <strong className="ml-1 font-mono">{BRL(Number(day.sem_freio_brl ?? 0))}</strong></p>
+          </div>
+        ))}
+        <div className="min-w-[150px] border-l border-current/30 pl-4 text-left">
+          <p className="mb-0.5 font-black">Total · 5 pregões</p>
+          <p className="whitespace-nowrap">Com freio <strong className="ml-1 font-mono">{BRL(totalCom)}</strong></p>
+          <p className="whitespace-nowrap">Sem freio <strong className="ml-1 font-mono">{BRL(totalSem)}</strong></p>
+        </div>
       </div>
     </div>
   );
@@ -485,6 +504,7 @@ function CockpitPage() {
   // Leitura histórica (só quando o recorte não é "hoje"): agregados do período
   // por pregão e por robô, sem tocar em nada do motor.
   const getPeriodo = useServerFn(getB3SimPeriodSummary);
+  const getCincoPregoes = useServerFn(getB3CockpitFiveSessions);
   const hq = useQuery({
     queryKey: ["b3-cockpit-periodo", period.preset, period.start, period.end, filterKey],
     queryFn: () => getPeriodo({ data: { ...period, ...filterArgs } as never }),
@@ -492,6 +512,14 @@ function CockpitPage() {
     gcTime: 0,
   });
   const hd = hq.data as any;
+  const fiveQ = useQuery({
+    queryKey: ["b3-cockpit-five-sessions", filterKey],
+    queryFn: () => getCincoPregoes({ data: filterArgs as any }),
+    enabled: vivo,
+    refetchInterval: useVisibleRefetchInterval(60000),
+    refetchIntervalInBackground: false,
+  });
+  const fiveByAsset = new Map<string, any>(((fiveQ.data as any)?.by_asset ?? []).map((asset: any) => [asset.symbol, asset]));
 
   const all: any[] = q.data?.cards ?? [];
   const porAtivo: any[] = q.data?.por_ativo ?? [];
@@ -850,74 +878,73 @@ function CockpitPage() {
 
       {vivo && orderedAssets.map(([root, group]) => {
         const hdr = headerByAsset.get(root);
+        const history = fiveByAsset.get(root);
         const isCollapsed = collapsedAssets.has(root);
         const robotCount = Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0);
         return (
         <div key={root} className="space-y-3">
           {/* ── Testeira do ativo: sempre visível, mesmo recolhida ── */}
-          <div className="rounded-lg border border-border/60 bg-card px-3 py-2">
-            <div className="flex items-start gap-2 flex-wrap">
+          <div className={`overflow-hidden rounded-lg border border-current/30 shadow-sm ${assetBand(root)}`}>
+            <div className="flex items-start gap-2 flex-wrap px-3 py-2">
               <button type="button" onClick={() => toggleAsset(root)}
                 aria-label={isCollapsed ? `Expandir ${root}` : `Recolher ${root}`}
-                className="mt-0.5 rounded p-0.5 text-muted-foreground hover:text-foreground">
+                className="mt-0.5 rounded p-0.5 opacity-80 hover:opacity-100">
                 {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
               </button>
               <div className="min-w-0 flex-1 space-y-0.5">
                 <div className="flex items-center gap-2 flex-wrap text-sm font-semibold">
-                  <Badge variant="outline" className="border-primary/40 bg-primary/10">{root}</Badge>
-                  <span className="text-[11px] text-muted-foreground font-normal">
+                   <span className="text-lg font-black">{root}</span>
+                   <span className="text-[11px] font-semibold opacity-80">
                     {Array.from(group.contracts).join(" · ")}
                   </span>
-                  <span className="text-muted-foreground font-normal">{robotCount} robôs</span>
-                  <span className={`ml-auto font-mono text-xl ${moneyColor(hdr?.resultado_brl ?? 0)}`}>
+                   <span className="font-normal opacity-80">{robotCount} robôs</span>
+                   <span className="ml-auto font-mono text-xl font-black">
                     {SIGNED_HDR(hdr?.resultado_brl ?? 0)}
                   </span>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
+                 <p className="text-[11px] font-medium opacity-80">
                   {hdr?.ops ?? 0} ops · {hdr?.ganhos ?? 0} no lucro ({PCT(hdr?.taxa_acerto)}){"   "}
                   <span className="mx-1">·</span>
                   pico de capital {BRL0(hdr?.pico_capital_brl ?? 0)} · retorno {PCT_SIGNED(hdr?.retorno_sobre_capital)}
                 </p>
-                <p className="text-[11px] text-muted-foreground">
+                 <p className="text-[11px] font-medium opacity-80">
                   melhor: {roboShort(hdr?.melhor_robo)}
                   <span className="mx-2">·</span>
                   pior: {roboShort(hdr?.pior_robo)}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="h-6 text-[10px]"
+                <Button size="sm" variant="outline" className="h-6 border-current/40 bg-background/15 text-[10px] text-current hover:bg-background/25 hover:text-current"
                   onClick={() => copyCards(Array.from(group.byVariant.values()).flat(), root, true)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo
                 </Button>
-                <Button asChild size="sm" variant="outline" className="h-6 text-[10px]">
+                <Button asChild size="sm" variant="outline" className="h-6 border-current/40 bg-background/15 text-[10px] text-current hover:bg-background/25 hover:text-current">
                   <Link to="/b3/ativo/$symbol" params={{ symbol: root }}>ver painel</Link>
                 </Button>
               </div>
             </div>
-            <EfeitoDia
-              sombra={somarSombrasDia((hdr?.por_modalidade ?? []).map((m: any) => m.sombra))}
-              compacto
-            />
+            <EfeitoCincoPregoes days={history?.days} />
           </div>
 
           {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
             const sub = (hdr?.por_modalidade ?? []).find((m: any) => m.variant === variant);
             return (
-            <div key={variant} className="@container space-y-2 rounded-lg border border-border/40 bg-background/30 p-3">
-              <h3 className="text-xs font-semibold flex items-center gap-2 flex-wrap">
-                <Badge className={`text-[10px] ${VARIANT_COLOR[variant] ?? ""}`}>{variantLabel(variant)}</Badge>
-                <span className="text-muted-foreground font-normal">{cards.length} robôs</span>
+            <div key={variant} className="@container overflow-hidden rounded-lg border border-border/40 bg-background/30">
+              <div className={assetBand(root)}>
+              <h3 className="flex min-h-11 flex-wrap items-center gap-2 px-3 py-2 text-sm font-black">
+                <span className="text-base font-black">{root} · {variantLabel(variant)}</span>
+                <span className="font-semibold opacity-80">{cards.length} robôs</span>
                 {/* Com uma única modalidade visível, a testeira do ativo já mostra
                     exatamente estes números — o subtotal viraria repetição. */}
                 {variantsSel.length > 1 && (
                   <>
-                    <span className={`font-mono ${moneyColor(sub?.resultado_brl ?? 0)}`}>
+                    <span className="font-mono font-black">
                       {SIGNED_HDR(sub?.resultado_brl ?? 0)}
                     </span>
-                    <span className="text-muted-foreground font-normal">
+                    <span className="font-normal opacity-80">
                       {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})
                     </span>
-                    <span className="text-muted-foreground font-normal">
+                    <span className="font-normal opacity-80">
                       pico {BRL0(sub?.pico_capital_brl ?? 0)}
                     </span>
                   </>
@@ -928,19 +955,20 @@ function CockpitPage() {
                   escopo="grupo" root={root} variant={variant} mode={null}
                   libs={liberacoes} liberarM={liberarM} travarM={travarM} defaultFreio="grupo"
                 />
-                <Button size="sm" variant="outline" className="h-6 text-[10px] ml-auto"
+                 <Button size="sm" variant="outline" className="ml-auto h-6 border-current/40 bg-background/15 text-[10px] text-current hover:bg-background/25 hover:text-current"
                   onClick={() => copyCards(cards, `${root} · ${variantLabel(variant).toLowerCase()}`)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo + modalidade
                 </Button>
 
-              </h3>
-              <EfeitoDia sombra={sub?.sombra} compacto />
+               </h3>
+               <EfeitoCincoPregoes days={history?.by_variant?.find((item: any) => item.variant === variant)?.days} />
+               </div>
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
                   mede a largura real disponível — inclusive após recolher o menu
                   lateral — em vez do viewport. Cortes na área útil do grid:
                     < 380px → 1 col | 380–780 → 2 | 780–1500 → 4 | ≥1500 → 8. */}
-              <div className="grid grid-cols-1 @[380px]:grid-cols-2 @[780px]:grid-cols-4 @[1500px]:grid-cols-8 gap-3">
+               <div className="grid grid-cols-1 gap-3 p-3 @[380px]:grid-cols-2 @[780px]:grid-cols-4 @[1500px]:grid-cols-8">
                 {cards.map((c: any) => {
                   const key = `${c.run_id}:${c.mode}`;
                   const isOpen = expanded.has(key);
