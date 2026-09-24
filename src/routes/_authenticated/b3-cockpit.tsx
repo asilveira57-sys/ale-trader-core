@@ -189,6 +189,18 @@ function EfeitoCincoPregoes({ days }: { days: any[] | null | undefined }) {
   );
 }
 
+function EfeitoDia({ sombra }: { sombra: SombraDia | null | undefined }) {
+  const comFreio = Number(sombra?.resultado_sombra_brl ?? 0);
+  const semFreio = Number(sombra?.resultado_livre_brl ?? 0);
+  return (
+    <div className="mt-2 border-t border-border/40 pt-2 text-left">
+      <p className="mb-1 text-[9px] font-semibold uppercase text-muted-foreground">Efeito no dia</p>
+      <p className="text-[10px] text-muted-foreground">Com freio <strong className={`ml-1 font-mono ${moneyColor(comFreio)}`}>{BRL(comFreio)}</strong></p>
+      <p className="text-[10px] text-muted-foreground">Sem freio <strong className={`ml-1 font-mono ${moneyColor(semFreio)}`}>{BRL(semFreio)}</strong></p>
+    </div>
+  );
+}
+
 // CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026). Só leitura do que o motor
 // gravou. A regra não bloqueia nada, em lugar nenhum: os dois valores são o
 // resultado das ordens que teriam confirmado e o de todas as ordens do dia.

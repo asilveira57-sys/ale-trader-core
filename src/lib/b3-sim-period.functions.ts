@@ -183,7 +183,7 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
     }
     dates.sort().reverse();
     const chosen = new Set(dates);
-    const symbols = data.symbols?.length ? new Set(data.symbols.map(rootSymbol)) : null;
+    const symbols = data.symbols?.length ? new Set(data.symbols.map((symbol) => rootSymbol(symbol))) : null;
     const variants = data.variants?.length ? new Set(data.variants) : null;
     const modes = data.modes?.length ? new Set(data.modes) : null;
     type Pair = { com_freio_brl: number; sem_freio_brl: number };
@@ -196,6 +196,14 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
       assets.set(root, created);
       return created;
     };
+    // Semeia os ativos e modalidades visíveis para que dias sem operação sejam
+    // mostrados como R$ 0,00 em vez de desaparecerem da faixa.
+    for (const run of runById.values()) {
+      if (symbols && !symbols.has(run.root)) continue;
+      if (variants && !variants.has(run.variant)) continue;
+      const asset = ensureAsset(run.root);
+      if (!asset.variants.has(run.variant)) asset.variants.set(run.variant, new Map<string, Pair>());
+    }
     const add = (map: Map<string, Pair>, date: string, value: number, comFreio: boolean) => {
       const pair = map.get(date) ?? blank();
       pair.sem_freio_brl += value;
