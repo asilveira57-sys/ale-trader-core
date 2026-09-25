@@ -172,11 +172,13 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
     for (const row of (rows ?? []) as any[]) {
       if (row.exit_time) allDates.add(brtDate(new Date(row.exit_time)));
     }
-    const dates = Array.from(allDates).filter((date) => date <= today).sort().reverse().slice(0, 5);
-    // Em implantação nova pode ainda não haver quatro datas gravadas. Mantém a
-    // faixa estável com dias úteis anteriores, sempre explicitamente zerados.
+    // Hoje + os últimos 5 pregões com movimento: o card de hoje fica visível
+    // (ainda em andamento) e o total soma somente os 5 anteriores, já fechados.
+    const dates = Array.from(allDates).filter((date) => date <= today).sort().reverse().slice(0, 6);
+    // Em implantação nova pode ainda não haver datas gravadas. Mantém a faixa
+    // estável com dias úteis anteriores, sempre explicitamente zerados.
     let cursor = today;
-    while (dates.length < 5) {
+    while (dates.length < 6) {
       cursor = addDays(cursor, -1);
       const weekday = new Date(`${cursor}T12:00:00.000Z`).getUTCDay();
       if (weekday !== 0 && weekday !== 6 && !dates.includes(cursor)) dates.push(cursor);

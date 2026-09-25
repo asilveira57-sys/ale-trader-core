@@ -153,37 +153,62 @@ const VARIANT_SHORT: Record<string, string> = {
 const roboShort = (r: any) =>
   !r ? "—" : `${VARIANT_SHORT[r.variant] ?? r.variant} ${String(r.mode).replace("_", "-")} ${SIGNED_HDR(r.brl)}`;
 
+// Testeiras de ativo/modalidade com 30% de transparência (70% de opacidade):
+// os tons cheios estavam poluindo o visual ao rolar a página.
 const ASSET_BAND: Record<string, string> = {
-  WIN: "bg-asset-win text-asset-win-foreground",
-  WDO: "bg-asset-wdo text-asset-wdo-foreground",
-  BIT: "bg-asset-bit text-asset-bit-foreground",
+  WIN: "bg-asset-win/70 text-asset-win-foreground",
+  WDO: "bg-asset-wdo/70 text-asset-wdo-foreground",
+  BIT: "bg-asset-bit/70 text-asset-bit-foreground",
 };
-const assetBand = (root: string) => ASSET_BAND[root] ?? "bg-asset-other text-asset-other-foreground";
+const assetBand = (root: string) => ASSET_BAND[root] ?? "bg-asset-other/70 text-asset-other-foreground";
 const shortDate = (date: string) => {
   const [, month, day] = date.split("-");
   return `${day}/${month}`;
 };
 
+// Card preto de cada pregão: rótulos "Com freio"/"Sem freio" em branco negrito
+// e o valor em verde/vermelho conforme positivo/negativo. Hoje é o primeiro
+// card (ainda em andamento) e o "Total" soma somente os últimos 5 pregões.
+function PregaoCard({
+  label, com, sem, highlight,
+}: { label: string; com: number; sem: number; highlight?: boolean }) {
+  return (
+    <div className="min-w-[126px] rounded bg-black/70 px-2 py-1.5 text-left">
+      <p className={`mb-1 ${highlight ? "font-black" : "font-bold"} text-white`}>{label}</p>
+      <p className="whitespace-nowrap font-bold text-white">
+        Com freio <span className={`ml-1 font-mono ${moneyColor(com)}`}>{BRL(com)}</span>
+      </p>
+      <p className="whitespace-nowrap font-bold text-white">
+        Sem freio <span className={`ml-1 font-mono ${moneyColor(sem)}`}>{BRL(sem)}</span>
+      </p>
+    </div>
+  );
+}
+
 function EfeitoCincoPregoes({ days }: { days: any[] | null | undefined }) {
   const rows = days ?? [];
-  const totalCom = rows.reduce((sum, day) => sum + Number(day.com_freio_brl ?? 0), 0);
-  const totalSem = rows.reduce((sum, day) => sum + Number(day.sem_freio_brl ?? 0), 0);
+  // Total soma somente os últimos 5 (hoje é o primeiro, em andamento).
+  const totalRows = rows.slice(1);
+  const totalCom = totalRows.reduce((sum, day) => sum + Number(day.com_freio_brl ?? 0), 0);
+  const totalSem = totalRows.reduce((sum, day) => sum + Number(day.sem_freio_brl ?? 0), 0);
   return (
     <div className="border-t border-current/20 px-3 py-2">
-      <p className="mb-2 text-[10px] font-black uppercase">Efeito nos últimos 5 pregões</p>
-      <div className="flex flex-wrap items-stretch justify-start gap-x-5 gap-y-2 text-[10px]">
+      <p className="mb-2 text-[10px] font-black uppercase">Efeito nos últimos pregões</p>
+      <div className="flex flex-wrap items-stretch justify-start gap-x-3 gap-y-2 text-[10px]">
         {rows.map((day, index) => (
-          <div key={day.date} className="min-w-[132px] text-left">
-            <p className="mb-0.5 font-bold">{index === 0 ? `Hoje · ${shortDate(day.date)}` : shortDate(day.date)}</p>
-            <p className="whitespace-nowrap">Com freio <strong className="ml-1 font-mono">{BRL(Number(day.com_freio_brl ?? 0))}</strong></p>
-            <p className="whitespace-nowrap">Sem freio <strong className="ml-1 font-mono">{BRL(Number(day.sem_freio_brl ?? 0))}</strong></p>
-          </div>
+          <PregaoCard
+            key={day.date}
+            label={index === 0 ? `Hoje · ${shortDate(day.date)}` : shortDate(day.date)}
+            com={Number(day.com_freio_brl ?? 0)}
+            sem={Number(day.sem_freio_brl ?? 0)}
+          />
         ))}
-        <div className="min-w-[150px] border-l border-current/30 pl-4 text-left">
-          <p className="mb-0.5 font-black">Total · 5 pregões</p>
-          <p className="whitespace-nowrap">Com freio <strong className="ml-1 font-mono">{BRL(totalCom)}</strong></p>
-          <p className="whitespace-nowrap">Sem freio <strong className="ml-1 font-mono">{BRL(totalSem)}</strong></p>
-        </div>
+        <PregaoCard
+          label="Total · 5 pregões"
+          com={totalCom}
+          sem={totalSem}
+          highlight
+        />
       </div>
     </div>
   );
