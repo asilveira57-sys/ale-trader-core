@@ -852,35 +852,7 @@ function CockpitPage() {
 
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-muted-foreground">Por robô</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[560px] text-xs">
-                    <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                      <tr className="border-b border-border">
-                        <th className="py-1 text-left">Robô</th>
-                        <th className="py-1 text-right">Operações</th>
-                        <th className="py-1 text-right">Ganhos</th>
-                        <th className="py-1 text-right">Perdas</th>
-                        <th className="py-1 text-right">Resultado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {((hd?.robots ?? []) as any[]).map((r) => (
-                        <tr key={r.key} className="border-b border-border/50">
-                          <td className="py-1">
-                            <span className="font-semibold">{r.symbol}</span>{" "}
-                            <span className="text-muted-foreground">{variantLabel(r.variant)} · {apelidos.nick(r.mode)}</span>
-                          </td>
-                          <td className="py-1 text-right">{r.ops}</td>
-                          <td className="py-1 text-right">{r.ganhos}</td>
-                          <td className="py-1 text-right">{r.perdas}</td>
-                          <td className={`py-1 text-right font-mono font-black ${Number(r.resultado_brl) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                            {BRL(Number(r.resultado_brl))}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <HistoricoAgrupado robots={(hd?.robots ?? []) as any[]} nick={apelidos.nick} />
               </div>
             </>
           )}
