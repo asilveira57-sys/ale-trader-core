@@ -214,6 +214,83 @@ function EfeitoCincoPregoes({ days }: { days: any[] | null | undefined }) {
   );
 }
 
+// Leitura histórica por período: MESMO padrão visual do dia (testeiras por
+// ativo e modalidade), só que com os somatórios do recorte. A tabela plana
+// anterior era difícil de ler ao rolar — aqui a cor da testeira continua
+// dizendo onde começa cada ativo/modalidade.
+function HistoricoAgrupado({ robots, nick }: { robots: any[]; nick: (mode: string) => string }) {
+  const bySymbol = new Map<string, { total: number; ops: number; ganhos: number; perdas: number; byVariant: Map<string, any[]> }>();
+  for (const r of robots ?? []) {
+    const root = String(r.symbol);
+    if (!bySymbol.has(root)) bySymbol.set(root, { total: 0, ops: 0, ganhos: 0, perdas: 0, byVariant: new Map() });
+    const g = bySymbol.get(root)!;
+    g.total += Number(r.resultado_brl ?? 0);
+    g.ops += Number(r.ops ?? 0);
+    g.ganhos += Number(r.ganhos ?? 0);
+    g.perdas += Number(r.perdas ?? 0);
+    const v = String(r.variant ?? "indicador");
+    if (!g.byVariant.has(v)) g.byVariant.set(v, []);
+    g.byVariant.get(v)!.push(r);
+  }
+  const assets = Array.from(bySymbol.entries()).sort((a, b) => a[1].total - b[1].total);
+  return (
+    <div className="space-y-3">
+      {assets.map(([root, g]) => (
+        <div key={root} className="space-y-2">
+          <div className={`overflow-hidden rounded-lg border border-current/30 shadow-sm ${assetBand(root)}`}>
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm font-semibold">
+              <span className="text-lg font-black">{root}</span>
+              <span className="font-normal opacity-80">{g.ops} ops · {g.ganhos} ganhos · {g.perdas} perdas</span>
+              <span className={`ml-auto font-mono text-xl font-black ${moneyColor(g.total)}`}>{BRL(g.total)}</span>
+            </div>
+          </div>
+          {Array.from(g.byVariant.entries()).map(([variant, rows]) => {
+            const sub = rows.reduce((s, r) => s + Number(r.resultado_brl ?? 0), 0);
+            const subOps = rows.reduce((s, r) => s + Number(r.ops ?? 0), 0);
+            return (
+              <div key={variant} className="overflow-hidden rounded-lg border border-border/40 bg-background/30">
+                <div className={assetBand(root)}>
+                  <h3 className="flex min-h-11 flex-wrap items-center gap-2 px-3 py-2 text-sm font-black">
+                    <span className="text-base font-black">{root} · {variantLabel(variant)}</span>
+                    <span className="font-semibold opacity-80">{rows.length} robôs · {subOps} ops</span>
+                    <span className={`ml-auto font-mono font-black ${moneyColor(sub)}`}>{BRL(sub)}</span>
+                  </h3>
+                </div>
+                <div className="overflow-x-auto p-3">
+                  <table className="w-full min-w-[480px] text-xs">
+                    <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <tr className="border-b border-border">
+                        <th className="py-1 text-left">Robô</th>
+                        <th className="py-1 text-right">Operações</th>
+                        <th className="py-1 text-right">Ganhos</th>
+                        <th className="py-1 text-right">Perdas</th>
+                        <th className="py-1 text-right">Resultado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr key={r.key} className="border-b border-border/50">
+                          <td className="py-1 font-semibold">{nick(r.mode)}</td>
+                          <td className="py-1 text-right">{r.ops}</td>
+                          <td className="py-1 text-right">{r.ganhos}</td>
+                          <td className="py-1 text-right">{r.perdas}</td>
+                          <td className={`py-1 text-right font-mono font-black ${moneyColor(Number(r.resultado_brl))}`}>
+                            {BRL(Number(r.resultado_brl))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EfeitoDia({ sombra }: { sombra: SombraDia | null | undefined }) {
   const comFreio = Number(sombra?.resultado_sombra_brl ?? 0);
   const semFreio = Number(sombra?.resultado_livre_brl ?? 0);
@@ -775,35 +852,7 @@ function CockpitPage() {
 
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-muted-foreground">Por robô</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[560px] text-xs">
-                    <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                      <tr className="border-b border-border">
-                        <th className="py-1 text-left">Robô</th>
-                        <th className="py-1 text-right">Operações</th>
-                        <th className="py-1 text-right">Ganhos</th>
-                        <th className="py-1 text-right">Perdas</th>
-                        <th className="py-1 text-right">Resultado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {((hd?.robots ?? []) as any[]).map((r) => (
-                        <tr key={r.key} className="border-b border-border/50">
-                          <td className="py-1">
-                            <span className="font-semibold">{r.symbol}</span>{" "}
-                            <span className="text-muted-foreground">{variantLabel(r.variant)} · {apelidos.nick(r.mode)}</span>
-                          </td>
-                          <td className="py-1 text-right">{r.ops}</td>
-                          <td className="py-1 text-right">{r.ganhos}</td>
-                          <td className="py-1 text-right">{r.perdas}</td>
-                          <td className={`py-1 text-right font-mono font-black ${Number(r.resultado_brl) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                            {BRL(Number(r.resultado_brl))}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <HistoricoAgrupado robots={(hd?.robots ?? []) as any[]} nick={apelidos.nick} />
               </div>
             </>
           )}

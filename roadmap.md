@@ -35,3 +35,5 @@
 - O comando real nasce do SINAL APROVADO, não da ordem simulada: `confirmacao_ativa_simulado` e `confirmacao_ativa_real` decidem lados independentes (OFF/OFF e ON/OFF enfileiram o real no instante do sinal; OFF/ON e ON/ON esperam a confirmação).
 - Motivo de `confirmacao_nao_atingida` mede o avanço DENTRO da janela; excursão total em `andou_pts_total`.
 - [x] Cockpit: destacar cabeçalhos por ativo e modalidade; mostrar Com freio/Sem freio nos últimos cinco pregões e total de cinco dias nos dois níveis.
+
+- [x] Visão por datas do cockpit com as mesmas testeiras coloridas por ativo/modalidade do dia, com somatórios do período (26/09)
