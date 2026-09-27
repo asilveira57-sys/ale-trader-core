@@ -131,24 +131,27 @@ export function evaluateB3Protection(
   }
 
   // 5) Trava de devolução de pico — NÃO depende de meta.
-  // Motivação: em 21/08 os maiores estragos foram devolução de ganho, não perda
-  // direta (WIN pico +3.706 às 15:38 → fechou +1.813; BIT +1.839 → −1.410).
-  // A trava pós-meta só arma depois da meta diária, que a maioria dos robôs não
-  // alcança. Esta arma sozinha, a partir de um piso mínimo de lucro.
-  next.day_peak_profit_brl = Math.max(
-    Number(current.day_peak_profit_brl ?? 0),
-    markedToday,
-  );
+  // 27/09/2026: pico e devolvido saem da MESMA série (realizado de hoje,
+  // acumulado das fechadas começando em zero). O pico persistido não atravessa
+  // mais: é recalculado a cada tique a partir das ordens do dia.
+  let invariant_error: string | undefined;
+  const useSeries = input.day_peak_realized_brl != null && Number.isFinite(Number(input.day_peak_realized_brl));
+  const seriesNow = useSeries ? realizedToday : markedToday;
+  next.day_peak_profit_brl = useSeries
+    ? Math.max(0, Number(input.day_peak_realized_brl))
+    : Math.max(Number(current.day_peak_profit_brl ?? 0), markedToday);
   const dayPeak = Number(next.day_peak_profit_brl ?? 0);
   const peakPct = Math.min(0.95, Math.max(0.05, Number(cfg.peak_giveback_pct ?? 0.4)));
   const peakFloor = Math.abs(Number(cfg.peak_lock_min_profit_brl ?? 0));
   if (dayPeak >= peakFloor && dayPeak > 0) {
-    const givenBackDay = dayPeak - markedToday;
+    const givenBackDay = dayPeak - seriesNow;
     const allowed = dayPeak * peakPct;
-    if (givenBackDay > allowed) {
+    if (givenBackDay > dayPeak + 0.005) {
+      invariant_error = `Invariante violada: devolvido ${givenBackDay.toFixed(2)} BRL > pico ${dayPeak.toFixed(2)} BRL. Freio de pico NÃO acionado.`;
+    } else if (givenBackDay > allowed) {
       next.protection_state = "blocked_peak_giveback";
       next.protection_block_reason =
-        `Devolveu ${givenBackDay.toFixed(2)} BRL do pico do dia marcado a mercado (${dayPeak.toFixed(2)} BRL) — limite ${allowed.toFixed(2)} BRL (${(peakPct * 100).toFixed(0)}%).`;
+        `Devolveu ${givenBackDay.toFixed(2)} BRL do pico do dia realizado (${dayPeak.toFixed(2)} BRL; agora ${seriesNow.toFixed(2)} BRL) — limite ${allowed.toFixed(2)} BRL (${(peakPct * 100).toFixed(0)}%).`;
       return {
         next, size_multiplier: 0, allow_new_entry: false,
         transition: prev !== next.protection_state
@@ -157,6 +160,7 @@ export function evaluateB3Protection(
       };
     }
   }
+  const withInv = <T extends B3ProtectionDecision>(d: T): T => (invariant_error ? { ...d, invariant_error } : d);
 
   const target = Math.abs(cfg.daily_gain_target_brl);
   const targetReached = target > 0 && realizedToday >= target;
