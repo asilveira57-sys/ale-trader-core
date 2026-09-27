@@ -59,6 +59,7 @@ export interface B3ProtectionDecision {
   next: B3ProtectionRuntime;
   size_multiplier: number;         // aplicar no qty de novas entradas
   allow_new_entry: boolean;
+  invariant_error?: string;
   transition?: {
     from: B3ProtectionState;
     to: B3ProtectionState;
@@ -160,7 +161,6 @@ export function evaluateB3Protection(
       };
     }
   }
-  const withInv = <T extends B3ProtectionDecision>(d: T): T => (invariant_error ? { ...d, invariant_error } : d);
 
   const target = Math.abs(cfg.daily_gain_target_brl);
   const targetReached = target > 0 && realizedToday >= target;
@@ -172,7 +172,7 @@ export function evaluateB3Protection(
     next.protection_state = "operating_normal";
     next.protection_block_reason = null;
     return {
-      next, size_multiplier: 1, allow_new_entry: true,
+      invariant_error, next, size_multiplier: 1, allow_new_entry: true,
       transition: prev !== next.protection_state
         ? { from: prev, to: next.protection_state, reason: "Operando normal." }
         : undefined,
@@ -207,7 +207,7 @@ export function evaluateB3Protection(
     next.protection_state = "blocked_post_target_loss";
     next.protection_block_reason = `Devolveu ${givenBack.toFixed(2)} BRL do lucro pós-meta (limite ${retracementLimit.toFixed(2)} BRL).`;
     return {
-      next, size_multiplier: 0, allow_new_entry: false,
+      invariant_error, next, size_multiplier: 0, allow_new_entry: false,
       transition: prev !== next.protection_state
         ? { from: prev, to: next.protection_state, reason: next.protection_block_reason }
         : undefined,
@@ -219,7 +219,7 @@ export function evaluateB3Protection(
     next.protection_state = "blocked_post_target_loss";
     next.protection_block_reason = `${next.consecutive_losses_after_target} perdas consecutivas após a meta.`;
     return {
-      next, size_multiplier: 0, allow_new_entry: false,
+      invariant_error, next, size_multiplier: 0, allow_new_entry: false,
       transition: prev !== next.protection_state
         ? { from: prev, to: next.protection_state, reason: next.protection_block_reason }
         : undefined,
@@ -234,7 +234,7 @@ export function evaluateB3Protection(
   const sizeMul = Math.min(1, Math.max(0.05, cfg.post_target_size_reduction));
 
   return {
-    next,
+    invariant_error, next,
     size_multiplier: protectedProfit ? Math.max(0.05, sizeMul * 0.7) : sizeMul,
     allow_new_entry: true,
     transition: prev !== next.protection_state
