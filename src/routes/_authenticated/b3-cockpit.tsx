@@ -1,3 +1,4 @@
+import { CalibracaoSugerida } from "@/components/b3/CalibracaoSugerida";
 import { useState, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -1240,6 +1241,7 @@ function CockpitPage() {
                       </button>
 
 
+                      <CalibracaoSugerida symbol={c.symbol} variant={c.variant ?? "indicador"} mode={c.mode} />
                       {/* ── Liberar o REAL deste robô (senha mestra) ──
                           Fora do <button> do card para não aninhar botões. O
                           simulado não muda: o freio já está em sombra. */}
