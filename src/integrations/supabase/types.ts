@@ -3828,6 +3828,7 @@ export type Database = {
           created_at: string
           daily_gain_target_brl: number
           daily_loss_limit_brl: number
+          daily_stop_mult: number
           enabled: boolean
           entry_cutoff_time: string
           entry_style: string
@@ -3872,6 +3873,7 @@ export type Database = {
           created_at?: string
           daily_gain_target_brl?: number
           daily_loss_limit_brl?: number
+          daily_stop_mult?: number
           enabled?: boolean
           entry_cutoff_time?: string
           entry_style?: string
@@ -3916,6 +3918,7 @@ export type Database = {
           created_at?: string
           daily_gain_target_brl?: number
           daily_loss_limit_brl?: number
+          daily_stop_mult?: number
           enabled?: boolean
           entry_cutoff_time?: string
           entry_style?: string
