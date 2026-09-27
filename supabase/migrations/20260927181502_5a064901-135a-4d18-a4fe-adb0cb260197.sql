@@ -1,0 +1,2 @@
+ALTER TABLE public.b3_mt5_commands DROP CONSTRAINT b3_mt5_commands_status_check;
+ALTER TABLE public.b3_mt5_commands ADD CONSTRAINT b3_mt5_commands_status_check CHECK (status = ANY (ARRAY['pending','claimed','filled','rejected','expired','error','orfao']));

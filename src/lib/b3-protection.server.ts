@@ -47,6 +47,8 @@ export interface B3ProtectionInput {
   /** Resultado do dia incluindo posição aberta marcada a mercado. Quando ausente,
    * a proteção mantém a semântica anterior e usa apenas o realizado. */
   marked_today_brl?: number | null;
+  /** Pico do realizado de hoje (acumulado das fechadas, começa em 0). */
+  day_peak_realized_brl?: number | null;
   total_trades_today: number;
   operating_minutes_today: number;
   volatility_pct: number;
@@ -59,6 +61,7 @@ export interface B3ProtectionDecision {
   next: B3ProtectionRuntime;
   size_multiplier: number;         // aplicar no qty de novas entradas
   allow_new_entry: boolean;
+  invariant_error?: string;
   transition?: {
     from: B3ProtectionState;
     to: B3ProtectionState;
@@ -131,24 +134,27 @@ export function evaluateB3Protection(
   }
 
   // 5) Trava de devolução de pico — NÃO depende de meta.
-  // Motivação: em 21/08 os maiores estragos foram devolução de ganho, não perda
-  // direta (WIN pico +3.706 às 15:38 → fechou +1.813; BIT +1.839 → −1.410).
-  // A trava pós-meta só arma depois da meta diária, que a maioria dos robôs não
-  // alcança. Esta arma sozinha, a partir de um piso mínimo de lucro.
-  next.day_peak_profit_brl = Math.max(
-    Number(current.day_peak_profit_brl ?? 0),
-    markedToday,
-  );
+  // 27/09/2026: pico e devolvido saem da MESMA série (realizado de hoje,
+  // acumulado das fechadas começando em zero). O pico persistido não atravessa
+  // mais: é recalculado a cada tique a partir das ordens do dia.
+  let invariant_error: string | undefined;
+  const useSeries = input.day_peak_realized_brl != null && Number.isFinite(Number(input.day_peak_realized_brl));
+  const seriesNow = useSeries ? realizedToday : markedToday;
+  next.day_peak_profit_brl = useSeries
+    ? Math.max(0, Number(input.day_peak_realized_brl))
+    : Math.max(Number(current.day_peak_profit_brl ?? 0), markedToday);
   const dayPeak = Number(next.day_peak_profit_brl ?? 0);
   const peakPct = Math.min(0.95, Math.max(0.05, Number(cfg.peak_giveback_pct ?? 0.4)));
   const peakFloor = Math.abs(Number(cfg.peak_lock_min_profit_brl ?? 0));
   if (dayPeak >= peakFloor && dayPeak > 0) {
-    const givenBackDay = dayPeak - markedToday;
+    const givenBackDay = dayPeak - seriesNow;
     const allowed = dayPeak * peakPct;
-    if (givenBackDay > allowed) {
+    if (givenBackDay > dayPeak + 0.005) {
+      invariant_error = `Invariante violada: devolvido ${givenBackDay.toFixed(2)} BRL > pico ${dayPeak.toFixed(2)} BRL. Freio de pico NÃO acionado.`;
+    } else if (givenBackDay > allowed) {
       next.protection_state = "blocked_peak_giveback";
       next.protection_block_reason =
-        `Devolveu ${givenBackDay.toFixed(2)} BRL do pico do dia marcado a mercado (${dayPeak.toFixed(2)} BRL) — limite ${allowed.toFixed(2)} BRL (${(peakPct * 100).toFixed(0)}%).`;
+        `Devolveu ${givenBackDay.toFixed(2)} BRL do pico do dia realizado (${dayPeak.toFixed(2)} BRL; agora ${seriesNow.toFixed(2)} BRL) — limite ${allowed.toFixed(2)} BRL (${(peakPct * 100).toFixed(0)}%).`;
       return {
         next, size_multiplier: 0, allow_new_entry: false,
         transition: prev !== next.protection_state
@@ -168,7 +174,7 @@ export function evaluateB3Protection(
     next.protection_state = "operating_normal";
     next.protection_block_reason = null;
     return {
-      next, size_multiplier: 1, allow_new_entry: true,
+      invariant_error, next, size_multiplier: 1, allow_new_entry: true,
       transition: prev !== next.protection_state
         ? { from: prev, to: next.protection_state, reason: "Operando normal." }
         : undefined,
@@ -203,7 +209,7 @@ export function evaluateB3Protection(
     next.protection_state = "blocked_post_target_loss";
     next.protection_block_reason = `Devolveu ${givenBack.toFixed(2)} BRL do lucro pós-meta (limite ${retracementLimit.toFixed(2)} BRL).`;
     return {
-      next, size_multiplier: 0, allow_new_entry: false,
+      invariant_error, next, size_multiplier: 0, allow_new_entry: false,
       transition: prev !== next.protection_state
         ? { from: prev, to: next.protection_state, reason: next.protection_block_reason }
         : undefined,
@@ -215,7 +221,7 @@ export function evaluateB3Protection(
     next.protection_state = "blocked_post_target_loss";
     next.protection_block_reason = `${next.consecutive_losses_after_target} perdas consecutivas após a meta.`;
     return {
-      next, size_multiplier: 0, allow_new_entry: false,
+      invariant_error, next, size_multiplier: 0, allow_new_entry: false,
       transition: prev !== next.protection_state
         ? { from: prev, to: next.protection_state, reason: next.protection_block_reason }
         : undefined,
@@ -230,7 +236,7 @@ export function evaluateB3Protection(
   const sizeMul = Math.min(1, Math.max(0.05, cfg.post_target_size_reduction));
 
   return {
-    next,
+    invariant_error, next,
     size_multiplier: protectedProfit ? Math.max(0.05, sizeMul * 0.7) : sizeMul,
     allow_new_entry: true,
     transition: prev !== next.protection_state

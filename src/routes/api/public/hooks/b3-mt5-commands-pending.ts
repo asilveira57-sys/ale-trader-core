@@ -101,6 +101,22 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-pending"
           .in("status", ["pending", "claimed"])
           .lt("expires_at", nowIso);
 
+        // 1b) Ticket marcado 'orfao' (3 falhas seguidas ao fechar) não recebe
+        //     nova tentativa automática: fechamentos pendentes dele expiram.
+        const { data: orfaos } = await (supabaseAdmin as any)
+          .from("b3_mt5_commands").select("broker_position_ticket")
+          .eq("user_id", payload.user_id).eq("env", payload.env).eq("status", "orfao")
+          .gte("created_at", new Date(Date.now() - 86400_000).toISOString())
+          .not("broker_position_ticket", "is", null);
+        const orfaoTickets = [...new Set((orfaos ?? []).map((o: any) => String(o.broker_position_ticket)))];
+        if (orfaoTickets.length) {
+          await (supabaseAdmin as any).from("b3_mt5_commands")
+            .update({ status: "expired", error_message: "ticket órfão — tentativa automática suspensa" })
+            .eq("user_id", payload.user_id).eq("env", payload.env)
+            .eq("status", "pending").eq("action", "close")
+            .in("broker_position_ticket", orfaoTickets);
+        }
+
         // 2) Reivindica atomicamente os pendentes restantes.
         let claimQuery = (supabaseAdmin as any)
           .from("b3_mt5_commands")
