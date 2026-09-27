@@ -47,6 +47,8 @@ export interface B3ProtectionInput {
   /** Resultado do dia incluindo posição aberta marcada a mercado. Quando ausente,
    * a proteção mantém a semântica anterior e usa apenas o realizado. */
   marked_today_brl?: number | null;
+  /** Pico do realizado de hoje (acumulado das fechadas, começa em 0). */
+  day_peak_realized_brl?: number | null;
   total_trades_today: number;
   operating_minutes_today: number;
   volatility_pct: number;

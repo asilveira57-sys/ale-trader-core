@@ -3590,7 +3590,7 @@ async function runB3SimulationTickInner(
           await supabase.from("system_logs").insert({
             event_type: "b3_freio_pico_invariante", source: "b3_protection", severity: "error",
             message: `${mode}: ${protDec.invariant_error}`,
-            payload: { mode, realized_today_brl: realizedToday, day_peak_realized_brl: peakTodayByMode[mode] ?? 0 } as any,
+            technical_data: { mode, realized_today_brl: realizedToday, day_peak_realized_brl: peakTodayByMode[mode] ?? 0 } as any,
           } as any);
         } catch { /* best-effort */ }
       }
