@@ -1102,13 +1102,21 @@ async function runB3SimulationTickInner(
     const { data: closedToday } = await supabase.from("b3_simulation_orders")
       .select("mode, net_result_brl, exit_time")
       .eq("simulation_run_id", runId).eq("user_id", userId).eq("status", "closed")
-      .gte("exit_time", startUtcIso);
+      .gte("exit_time", startUtcIso)
+      .order("exit_time", { ascending: true });
     const map: Record<string, number> = { conservador: 0, moderado: 0, equilibrado: 0, semi_agressivo: 0, agressivo: 0 };
+    // Pico do dia sai da MESMA série do realizado (27/09/2026): acumulado das
+    // fechadas de hoje, começando em zero. Nada de sessão anterior atravessa.
+    const peak: Record<string, number> = { conservador: 0, moderado: 0, equilibrado: 0, semi_agressivo: 0, agressivo: 0 };
     for (const r of closedToday ?? []) {
-      map[r.mode as string] = (map[r.mode as string] || 0) + Number(r.net_result_brl ?? 0);
+      const k = r.mode as string;
+      map[k] = (map[k] || 0) + Number(r.net_result_brl ?? 0);
+      peak[k] = Math.max(peak[k] || 0, map[k]);
     }
+    peakTodayByMode = peak;
     return map;
   }
+  let peakTodayByMode: Record<string, number> = {};
   let realizedTodayByMode = await getRealizedTodayByMode();
 
   function markOpenOrderBrl(order: any, markPrice: number | null): number | null {
@@ -3503,7 +3511,7 @@ async function runB3SimulationTickInner(
             profit_at_target_brl: m.profit_at_target_brl,
             peak_profit_after_target_brl: m.peak_profit_after_target_brl,
             profit_after_target_brl: m.profit_after_target_brl,
-            given_back_brl: Math.max(0, Number(m.peak_profit_after_target_brl ?? 0) - Number(m.profit_at_target_brl ?? 0) - Number(m.profit_after_target_brl ?? 0)),
+            given_back_brl: Math.min(Math.max(0, Number(m.peak_profit_after_target_brl ?? 0)), Math.max(0, Number(m.peak_profit_after_target_brl ?? 0) - Number(m.profit_at_target_brl ?? 0) - Number(m.profit_after_target_brl ?? 0))),
             profit_at_close_brl: null,
             trades_total: m.total_trades,
             trades_after_target: m.trades_after_target,
@@ -3570,12 +3578,22 @@ async function runB3SimulationTickInner(
       const protDec = evaluateB3Protection(protCur, protCfg, {
         realized_today_brl: realizedToday,
         marked_today_brl: markedTodayForProtection,
+        day_peak_realized_brl: Number(peakTodayByMode[mode] ?? 0),
         total_trades_today: Number(m.total_trades ?? 0),
         operating_minutes_today: opMinutes,
         volatility_pct: ctx.volatility_pct,
         drawdown_hit: false,
         now_iso: now.toISOString(),
       });
+      if (protDec.invariant_error) {
+        try {
+          await supabase.from("system_logs").insert({
+            event_type: "b3_freio_pico_invariante", source: "b3_protection", severity: "error",
+            message: `${mode}: ${protDec.invariant_error}`,
+            payload: { mode, realized_today_brl: realizedToday, day_peak_realized_brl: peakTodayByMode[mode] ?? 0 } as any,
+          } as any);
+        } catch { /* best-effort */ }
+      }
 
       // Persistir runtime de proteção — apenas quando algo muda de fato.
       const protPatch = {
