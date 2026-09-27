@@ -1,0 +1,1 @@
+- Calibração do stop diário aplica só em b3_simulation_mode_settings.daily_stop_mult (padrão 3,0; gatilho b3_derivar_limite_diario usa ele); nunca escreve em b3_prd_authorizations — real fica para depois, por decisão do operador.
