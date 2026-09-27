@@ -136,8 +136,57 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-ack")({
           .eq("id", cmd.id);
 
         if (payload.result !== "filled") {
-          // Rejeitado ou erro no lado do MT5: nada é escrito em b3_live_orders.
-          return json({ ok: true, command_id: cmd.id, status: newStatus });
+          // Rejeitado ou erro no lado do MT5: nada é escrito em b3_live_orders
+          // (a posição continua aberta no magic do robô dono — não passa ao 0).
+          const errMsg = String(payload.error_message ?? "");
+          const ticket = positionTicket(payload.broker_position_ticket)
+            ?? (errMsg.match(/ticket\s+(\d{5,})/i)?.[1] ?? null);
+          const logs: any[] = [];
+          const partial = errMsg.match(/PARCIAL[^0-9]*pedido\s+(\d+)[^0-9]+fechado\s+(\d+)/i);
+          if (partial) {
+            const restam = Number(partial[1]) - Number(partial[2]);
+            logs.push({
+              event_type: "b3_fechamento_parcial", source: "mt5_ack", severity: "error",
+              message: `Fechamento parcial: pedido ${partial[1]}, fechado ${partial[2]} — restam ${restam} contrato(s) no ticket ${ticket ?? "?"}, dono magic ${cmd.magic_number}.`,
+              technical_data: { command_id: cmd.id, magic: cmd.magic_number, ticket, restam, error_message: errMsg },
+            });
+          }
+          const retcode = errMsg.match(/\b(10019|10006)\b/)?.[1] ?? (/MG51/i.test(errMsg) ? "10006" : /no money/i.test(errMsg) ? "10019" : null);
+          if (retcode) {
+            logs.push({
+              event_type: "b3_corretora_recusou", source: "mt5_ack", severity: "critical",
+              message: `Corretora recusou (${retcode === "10019" ? "sem margem — No money" : "MG51"}) ${cmd.action} magic ${cmd.magic_number}${ticket ? ` ticket ${ticket}` : ""}.`,
+              technical_data: { command_id: cmd.id, retcode, ticket, error_message: errMsg },
+            });
+          }
+          let finalStatus = newStatus;
+          if (cmd.action === "close" && ticket) {
+            // Três falhas seguidas no mesmo ticket → 'orfao', para de tentar.
+            const { data: ult } = await (supabaseAdmin as any).from("b3_mt5_commands")
+              .select("id, status, error_message, broker_position_ticket")
+              .eq("user_id", cmd.user_id).eq("action", "close")
+              .in("status", ["rejected", "error", "filled", "orfao"])
+              .order("created_at", { ascending: false }).limit(20);
+            const doTicket = (ult ?? []).filter((c: any) =>
+              String(c.broker_position_ticket ?? "") === ticket || String(c.error_message ?? "").includes(ticket));
+            let seguidas = 0;
+            for (const c of doTicket) { if (c.status === "rejected" || c.status === "error") seguidas++; else break; }
+            if (seguidas >= 3) {
+              finalStatus = "orfao";
+              await (supabaseAdmin as any).from("b3_mt5_commands")
+                .update({ status: "orfao", broker_position_ticket: ticket }).eq("id", cmd.id);
+              logs.push({
+                event_type: "b3_ticket_orfao", source: "mt5_ack", severity: "critical",
+                message: `Ticket ${ticket} falhou ${seguidas}x seguidas ao fechar (magic ${cmd.magic_number}). Tentativas suspensas — fechar manualmente no MT5.`,
+                technical_data: { command_id: cmd.id, ticket, magic: cmd.magic_number, seguidas, error_message: errMsg },
+              });
+            } else if (!positionTicket(payload.broker_position_ticket)) {
+              await (supabaseAdmin as any).from("b3_mt5_commands")
+                .update({ broker_position_ticket: ticket }).eq("id", cmd.id);
+            }
+          }
+          if (logs.length) await (supabaseAdmin as any).from("system_logs").insert(logs);
+          return json({ ok: true, command_id: cmd.id, status: finalStatus });
         }
 
         // ─────────── comando confirmado como executado: grava/atualiza b3_live_orders ───────────
