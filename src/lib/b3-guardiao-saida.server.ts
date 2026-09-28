@@ -36,6 +36,8 @@ import {
 } from "@/lib/b3-price-source.server";
 import { b3WindowState } from "@/lib/b3-window.server";
 import { avaliarConfirmacao } from "@/lib/b3-confirmacao-entrada";
+import { trailingLigado, breakevenLigado } from "@/lib/b3-trailing";
+import { moverStopSeNecessario } from "@/lib/b3-trailing.server";
 
 
 export interface GuardiaoResultado {
@@ -334,7 +336,7 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       // ordens antigas, que nasceram sem o campo.
       const stopPriceOrdem = open.stop_price == null ? null : Number(open.stop_price);
       const targetPriceOrdem = open.target_price == null ? null : Number(open.target_price);
-      const stopLevelEfetivo = stopPriceOrdem !== null && Number.isFinite(stopPriceOrdem) && stopPriceOrdem > 0
+      let stopLevelEfetivo: number | null = stopPriceOrdem !== null && Number.isFinite(stopPriceOrdem) && stopPriceOrdem > 0
         ? stopPriceOrdem
         : (Number.isFinite(stopPts) && stopPts > 0 ? entry - dirSign * stopPts : null);
       const gainLevelEfetivo = targetPriceOrdem !== null && Number.isFinite(targetPriceOrdem) && targetPriceOrdem > 0
@@ -343,12 +345,42 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
       debug.stop_price_gravado = stopPriceOrdem;
       debug.target_price_gravado = targetPriceOrdem;
 
+      // TRAILING / ZERO A ZERO MOVEM O STOP (28/09/2026): antes de checar o
+      // stop, calcula o pico a favor (histórico + mfe já gravado + agora) e,
+      // se armado, sobe o stop_price no banco. O stop só anda a favor.
+      const stopOriginal = Number.isFinite(stopPts) && stopPts > 0 ? entry - dirSign * stopPts : null;
+      if ((trailingLigado(cfg) || breakevenLigado(cfg)) && open.entry_time) {
+        const entryMs = new Date(open.entry_time).getTime();
+        const hist = await getHistorico(userId, asset.quote_symbol ?? asset.symbol, entryMs);
+        let peakPts = Math.max(movePts, open.mfe_pts == null ? movePts : Number(open.mfe_pts));
+        for (const h of hist) {
+          const t = new Date(h.market_time).getTime();
+          if (t < entryMs) continue;
+          const pr = Number(h.quote_last);
+          if (!Number.isFinite(pr) || pr <= 0) continue;
+          const mv = (pr - entry) * dirSign;
+          if (mv > peakPts) peakPts = mv;
+        }
+        debug.peak_pts = peakPts;
+        const mov = await moverStopSeNecessario(supabase, {
+          open, userId, peakPts, cfg, tick: Number(asset.tick_size) || 5,
+          stopAtual: stopLevelEfetivo, origem: "b3-guardiao-saida",
+        });
+        if (mov) { stopLevelEfetivo = mov.level; debug.stop_movido = mov; }
+      }
+      const stopFoiMovido = stopLevelEfetivo !== null && stopOriginal !== null
+        && Math.abs(stopLevelEfetivo - stopOriginal) > 1e-6
+        && (dirSign === 1 ? stopLevelEfetivo > stopOriginal : stopLevelEfetivo < stopOriginal);
+      const stopProtegeLucro = stopLevelEfetivo !== null
+        && (dirSign === 1 ? stopLevelEfetivo >= entry : stopLevelEfetivo <= entry);
+
       if (stopLevelEfetivo !== null) {
         debug.stop_level = stopLevelEfetivo;
         if (dirSign === 1 ? markPrice <= stopLevelEfetivo : markPrice >= stopLevelEfetivo) {
           // Retomada depois de parada > 5 min: o rótulo diz a verdade sobre a
           // causa. `grupo_freio_lock` num prejuízo de 9x o stop mente.
-          motivo = retomadaEmergencia ? "stop_atrasado" : "stop";
+          motivo = stopFoiMovido ? (stopProtegeLucro && !trailingLigado(cfg) ? "breakeven_stop" : "trailing_stop")
+            : retomadaEmergencia ? "stop_atrasado" : "stop";
           nivel = stopLevelEfetivo;
           if (retomadaEmergencia) debug.retomada_lacuna_ms = lacunaMs;
         }
@@ -357,46 +389,6 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
         debug.gain_level = gainLevelEfetivo;
         if (dirSign === 1 ? markPrice >= gainLevelEfetivo : markPrice <= gainLevelEfetivo) {
           motivo = "gain"; nivel = gainLevelEfetivo;
-        }
-      }
-
-      // Trailing (recuo fixo) e zero a zero dependem do PICO a favor desde a
-      // entrada — precisam do histórico de tiques.
-      const trailingOn = cfg.trailing_activation_pts > 0 && cfg.trailing_giveback_pts > 0
-        && cfg.trailing_mode !== "structural";
-      const beOn = cfg.breakeven_ativa_pts > 0;
-      if (!motivo && (trailingOn || beOn) && open.entry_time) {
-        const entryMs = new Date(open.entry_time).getTime();
-        const hist = await getHistorico(userId, asset.quote_symbol ?? asset.symbol, entryMs);
-        let peakPts = movePts;
-        for (const h of hist) {
-          const t = new Date(h.market_time).getTime();
-          if (t < entryMs) continue;
-          const p = Number(h.quote_last);
-          if (!Number.isFinite(p) || p <= 0) continue;
-          const mv = (p - entry) * dirSign;
-          if (mv > peakPts) peakPts = mv;
-        }
-        debug.peak_pts = peakPts;
-
-        // Nível mais protetivo vence, igual ao tique completo.
-        let trailLevel: number | null = null;
-        if (trailingOn && peakPts >= cfg.trailing_activation_pts) {
-          trailLevel = entry + dirSign * (peakPts - cfg.trailing_giveback_pts);
-          debug.trailing_level = trailLevel;
-        }
-        let beLevel: number | null = null;
-        if (beOn && peakPts >= cfg.breakeven_ativa_pts) {
-          beLevel = entry + dirSign * Math.max(0, cfg.breakeven_folga_pts);
-          debug.breakeven_level = beLevel;
-        }
-        const trailMaisProtetivo = trailLevel !== null && (beLevel === null
-          || (dirSign === 1 ? trailLevel >= beLevel : trailLevel <= beLevel));
-        const nivelEscolhido = trailMaisProtetivo ? trailLevel : beLevel;
-        const motivoEscolhido = trailMaisProtetivo ? "trailing_stop" : "breakeven_stop";
-        if (nivelEscolhido !== null
-          && (dirSign === 1 ? markPrice <= nivelEscolhido : markPrice >= nivelEscolhido)) {
-          motivo = motivoEscolhido; nivel = nivelEscolhido;
         }
       }
 

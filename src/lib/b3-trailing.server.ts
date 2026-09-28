@@ -18,12 +18,12 @@ export async function moverStopSeNecessario(sb: any, p: {
   p.open.stop_price = alvo.level;
   try {
     await sb.from("system_logs").insert({
-      user_id: p.userId,
       event_type: "trailing_movido",
       source: p.origem,
       severity: "info",
       message: `Stop movido (${alvo.fonte}) ${p.stopAtual ?? "—"} → ${alvo.level} · ${p.open.mode} ${side} entrada ${entry} · melhor ${melhorPreco}`,
-      payload: {
+      technical_data: {
+        user_id: p.userId,
         order_id: p.open.id, mode: p.open.mode, side, fonte: alvo.fonte,
         preco_entrada: entry, melhor_preco: melhorPreco, pico_pts: p.peakPts,
         stop_anterior: p.stopAtual, stop_novo: alvo.level,
