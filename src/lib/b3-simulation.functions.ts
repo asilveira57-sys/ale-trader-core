@@ -3920,6 +3920,7 @@ async function runB3SimulationTickInner(
         const stopFoiMovidoOrdem = Number.isFinite(stopGravadoOrdem) && stopGravadoOrdem > 0
           && (dirSign === 1 ? stopGravadoOrdem > stopOriginalOrdem : stopGravadoOrdem < stopOriginalOrdem);
         const stopLevel = stopFoiMovidoOrdem ? stopGravadoOrdem : stopOriginalOrdem;
+        if (stopFoiMovidoOrdem && (dirSign === 1 ? markPrice <= stopLevel : markPrice >= stopLevel)) hitStop = true;
         const gainLevel = Number(open.entry_price) + dirSign * orderGainPts;
         const entryMsOpen = open.entry_time ? new Date(open.entry_time).getTime() : null;
         const lastEvalMs = open.last_eval_minute_ts ? new Date(open.last_eval_minute_ts).getTime() : null;
