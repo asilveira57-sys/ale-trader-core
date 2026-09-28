@@ -3913,7 +3913,13 @@ async function runB3SimulationTickInner(
         // toque. A execução é sempre no Bid/Ask corrente auditado: o candle
         // prova que o nível foi tocado, mas não prova liquidez naquele preço.
         // Convenção conservadora de backtest: stop e alvo no mesmo candle → stop.
-        const stopLevel = Number(open.entry_price) - dirSign * orderStopPts;
+        // Stop gravado na ordem vale quando o trailing/zero a zero já o moveu
+        // a favor (28/09/2026); senão, o stop original.
+        const stopOriginalOrdem = Number(open.entry_price) - dirSign * orderStopPts;
+        const stopGravadoOrdem = Number(open.stop_price);
+        const stopFoiMovidoOrdem = Number.isFinite(stopGravadoOrdem) && stopGravadoOrdem > 0
+          && (dirSign === 1 ? stopGravadoOrdem > stopOriginalOrdem : stopGravadoOrdem < stopOriginalOrdem);
+        const stopLevel = stopFoiMovidoOrdem ? stopGravadoOrdem : stopOriginalOrdem;
         const gainLevel = Number(open.entry_price) + dirSign * orderGainPts;
         const entryMsOpen = open.entry_time ? new Date(open.entry_time).getTime() : null;
         const lastEvalMs = open.last_eval_minute_ts ? new Date(open.last_eval_minute_ts).getTime() : null;
@@ -4100,6 +4106,25 @@ async function runB3SimulationTickInner(
             }
           }
         }
+
+        // Persiste o movimento do stop (trailing / zero a zero) — auditável.
+        if (!forceClose && (trailingOn || beOn) && entryMsForTrailing && cfg.trailing_mode !== "structural") {
+          try {
+            const { moverStopSeNecessario } = await import("./b3-trailing.server");
+            await moverStopSeNecessario(supabase, {
+              open, userId, peakPts: Math.max(peakPts, Number(open.mfe_pts ?? peakPts)),
+              cfg: {
+                trailing_activation_pts: Number(cfg.trailing_activation_pts ?? 0),
+                trailing_giveback_pts: Number(cfg.trailing_giveback_pts ?? 0),
+                trailing_mode: String(cfg.trailing_mode ?? "fixed"),
+                breakeven_ativa_pts: Number(cfg.breakeven_ativa_pts ?? 0),
+                breakeven_folga_pts: Number(cfg.breakeven_folga_pts ?? 0),
+              },
+              tick: Number(asset.tick_size) || 5, stopAtual: stopLevel, origem: "b3-simulation-tick",
+            });
+          } catch { /* movimento do stop nunca derruba o tique */ }
+        }
+        if (hitStop && stopFoiMovidoOrdem) { hitStop = false; hitTrailing = true; trailingIntrabar = intrabarHit ? { level: stopLevel, price: intrabarHit.price, minute_ts: intrabarHit.minute_ts } : trailingIntrabar; }
 
         if (forceClose || hitStop || hitGain || hitTrailing || hitBreakeven) {
           const reason = forceClose ? "force_close" : hitStop ? "stop" : hitGain ? "gain"
