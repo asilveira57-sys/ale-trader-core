@@ -150,7 +150,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-estado-real")({
         if (cap.saltou) {
           try {
             await (supabaseAdmin as any).from("system_logs").insert({
-              user_id: payload.user_id, level: "error", event_type: "capital_salto_quarentena",
+              event_type: "capital_salto_quarentena", source: "b3-mt5-estado-real", severity: "error",
               message: `Capital lido saltou de R$ ${cap.aceito} para R$ ${capLido} (>30%). Mantido o anterior até 3 leituras estáveis.`,
               technical_data: { aceito: cap.aceito, lido: capLido },
             });
