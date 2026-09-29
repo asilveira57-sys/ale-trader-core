@@ -27,6 +27,7 @@ import { b3WindowState } from "./b3-window.server";
 import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobotSizing } from "./b3-real-stop.server";
 
 import { roundToTick } from "./b3-tick";
+import { aplicarProporcional } from "./b3-proporcional";
 import {
   avaliarConfirmacao, confirmacaoNaAbertura, confirmacaoArmada, avaliarPendente,
   criarPendente, motivoNaoConfirmou, ladoDoPendente, type ConfirmacaoPendente,
@@ -3187,7 +3188,12 @@ async function runB3SimulationTickInner(
         } catch { /* log nunca derruba o tique */ }
         continue;
       }
-      const cfg = settingsByMode[mode];
+      // Limites proporcionais: só com a chave ligada; base = carteira simulada do robô.
+      const cfg = aplicarProporcional(
+        settingsByMode[mode], Number(m.current_balance ?? m.initial_balance ?? 0),
+        Number(settingsByMode[mode]?.stop_pts ?? 0),
+        (asset as any)?.margin_model === "per_contract" ? Number((asset as any)?.margin_per_contract_brl ?? 0) : null,
+      );
       const realizedToday = Number(realizedTodayByMode[mode] ?? 0);
       const startMin = hhmmToMin(cfg.trading_start_time);
       const cutoffMin = hhmmToMin(cfg.entry_cutoff_time);

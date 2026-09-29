@@ -149,6 +149,7 @@ const PRINCIPAL_NAV = [
   { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
   { to: "/b3-diagnostico", label: "Diagnóstico diário", icon: Stethoscope },
   { to: "/b3-calibracao", label: "Calibração do stop diário", icon: Stethoscope },
+  { to: "/b3-proporcional", label: "Limites proporcionais", icon: Table2 },
   { to: "/b3-listas", label: "Resultado por combinação", icon: Table2 },
   { to: "/b3-extrato-real", label: "Extrato do dinheiro real", icon: Receipt },
 ] as const;

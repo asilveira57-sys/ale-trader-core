@@ -37,3 +37,8 @@
 - [x] Cockpit: destacar cabeçalhos por ativo e modalidade; mostrar Com freio/Sem freio nos últimos cinco pregões e total de cinco dias nos dois níveis.
 
 - [x] Visão por datas do cockpit com as mesmas testeiras coloridas por ativo/modalidade do dia, com somatórios do período (26/09)
+
+## Limites proporcionais (29/09)
+- [x] Percentuais por robô (chave desligada), contratos = piso(capital×risco_pct/margem do ativo), margem por ativo em branco
+- [x] Trava de capital real assimétrica (queda imediata, alta >30% quarentena 3 leituras)
+- [x] Tela de proposta de conversão + confirmar/lote/desfazer + capital na tela

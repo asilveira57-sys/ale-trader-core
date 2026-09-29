@@ -136,6 +136,26 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-estado-real")({
         const permitida = payload.negociacao_permitida ?? payload.trade_allowed ?? null;
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        // Trava assimétrica: queda aceita na hora; alta > 30% só após 3 leituras estáveis.
+        const { aceitarCapital } = await import("@/lib/b3-proporcional");
+        const capLido = num(payload.capital_liquido ?? payload.equity);
+        const { data: prevCap } = await (supabaseAdmin as any).from("b3_mt5_account_state")
+          .select("capital_aceito, capital_liquido, capital_pendente, capital_pendente_leituras")
+          .eq("user_id", payload.user_id).maybeSingle();
+        const cap = aceitarCapital({
+          aceito: prevCap?.capital_aceito ?? prevCap?.capital_liquido ?? null,
+          pendente: prevCap?.capital_pendente ?? null,
+          leituras: Number(prevCap?.capital_pendente_leituras ?? 0),
+        }, capLido);
+        if (cap.saltou) {
+          try {
+            await (supabaseAdmin as any).from("system_logs").insert({
+              event_type: "capital_salto_quarentena", source: "b3-mt5-estado-real", severity: "error",
+              message: `Capital lido saltou de R$ ${cap.aceito} para R$ ${capLido} (>30%). Mantido o anterior até 3 leituras estáveis.`,
+              technical_data: { aceito: cap.aceito, lido: capLido },
+            });
+          } catch { /* log não derruba o relatório */ }
+        }
         const { error } = await (supabaseAdmin as any)
           .from("b3_mt5_account_state")
           .upsert({
@@ -143,7 +163,10 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-estado-real")({
             env: payload.env === "demo" || payload.env === "real" ? payload.env : null,
             reportado_em: reportadoEm,
             saldo: num(payload.saldo ?? payload.balance),
-            capital_liquido: num(payload.capital_liquido ?? payload.equity),
+            capital_liquido: capLido,
+            capital_aceito: cap.aceito,
+            capital_pendente: cap.pendente,
+            capital_pendente_leituras: cap.leituras,
             margem_livre: num(payload.margem_livre ?? payload.free_margin ?? payload.margin_free),
             negociacao_permitida: permitida == null ? null : Boolean(permitida),
             // Modo da conta na corretora (HEDGE/NETTING/EXCHANGE). O livro real
