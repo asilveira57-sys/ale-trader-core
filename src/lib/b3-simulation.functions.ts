@@ -27,7 +27,7 @@ import { b3WindowState } from "./b3-window.server";
 import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobotSizing } from "./b3-real-stop.server";
 
 import { roundToTick } from "./b3-tick";
-import { aplicarProporcional, aceitarCapital } from "./b3-proporcional";
+import { aplicarProporcional } from "./b3-proporcional";
 import {
   avaliarConfirmacao, confirmacaoNaAbertura, confirmacaoArmada, avaliarPendente,
   criarPendente, motivoNaoConfirmou, ladoDoPendente, type ConfirmacaoPendente,
