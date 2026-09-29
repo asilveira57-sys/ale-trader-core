@@ -51,6 +51,7 @@ import { Route as AuthenticatedBinanceAuditRouteImport } from './routes/_authent
 import { Route as AuthenticatedB3WdoRouteImport } from './routes/_authenticated/b3-wdo'
 import { Route as AuthenticatedB3Vale3RouteImport } from './routes/_authenticated/b3-vale3'
 import { Route as AuthenticatedB3SimHistoryRouteImport } from './routes/_authenticated/b3-sim-history'
+import { Route as AuthenticatedB3ProporcionalRouteImport } from './routes/_authenticated/b3-proporcional'
 import { Route as AuthenticatedB3Petr4RouteImport } from './routes/_authenticated/b3-petr4'
 import { Route as AuthenticatedB3Mt5simRouteImport } from './routes/_authenticated/b3-mt5sim'
 import { Route as AuthenticatedB3ListasRouteImport } from './routes/_authenticated/b3-listas'
@@ -315,6 +316,12 @@ const AuthenticatedB3SimHistoryRoute =
     path: '/b3-sim-history',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedB3ProporcionalRoute =
+  AuthenticatedB3ProporcionalRouteImport.update({
+    id: '/b3-proporcional',
+    path: '/b3-proporcional',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedB3Petr4Route = AuthenticatedB3Petr4RouteImport.update({
   id: '/b3-petr4',
   path: '/b3-petr4',
@@ -569,6 +576,7 @@ export interface FileRoutesByFullPath {
   '/b3-listas': typeof AuthenticatedB3ListasRoute
   '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-petr4': typeof AuthenticatedB3Petr4Route
+  '/b3-proporcional': typeof AuthenticatedB3ProporcionalRoute
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/b3-vale3': typeof AuthenticatedB3Vale3Route
   '/b3-wdo': typeof AuthenticatedB3WdoRoute
@@ -653,6 +661,7 @@ export interface FileRoutesByTo {
   '/b3-listas': typeof AuthenticatedB3ListasRoute
   '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-petr4': typeof AuthenticatedB3Petr4Route
+  '/b3-proporcional': typeof AuthenticatedB3ProporcionalRoute
   '/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/b3-vale3': typeof AuthenticatedB3Vale3Route
   '/b3-wdo': typeof AuthenticatedB3WdoRoute
@@ -739,6 +748,7 @@ export interface FileRoutesById {
   '/_authenticated/b3-listas': typeof AuthenticatedB3ListasRoute
   '/_authenticated/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/_authenticated/b3-petr4': typeof AuthenticatedB3Petr4Route
+  '/_authenticated/b3-proporcional': typeof AuthenticatedB3ProporcionalRoute
   '/_authenticated/b3-sim-history': typeof AuthenticatedB3SimHistoryRoute
   '/_authenticated/b3-vale3': typeof AuthenticatedB3Vale3Route
   '/_authenticated/b3-wdo': typeof AuthenticatedB3WdoRoute
@@ -825,6 +835,7 @@ export interface FileRouteTypes {
     | '/b3-listas'
     | '/b3-mt5sim'
     | '/b3-petr4'
+    | '/b3-proporcional'
     | '/b3-sim-history'
     | '/b3-vale3'
     | '/b3-wdo'
@@ -909,6 +920,7 @@ export interface FileRouteTypes {
     | '/b3-listas'
     | '/b3-mt5sim'
     | '/b3-petr4'
+    | '/b3-proporcional'
     | '/b3-sim-history'
     | '/b3-vale3'
     | '/b3-wdo'
@@ -994,6 +1006,7 @@ export interface FileRouteTypes {
     | '/_authenticated/b3-listas'
     | '/_authenticated/b3-mt5sim'
     | '/_authenticated/b3-petr4'
+    | '/_authenticated/b3-proporcional'
     | '/_authenticated/b3-sim-history'
     | '/_authenticated/b3-vale3'
     | '/_authenticated/b3-wdo'
@@ -1376,6 +1389,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedB3SimHistoryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/b3-proporcional': {
+      id: '/_authenticated/b3-proporcional'
+      path: '/b3-proporcional'
+      fullPath: '/b3-proporcional'
+      preLoaderRoute: typeof AuthenticatedB3ProporcionalRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/b3-petr4': {
       id: '/_authenticated/b3-petr4'
       path: '/b3-petr4'
@@ -1716,6 +1736,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedB3ListasRoute: typeof AuthenticatedB3ListasRoute
   AuthenticatedB3Mt5simRoute: typeof AuthenticatedB3Mt5simRoute
   AuthenticatedB3Petr4Route: typeof AuthenticatedB3Petr4Route
+  AuthenticatedB3ProporcionalRoute: typeof AuthenticatedB3ProporcionalRoute
   AuthenticatedB3SimHistoryRoute: typeof AuthenticatedB3SimHistoryRoute
   AuthenticatedB3Vale3Route: typeof AuthenticatedB3Vale3Route
   AuthenticatedB3WdoRoute: typeof AuthenticatedB3WdoRoute
@@ -1782,6 +1803,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedB3ListasRoute: AuthenticatedB3ListasRoute,
   AuthenticatedB3Mt5simRoute: AuthenticatedB3Mt5simRoute,
   AuthenticatedB3Petr4Route: AuthenticatedB3Petr4Route,
+  AuthenticatedB3ProporcionalRoute: AuthenticatedB3ProporcionalRoute,
   AuthenticatedB3SimHistoryRoute: AuthenticatedB3SimHistoryRoute,
   AuthenticatedB3Vale3Route: AuthenticatedB3Vale3Route,
   AuthenticatedB3WdoRoute: AuthenticatedB3WdoRoute,
