@@ -1943,7 +1943,10 @@ export type Database = {
       b3_mt5_account_state: {
         Row: {
           account_login: string | null
+          capital_aceito: number | null
           capital_liquido: number | null
+          capital_pendente: number | null
+          capital_pendente_leituras: number
           env: string | null
           margem_livre: number | null
           modo_conta: string | null
@@ -1957,7 +1960,10 @@ export type Database = {
         }
         Insert: {
           account_login?: string | null
+          capital_aceito?: number | null
           capital_liquido?: number | null
+          capital_pendente?: number | null
+          capital_pendente_leituras?: number
           env?: string | null
           margem_livre?: number | null
           modo_conta?: string | null
@@ -1971,7 +1977,10 @@ export type Database = {
         }
         Update: {
           account_login?: string | null
+          capital_aceito?: number | null
           capital_liquido?: number | null
+          capital_pendente?: number | null
+          capital_pendente_leituras?: number
           env?: string | null
           margem_livre?: number | null
           modo_conta?: string | null
@@ -3817,7 +3826,9 @@ export type Database = {
       }
       b3_simulation_mode_settings: {
         Row: {
+          breakeven_ativa_pct_stop: number | null
           breakeven_ativa_pts: number | null
+          breakeven_folga_pct_stop: number | null
           breakeven_folga_pts: number | null
           breakout_min_clearance_pts: number | null
           confirmacao_ativa_real: boolean
@@ -3827,7 +3838,9 @@ export type Database = {
           consecutive_loss_after_target: number
           created_at: string
           daily_gain_target_brl: number
+          daily_gain_target_pct: number | null
           daily_loss_limit_brl: number
+          daily_loss_limit_pct: number | null
           daily_stop_mult: number
           enabled: boolean
           entry_cutoff_time: string
@@ -3837,6 +3850,7 @@ export type Database = {
           id: string
           lateral_strength_min: number | null
           lateral_vol_min: number | null
+          limites_proporcionais: boolean
           max_contracts: number
           max_volatility_pct: number
           min_approve_votes: number
@@ -3848,21 +3862,28 @@ export type Database = {
           notes: string | null
           peak_giveback_pct: number
           peak_lock_min_profit_brl: number | null
+          peak_lock_min_profit_pct: number | null
           post_target_allowed_retracement: number
           post_target_size_reduction: number
           profit_multiplier_before_lock: number
+          proporcional_capital_ref_brl: number | null
           range_min_size_pts: number | null
+          risco_contratos_pct: number | null
           simulation_run_id: string
           stop_pts: number
           trading_start_time: string
+          trailing_activation_pct_stop: number | null
           trailing_activation_pts: number
+          trailing_giveback_pct_stop: number | null
           trailing_giveback_pts: number
           trailing_mode: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          breakeven_ativa_pct_stop?: number | null
           breakeven_ativa_pts?: number | null
+          breakeven_folga_pct_stop?: number | null
           breakeven_folga_pts?: number | null
           breakout_min_clearance_pts?: number | null
           confirmacao_ativa_real?: boolean
@@ -3872,7 +3893,9 @@ export type Database = {
           consecutive_loss_after_target?: number
           created_at?: string
           daily_gain_target_brl?: number
+          daily_gain_target_pct?: number | null
           daily_loss_limit_brl?: number
+          daily_loss_limit_pct?: number | null
           daily_stop_mult?: number
           enabled?: boolean
           entry_cutoff_time?: string
@@ -3882,6 +3905,7 @@ export type Database = {
           id?: string
           lateral_strength_min?: number | null
           lateral_vol_min?: number | null
+          limites_proporcionais?: boolean
           max_contracts?: number
           max_volatility_pct?: number
           min_approve_votes?: number
@@ -3893,21 +3917,28 @@ export type Database = {
           notes?: string | null
           peak_giveback_pct?: number
           peak_lock_min_profit_brl?: number | null
+          peak_lock_min_profit_pct?: number | null
           post_target_allowed_retracement?: number
           post_target_size_reduction?: number
           profit_multiplier_before_lock?: number
+          proporcional_capital_ref_brl?: number | null
           range_min_size_pts?: number | null
+          risco_contratos_pct?: number | null
           simulation_run_id: string
           stop_pts?: number
           trading_start_time?: string
+          trailing_activation_pct_stop?: number | null
           trailing_activation_pts?: number
+          trailing_giveback_pct_stop?: number | null
           trailing_giveback_pts?: number
           trailing_mode?: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          breakeven_ativa_pct_stop?: number | null
           breakeven_ativa_pts?: number | null
+          breakeven_folga_pct_stop?: number | null
           breakeven_folga_pts?: number | null
           breakout_min_clearance_pts?: number | null
           confirmacao_ativa_real?: boolean
@@ -3917,7 +3948,9 @@ export type Database = {
           consecutive_loss_after_target?: number
           created_at?: string
           daily_gain_target_brl?: number
+          daily_gain_target_pct?: number | null
           daily_loss_limit_brl?: number
+          daily_loss_limit_pct?: number | null
           daily_stop_mult?: number
           enabled?: boolean
           entry_cutoff_time?: string
@@ -3927,6 +3960,7 @@ export type Database = {
           id?: string
           lateral_strength_min?: number | null
           lateral_vol_min?: number | null
+          limites_proporcionais?: boolean
           max_contracts?: number
           max_volatility_pct?: number
           min_approve_votes?: number
@@ -3938,14 +3972,19 @@ export type Database = {
           notes?: string | null
           peak_giveback_pct?: number
           peak_lock_min_profit_brl?: number | null
+          peak_lock_min_profit_pct?: number | null
           post_target_allowed_retracement?: number
           post_target_size_reduction?: number
           profit_multiplier_before_lock?: number
+          proporcional_capital_ref_brl?: number | null
           range_min_size_pts?: number | null
+          risco_contratos_pct?: number | null
           simulation_run_id?: string
           stop_pts?: number
           trading_start_time?: string
+          trailing_activation_pct_stop?: number | null
           trailing_activation_pts?: number
+          trailing_giveback_pct_stop?: number | null
           trailing_giveback_pts?: number
           trailing_mode?: string
           updated_at?: string
