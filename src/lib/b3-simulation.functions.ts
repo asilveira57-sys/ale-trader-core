@@ -4751,13 +4751,14 @@ async function runB3SimulationTickInner(
         // Chave do SIMULADO desligada e do REAL ligada: o simulado abre na hora
         // e só o comando real espera (tratado na pré-passada, acima).
         // A regra decide SE abre; nunca fecha posição aberta.
-        let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number } | null = null;
+        let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number; sinal_em?: string | null; preco_sinal?: number | null; real_no_sinal?: boolean } | null = null;
         // ── O GATILHO DO REAL É O SINAL, NÃO A ORDEM SIMULADA (24/09/2026) ──
         // Correção estrutural: o comando real nascia da ordem simulada aberta,
         // então qualquer coisa que impedisse o simulado de abrir (inclusive a
         // confirmação do SIMULADO) matava o real junto — mesmo com a chave do
         // real desligada. Agora as duas decisões são independentes.
         let realJaEnviadoNoSinal = false;
+        let espelhoNoSinal: { tentado: boolean; criado: boolean; motivo: string | null; chave: string | null } | null = null;
         const stopPtsSinal = Math.max(0, Number(setupInfo.stop_pts_override ?? cfg.stop_pts ?? 0) || 0);
         const gainPtsSinal = Math.max(0, Number(setupInfo.gain_pts_override ?? cfg.gain_pts ?? 0) || 0);
         const pendAtual = (m as any).confirmacao_pendente;
@@ -4769,7 +4770,7 @@ async function runB3SimulationTickInner(
           const tickSinal = Number(asset.tick_size);
           const precoSinalTick = roundToTick(Number(ctx.price), tickSinal);
           const dirSinal = effectiveSide === "buy" ? 1 : -1;
-          await mirrorToReal(
+          return await mirrorToReal(
             supabase, userId, runId, mode as Mode, "open", effectiveSide,
             chave, "engine_auto", asset.quote_symbol, runVariant,
             {
@@ -4791,10 +4792,17 @@ async function runB3SimulationTickInner(
           // Chave por minuto do sinal: repetições do MESMO sinal dentro do
           // minuto colapsam na idempotência, sem criar comando duplicado.
           const minutoSinal = now.toISOString().slice(0, 16).replace(/[-:T]/g, "");
+          const chaveSinal = `open-sig-${m.id}-${effectiveSide}-${minutoSinal}`;
           try {
-            await enfileirarRealNoSinal(`open-sig-${m.id}-${effectiveSide}-${minutoSinal}`);
-            realJaEnviadoNoSinal = true;
-          } catch { /* espelho nunca derruba o tique */ }
+            const r = await enfileirarRealNoSinal(chaveSinal);
+            // Só carimba "real enviado" se o comando NASCEU (30/09/2026).
+            realJaEnviadoNoSinal = r.criado === true;
+            espelhoNoSinal = { tentado: true, criado: r.criado === true, motivo: r.motivo, chave: chaveSinal };
+          } catch (e) {
+            espelhoNoSinal = { tentado: true, criado: false, motivo: `erro: ${(e as Error).message}`, chave: chaveSinal };
+          }
+        } else if (!confRealArmada && espelhoBarradoPorFreio) {
+          espelhoNoSinal = { tentado: false, criado: false, motivo: `freio: ${freiosBarrandoReal.join(" + ")}`, chave: null };
         }
 
         // ── CONFIRMAÇÃO DE ENTRADA NO SIMULADO (23/09/2026, segunda emenda) ─
@@ -4805,7 +4813,11 @@ async function runB3SimulationTickInner(
         if (confSimArmada) {
           const av = mesmoLado ? avaliarPendente(pendAtual, Number(ctx.price), now.getTime()) : null;
           if (av?.estado === "confirmou") {
-            confirmadaAgora = { em: now.toISOString(), exigido_pts: av.exigido_pts, andou_pts: av.andou_pts };
+            confirmadaAgora = {
+              em: now.toISOString(), exigido_pts: av.exigido_pts, andou_pts: av.andou_pts,
+              sinal_em: pendAtual?.criado_em ?? null, preco_sinal: Number(pendAtual?.preco_sinal) || null,
+              real_no_sinal: pendAtual?.real_enviado === true,
+            };
             await gravarPendente(null);
           } else {
             if (av?.estado === "expirou") {
@@ -5051,6 +5063,49 @@ async function runB3SimulationTickInner(
         if (!insertedOrder) throw new Error("Falha ao criar ordem simulada");
 
         markAuditEvent(`abertura:${mode}:${effectiveSide}`);
+        // ── ENTRADA NASCIDA DE CONFIRMAÇÃO (30/09/2026) ──
+        // Toda abertura simulada por confirmação carimba o log de decisão com o
+        // desfecho do espelho NESTE instante: enviado no sinal, enviado agora,
+        // ou barrado/falhou com o motivo. Divergência simulado×real nunca muda.
+        if (confirmadaAgora) {
+          let espelho: string; let espelhoMotivo: string | null = null;
+          if (confirmadaAgora.real_no_sinal) { espelho = "enviado_no_sinal"; }
+          else if (confRealArmada) { espelho = "aguarda_confirmacao_real"; }
+          else if (espelhoNoSinal?.criado) { espelho = "livre"; }
+          else if (espelhoNoSinal) { espelho = "barrado"; espelhoMotivo = espelhoNoSinal.motivo; }
+          else { espelho = "barrado"; espelhoMotivo = "comando real não foi tentado"; }
+          const motivoEsp = espelho === "barrado"
+            ? `espelho real BARRADO: ${espelhoMotivo}`
+            : espelho === "livre" ? "comando real enfileirado agora"
+            : espelho === "enviado_no_sinal" ? "comando real já tinha saído no sinal"
+            : "comando real segue a confirmação do real";
+          entryStageRows.push({
+            user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+            symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+            estagio: "confirmacao_atingida",
+            motivo: `Entrada por confirmação atingida: andou ${Math.round(confirmadaAgora.andou_pts)} pts (exigido ${Math.round(confirmadaAgora.exigido_pts)}); ordem simulada aberta a ${entryRounded}; ${motivoEsp}.`.slice(0, 500),
+            detalhe: {
+              sinal_em: confirmadaAgora.sinal_em, confirmou_em: confirmadaAgora.em,
+              preco_sinal: confirmadaAgora.preco_sinal, preco_confirmacao: entryRounded,
+              exigido_pts: Math.round(confirmadaAgora.exigido_pts), andou_pts: Math.round(confirmadaAgora.andou_pts),
+              side: effectiveSide, simulation_order_id: insertedOrder.id,
+              espelho_real: espelho === "barrado" ? "barrado" : "livre",
+              espelho_desfecho: espelho, espelho_motivo: espelhoMotivo,
+              idempotency_key: espelhoNoSinal?.chave ?? null,
+            },
+          });
+          if (espelho === "barrado") {
+            try {
+              await supabase.from("system_logs").insert({
+                event_type: "b3_espelho_nao_abriu",
+                source: `b3_real_mirror:${asset.quote_symbol}:${runVariant}:${mode}`,
+                severity: "warning",
+                message: `Entrada por confirmação abriu no simulado SEM comando real: ${espelhoMotivo}.`,
+                technical_data: { motivo: "confirmacao_sem_espelho", detalhe: espelhoMotivo, simulation_order_id: insertedOrder.id, mode, variant: runVariant, side: effectiveSide, run_id: runId } as any,
+              });
+            } catch { /* registro nunca derruba o motor */ }
+          }
+        }
         if (espelhoBarradoPorFreio) {
           // NO REAL, NADA MUDA: o espelho recusa a abertura quando QUALQUER
           // freio está acionado. A recusa é registrada — sem isso não há como
