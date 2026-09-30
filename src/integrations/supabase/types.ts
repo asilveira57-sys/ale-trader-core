@@ -7849,6 +7849,7 @@ export type Database = {
         Returns: number
       }
       b3_materializar_m1: { Args: { p_date?: string }; Returns: number }
+      b3_motor_noite: { Args: { p_ligar: boolean }; Returns: string }
       b3_prd_atualizar_parametros: {
         Args: {
           p_max_daily_loss_brl: number
