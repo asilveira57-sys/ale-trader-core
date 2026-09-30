@@ -137,6 +137,23 @@ const REAL_MIRROR_ENABLED = true;
 
 
 
+// Resultado do espelho (30/09/2026): quem chama precisa SABER se o comando real
+// nasceu. Antes, falha de consulta/gravação voltava muda e o motor carimbava
+// "real enviado" — a entrada por confirmação tardia ficava sem par no real.
+type MirrorResult = { criado: boolean; motivo: string | null };
+async function logFalhaTecnicaEspelho(
+  supabase: any, symbol: string, variant: string, mode: string, side: string, runId: string, detalhe: string,
+) {
+  try {
+    await supabase.from("system_logs").insert({
+      event_type: "b3_espelho_nao_abriu",
+      source: `b3_real_mirror:${symbol}:${variant}:${mode}`,
+      severity: "error",
+      message: `Abertura real NÃO enfileirada (falha_tecnica): ${detalhe}`,
+      technical_data: { motivo: "falha_tecnica", detalhe, symbol, variant, mode, side, run_id: runId } as any,
+    });
+  } catch { /* registro nunca derruba o motor */ }
+}
 async function mirrorToReal(
   supabase: any, userId: string, runId: string, mode: Mode,
   action: "open" | "close", side: "buy" | "sell", idempotencyKey: string,
@@ -151,8 +168,8 @@ async function mirrorToReal(
   // regra do sistema permitiu (16/09/2026). Vai marcado no comando para o
   // extrato real conseguir contar intervenção humana separadamente.
   liberacaoManual: boolean = false,
-) {
-  if (!REAL_MIRROR_ENABLED) return;
+): Promise<MirrorResult> {
+  if (!REAL_MIRROR_ENABLED) return { criado: false, motivo: "espelho_desligado_no_codigo" };
 
 
   // ── PORTÃO DE AUTORIZAÇÃO REAL (nega por padrão) — SÓ ABERTURA ──
@@ -176,13 +193,19 @@ async function mirrorToReal(
       .eq("mode", mode)
       .maybeSingle();
     if (authErr) {
-      if (action === "open") return;
+      if (action === "open") {
+        await logFalhaTecnicaEspelho(supabase, symbol, variant, mode, side, runId, `consulta da autorização falhou: ${authErr.message}`);
+        return { criado: false, motivo: "falha_consulta_autorizacao" };
+      }
     } else if (auth) {
       authEnabled = auth.enabled === true;
       authMaxQty = Number(auth.max_qty ?? 1);
     }
-  } catch {
-    if (action === "open") return;
+  } catch (e) {
+    if (action === "open") {
+      await logFalhaTecnicaEspelho(supabase, symbol, variant, mode, side, runId, `consulta da autorização falhou: ${(e as Error).message}`);
+      return { criado: false, motivo: "falha_consulta_autorizacao" };
+    }
   }
   // Registro de recusa de ABERTURA real (14/09/2026): sem isso só se descobre
   // por ausência — não havia como contar quantas entradas reais foram puladas
@@ -205,7 +228,7 @@ async function mirrorToReal(
 
   if (action === "open" && !authEnabled) {
     await logNaoAbriu("robo_desligado", "sem autorização real habilitada para este robô.");
-    return;
+    return { criado: false, motivo: "robo_desligado" };
   }
 
   // Quantidade real da ABERTURA = max_qty da autorização (tela), nunca
@@ -254,7 +277,7 @@ async function mirrorToReal(
         } as any,
       });
     } catch { /* log é best-effort; o bloqueio já aconteceu */ }
-    return;
+    return { criado: false, motivo: "magic_invalido" };
   }
 
   // ── A CORRETORA MANDA: estado real do magic vem de b3_mt5_account_state ──
@@ -276,7 +299,7 @@ async function mirrorToReal(
           : "nenhum relatório da corretora — estado da conta desconhecido.",
         { magic, reportado_em: broker.reported_at, idade_s: broker.report_age_s },
       );
-      return;
+      return { criado: false, motivo: "relatorio_velho" };
     }
     if (abertoNaCorretora > 0) {
       await logNaoAbriu(
@@ -284,7 +307,7 @@ async function mirrorToReal(
         `a corretora já reporta ${abertoNaCorretora} contrato(s) abertos no magic ${magic}.`,
         { magic, aberto_na_corretora: abertoNaCorretora, reportado_em: broker.reported_at },
       );
-      return;
+      return { criado: false, motivo: "posicao_ja_aberta_na_corretora" };
     }
   }
 
@@ -308,7 +331,7 @@ async function mirrorToReal(
             } as any,
           });
         } catch { /* registro nunca derruba o motor */ }
-        return;
+        return { criado: false, motivo: "sem_posicao_na_corretora" };
       }
       quantity = abertoNaCorretora;
     } else {
@@ -441,18 +464,19 @@ async function mirrorToReal(
 
           });
         } catch { /* log best-effort; o bloqueio já aconteceu */ }
-        return;
+        return { criado: false, motivo: `stop_real: ${motivo}` };
       }
     } catch (e) {
       // Falha ao avaliar o freio real não pode derrubar o simulado; falha FECHADA
       // para o dinheiro real (não enfileira sem saber a perda do dia).
       console.error("[mirror] falha ao avaliar stop real — abertura não enfileirada:", (e as Error).message);
-      return;
+      await logFalhaTecnicaEspelho(supabase, symbol, variant, mode, side, runId, `falha ao avaliar o stop real: ${(e as Error).message}`);
+      return { criado: false, motivo: "falha_avaliar_stop_real" };
     }
   }
 
   try {
-    await supabase.from("b3_mt5_commands").insert({
+    const { error: insErr } = await supabase.from("b3_mt5_commands").insert({
 
       user_id: userId, env: "real", simulation_run_id: runId, mode, variant,
       action, side, symbol, quantity,
@@ -465,9 +489,18 @@ async function mirrorToReal(
       stop_price: levels?.stop_price ?? null,
       target_price: levels?.target_price ?? null,
     });
+    if (insErr) {
+      // Mesma chave de idempotência = o comando JÁ existe (não é falha).
+      if ((insErr as any).code === "23505") return { criado: true, motivo: "ja_existia" };
+      if (action === "open") await logFalhaTecnicaEspelho(supabase, symbol, variant, mode, side, runId, `gravação do comando falhou: ${insErr.message}`);
+      return { criado: false, motivo: "falha_gravar_comando" };
+    }
+    return { criado: true, motivo: null };
   } catch (e) {
     // Espelhamento nunca pode derrubar o motor de simulação — só loga.
     console.error(`[mirror] falha ao espelhar ${action} de ${mode}/${variant} pra real:`, (e as Error).message);
+    if (action === "open") await logFalhaTecnicaEspelho(supabase, symbol, variant, mode, side, runId, `gravação do comando falhou: ${(e as Error).message}`);
+    return { criado: false, motivo: "falha_gravar_comando" };
   }
 }
 
@@ -4718,13 +4751,14 @@ async function runB3SimulationTickInner(
         // Chave do SIMULADO desligada e do REAL ligada: o simulado abre na hora
         // e só o comando real espera (tratado na pré-passada, acima).
         // A regra decide SE abre; nunca fecha posição aberta.
-        let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number } | null = null;
+        let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number; sinal_em?: string | null; preco_sinal?: number | null; real_no_sinal?: boolean } | null = null;
         // ── O GATILHO DO REAL É O SINAL, NÃO A ORDEM SIMULADA (24/09/2026) ──
         // Correção estrutural: o comando real nascia da ordem simulada aberta,
         // então qualquer coisa que impedisse o simulado de abrir (inclusive a
         // confirmação do SIMULADO) matava o real junto — mesmo com a chave do
         // real desligada. Agora as duas decisões são independentes.
         let realJaEnviadoNoSinal = false;
+        let espelhoNoSinal: { tentado: boolean; criado: boolean; motivo: string | null; chave: string | null } | null = null;
         const stopPtsSinal = Math.max(0, Number(setupInfo.stop_pts_override ?? cfg.stop_pts ?? 0) || 0);
         const gainPtsSinal = Math.max(0, Number(setupInfo.gain_pts_override ?? cfg.gain_pts ?? 0) || 0);
         const pendAtual = (m as any).confirmacao_pendente;
@@ -4736,7 +4770,7 @@ async function runB3SimulationTickInner(
           const tickSinal = Number(asset.tick_size);
           const precoSinalTick = roundToTick(Number(ctx.price), tickSinal);
           const dirSinal = effectiveSide === "buy" ? 1 : -1;
-          await mirrorToReal(
+          return await mirrorToReal(
             supabase, userId, runId, mode as Mode, "open", effectiveSide,
             chave, "engine_auto", asset.quote_symbol, runVariant,
             {
@@ -4758,10 +4792,17 @@ async function runB3SimulationTickInner(
           // Chave por minuto do sinal: repetições do MESMO sinal dentro do
           // minuto colapsam na idempotência, sem criar comando duplicado.
           const minutoSinal = now.toISOString().slice(0, 16).replace(/[-:T]/g, "");
+          const chaveSinal = `open-sig-${m.id}-${effectiveSide}-${minutoSinal}`;
           try {
-            await enfileirarRealNoSinal(`open-sig-${m.id}-${effectiveSide}-${minutoSinal}`);
-            realJaEnviadoNoSinal = true;
-          } catch { /* espelho nunca derruba o tique */ }
+            const r = await enfileirarRealNoSinal(chaveSinal);
+            // Só carimba "real enviado" se o comando NASCEU (30/09/2026).
+            realJaEnviadoNoSinal = r.criado === true;
+            espelhoNoSinal = { tentado: true, criado: r.criado === true, motivo: r.motivo, chave: chaveSinal };
+          } catch (e) {
+            espelhoNoSinal = { tentado: true, criado: false, motivo: `erro: ${(e as Error).message}`, chave: chaveSinal };
+          }
+        } else if (!confRealArmada && espelhoBarradoPorFreio) {
+          espelhoNoSinal = { tentado: false, criado: false, motivo: `freio: ${freiosBarrandoReal.join(" + ")}`, chave: null };
         }
 
         // ── CONFIRMAÇÃO DE ENTRADA NO SIMULADO (23/09/2026, segunda emenda) ─
@@ -4772,7 +4813,11 @@ async function runB3SimulationTickInner(
         if (confSimArmada) {
           const av = mesmoLado ? avaliarPendente(pendAtual, Number(ctx.price), now.getTime()) : null;
           if (av?.estado === "confirmou") {
-            confirmadaAgora = { em: now.toISOString(), exigido_pts: av.exigido_pts, andou_pts: av.andou_pts };
+            confirmadaAgora = {
+              em: now.toISOString(), exigido_pts: av.exigido_pts, andou_pts: av.andou_pts,
+              sinal_em: pendAtual?.criado_em ?? null, preco_sinal: Number(pendAtual?.preco_sinal) || null,
+              real_no_sinal: pendAtual?.real_enviado === true,
+            };
             await gravarPendente(null);
           } else {
             if (av?.estado === "expirou") {
@@ -5018,6 +5063,49 @@ async function runB3SimulationTickInner(
         if (!insertedOrder) throw new Error("Falha ao criar ordem simulada");
 
         markAuditEvent(`abertura:${mode}:${effectiveSide}`);
+        // ── ENTRADA NASCIDA DE CONFIRMAÇÃO (30/09/2026) ──
+        // Toda abertura simulada por confirmação carimba o log de decisão com o
+        // desfecho do espelho NESTE instante: enviado no sinal, enviado agora,
+        // ou barrado/falhou com o motivo. Divergência simulado×real nunca muda.
+        if (confirmadaAgora) {
+          let espelho: string; let espelhoMotivo: string | null = null;
+          if (confirmadaAgora.real_no_sinal) { espelho = "enviado_no_sinal"; }
+          else if (confRealArmada) { espelho = "aguarda_confirmacao_real"; }
+          else if (espelhoNoSinal?.criado) { espelho = "livre"; }
+          else if (espelhoNoSinal) { espelho = "barrado"; espelhoMotivo = espelhoNoSinal.motivo; }
+          else { espelho = "barrado"; espelhoMotivo = "comando real não foi tentado"; }
+          const motivoEsp = espelho === "barrado"
+            ? `espelho real BARRADO: ${espelhoMotivo}`
+            : espelho === "livre" ? "comando real enfileirado agora"
+            : espelho === "enviado_no_sinal" ? "comando real já tinha saído no sinal"
+            : "comando real segue a confirmação do real";
+          entryStageRows.push({
+            user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+            symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+            estagio: "confirmacao_atingida",
+            motivo: `Entrada por confirmação atingida: andou ${Math.round(confirmadaAgora.andou_pts)} pts (exigido ${Math.round(confirmadaAgora.exigido_pts)}); ordem simulada aberta a ${entryRounded}; ${motivoEsp}.`.slice(0, 500),
+            detalhe: {
+              sinal_em: confirmadaAgora.sinal_em, confirmou_em: confirmadaAgora.em,
+              preco_sinal: confirmadaAgora.preco_sinal, preco_confirmacao: entryRounded,
+              exigido_pts: Math.round(confirmadaAgora.exigido_pts), andou_pts: Math.round(confirmadaAgora.andou_pts),
+              side: effectiveSide, simulation_order_id: insertedOrder.id,
+              espelho_real: espelho === "barrado" ? "barrado" : "livre",
+              espelho_desfecho: espelho, espelho_motivo: espelhoMotivo,
+              idempotency_key: espelhoNoSinal?.chave ?? null,
+            },
+          });
+          if (espelho === "barrado") {
+            try {
+              await supabase.from("system_logs").insert({
+                event_type: "b3_espelho_nao_abriu",
+                source: `b3_real_mirror:${asset.quote_symbol}:${runVariant}:${mode}`,
+                severity: "warning",
+                message: `Entrada por confirmação abriu no simulado SEM comando real: ${espelhoMotivo}.`,
+                technical_data: { motivo: "confirmacao_sem_espelho", detalhe: espelhoMotivo, simulation_order_id: insertedOrder.id, mode, variant: runVariant, side: effectiveSide, run_id: runId } as any,
+              });
+            } catch { /* registro nunca derruba o motor */ }
+          }
+        }
         if (espelhoBarradoPorFreio) {
           // NO REAL, NADA MUDA: o espelho recusa a abertura quando QUALQUER
           // freio está acionado. A recusa é registrada — sem isso não há como
