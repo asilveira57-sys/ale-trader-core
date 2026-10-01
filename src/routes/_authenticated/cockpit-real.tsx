@@ -20,6 +20,7 @@ import {
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { useRealAlerts } from "@/hooks/use-real-alerts";
+import { DisjuntorManualPanel } from "@/components/b3/DisjuntorManualPanel";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
   getB3RealCockpit, getB3RealCockpitLive, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
@@ -925,6 +926,8 @@ function CockpitRealPage() {
         <StaleBanner />
         <AudioBanner />
       </div>
+
+      <div className="mt-2"><DisjuntorManualPanel /></div>
 
       <header className="mt-3 hidden flex-wrap items-start justify-between gap-3 md:flex">
         <div className="min-w-0">
