@@ -108,7 +108,7 @@ function exportPDF(report: AuditReport) {
 
 export const Route = createFileRoute("/_authenticated/binance-audit")({
   component: BinanceAuditPage,
-  errorComponent: ({ error }) => <div className="p-6 text-sm text-red-400">Erro: {error.message}</div>,
+  errorComponent: ({ error }) => <div className="p-6 text-sm text-red-400">Erro: {(error as Error).message}</div>,
   notFoundComponent: () => <div className="p-6">Não encontrado.</div>,
 });
 

@@ -21,7 +21,7 @@ export const Route = createFileRoute("/_authenticated/b3-sim-history")({
   head: () => ({ meta: [{ title: "Histórico Simulação 5 Modos — B3" }] }),
   validateSearch: (search: Record<string, unknown>) => ({ run: typeof search.run === "string" ? search.run : undefined }),
   component: HistoryPage,
-  errorComponent: ({ error }) => <div className="p-6 text-destructive">Erro: {String(error?.message ?? error)}</div>,
+  errorComponent: ({ error }) => <div className="p-6 text-destructive">Erro: {String((error as any)?.message ?? error)}</div>,
   notFoundComponent: () => <div className="p-6">Não encontrado.</div>,
 });
 
