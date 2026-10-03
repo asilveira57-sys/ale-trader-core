@@ -619,6 +619,7 @@ function CockpitPage() {
   // Leitura histórica (só quando o recorte não é "hoje"): agregados do período
   // por pregão e por robô, sem tocar em nada do motor.
   const getPeriodo = useServerFn(getB3SimPeriodSummary);
+  const [ladoFreio, setLadoFreio] = useState<"com" | "sem">("com");
   const getCincoPregoes = useServerFn(getB3CockpitFiveSessions);
   const hq = useQuery({
     queryKey: ["b3-cockpit-periodo", period.preset, period.start, period.end, filterKey],
@@ -627,6 +628,7 @@ function CockpitPage() {
     gcTime: 0,
   });
   const hd = hq.data as any;
+  const lado: any = ladoFreio === "com" ? (hd as any)?.com_freio : (hd as any)?.sem_freio;
   const fiveQ = useQuery({
     queryKey: ["b3-cockpit-five-sessions", filterKey],
     queryFn: () => getCincoPregoes({ data: filterArgs as any }),
@@ -834,26 +836,38 @@ function CockpitPage() {
           ) : (
             <>
               {hd?.rows_truncated ? <TruncatedNotice limit={hd?.rows_limit} /> : null}
+              <TesteiraPeriodo com={(hd as any)?.com_freio} sem={(hd as any)?.sem_freio} umDia={hd?.period?.single_day === true} />
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground">Lista:</span>
+                {(["com", "sem"] as const).map((k) => (
+                  <Button key={k} size="sm" variant={ladoFreio === k ? "default" : "outline"} className="h-8 px-3 text-[11px] font-bold" onClick={() => setLadoFreio(k)}>
+                    {k === "com" ? "Com freio" : "Sem freio"}
+                  </Button>
+                ))}
+              </div>
               <div className="flex flex-wrap items-baseline gap-3">
-                <h2 className="text-lg font-bold">Resultado de {hd?.period?.label ?? "período"}</h2>
-                <span className={`font-mono text-xl font-black ${Number(hd?.total_brl ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                  {BRL(Number(hd?.total_brl ?? 0))}
+                <h2 className="text-lg font-bold">Resultado de {hd?.period?.label ?? "período"} — {ladoFreio === "com" ? "Com freio" : "Sem freio"}</h2>
+                <span className={`font-mono text-xl font-black ${Number(lado?.total_brl ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                  {BRL(Number(lado?.total_brl ?? 0))}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {hd?.ops ?? 0} operação(ões) · {hd?.ganhos ?? 0} ganho(s) · {hd?.perdas ?? 0} perda(s)
+                  {lado?.ops ?? 0} operação(ões) · {lado?.ganhos ?? 0} ganho(s) · {lado?.perdas ?? 0} perda(s)
                 </span>
               </div>
 
               {hd?.period?.single_day === false ? (
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground">Por pregão</p>
-                  <PerDayTable rows={(hd?.by_day ?? []) as any[]} brl={(v) => BRL(Number(v ?? 0))} />
+                  <PerDayTable rows={(lado?.by_day ?? []) as any[]} brl={(v) => BRL(Number(v ?? 0))} />
                 </div>
               ) : null}
 
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-muted-foreground">Por robô</p>
-                <HistoricoAgrupado robots={(hd?.robots ?? []) as any[]} nick={apelidos.nick} />
+                <HistoricoAgrupado robots={(lado?.robots ?? []) as any[]} nick={apelidos.nick} />
+              </div>
+              <div className="space-y-1">
+                <Comparativo com={(hd as any)?.com_freio} sem={(hd as any)?.sem_freio} />
               </div>
             </>
           )}
@@ -1496,5 +1510,68 @@ function Scoreboard({ filterArgs, filterKey }: {
       )}
 
     </section>
+  );
+}
+
+
+function TesteiraPeriodo({ com, sem, umDia }: { com: any; sem: any; umDia: boolean }) {
+  if (!com || !sem) return null;
+  const s = umDia ? "do dia" : "do período";
+  return (
+    <div className="space-y-3 rounded-lg border border-border/60 bg-background/40 p-3">
+      <div className="grid gap-3 md:grid-cols-3">
+        <PairedMoney label={`Saldo ${s}`} comFreio={Number(com.total_brl)} semFreio={Number(sem.total_brl)} large />
+        <PairedMoney label={`Lucro bruto ${s}`} comFreio={Number(com.lucro_bruto_brl)} semFreio={Number(sem.lucro_bruto_brl)} />
+        <PairedMoney label={`Prejuízo bruto ${s}`} comFreio={Number(com.prejuizo_bruto_brl)} semFreio={Number(sem.prejuizo_bruto_brl)} />
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <RobotPair label={`Melhor robô ${s}`} comFreio={com.melhor_robo} semFreio={sem.melhor_robo} />
+        <RobotPair label={`Pior robô ${s}`} comFreio={com.pior_robo} semFreio={sem.pior_robo} />
+      </div>
+    </div>
+  );
+}
+
+function Comparativo({ com, sem }: { com: any; sem: any }) {
+  if (!com || !sem) return null;
+  const dias = new Map<string, { c: number; s: number }>();
+  for (const d of sem.by_day ?? []) dias.set(d.date, { c: 0, s: Number(d.realized_brl ?? 0) });
+  for (const d of com.by_day ?? []) { const x = dias.get(d.date) ?? { c: 0, s: 0 }; x.c = Number(d.realized_brl ?? 0); dias.set(d.date, x); }
+  const grupo = (robots: any[], key: (r: any) => string, into: Map<string, { c: number; s: number }>, lado: "c" | "s") => {
+    for (const r of robots ?? []) { const k = key(r); const x = into.get(k) ?? { c: 0, s: 0 }; x[lado] += Number(r.resultado_brl ?? 0); into.set(k, x); }
+  };
+  const ativos = new Map<string, { c: number; s: number }>();
+  const mods = new Map<string, { c: number; s: number }>();
+  grupo(com.robots, (r) => String(r.symbol), ativos, "c"); grupo(sem.robots, (r) => String(r.symbol), ativos, "s");
+  const km = (r: any) => `${r.symbol} · ${variantLabel(String(r.variant ?? "indicador"))}`;
+  grupo(com.robots, km, mods, "c"); grupo(sem.robots, km, mods, "s");
+  const Linha = ({ k, v, bold }: { k: string; v: { c: number; s: number }; bold?: boolean }) => (
+    <tr className={`border-b border-border/50 ${bold ? "font-black" : ""}`}>
+      <td className="py-1">{k}</td>
+      <td className={`py-1 text-right font-mono ${moneyColor(v.c)}`}>{BRL(v.c)}</td>
+      <td className={`py-1 text-right font-mono ${moneyColor(v.s)}`}>{BRL(v.s)}</td>
+      <td className={`py-1 text-right font-mono ${moneyColor(v.c - v.s)}`}>{BRL(v.c - v.s)}</td>
+    </tr>
+  );
+  const Tabela = ({ titulo, rows, total }: { titulo: string; rows: [string, { c: number; s: number }][]; total?: boolean }) => (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[420px] text-xs">
+        <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          <tr className="border-b border-border"><th className="py-1 text-left">{titulo}</th><th className="py-1 text-right">Com freio</th><th className="py-1 text-right">Sem freio</th><th className="py-1 text-right">Diferença</th></tr>
+        </thead>
+        <tbody>
+          {rows.map(([k, v]) => <Linha key={k} k={k} v={v} />)}
+          {total ? <Linha k="Total" v={{ c: Number(com.total_brl ?? 0), s: Number(sem.total_brl ?? 0) }} bold /> : null}
+        </tbody>
+      </table>
+    </div>
+  );
+  return (
+    <div className="space-y-3 rounded-lg border border-border/60 bg-background/40 p-3">
+      <p className="text-sm font-black">Comparativo — Com freio x Sem freio</p>
+      <Tabela titulo="Pregão" rows={Array.from(dias.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([d, v]) => [formatBrDate(d), v])} total />
+      <Tabela titulo="Ativo" rows={Array.from(ativos.entries())} />
+      <Tabela titulo="Modalidade" rows={Array.from(mods.entries())} />
+    </div>
   );
 }
