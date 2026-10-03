@@ -140,7 +140,7 @@ export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: getUserWithTransientTolerance,
   component: AuthedLayout,
-  errorComponent: AuthErrorBoundary,
+  errorComponent: AuthErrorBoundary as any,
 });
 
 const PRINCIPAL_NAV = [

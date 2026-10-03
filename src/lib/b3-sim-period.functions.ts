@@ -48,7 +48,7 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
 
     const { data: rows } = await (supabase as any)
       .from("b3_simulation_orders")
-      .select("simulation_run_id, mode, side, quantity, net_result_brl, entry_time, exit_time, close_reason, bloqueado_na_sombra")
+      .select("simulation_run_id, mode, side, quantity, net_result_brl, entry_time, exit_time, close_reason, bloqueado_na_sombra, freios_na_sombra")
       .eq("user_id", userId)
       .eq("status", "closed")
       .gte("exit_time", period.start_utc)
@@ -64,51 +64,56 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       key: string; symbol: string; variant: string; mode: string;
       resultado_brl: number; ops: number; ganhos: number; perdas: number; sombra_brl: number; sombra_ops: number;
     };
-    const byRobot = new Map<string, Agg>();
-    const byDay = new Map<string, { date: string; realized_brl: number; trades: number; wins: number; losses: number; sem_preco: number }>();
-    let total = 0;
-    let ops = 0;
-
-    for (const o of (rows ?? []) as any[]) {
-      const run = runById.get(String(o.simulation_run_id));
-      if (!run) continue;
-      const mode = String(o.mode ?? "");
-      if (symbols && !symbols.has(run.root)) continue;
-      if (variants && !variants.has(run.variant)) continue;
-      if (modes && !modes.has(mode)) continue;
-
-      const brl = o.net_result_brl == null ? null : Number(o.net_result_brl);
-      const day = brtDate(new Date(o.exit_time));
-      const d = byDay.get(day) ?? { date: day, realized_brl: 0, trades: 0, wins: 0, losses: 0, sem_preco: 0 };
-      d.trades += 1;
-      if (brl == null) d.sem_preco += 1;
-      else {
-        d.realized_brl += brl;
-        if (brl > 0) d.wins += 1; else if (brl < 0) d.losses += 1;
+    // "Com freio" = só ordens abertas com freios_na_sombra vazio (mesma regra
+    // do dia). "Sem freio" = todas as fechadas do período.
+    const agregar = (soComFreio: boolean) => {
+      const byRobot = new Map<string, Agg>();
+      const byDay = new Map<string, { date: string; realized_brl: number; trades: number; wins: number; losses: number; sem_preco: number }>();
+      let total = 0, ops = 0, lucro = 0, prejuizo = 0;
+      for (const o of (rows ?? []) as any[]) {
+        const run = runById.get(String(o.simulation_run_id));
+        if (!run) continue;
+        const mode = String(o.mode ?? "");
+        if (symbols && !symbols.has(run.root)) continue;
+        if (variants && !variants.has(run.variant)) continue;
+        if (modes && !modes.has(mode)) continue;
+        const comFreio = !Array.isArray(o.freios_na_sombra) || o.freios_na_sombra.length === 0;
+        if (soComFreio && !comFreio) continue;
+        const brl = o.net_result_brl == null ? null : Number(o.net_result_brl);
+        const day = brtDate(new Date(o.exit_time));
+        const d = byDay.get(day) ?? { date: day, realized_brl: 0, trades: 0, wins: 0, losses: 0, sem_preco: 0 };
+        d.trades += 1;
+        if (brl == null) d.sem_preco += 1;
+        else { d.realized_brl += brl; if (brl > 0) d.wins += 1; else if (brl < 0) d.losses += 1; }
+        byDay.set(day, d);
+        const key = `${run.root}|${run.variant}|${mode}`;
+        const a = byRobot.get(key) ?? { key, symbol: run.root, variant: run.variant, mode, resultado_brl: 0, ops: 0, ganhos: 0, perdas: 0, sombra_brl: 0, sombra_ops: 0 };
+        a.ops += 1;
+        if (brl != null) {
+          a.resultado_brl += brl;
+          if (brl > 0) { a.ganhos += 1; lucro += brl; } else if (brl < 0) { a.perdas += 1; prejuizo += brl; }
+          total += brl;
+          if (o.bloqueado_na_sombra !== true) a.sombra_brl += brl;
+        }
+        if (o.bloqueado_na_sombra === true) a.sombra_ops += 1;
+        byRobot.set(key, a);
+        ops += 1;
       }
-      byDay.set(day, d);
-
-      const key = `${run.root}|${run.variant}|${mode}`;
-      const a = byRobot.get(key) ?? {
-        key, symbol: run.root, variant: run.variant, mode,
-        resultado_brl: 0, ops: 0, ganhos: 0, perdas: 0, sombra_brl: 0, sombra_ops: 0,
+      const robots = Array.from(byRobot.values()).sort((a, b) => a.resultado_brl - b.resultado_brl);
+      const toBest = (r: Agg | undefined) => r ? { symbol: r.symbol, variant: r.variant, mode: r.mode, brl: Math.round(r.resultado_brl * 100) / 100 } : null;
+      return {
+        total_brl: total, ops,
+        ganhos: robots.reduce((s, r) => s + r.ganhos, 0),
+        perdas: robots.reduce((s, r) => s + r.perdas, 0),
+        lucro_bruto_brl: lucro, prejuizo_bruto_brl: prejuizo,
+        melhor_robo: toBest(robots[robots.length - 1]),
+        pior_robo: toBest(robots[0]),
+        by_day: Array.from(byDay.values()).sort((a, b) => (a.date < b.date ? 1 : -1)),
+        robots,
       };
-      a.ops += 1;
-      if (brl != null) {
-        a.resultado_brl += brl;
-        if (brl > 0) a.ganhos += 1; else if (brl < 0) a.perdas += 1;
-        total += brl;
-        // Resultado SOMBRA: o que existiria se o freio de grupo tivesse barrado
-        // a entrada marcada como sombra. Financeiro total fica separado.
-        if (o.bloqueado_na_sombra !== true) a.sombra_brl += brl;
-      }
-      if (o.bloqueado_na_sombra === true) a.sombra_ops += 1;
-      byRobot.set(key, a);
-      ops += 1;
-    }
-
-    const robots = Array.from(byRobot.values()).sort((a, b) => a.resultado_brl - b.resultado_brl);
-    const dias = Array.from(byDay.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
+    };
+    const sem = agregar(false);
+    const com = agregar(true);
 
     return {
       server_time: now.toISOString(),
@@ -119,13 +124,10 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       },
       rows_limit: limit,
       rows_truncated: (rows ?? []).length >= limit,
-      no_movement: ops === 0,
-      total_brl: total,
-      ops,
-      ganhos: robots.reduce((s, r) => s + r.ganhos, 0),
-      perdas: robots.reduce((s, r) => s + r.perdas, 0),
-      by_day: dias,
-      robots,
+      no_movement: sem.ops === 0,
+      ...sem,
+      com_freio: com,
+      sem_freio: sem,
     };
   });
 

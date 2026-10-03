@@ -13,7 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export const Route = createFileRoute("/_authenticated/binance-fee-audit")({
   component: BinanceFeeAuditPage,
-  errorComponent: ({ error }) => <div className="p-6 text-red-500">Erro: {error.message}</div>,
+  errorComponent: ({ error }) => <div className="p-6 text-red-500">Erro: {(error as Error).message}</div>,
   notFoundComponent: () => <div className="p-6">Não encontrado</div>,
 });
 

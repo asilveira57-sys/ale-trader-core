@@ -17,7 +17,7 @@ import { Activity, RefreshCw, Wrench } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/binance-wallet-health")({
   component: Page,
-  errorComponent: ({ error }) => <div className="p-6 text-sm text-red-400">Erro: {error.message}</div>,
+  errorComponent: ({ error }) => <div className="p-6 text-sm text-red-400">Erro: {(error as Error).message}</div>,
   notFoundComponent: () => <div className="p-6">Não encontrado.</div>,
 });
 
