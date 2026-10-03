@@ -1,5 +1,6 @@
 import { CalibracaoSugerida } from "@/components/b3/CalibracaoSugerida";
 import { useState, useEffect } from "react";
+import { formatBrDate } from "@/lib/b3-period";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
