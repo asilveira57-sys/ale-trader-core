@@ -6804,11 +6804,34 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       for (const card of cards) { card.cor = "neutro"; card.curadoria = null; }
     }
 
+    // REAL (04/10/2026): só leitura. Posição real aberta = exit_time nulo e
+    // status vivo; resíduo 'unknown_state' e fechadas não contam.
+    const { data: realOpenRows } = await (supabase as any).from("b3_live_orders")
+      .select("symbol, variant, mode, status")
+      .eq("user_id", userId).is("exit_time", null)
+      .not("status", "in", "(unknown_state,closed,cancelled,rejected)");
+    const realOpenKeys = new Set(((realOpenRows ?? []) as any[]).map((r) =>
+      `${cockpitRootSymbol(r.symbol)}|${r.variant ?? "indicador"}|${r.mode}`));
+    for (const c of cards) {
+      c.real_open = !!c.real_auth && realOpenKeys.has(`${cockpitRootSymbol(c.symbol)}|${c.variant ?? "indicador"}|${c.mode}`);
+    }
+    const { data: peakRow } = await (supabase as any).from("b3_real_account_peak")
+      .select("circuit_result_brl, circuit_armed, circuit_kind, circuit_armed_at")
+      .eq("user_id", userId).eq("session_date", sessionDate).maybeSingle();
+    const real_resumo = {
+      autorizados: authByKey.size,
+      abertas: realOpenKeys.size,
+      resultado_brl: peakRow?.circuit_result_brl == null ? null : Number(peakRow.circuit_result_brl),
+      travado: peakRow?.circuit_armed === true,
+      trava_tipo: peakRow?.circuit_kind ?? null,
+      trava_em: peakRow?.circuit_armed_at ?? null,
+    };
+
     return {
       session_date: sessionDate,
       variant: variantFilter ?? "all",
       filtro_ativo: f.active,
-      cards, por_ativo: porAtivo,
+      cards, por_ativo: porAtivo, real_resumo,
     };
 
   });
