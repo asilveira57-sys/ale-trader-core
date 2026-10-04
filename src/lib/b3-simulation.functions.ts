@@ -6528,7 +6528,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
       // A lista de cards vem das linhas que EXISTEM em b3_simulation_mode_settings
       // para esta execução (run × mode). Execução com menos modos configurados
       // mostra menos cards; modo sem linha de configuração não tem card.
-      const settingsModes = new Set((settings ?? []).map((s: any) => String(s.mode)));
+      const settingsModes = new Set<string>((settings ?? []).map((s: any) => String(s.mode)));
       const modosDaRun = [
         ...MODES.filter((m) => settingsModes.has(m)),
         ...Array.from(settingsModes).filter((m) => !(MODES as string[]).includes(m)),
