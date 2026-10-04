@@ -120,7 +120,8 @@ const VARIANT_COLOR: Record<string, string> = {
   pullback: "bg-teal-500/15 text-teal-300 border-teal-500/30",
   vwap: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30",
 };
-const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
+const REAL_GROUP = "__real";
+const variantLabel = (v: string) => v === REAL_GROUP ? "Dinheiro real" : VARIANT_LABEL[v] ?? v;
 const isRiskBlocked = (c: any) => c.current_status === "blocked_stop" || !!c.protection_block_reason;
 
 // Cor da curadoria — quem calcula é o banco (b3_cor_do_robo); aqui só pintamos.
@@ -337,7 +338,7 @@ function ConfirmacaoDia({ conf }: { conf: any }) {
 
 
 
-type Filter = "all" | "open" | "blocked";
+type Filter = "all" | "open" | "blocked" | "real";
 type Sort = "none" | "desc" | "asc";
 
 // Ordem de exibição = ordem de agressividade (cauteloso e arrojado no meio).
@@ -367,7 +368,7 @@ function loadFilters(): SavedFilters {
       symbols: Array.isArray(p.symbols) ? p.symbols : DEFAULT_FILTERS.symbols,
       variants: Array.isArray(p.variants) ? p.variants : DEFAULT_FILTERS.variants,
       modes: Array.isArray(p.modes) ? p.modes : DEFAULT_FILTERS.modes,
-      filter: (["all", "open", "blocked"].includes(p.filter) ? p.filter : "all") as Filter,
+      filter: (["all", "open", "blocked", "real"].includes(p.filter) ? p.filter : "all") as Filter,
       sort: (["none", "desc", "asc"].includes(p.sort) ? p.sort : "none") as Sort,
     };
   } catch {
@@ -708,12 +709,24 @@ function CockpitPage() {
   // Ativo/modalidade/modo já vêm recortados do servidor; aqui só ficam os
   // atalhos de pregão (posicionado / bloqueado) e a ordenação.
   const visible = all
-    .filter((c) => filter === "all" ? true : filter === "open" ? !!c.open : isRiskBlocked(c));
+    .filter((c) => filter === "all" ? true : filter === "real" ? !!c.real_auth : filter === "open" ? !!c.open : isRiskBlocked(c));
 
   // Agrupa pela RAIZ do ativo (WIN, WDO, PETR4) — o contrato rola de vencimento —
   // e, dentro do ativo, por modalidade (variant).
   const bySymbol = new Map<string, { contracts: Set<string>; byVariant: Map<string, any[]> }>();
+  // Robôs com dinheiro real sobem ao topo do ativo, atravessando modalidades:
+  // primeiro os com posição real aberta, depois os só autorizados.
+  const realFirst = [...visible.filter((c) => c.real_auth && c.real_open), ...visible.filter((c) => c.real_auth && !c.real_open)];
+  for (const c of realFirst) {
+    const root = rootSymbol(c.symbol);
+    if (!bySymbol.has(root)) bySymbol.set(root, { contracts: new Set(), byVariant: new Map() });
+    const group = bySymbol.get(root)!;
+    group.contracts.add(c.symbol);
+    if (!group.byVariant.has(REAL_GROUP)) group.byVariant.set(REAL_GROUP, []);
+    group.byVariant.get(REAL_GROUP)!.push(c);
+  }
   for (const c of visible) {
+    if (c.real_auth) continue;
     const root = rootSymbol(c.symbol);
     if (!bySymbol.has(root)) bySymbol.set(root, { contracts: new Set(), byVariant: new Map() });
     const group = bySymbol.get(root)!;
@@ -729,7 +742,7 @@ function CockpitPage() {
   if (sort !== "none") {
     const dir = sort === "desc" ? -1 : 1;
     for (const group of bySymbol.values()) {
-      for (const list of group.byVariant.values()) list.sort((a, b) => dir * (cardResult(a) - cardResult(b)));
+      for (const [vk, list] of group.byVariant.entries()) if (vk !== REAL_GROUP) list.sort((a, b) => dir * (cardResult(a) - cardResult(b)));
     }
   }
 
@@ -895,8 +908,19 @@ function CockpitPage() {
           )}
         </div>
 
+        {q.data?.real_resumo && (() => {
+          const r: any = q.data.real_resumo;
+          const hora = r.trava_em ? new Date(r.trava_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "";
+          return (
+            <div className="rounded border border-orange-400/60 bg-orange-500/15 px-2 py-1 text-xs font-semibold text-orange-200">
+              REAL: {r.autorizados} {r.autorizados === 1 ? "robô autorizado" : "robôs autorizados"} · {r.abertas} com posição aberta · resultado do dia{" "}
+              <span className={moneyColor(r.resultado_brl ?? 0)}>{SIGNED_HDR(r.resultado_brl ?? 0)}</span>
+              {r.travado && <> · TRAVADO por {r.trava_tipo === "meta_ganho" ? "meta de ganho" : "teto de perda"}{hora ? ` às ${hora}` : ""}</>}
+            </div>
+          );
+        })()}
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {([["all", "Todos"], ["open", "Só posicionado"], ["blocked", "Só bloqueado"]] as [Filter, string][]).map(([v, label]) => (
+          {([["all", "Todos"], ["real", "Só real"], ["open", "Só posicionado"], ["blocked", "Só bloqueado"]] as [Filter, string][]).map(([v, label]) => (
             <Button key={v} size="sm" variant={filter === v ? "default" : "outline"} className="h-7 text-[11px]"
               onClick={() => setFilter(v)}>
               {label}
@@ -1053,10 +1077,10 @@ function CockpitPage() {
                 )}
                 {/* Um freio de GRUPO trava todos os robôs do grupo de uma vez:
                     desfazer de um em um seriam sete cliques para uma decisão só. */}
-                <LiberacaoBloco
+                {variant !== REAL_GROUP && <LiberacaoBloco
                   escopo="grupo" root={root} variant={variant} mode={null}
                   libs={liberacoes} liberarM={liberarM} travarM={travarM} defaultFreio="grupo"
-                />
+                />}
                  <Button size="sm" variant="outline" className="ml-auto h-6 border-current/40 bg-background/15 text-[10px] text-current hover:bg-background/25 hover:text-current"
                   onClick={() => copyCards(cards, `${root} · ${variantLabel(variant).toLowerCase()}`)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo + modalidade
@@ -1137,7 +1161,7 @@ function CockpitPage() {
                                 className="inline-flex items-center gap-1 rounded border border-orange-400/60 bg-orange-500/15 px-1 py-[1px] text-[10px] font-semibold text-orange-200"
                                 title={`Robô autorizado no real — até ${c.real_auth.max_qty} contrato(s) por operação`}
                               >
-                                REAL {c.real_auth.max_qty}x
+                                REAL · {c.real_auth.max_qty} {c.real_auth.max_qty === 1 ? "contrato" : "contratos"}{c.real_open ? " · aberta" : ""}
                               </span>
                             )}
 
