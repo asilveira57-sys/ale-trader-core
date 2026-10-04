@@ -1098,6 +1098,13 @@ export type Database = {
             referencedRelation: "b3_simulation_runs"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "b3_engine_state_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "v_b3_cat_robos"
+            referencedColumns: ["run_id"]
+          },
         ]
       }
       b3_entry_decision_log: {
@@ -1243,6 +1250,7 @@ export type Database = {
           notas: string | null
           symbol: string
           teto_brl: number
+          teto_pct: number
           user_id: string
           variant: string
         }
@@ -1259,6 +1267,7 @@ export type Database = {
           notas?: string | null
           symbol: string
           teto_brl: number
+          teto_pct?: number
           user_id: string
           variant: string
         }
@@ -1275,6 +1284,7 @@ export type Database = {
           notas?: string | null
           symbol?: string
           teto_brl?: number
+          teto_pct?: number
           user_id?: string
           variant?: string
         }
@@ -1686,6 +1696,13 @@ export type Database = {
             referencedRelation: "b3_simulation_runs"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "b3_live_orders_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "v_b3_cat_robos"
+            referencedColumns: ["run_id"]
+          },
         ]
       }
       b3_livro_mudancas: {
@@ -2095,6 +2112,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "b3_simulation_runs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_mt5_commands_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "v_b3_cat_robos"
+            referencedColumns: ["run_id"]
           },
         ]
       }
@@ -3569,6 +3593,24 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_runs_experimentais: {
+        Row: {
+          criado_em: string
+          motivo: string
+          run_id: string
+        }
+        Insert: {
+          criado_em?: string
+          motivo: string
+          run_id: string
+        }
+        Update: {
+          criado_em?: string
+          motivo?: string
+          run_id?: string
+        }
+        Relationships: []
+      }
       b3_simulation_agent_votes: {
         Row: {
           agent_name: string
@@ -3651,6 +3693,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "b3_simulation_runs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_simulation_agent_votes_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "v_b3_cat_robos"
+            referencedColumns: ["run_id"]
           },
         ]
       }
@@ -3735,6 +3784,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "b3_simulation_runs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_simulation_block_events_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "v_b3_cat_robos"
+            referencedColumns: ["run_id"]
           },
         ]
       }
@@ -3821,6 +3877,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "b3_simulation_runs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_simulation_market_snapshots_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "v_b3_cat_robos"
+            referencedColumns: ["run_id"]
           },
         ]
       }
@@ -3998,6 +4061,13 @@ export type Database = {
             referencedRelation: "b3_simulation_runs"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "b3_simulation_mode_settings_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "v_b3_cat_robos"
+            referencedColumns: ["run_id"]
+          },
         ]
       }
       b3_simulation_modes: {
@@ -4131,6 +4201,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "b3_simulation_runs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "b3_simulation_modes_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "v_b3_cat_robos"
+            referencedColumns: ["run_id"]
           },
         ]
       }
@@ -4330,6 +4407,13 @@ export type Database = {
             referencedRelation: "b3_simulation_runs"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "b3_simulation_orders_simulation_run_id_fkey"
+            columns: ["simulation_run_id"]
+            isOneToOne: false
+            referencedRelation: "v_b3_cat_robos"
+            referencedColumns: ["run_id"]
+          },
         ]
       }
       b3_simulation_runs: {
@@ -4509,6 +4593,27 @@ export type Database = {
           strategy_mode?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      b3_variant_apelidos: {
+        Row: {
+          apelido_tela: string
+          descricao: string | null
+          ordem: number | null
+          variant: string
+        }
+        Insert: {
+          apelido_tela: string
+          descricao?: string | null
+          ordem?: number | null
+          variant: string
+        }
+        Update: {
+          apelido_tela?: string
+          descricao?: string | null
+          ordem?: number | null
+          variant?: string
         }
         Relationships: []
       }
@@ -7723,8 +7828,54 @@ export type Database = {
         }
         Relationships: []
       }
+      v_b3_cat_robos: {
+        Row: {
+          apelido: string | null
+          be_arma: number | null
+          conf_pct: number | null
+          conf_real: boolean | null
+          conf_seg: number | null
+          conf_sim: boolean | null
+          config_alterada_em: string | null
+          contratos: number | null
+          daily_gain_target_brl: number | null
+          daily_loss_limit_brl: number | null
+          daily_stop_mult: number | null
+          entry_cutoff_time: string | null
+          entry_style: string | null
+          force_close_time: string | null
+          gain_pts: number | null
+          grupo: string | null
+          limites_proporcionais: boolean | null
+          min_approve_votes: number | null
+          min_confidence: number | null
+          min_score: number | null
+          mode: string | null
+          no_real: boolean | null
+          ordem: number | null
+          peak_giveback_pct: number | null
+          peak_lock_min_profit_brl: number | null
+          risco_retorno: number | null
+          run_id: string | null
+          run_status: string | null
+          stop_pts: number | null
+          symbol: string | null
+          trading_start_time: string | null
+          trail_arma: number | null
+          trail_arma_pct_stop: number | null
+          trail_devolve: number | null
+          trailing_mode: string | null
+          variant: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      b3_alarme_cotacao_parada: {
+        Args: { p_minutos?: number }
+        Returns: number
+      }
+      b3_arquivar_catalogo: { Args: never; Returns: undefined }
       b3_atualizar_curadoria: {
         Args: { p_date?: string }
         Returns: {
@@ -7743,6 +7894,58 @@ export type Database = {
       b3_calcular_paridade: { Args: { p_desde?: string }; Returns: number }
       b3_calcular_score_dia: { Args: { p_date?: string }; Returns: number }
       b3_calibrar_limites: { Args: { p_dias?: number }; Returns: number }
+      b3_cat_espelho: {
+        Args: { p_fim: string; p_ini: string }
+        Returns: {
+          apelido: string
+          dia: string
+          disjuntor: string
+          mode: string
+          paridade_pct: number
+          real_entradas: number
+          real_resultado: number
+          sim_brl_com_freio: number
+          sim_livres: number
+          sim_ordens: number
+          travou_as: string
+        }[]
+      }
+      b3_cat_resultado: {
+        Args: { p_fim: string; p_ini: string }
+        Returns: {
+          acerto_pct: number
+          apelido: string
+          barradas: number
+          brl_com_freio: number
+          brl_sem_freio: number
+          contratos: number
+          efeito_freio: number
+          grupo: string
+          mode: string
+          no_alvo: number
+          no_stop: number
+          no_trailing: number
+          ordens: number
+          ordens_livres: number
+          pct_stop: number
+          por_contrato_com_freio: number
+          pregoes: number
+          run_id: string
+          symbol: string
+          variant: string
+        }[]
+      }
+      b3_catalogo: { Args: { p_fim?: string; p_ini?: string }; Returns: string }
+      b3_catalogo_completo: {
+        Args: { p_fim?: string; p_ini?: string }
+        Returns: string
+      }
+      b3_catalogo_glossario: { Args: never; Returns: string }
+      b3_catalogo_real: { Args: never; Returns: string }
+      b3_catalogo_win: {
+        Args: { p_fim: string; p_ini: string }
+        Returns: string
+      }
       b3_cor_do_robo: {
         Args: {
           p_caiu_em: string
@@ -7769,6 +7972,10 @@ export type Database = {
       }
       b3_csv_num: { Args: { v: number }; Returns: string }
       b3_csv_txt: { Args: { t: string }; Returns: string }
+      b3_derivar_teto_grupo: {
+        Args: { p_symbol: string; p_variant: string }
+        Returns: number
+      }
       b3_detectar_ordens_fantasma: {
         Args: never
         Returns: {
@@ -7945,6 +8152,80 @@ export type Database = {
         }[]
       }
       b3_rotular_regime: { Args: { p_date?: string }; Returns: number }
+      b3_simular_conta: {
+        Args: {
+          p_contratos?: number
+          p_fim: string
+          p_ini: string
+          p_meta_pct: number
+          p_robos: string[]
+          p_symbol?: string
+          p_teto_pct: number
+        }
+        Returns: {
+          base_brl: number
+          brl_com_disjuntor: number
+          brl_sem_disjuntor: number
+          dias: number
+          dias_sem_trava: number
+          dias_trava_lucro: number
+          dias_trava_perda: number
+          diferenca: number
+          melhor_dia: number
+          ordens_admitidas: number
+          ordens_cortadas: number
+          ordens_total: number
+          pior_dia: number
+        }[]
+      }
+      b3_simular_disjuntor: {
+        Args: {
+          p_fim: string
+          p_ini: string
+          p_meta_pct: number
+          p_symbol?: string
+          p_teto_pct: number
+        }
+        Returns: {
+          apelido: string
+          base_brl: number
+          brl_com_disjuntor: number
+          brl_sem_disjuntor: number
+          cortadas: number
+          dias: number
+          dias_trava_lucro: number
+          dias_trava_perda: number
+          diferenca: number
+          mode: string
+          ordens_com: number
+          ordens_sem: number
+          variant: string
+        }[]
+      }
+      b3_simular_pico: {
+        Args: {
+          p_contratos?: number
+          p_fim: string
+          p_giveback: number
+          p_ini: string
+          p_pico_min: number
+          p_robos: string[]
+          p_symbol?: string
+          p_teto_pct: number
+        }
+        Returns: {
+          base_brl: number
+          dias: number
+          dias_livres: number
+          melhor_dia: number
+          ordens_admitidas: number
+          ordens_cortadas: number
+          pior_dia: number
+          resultado: number
+          trav_perda: number
+          trav_pico: number
+        }[]
+      }
       b3_vigiar_tique: { Args: never; Returns: string }
       has_role: {
         Args: {
