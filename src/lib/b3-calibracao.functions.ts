@@ -48,9 +48,15 @@ export const listCalibracao = createServerFn({ method: "POST" })
         if (r) vig.set(`${r.symbol}|${r.variant}|${s.mode}`, Number(s.daily_stop_mult));
       }
     }
+    // Robôs com autorização ativa no real (symbol sem código do contrato).
+    const raiz = (s: string) => String(s).toUpperCase().replace(/[FGHJKMNQUVXZ]\d{2}$/, "");
+    const { data: auths } = await (admin as any).from("b3_prd_authorizations")
+      .select("symbol, variant, mode").eq("enabled", true).is("revoked_at", null);
+    const reais = new Set<string>((auths ?? []).map((a: any) => `${raiz(a.symbol)}|${a.variant}|${a.mode}`));
     const linhas = (rows ?? []).map((r: any) => {
       const k = `${r.symbol}|${r.variant}|${r.mode}`;
-      return { ...r, tem_config: vig.has(k), mult_vigente: vig.get(k) ?? null };
+      return { ...r, tem_config: vig.has(k), mult_vigente: vig.get(k) ?? null,
+        real_autorizado: reais.has(`${raiz(r.symbol)}|${r.variant}|${r.mode}`) };
     });
     return { semana: sem.semana_ref as string, linhas };
   });

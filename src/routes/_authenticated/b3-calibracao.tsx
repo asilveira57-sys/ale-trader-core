@@ -62,6 +62,11 @@ function CalibracaoPage() {
       </div>
       <div className="flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-sm"><Switch checked={soConfiaveis} onCheckedChange={setSoConfiaveis} /> Só confiáveis</label>
+        <Button variant="outline" disabled={!vis.some(podeAplicar)}
+          onClick={() => setSel(new Set(vis.filter(podeAplicar).map((l) => l.id)))}>
+          Selecionar todos visíveis ({vis.filter(podeAplicar).length})
+        </Button>
+        <Button variant="ghost" disabled={!sel.size} onClick={() => setSel(new Set())}>Limpar seleção</Button>
         <Button disabled={!selecionadas.length} onClick={() => setConfirmar(selecionadas)}>
           Aplicar selecionadas ({selecionadas.length})
         </Button>
