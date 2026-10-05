@@ -7893,7 +7893,10 @@ export type Database = {
       }
       b3_calcular_paridade: { Args: { p_desde?: string }; Returns: number }
       b3_calcular_score_dia: { Args: { p_date?: string }; Returns: number }
-      b3_calibrar_limites: { Args: { p_dias?: number }; Returns: number }
+      b3_calibrar_limites: {
+        Args: { p_dias?: number; p_semana?: string }
+        Returns: number
+      }
       b3_cat_espelho: {
         Args: { p_fim: string; p_ini: string }
         Returns: {
