@@ -9,382 +9,119 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AuthRouteImport } from './routes/auth'
-import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AuthenticatedWarRoomRouteImport } from './routes/_authenticated/war-room'
-import { Route as AuthenticatedWalletRouteImport } from './routes/_authenticated/wallet'
-import { Route as AuthenticatedSupervisorRouteImport } from './routes/_authenticated/supervisor'
-import { Route as AuthenticatedStrategyLabRouteImport } from './routes/_authenticated/strategy-lab'
-import { Route as AuthenticatedStrategicMemoryRouteImport } from './routes/_authenticated/strategic-memory'
-import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
-import { Route as AuthenticatedSeasonsRouteImport } from './routes/_authenticated/seasons'
-import { Route as AuthenticatedRiskRouteImport } from './routes/_authenticated/risk'
-import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
-import { Route as AuthenticatedRegimesRouteImport } from './routes/_authenticated/regimes'
-import { Route as AuthenticatedRecommendationsRouteImport } from './routes/_authenticated/recommendations'
-import { Route as AuthenticatedRealRiskRouteImport } from './routes/_authenticated/real-risk'
-import { Route as AuthenticatedRealDashboardRouteImport } from './routes/_authenticated/real-dashboard'
-import { Route as AuthenticatedRankingRouteImport } from './routes/_authenticated/ranking'
-import { Route as AuthenticatedRadarRouteImport } from './routes/_authenticated/radar'
-import { Route as AuthenticatedPrdAutorizacoesRouteImport } from './routes/_authenticated/prd-autorizacoes'
-import { Route as AuthenticatedPostTradeRouteImport } from './routes/_authenticated/post-trade'
-import { Route as AuthenticatedPipelineDiagnosticsRouteImport } from './routes/_authenticated/pipeline-diagnostics'
-import { Route as AuthenticatedOrdersRouteImport } from './routes/_authenticated/orders'
-import { Route as AuthenticatedOperationsRouteImport } from './routes/_authenticated/operations'
-import { Route as AuthenticatedMetricsRouteImport } from './routes/_authenticated/metrics'
-import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated/logs'
-import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
-import { Route as AuthenticatedKnowledgeRouteImport } from './routes/_authenticated/knowledge'
-import { Route as AuthenticatedKillSwitchRouteImport } from './routes/_authenticated/kill-switch'
-import { Route as AuthenticatedIntelligenceRouteImport } from './routes/_authenticated/intelligence'
-import { Route as AuthenticatedIncidentsRouteImport } from './routes/_authenticated/incidents'
-import { Route as AuthenticatedGovernanceRouteImport } from './routes/_authenticated/governance'
-import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
-import { Route as AuthenticatedCouncilRouteImport } from './routes/_authenticated/council'
-import { Route as AuthenticatedCommitteeRouteImport } from './routes/_authenticated/committee'
-import { Route as AuthenticatedCockpitRealRouteImport } from './routes/_authenticated/cockpit-real'
-import { Route as AuthenticatedBinanceWalletHealthRouteImport } from './routes/_authenticated/binance-wallet-health'
-import { Route as AuthenticatedBinanceFeeAuditRouteImport } from './routes/_authenticated/binance-fee-audit'
-import { Route as AuthenticatedBinanceBrainRouteImport } from './routes/_authenticated/binance-brain'
-import { Route as AuthenticatedBinanceAuditRouteImport } from './routes/_authenticated/binance-audit'
-import { Route as AuthenticatedB3WdoRouteImport } from './routes/_authenticated/b3-wdo'
-import { Route as AuthenticatedB3Vale3RouteImport } from './routes/_authenticated/b3-vale3'
-import { Route as AuthenticatedB3SimHistoryRouteImport } from './routes/_authenticated/b3-sim-history'
-import { Route as AuthenticatedB3ProporcionalRouteImport } from './routes/_authenticated/b3-proporcional'
-import { Route as AuthenticatedB3Petr4RouteImport } from './routes/_authenticated/b3-petr4'
-import { Route as AuthenticatedB3Mt5simRouteImport } from './routes/_authenticated/b3-mt5sim'
-import { Route as AuthenticatedB3ListasRouteImport } from './routes/_authenticated/b3-listas'
-import { Route as AuthenticatedB3ExtratoRealRouteImport } from './routes/_authenticated/b3-extrato-real'
-import { Route as AuthenticatedB3DiagnosticoRouteImport } from './routes/_authenticated/b3-diagnostico'
-import { Route as AuthenticatedB3CockpitRouteImport } from './routes/_authenticated/b3-cockpit'
-import { Route as AuthenticatedB3CalibracaoRouteImport } from './routes/_authenticated/b3-calibracao'
-import { Route as AuthenticatedB3AuditoriaRouteImport } from './routes/_authenticated/b3-auditoria'
-import { Route as AuthenticatedB3RouteImport } from './routes/_authenticated/b3'
-import { Route as AuthenticatedAutoDashboardRouteImport } from './routes/_authenticated/auto-dashboard'
-import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
-import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated/assets'
-import { Route as AuthenticatedApprovalDeskRouteImport } from './routes/_authenticated/approval-desk'
-import { Route as AuthenticatedAlertsRouteImport } from './routes/_authenticated/alerts'
-import { Route as AuthenticatedAgentsRouteImport } from './routes/_authenticated/agents'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedAgentRankingsRouteImport } from './routes/_authenticated/agent-rankings'
-import { Route as AuthenticatedBacktestIndexRouteImport } from './routes/_authenticated/backtest.index'
-import { Route as AuthenticatedReportsReportIdRouteImport } from './routes/_authenticated/reports.$reportId'
-import { Route as AuthenticatedLibraryExpertIdRouteImport } from './routes/_authenticated/library.$expertId'
-import { Route as AuthenticatedBacktestNewRouteImport } from './routes/_authenticated/backtest.new'
-import { Route as AuthenticatedBacktestDataRouteImport } from './routes/_authenticated/backtest.data'
-import { Route as AuthenticatedBacktestCriteriaRouteImport } from './routes/_authenticated/backtest.criteria'
-import { Route as AuthenticatedBacktestRunIdRouteImport } from './routes/_authenticated/backtest.$runId'
-import { Route as AuthenticatedB3BiRouteImport } from './routes/_authenticated/b3_.bi'
-import { Route as AuthenticatedAuditReportIdRouteImport } from './routes/_authenticated/audit.$reportId'
+import { Route as AuthenticatedAgentsRouteImport } from './routes/_authenticated/agents'
+import { Route as AuthenticatedAlertsRouteImport } from './routes/_authenticated/alerts'
+import { Route as AuthenticatedApprovalDeskRouteImport } from './routes/_authenticated/approval-desk'
+import { Route as AuthenticatedAssetsRouteImport } from './routes/_authenticated/assets'
+import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
+import { Route as AuthenticatedAutoDashboardRouteImport } from './routes/_authenticated/auto-dashboard'
+import { Route as AuthenticatedB3RouteImport } from './routes/_authenticated/b3'
+import { Route as AuthenticatedB3AuditoriaRouteImport } from './routes/_authenticated/b3-auditoria'
+import { Route as AuthenticatedB3CalibracaoRouteImport } from './routes/_authenticated/b3-calibracao'
+import { Route as AuthenticatedB3CockpitRouteImport } from './routes/_authenticated/b3-cockpit'
+import { Route as AuthenticatedB3DiagnosticoRouteImport } from './routes/_authenticated/b3-diagnostico'
+import { Route as AuthenticatedB3ExtratoRealRouteImport } from './routes/_authenticated/b3-extrato-real'
+import { Route as AuthenticatedB3ListasRouteImport } from './routes/_authenticated/b3-listas'
+import { Route as AuthenticatedB3Mt5simRouteImport } from './routes/_authenticated/b3-mt5sim'
+import { Route as AuthenticatedB3Petr4RouteImport } from './routes/_authenticated/b3-petr4'
+import { Route as AuthenticatedB3ProporcionalRouteImport } from './routes/_authenticated/b3-proporcional'
+import { Route as AuthenticatedB3SimHistoryRouteImport } from './routes/_authenticated/b3-sim-history'
+import { Route as AuthenticatedB3Vale3RouteImport } from './routes/_authenticated/b3-vale3'
+import { Route as AuthenticatedB3WdoRouteImport } from './routes/_authenticated/b3-wdo'
+import { Route as AuthenticatedBinanceAuditRouteImport } from './routes/_authenticated/binance-audit'
+import { Route as AuthenticatedBinanceBrainRouteImport } from './routes/_authenticated/binance-brain'
+import { Route as AuthenticatedBinanceFeeAuditRouteImport } from './routes/_authenticated/binance-fee-audit'
+import { Route as AuthenticatedBinanceWalletHealthRouteImport } from './routes/_authenticated/binance-wallet-health'
+import { Route as AuthenticatedCockpitRealRouteImport } from './routes/_authenticated/cockpit-real'
+import { Route as AuthenticatedCommitteeRouteImport } from './routes/_authenticated/committee'
+import { Route as AuthenticatedCouncilRouteImport } from './routes/_authenticated/council'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedGovernanceRouteImport } from './routes/_authenticated/governance'
+import { Route as AuthenticatedIncidentsRouteImport } from './routes/_authenticated/incidents'
+import { Route as AuthenticatedIntelligenceRouteImport } from './routes/_authenticated/intelligence'
+import { Route as AuthenticatedKillSwitchRouteImport } from './routes/_authenticated/kill-switch'
+import { Route as AuthenticatedKnowledgeRouteImport } from './routes/_authenticated/knowledge'
+import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
+import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated/logs'
+import { Route as AuthenticatedMetricsRouteImport } from './routes/_authenticated/metrics'
+import { Route as AuthenticatedOperationsRouteImport } from './routes/_authenticated/operations'
+import { Route as AuthenticatedOrdersRouteImport } from './routes/_authenticated/orders'
+import { Route as AuthenticatedPipelineDiagnosticsRouteImport } from './routes/_authenticated/pipeline-diagnostics'
+import { Route as AuthenticatedPostTradeRouteImport } from './routes/_authenticated/post-trade'
+import { Route as AuthenticatedPrdAutorizacoesRouteImport } from './routes/_authenticated/prd-autorizacoes'
+import { Route as AuthenticatedRadarRouteImport } from './routes/_authenticated/radar'
+import { Route as AuthenticatedRankingRouteImport } from './routes/_authenticated/ranking'
+import { Route as AuthenticatedRealDashboardRouteImport } from './routes/_authenticated/real-dashboard'
+import { Route as AuthenticatedRealRiskRouteImport } from './routes/_authenticated/real-risk'
+import { Route as AuthenticatedRecommendationsRouteImport } from './routes/_authenticated/recommendations'
+import { Route as AuthenticatedRegimesRouteImport } from './routes/_authenticated/regimes'
+import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
+import { Route as AuthenticatedRiskRouteImport } from './routes/_authenticated/risk'
+import { Route as AuthenticatedSeasonsRouteImport } from './routes/_authenticated/seasons'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedStrategicMemoryRouteImport } from './routes/_authenticated/strategic-memory'
+import { Route as AuthenticatedStrategyLabRouteImport } from './routes/_authenticated/strategy-lab'
+import { Route as AuthenticatedSupervisorRouteImport } from './routes/_authenticated/supervisor'
+import { Route as AuthenticatedWalletRouteImport } from './routes/_authenticated/wallet'
+import { Route as AuthenticatedWarRoomRouteImport } from './routes/_authenticated/war-room'
 import { Route as AuthenticatedAnalysisAssetIdRouteImport } from './routes/_authenticated/analysis.$assetId'
-import { Route as ApiPublicHooksWeeklyReportRouteImport } from './routes/api/public/hooks/weekly-report'
-import { Route as ApiPublicHooksPipelineTickRouteImport } from './routes/api/public/hooks/pipeline-tick'
-import { Route as ApiPublicHooksHealthRouteImport } from './routes/api/public/hooks/health'
-import { Route as ApiPublicHooksDailyReportRouteImport } from './routes/api/public/hooks/daily-report'
-import { Route as ApiPublicHooksConfidenceRecomputeRouteImport } from './routes/api/public/hooks/confidence-recompute'
-import { Route as ApiPublicHooksB3SimulationTickRouteImport } from './routes/api/public/hooks/b3-simulation-tick'
-import { Route as ApiPublicHooksB3Mt5simTickIngestRouteImport } from './routes/api/public/hooks/b3-mt5sim-tick-ingest'
-import { Route as ApiPublicHooksB3Mt5simTickRouteImport } from './routes/api/public/hooks/b3-mt5sim-tick'
-import { Route as ApiPublicHooksB3Mt5EstadoRealRouteImport } from './routes/api/public/hooks/b3-mt5-estado-real'
-import { Route as ApiPublicHooksB3Mt5CommandsPendingRouteImport } from './routes/api/public/hooks/b3-mt5-commands-pending'
-import { Route as ApiPublicHooksB3Mt5CommandsAckRouteImport } from './routes/api/public/hooks/b3-mt5-commands-ack'
-import { Route as ApiPublicHooksB3GuardiaoSaidaRouteImport } from './routes/api/public/hooks/b3-guardiao-saida'
-import { Route as ApiPublicHooksB3ExportacaoNoturnaRouteImport } from './routes/api/public/hooks/b3-exportacao-noturna'
-import { Route as ApiPublicHooksAutoTickRouteImport } from './routes/api/public/hooks/auto-tick'
+import { Route as AuthenticatedAuditReportIdRouteImport } from './routes/_authenticated/audit.$reportId'
+import { Route as AuthenticatedB3BiRouteImport } from './routes/_authenticated/b3_.bi'
+import { Route as AuthenticatedBacktestIndexRouteImport } from './routes/_authenticated/backtest.index'
+import { Route as AuthenticatedBacktestRunIdRouteImport } from './routes/_authenticated/backtest.$runId'
+import { Route as AuthenticatedBacktestCriteriaRouteImport } from './routes/_authenticated/backtest.criteria'
+import { Route as AuthenticatedBacktestDataRouteImport } from './routes/_authenticated/backtest.data'
+import { Route as AuthenticatedBacktestNewRouteImport } from './routes/_authenticated/backtest.new'
+import { Route as AuthenticatedLibraryExpertIdRouteImport } from './routes/_authenticated/library.$expertId'
+import { Route as AuthenticatedReportsReportIdRouteImport } from './routes/_authenticated/reports.$reportId'
 import { Route as AuthenticatedB3AtivoSymbolRouteImport } from './routes/_authenticated/b3_.ativo.$symbol'
+import { Route as ApiPublicHooksAutoTickRouteImport } from './routes/api/public/hooks/auto-tick'
+import { Route as ApiPublicHooksB3ExportacaoNoturnaRouteImport } from './routes/api/public/hooks/b3-exportacao-noturna'
+import { Route as ApiPublicHooksB3GuardiaoSaidaRouteImport } from './routes/api/public/hooks/b3-guardiao-saida'
+import { Route as ApiPublicHooksB3Mt5CommandsAckRouteImport } from './routes/api/public/hooks/b3-mt5-commands-ack'
+import { Route as ApiPublicHooksB3Mt5CommandsPendingRouteImport } from './routes/api/public/hooks/b3-mt5-commands-pending'
+import { Route as ApiPublicHooksB3Mt5EstadoRealRouteImport } from './routes/api/public/hooks/b3-mt5-estado-real'
+import { Route as ApiPublicHooksB3Mt5simTickRouteImport } from './routes/api/public/hooks/b3-mt5sim-tick'
+import { Route as ApiPublicHooksB3Mt5simTickIngestRouteImport } from './routes/api/public/hooks/b3-mt5sim-tick-ingest'
+import { Route as ApiPublicHooksB3SimulationTickRouteImport } from './routes/api/public/hooks/b3-simulation-tick'
+import { Route as ApiPublicHooksConfidenceRecomputeRouteImport } from './routes/api/public/hooks/confidence-recompute'
+import { Route as ApiPublicHooksDailyReportRouteImport } from './routes/api/public/hooks/daily-report'
+import { Route as ApiPublicHooksHealthRouteImport } from './routes/api/public/hooks/health'
+import { Route as ApiPublicHooksPipelineTickRouteImport } from './routes/api/public/hooks/pipeline-tick'
+import { Route as ApiPublicHooksWeeklyReportRouteImport } from './routes/api/public/hooks/weekly-report'
 
-const AuthRoute = AuthRouteImport.update({
-  id: '/auth',
-  path: '/auth',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedWarRoomRoute = AuthenticatedWarRoomRouteImport.update({
-  id: '/war-room',
-  path: '/war-room',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedWalletRoute = AuthenticatedWalletRouteImport.update({
-  id: '/wallet',
-  path: '/wallet',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedSupervisorRoute = AuthenticatedSupervisorRouteImport.update({
-  id: '/supervisor',
-  path: '/supervisor',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedStrategyLabRoute =
-  AuthenticatedStrategyLabRouteImport.update({
-    id: '/strategy-lab',
-    path: '/strategy-lab',
+const AuthenticatedAgentRankingsRoute =
+  AuthenticatedAgentRankingsRouteImport.update({
+    id: '/agent-rankings',
+    path: '/agent-rankings',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedStrategicMemoryRoute =
-  AuthenticatedStrategicMemoryRouteImport.update({
-    id: '/strategic-memory',
-    path: '/strategic-memory',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
+const AuthenticatedAgentsRoute = AuthenticatedAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedSeasonsRoute = AuthenticatedSeasonsRouteImport.update({
-  id: '/seasons',
-  path: '/seasons',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedRiskRoute = AuthenticatedRiskRouteImport.update({
-  id: '/risk',
-  path: '/risk',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
-  id: '/reports',
-  path: '/reports',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedRegimesRoute = AuthenticatedRegimesRouteImport.update({
-  id: '/regimes',
-  path: '/regimes',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedRecommendationsRoute =
-  AuthenticatedRecommendationsRouteImport.update({
-    id: '/recommendations',
-    path: '/recommendations',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedRealRiskRoute = AuthenticatedRealRiskRouteImport.update({
-  id: '/real-risk',
-  path: '/real-risk',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedRealDashboardRoute =
-  AuthenticatedRealDashboardRouteImport.update({
-    id: '/real-dashboard',
-    path: '/real-dashboard',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedRankingRoute = AuthenticatedRankingRouteImport.update({
-  id: '/ranking',
-  path: '/ranking',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedRadarRoute = AuthenticatedRadarRouteImport.update({
-  id: '/radar',
-  path: '/radar',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedPrdAutorizacoesRoute =
-  AuthenticatedPrdAutorizacoesRouteImport.update({
-    id: '/prd-autorizacoes',
-    path: '/prd-autorizacoes',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedPostTradeRoute = AuthenticatedPostTradeRouteImport.update({
-  id: '/post-trade',
-  path: '/post-trade',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedPipelineDiagnosticsRoute =
-  AuthenticatedPipelineDiagnosticsRouteImport.update({
-    id: '/pipeline-diagnostics',
-    path: '/pipeline-diagnostics',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedOrdersRoute = AuthenticatedOrdersRouteImport.update({
-  id: '/orders',
-  path: '/orders',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedOperationsRoute = AuthenticatedOperationsRouteImport.update({
-  id: '/operations',
-  path: '/operations',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedMetricsRoute = AuthenticatedMetricsRouteImport.update({
-  id: '/metrics',
-  path: '/metrics',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedLogsRoute = AuthenticatedLogsRouteImport.update({
-  id: '/logs',
-  path: '/logs',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
-  id: '/library',
-  path: '/library',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedKnowledgeRoute = AuthenticatedKnowledgeRouteImport.update({
-  id: '/knowledge',
-  path: '/knowledge',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedKillSwitchRoute = AuthenticatedKillSwitchRouteImport.update({
-  id: '/kill-switch',
-  path: '/kill-switch',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedIntelligenceRoute =
-  AuthenticatedIntelligenceRouteImport.update({
-    id: '/intelligence',
-    path: '/intelligence',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedIncidentsRoute = AuthenticatedIncidentsRouteImport.update({
-  id: '/incidents',
-  path: '/incidents',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedGovernanceRoute = AuthenticatedGovernanceRouteImport.update({
-  id: '/governance',
-  path: '/governance',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedCouncilRoute = AuthenticatedCouncilRouteImport.update({
-  id: '/council',
-  path: '/council',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedCommitteeRoute = AuthenticatedCommitteeRouteImport.update({
-  id: '/committee',
-  path: '/committee',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedCockpitRealRoute =
-  AuthenticatedCockpitRealRouteImport.update({
-    id: '/cockpit-real',
-    path: '/cockpit-real',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedBinanceWalletHealthRoute =
-  AuthenticatedBinanceWalletHealthRouteImport.update({
-    id: '/binance-wallet-health',
-    path: '/binance-wallet-health',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedBinanceFeeAuditRoute =
-  AuthenticatedBinanceFeeAuditRouteImport.update({
-    id: '/binance-fee-audit',
-    path: '/binance-fee-audit',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedBinanceBrainRoute =
-  AuthenticatedBinanceBrainRouteImport.update({
-    id: '/binance-brain',
-    path: '/binance-brain',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedBinanceAuditRoute =
-  AuthenticatedBinanceAuditRouteImport.update({
-    id: '/binance-audit',
-    path: '/binance-audit',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedB3WdoRoute = AuthenticatedB3WdoRouteImport.update({
-  id: '/b3-wdo',
-  path: '/b3-wdo',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedB3Vale3Route = AuthenticatedB3Vale3RouteImport.update({
-  id: '/b3-vale3',
-  path: '/b3-vale3',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedB3SimHistoryRoute =
-  AuthenticatedB3SimHistoryRouteImport.update({
-    id: '/b3-sim-history',
-    path: '/b3-sim-history',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedB3ProporcionalRoute =
-  AuthenticatedB3ProporcionalRouteImport.update({
-    id: '/b3-proporcional',
-    path: '/b3-proporcional',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedB3Petr4Route = AuthenticatedB3Petr4RouteImport.update({
-  id: '/b3-petr4',
-  path: '/b3-petr4',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedB3Mt5simRoute = AuthenticatedB3Mt5simRouteImport.update({
-  id: '/b3-mt5sim',
-  path: '/b3-mt5sim',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedB3ListasRoute = AuthenticatedB3ListasRouteImport.update({
-  id: '/b3-listas',
-  path: '/b3-listas',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedB3ExtratoRealRoute =
-  AuthenticatedB3ExtratoRealRouteImport.update({
-    id: '/b3-extrato-real',
-    path: '/b3-extrato-real',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedB3DiagnosticoRoute =
-  AuthenticatedB3DiagnosticoRouteImport.update({
-    id: '/b3-diagnostico',
-    path: '/b3-diagnostico',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedB3CockpitRoute = AuthenticatedB3CockpitRouteImport.update({
-  id: '/b3-cockpit',
-  path: '/b3-cockpit',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedB3CalibracaoRoute =
-  AuthenticatedB3CalibracaoRouteImport.update({
-    id: '/b3-calibracao',
-    path: '/b3-calibracao',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedB3AuditoriaRoute =
-  AuthenticatedB3AuditoriaRouteImport.update({
-    id: '/b3-auditoria',
-    path: '/b3-auditoria',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedB3Route = AuthenticatedB3RouteImport.update({
-  id: '/b3',
-  path: '/b3',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedAutoDashboardRoute =
-  AuthenticatedAutoDashboardRouteImport.update({
-    id: '/auto-dashboard',
-    path: '/auto-dashboard',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAuditRoute = AuthenticatedAuditRouteImport.update({
-  id: '/audit',
-  path: '/audit',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedAssetsRoute = AuthenticatedAssetsRouteImport.update({
-  id: '/assets',
-  path: '/assets',
+const AuthenticatedAlertsRoute = AuthenticatedAlertsRouteImport.update({
+  id: '/alerts',
+  path: '/alerts',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedApprovalDeskRoute =
@@ -393,56 +130,306 @@ const AuthenticatedApprovalDeskRoute =
     path: '/approval-desk',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedAlertsRoute = AuthenticatedAlertsRouteImport.update({
-  id: '/alerts',
-  path: '/alerts',
+const AuthenticatedAssetsRoute = AuthenticatedAssetsRouteImport.update({
+  id: '/assets',
+  path: '/assets',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedAgentsRoute = AuthenticatedAgentsRouteImport.update({
-  id: '/agents',
-  path: '/agents',
+const AuthenticatedAuditRoute = AuthenticatedAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedAgentRankingsRoute =
-  AuthenticatedAgentRankingsRouteImport.update({
-    id: '/agent-rankings',
-    path: '/agent-rankings',
+const AuthenticatedAutoDashboardRoute =
+  AuthenticatedAutoDashboardRouteImport.update({
+    id: '/auto-dashboard',
+    path: '/auto-dashboard',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedB3Route = AuthenticatedB3RouteImport.update({
+  id: '/b3',
+  path: '/b3',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedB3AuditoriaRoute =
+  AuthenticatedB3AuditoriaRouteImport.update({
+    id: '/b3-auditoria',
+    path: '/b3-auditoria',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedB3CalibracaoRoute =
+  AuthenticatedB3CalibracaoRouteImport.update({
+    id: '/b3-calibracao',
+    path: '/b3-calibracao',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedB3CockpitRoute = AuthenticatedB3CockpitRouteImport.update({
+  id: '/b3-cockpit',
+  path: '/b3-cockpit',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedB3DiagnosticoRoute =
+  AuthenticatedB3DiagnosticoRouteImport.update({
+    id: '/b3-diagnostico',
+    path: '/b3-diagnostico',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedB3ExtratoRealRoute =
+  AuthenticatedB3ExtratoRealRouteImport.update({
+    id: '/b3-extrato-real',
+    path: '/b3-extrato-real',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedB3ListasRoute = AuthenticatedB3ListasRouteImport.update({
+  id: '/b3-listas',
+  path: '/b3-listas',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedB3Mt5simRoute = AuthenticatedB3Mt5simRouteImport.update({
+  id: '/b3-mt5sim',
+  path: '/b3-mt5sim',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedB3Petr4Route = AuthenticatedB3Petr4RouteImport.update({
+  id: '/b3-petr4',
+  path: '/b3-petr4',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedB3ProporcionalRoute =
+  AuthenticatedB3ProporcionalRouteImport.update({
+    id: '/b3-proporcional',
+    path: '/b3-proporcional',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedB3SimHistoryRoute =
+  AuthenticatedB3SimHistoryRouteImport.update({
+    id: '/b3-sim-history',
+    path: '/b3-sim-history',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedB3Vale3Route = AuthenticatedB3Vale3RouteImport.update({
+  id: '/b3-vale3',
+  path: '/b3-vale3',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedB3WdoRoute = AuthenticatedB3WdoRouteImport.update({
+  id: '/b3-wdo',
+  path: '/b3-wdo',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedBinanceAuditRoute =
+  AuthenticatedBinanceAuditRouteImport.update({
+    id: '/binance-audit',
+    path: '/binance-audit',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedBinanceBrainRoute =
+  AuthenticatedBinanceBrainRouteImport.update({
+    id: '/binance-brain',
+    path: '/binance-brain',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedBinanceFeeAuditRoute =
+  AuthenticatedBinanceFeeAuditRouteImport.update({
+    id: '/binance-fee-audit',
+    path: '/binance-fee-audit',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedBinanceWalletHealthRoute =
+  AuthenticatedBinanceWalletHealthRouteImport.update({
+    id: '/binance-wallet-health',
+    path: '/binance-wallet-health',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedCockpitRealRoute =
+  AuthenticatedCockpitRealRouteImport.update({
+    id: '/cockpit-real',
+    path: '/cockpit-real',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedCommitteeRoute = AuthenticatedCommitteeRouteImport.update({
+  id: '/committee',
+  path: '/committee',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCouncilRoute = AuthenticatedCouncilRouteImport.update({
+  id: '/council',
+  path: '/council',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedGovernanceRoute = AuthenticatedGovernanceRouteImport.update({
+  id: '/governance',
+  path: '/governance',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedIncidentsRoute = AuthenticatedIncidentsRouteImport.update({
+  id: '/incidents',
+  path: '/incidents',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedIntelligenceRoute =
+  AuthenticatedIntelligenceRouteImport.update({
+    id: '/intelligence',
+    path: '/intelligence',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedKillSwitchRoute = AuthenticatedKillSwitchRouteImport.update({
+  id: '/kill-switch',
+  path: '/kill-switch',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedKnowledgeRoute = AuthenticatedKnowledgeRouteImport.update({
+  id: '/knowledge',
+  path: '/knowledge',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
+  id: '/library',
+  path: '/library',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedLogsRoute = AuthenticatedLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMetricsRoute = AuthenticatedMetricsRouteImport.update({
+  id: '/metrics',
+  path: '/metrics',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedOperationsRoute = AuthenticatedOperationsRouteImport.update({
+  id: '/operations',
+  path: '/operations',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedOrdersRoute = AuthenticatedOrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPipelineDiagnosticsRoute =
+  AuthenticatedPipelineDiagnosticsRouteImport.update({
+    id: '/pipeline-diagnostics',
+    path: '/pipeline-diagnostics',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedPostTradeRoute = AuthenticatedPostTradeRouteImport.update({
+  id: '/post-trade',
+  path: '/post-trade',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPrdAutorizacoesRoute =
+  AuthenticatedPrdAutorizacoesRouteImport.update({
+    id: '/prd-autorizacoes',
+    path: '/prd-autorizacoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRadarRoute = AuthenticatedRadarRouteImport.update({
+  id: '/radar',
+  path: '/radar',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedRankingRoute = AuthenticatedRankingRouteImport.update({
+  id: '/ranking',
+  path: '/ranking',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedRealDashboardRoute =
+  AuthenticatedRealDashboardRouteImport.update({
+    id: '/real-dashboard',
+    path: '/real-dashboard',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRealRiskRoute = AuthenticatedRealRiskRouteImport.update({
+  id: '/real-risk',
+  path: '/real-risk',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedRecommendationsRoute =
+  AuthenticatedRecommendationsRouteImport.update({
+    id: '/recommendations',
+    path: '/recommendations',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRegimesRoute = AuthenticatedRegimesRouteImport.update({
+  id: '/regimes',
+  path: '/regimes',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedRiskRoute = AuthenticatedRiskRouteImport.update({
+  id: '/risk',
+  path: '/risk',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedSeasonsRoute = AuthenticatedSeasonsRouteImport.update({
+  id: '/seasons',
+  path: '/seasons',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedStrategicMemoryRoute =
+  AuthenticatedStrategicMemoryRouteImport.update({
+    id: '/strategic-memory',
+    path: '/strategic-memory',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedStrategyLabRoute =
+  AuthenticatedStrategyLabRouteImport.update({
+    id: '/strategy-lab',
+    path: '/strategy-lab',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSupervisorRoute = AuthenticatedSupervisorRouteImport.update({
+  id: '/supervisor',
+  path: '/supervisor',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedWalletRoute = AuthenticatedWalletRouteImport.update({
+  id: '/wallet',
+  path: '/wallet',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedWarRoomRoute = AuthenticatedWarRoomRouteImport.update({
+  id: '/war-room',
+  path: '/war-room',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAnalysisAssetIdRoute =
+  AuthenticatedAnalysisAssetIdRouteImport.update({
+    id: '/analysis/$assetId',
+    path: '/analysis/$assetId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAuditReportIdRoute =
+  AuthenticatedAuditReportIdRouteImport.update({
+    id: '/$reportId',
+    path: '/$reportId',
+    getParentRoute: () => AuthenticatedAuditRoute,
+  } as any)
+const AuthenticatedB3BiRoute = AuthenticatedB3BiRouteImport.update({
+  id: '/b3_/bi',
+  path: '/b3/bi',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedBacktestIndexRoute =
   AuthenticatedBacktestIndexRouteImport.update({
     id: '/backtest/',
     path: '/backtest/',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedReportsReportIdRoute =
-  AuthenticatedReportsReportIdRouteImport.update({
-    id: '/$reportId',
-    path: '/$reportId',
-    getParentRoute: () => AuthenticatedReportsRoute,
-  } as any)
-const AuthenticatedLibraryExpertIdRoute =
-  AuthenticatedLibraryExpertIdRouteImport.update({
-    id: '/$expertId',
-    path: '/$expertId',
-    getParentRoute: () => AuthenticatedLibraryRoute,
-  } as any)
-const AuthenticatedBacktestNewRoute =
-  AuthenticatedBacktestNewRouteImport.update({
-    id: '/backtest/new',
-    path: '/backtest/new',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedBacktestDataRoute =
-  AuthenticatedBacktestDataRouteImport.update({
-    id: '/backtest/data',
-    path: '/backtest/data',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedBacktestCriteriaRoute =
-  AuthenticatedBacktestCriteriaRouteImport.update({
-    id: '/backtest/criteria',
-    path: '/backtest/criteria',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedBacktestRunIdRoute =
@@ -451,86 +438,51 @@ const AuthenticatedBacktestRunIdRoute =
     path: '/backtest/$runId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedB3BiRoute = AuthenticatedB3BiRouteImport.update({
-  id: '/b3_/bi',
-  path: '/b3/bi',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedAuditReportIdRoute =
-  AuthenticatedAuditReportIdRouteImport.update({
-    id: '/$reportId',
-    path: '/$reportId',
-    getParentRoute: () => AuthenticatedAuditRoute,
-  } as any)
-const AuthenticatedAnalysisAssetIdRoute =
-  AuthenticatedAnalysisAssetIdRouteImport.update({
-    id: '/analysis/$assetId',
-    path: '/analysis/$assetId',
+const AuthenticatedBacktestCriteriaRoute =
+  AuthenticatedBacktestCriteriaRouteImport.update({
+    id: '/backtest/criteria',
+    path: '/backtest/criteria',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const ApiPublicHooksWeeklyReportRoute =
-  ApiPublicHooksWeeklyReportRouteImport.update({
-    id: '/api/public/hooks/weekly-report',
-    path: '/api/public/hooks/weekly-report',
-    getParentRoute: () => rootRouteImport,
+const AuthenticatedBacktestDataRoute =
+  AuthenticatedBacktestDataRouteImport.update({
+    id: '/backtest/data',
+    path: '/backtest/data',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const ApiPublicHooksPipelineTickRoute =
-  ApiPublicHooksPipelineTickRouteImport.update({
-    id: '/api/public/hooks/pipeline-tick',
-    path: '/api/public/hooks/pipeline-tick',
-    getParentRoute: () => rootRouteImport,
+const AuthenticatedBacktestNewRoute =
+  AuthenticatedBacktestNewRouteImport.update({
+    id: '/backtest/new',
+    path: '/backtest/new',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const ApiPublicHooksHealthRoute = ApiPublicHooksHealthRouteImport.update({
-  id: '/api/public/hooks/health',
-  path: '/api/public/hooks/health',
+const AuthenticatedLibraryExpertIdRoute =
+  AuthenticatedLibraryExpertIdRouteImport.update({
+    id: '/$expertId',
+    path: '/$expertId',
+    getParentRoute: () => AuthenticatedLibraryRoute,
+  } as any)
+const AuthenticatedReportsReportIdRoute =
+  AuthenticatedReportsReportIdRouteImport.update({
+    id: '/$reportId',
+    path: '/$reportId',
+    getParentRoute: () => AuthenticatedReportsRoute,
+  } as any)
+const AuthenticatedB3AtivoSymbolRoute =
+  AuthenticatedB3AtivoSymbolRouteImport.update({
+    id: '/b3_/ativo/$symbol',
+    path: '/b3/ativo/$symbol',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const ApiPublicHooksAutoTickRoute = ApiPublicHooksAutoTickRouteImport.update({
+  id: '/api/public/hooks/auto-tick',
+  path: '/api/public/hooks/auto-tick',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicHooksDailyReportRoute =
-  ApiPublicHooksDailyReportRouteImport.update({
-    id: '/api/public/hooks/daily-report',
-    path: '/api/public/hooks/daily-report',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicHooksConfidenceRecomputeRoute =
-  ApiPublicHooksConfidenceRecomputeRouteImport.update({
-    id: '/api/public/hooks/confidence-recompute',
-    path: '/api/public/hooks/confidence-recompute',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicHooksB3SimulationTickRoute =
-  ApiPublicHooksB3SimulationTickRouteImport.update({
-    id: '/api/public/hooks/b3-simulation-tick',
-    path: '/api/public/hooks/b3-simulation-tick',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicHooksB3Mt5simTickIngestRoute =
-  ApiPublicHooksB3Mt5simTickIngestRouteImport.update({
-    id: '/api/public/hooks/b3-mt5sim-tick-ingest',
-    path: '/api/public/hooks/b3-mt5sim-tick-ingest',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicHooksB3Mt5simTickRoute =
-  ApiPublicHooksB3Mt5simTickRouteImport.update({
-    id: '/api/public/hooks/b3-mt5sim-tick',
-    path: '/api/public/hooks/b3-mt5sim-tick',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicHooksB3Mt5EstadoRealRoute =
-  ApiPublicHooksB3Mt5EstadoRealRouteImport.update({
-    id: '/api/public/hooks/b3-mt5-estado-real',
-    path: '/api/public/hooks/b3-mt5-estado-real',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicHooksB3Mt5CommandsPendingRoute =
-  ApiPublicHooksB3Mt5CommandsPendingRouteImport.update({
-    id: '/api/public/hooks/b3-mt5-commands-pending',
-    path: '/api/public/hooks/b3-mt5-commands-pending',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicHooksB3Mt5CommandsAckRoute =
-  ApiPublicHooksB3Mt5CommandsAckRouteImport.update({
-    id: '/api/public/hooks/b3-mt5-commands-ack',
-    path: '/api/public/hooks/b3-mt5-commands-ack',
+const ApiPublicHooksB3ExportacaoNoturnaRoute =
+  ApiPublicHooksB3ExportacaoNoturnaRouteImport.update({
+    id: '/api/public/hooks/b3-exportacao-noturna',
+    path: '/api/public/hooks/b3-exportacao-noturna',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicHooksB3GuardiaoSaidaRoute =
@@ -539,22 +491,70 @@ const ApiPublicHooksB3GuardiaoSaidaRoute =
     path: '/api/public/hooks/b3-guardiao-saida',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicHooksB3ExportacaoNoturnaRoute =
-  ApiPublicHooksB3ExportacaoNoturnaRouteImport.update({
-    id: '/api/public/hooks/b3-exportacao-noturna',
-    path: '/api/public/hooks/b3-exportacao-noturna',
+const ApiPublicHooksB3Mt5CommandsAckRoute =
+  ApiPublicHooksB3Mt5CommandsAckRouteImport.update({
+    id: '/api/public/hooks/b3-mt5-commands-ack',
+    path: '/api/public/hooks/b3-mt5-commands-ack',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicHooksAutoTickRoute = ApiPublicHooksAutoTickRouteImport.update({
-  id: '/api/public/hooks/auto-tick',
-  path: '/api/public/hooks/auto-tick',
+const ApiPublicHooksB3Mt5CommandsPendingRoute =
+  ApiPublicHooksB3Mt5CommandsPendingRouteImport.update({
+    id: '/api/public/hooks/b3-mt5-commands-pending',
+    path: '/api/public/hooks/b3-mt5-commands-pending',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksB3Mt5EstadoRealRoute =
+  ApiPublicHooksB3Mt5EstadoRealRouteImport.update({
+    id: '/api/public/hooks/b3-mt5-estado-real',
+    path: '/api/public/hooks/b3-mt5-estado-real',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksB3Mt5simTickRoute =
+  ApiPublicHooksB3Mt5simTickRouteImport.update({
+    id: '/api/public/hooks/b3-mt5sim-tick',
+    path: '/api/public/hooks/b3-mt5sim-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksB3Mt5simTickIngestRoute =
+  ApiPublicHooksB3Mt5simTickIngestRouteImport.update({
+    id: '/api/public/hooks/b3-mt5sim-tick-ingest',
+    path: '/api/public/hooks/b3-mt5sim-tick-ingest',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksB3SimulationTickRoute =
+  ApiPublicHooksB3SimulationTickRouteImport.update({
+    id: '/api/public/hooks/b3-simulation-tick',
+    path: '/api/public/hooks/b3-simulation-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksConfidenceRecomputeRoute =
+  ApiPublicHooksConfidenceRecomputeRouteImport.update({
+    id: '/api/public/hooks/confidence-recompute',
+    path: '/api/public/hooks/confidence-recompute',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksDailyReportRoute =
+  ApiPublicHooksDailyReportRouteImport.update({
+    id: '/api/public/hooks/daily-report',
+    path: '/api/public/hooks/daily-report',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksHealthRoute = ApiPublicHooksHealthRouteImport.update({
+  id: '/api/public/hooks/health',
+  path: '/api/public/hooks/health',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedB3AtivoSymbolRoute =
-  AuthenticatedB3AtivoSymbolRouteImport.update({
-    id: '/b3_/ativo/$symbol',
-    path: '/b3/ativo/$symbol',
-    getParentRoute: () => AuthenticatedRouteRoute,
+const ApiPublicHooksPipelineTickRoute =
+  ApiPublicHooksPipelineTickRouteImport.update({
+    id: '/api/public/hooks/pipeline-tick',
+    path: '/api/public/hooks/pipeline-tick',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksWeeklyReportRoute =
+  ApiPublicHooksWeeklyReportRouteImport.update({
+    id: '/api/public/hooks/weekly-report',
+    path: '/api/public/hooks/weekly-report',
+    getParentRoute: () => rootRouteImport,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -1095,11 +1095,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -1109,389 +1109,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/war-room': {
-      id: '/_authenticated/war-room'
-      path: '/war-room'
-      fullPath: '/war-room'
-      preLoaderRoute: typeof AuthenticatedWarRoomRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/wallet': {
-      id: '/_authenticated/wallet'
-      path: '/wallet'
-      fullPath: '/wallet'
-      preLoaderRoute: typeof AuthenticatedWalletRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/supervisor': {
-      id: '/_authenticated/supervisor'
-      path: '/supervisor'
-      fullPath: '/supervisor'
-      preLoaderRoute: typeof AuthenticatedSupervisorRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/strategy-lab': {
-      id: '/_authenticated/strategy-lab'
-      path: '/strategy-lab'
-      fullPath: '/strategy-lab'
-      preLoaderRoute: typeof AuthenticatedStrategyLabRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/strategic-memory': {
-      id: '/_authenticated/strategic-memory'
-      path: '/strategic-memory'
-      fullPath: '/strategic-memory'
-      preLoaderRoute: typeof AuthenticatedStrategicMemoryRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/settings': {
-      id: '/_authenticated/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/seasons': {
-      id: '/_authenticated/seasons'
-      path: '/seasons'
-      fullPath: '/seasons'
-      preLoaderRoute: typeof AuthenticatedSeasonsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/risk': {
-      id: '/_authenticated/risk'
-      path: '/risk'
-      fullPath: '/risk'
-      preLoaderRoute: typeof AuthenticatedRiskRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/reports': {
-      id: '/_authenticated/reports'
-      path: '/reports'
-      fullPath: '/reports'
-      preLoaderRoute: typeof AuthenticatedReportsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/regimes': {
-      id: '/_authenticated/regimes'
-      path: '/regimes'
-      fullPath: '/regimes'
-      preLoaderRoute: typeof AuthenticatedRegimesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/recommendations': {
-      id: '/_authenticated/recommendations'
-      path: '/recommendations'
-      fullPath: '/recommendations'
-      preLoaderRoute: typeof AuthenticatedRecommendationsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/real-risk': {
-      id: '/_authenticated/real-risk'
-      path: '/real-risk'
-      fullPath: '/real-risk'
-      preLoaderRoute: typeof AuthenticatedRealRiskRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/real-dashboard': {
-      id: '/_authenticated/real-dashboard'
-      path: '/real-dashboard'
-      fullPath: '/real-dashboard'
-      preLoaderRoute: typeof AuthenticatedRealDashboardRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/ranking': {
-      id: '/_authenticated/ranking'
-      path: '/ranking'
-      fullPath: '/ranking'
-      preLoaderRoute: typeof AuthenticatedRankingRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/radar': {
-      id: '/_authenticated/radar'
-      path: '/radar'
-      fullPath: '/radar'
-      preLoaderRoute: typeof AuthenticatedRadarRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/prd-autorizacoes': {
-      id: '/_authenticated/prd-autorizacoes'
-      path: '/prd-autorizacoes'
-      fullPath: '/prd-autorizacoes'
-      preLoaderRoute: typeof AuthenticatedPrdAutorizacoesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/post-trade': {
-      id: '/_authenticated/post-trade'
-      path: '/post-trade'
-      fullPath: '/post-trade'
-      preLoaderRoute: typeof AuthenticatedPostTradeRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/pipeline-diagnostics': {
-      id: '/_authenticated/pipeline-diagnostics'
-      path: '/pipeline-diagnostics'
-      fullPath: '/pipeline-diagnostics'
-      preLoaderRoute: typeof AuthenticatedPipelineDiagnosticsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/orders': {
-      id: '/_authenticated/orders'
-      path: '/orders'
-      fullPath: '/orders'
-      preLoaderRoute: typeof AuthenticatedOrdersRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/operations': {
-      id: '/_authenticated/operations'
-      path: '/operations'
-      fullPath: '/operations'
-      preLoaderRoute: typeof AuthenticatedOperationsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/metrics': {
-      id: '/_authenticated/metrics'
-      path: '/metrics'
-      fullPath: '/metrics'
-      preLoaderRoute: typeof AuthenticatedMetricsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/logs': {
-      id: '/_authenticated/logs'
-      path: '/logs'
-      fullPath: '/logs'
-      preLoaderRoute: typeof AuthenticatedLogsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/library': {
-      id: '/_authenticated/library'
-      path: '/library'
-      fullPath: '/library'
-      preLoaderRoute: typeof AuthenticatedLibraryRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/knowledge': {
-      id: '/_authenticated/knowledge'
-      path: '/knowledge'
-      fullPath: '/knowledge'
-      preLoaderRoute: typeof AuthenticatedKnowledgeRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/kill-switch': {
-      id: '/_authenticated/kill-switch'
-      path: '/kill-switch'
-      fullPath: '/kill-switch'
-      preLoaderRoute: typeof AuthenticatedKillSwitchRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/intelligence': {
-      id: '/_authenticated/intelligence'
-      path: '/intelligence'
-      fullPath: '/intelligence'
-      preLoaderRoute: typeof AuthenticatedIntelligenceRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/incidents': {
-      id: '/_authenticated/incidents'
-      path: '/incidents'
-      fullPath: '/incidents'
-      preLoaderRoute: typeof AuthenticatedIncidentsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/governance': {
-      id: '/_authenticated/governance'
-      path: '/governance'
-      fullPath: '/governance'
-      preLoaderRoute: typeof AuthenticatedGovernanceRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/dashboard': {
-      id: '/_authenticated/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/council': {
-      id: '/_authenticated/council'
-      path: '/council'
-      fullPath: '/council'
-      preLoaderRoute: typeof AuthenticatedCouncilRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/committee': {
-      id: '/_authenticated/committee'
-      path: '/committee'
-      fullPath: '/committee'
-      preLoaderRoute: typeof AuthenticatedCommitteeRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/cockpit-real': {
-      id: '/_authenticated/cockpit-real'
-      path: '/cockpit-real'
-      fullPath: '/cockpit-real'
-      preLoaderRoute: typeof AuthenticatedCockpitRealRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/binance-wallet-health': {
-      id: '/_authenticated/binance-wallet-health'
-      path: '/binance-wallet-health'
-      fullPath: '/binance-wallet-health'
-      preLoaderRoute: typeof AuthenticatedBinanceWalletHealthRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/binance-fee-audit': {
-      id: '/_authenticated/binance-fee-audit'
-      path: '/binance-fee-audit'
-      fullPath: '/binance-fee-audit'
-      preLoaderRoute: typeof AuthenticatedBinanceFeeAuditRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/binance-brain': {
-      id: '/_authenticated/binance-brain'
-      path: '/binance-brain'
-      fullPath: '/binance-brain'
-      preLoaderRoute: typeof AuthenticatedBinanceBrainRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/binance-audit': {
-      id: '/_authenticated/binance-audit'
-      path: '/binance-audit'
-      fullPath: '/binance-audit'
-      preLoaderRoute: typeof AuthenticatedBinanceAuditRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-wdo': {
-      id: '/_authenticated/b3-wdo'
-      path: '/b3-wdo'
-      fullPath: '/b3-wdo'
-      preLoaderRoute: typeof AuthenticatedB3WdoRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-vale3': {
-      id: '/_authenticated/b3-vale3'
-      path: '/b3-vale3'
-      fullPath: '/b3-vale3'
-      preLoaderRoute: typeof AuthenticatedB3Vale3RouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-sim-history': {
-      id: '/_authenticated/b3-sim-history'
-      path: '/b3-sim-history'
-      fullPath: '/b3-sim-history'
-      preLoaderRoute: typeof AuthenticatedB3SimHistoryRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-proporcional': {
-      id: '/_authenticated/b3-proporcional'
-      path: '/b3-proporcional'
-      fullPath: '/b3-proporcional'
-      preLoaderRoute: typeof AuthenticatedB3ProporcionalRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-petr4': {
-      id: '/_authenticated/b3-petr4'
-      path: '/b3-petr4'
-      fullPath: '/b3-petr4'
-      preLoaderRoute: typeof AuthenticatedB3Petr4RouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-mt5sim': {
-      id: '/_authenticated/b3-mt5sim'
-      path: '/b3-mt5sim'
-      fullPath: '/b3-mt5sim'
-      preLoaderRoute: typeof AuthenticatedB3Mt5simRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-listas': {
-      id: '/_authenticated/b3-listas'
-      path: '/b3-listas'
-      fullPath: '/b3-listas'
-      preLoaderRoute: typeof AuthenticatedB3ListasRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-extrato-real': {
-      id: '/_authenticated/b3-extrato-real'
-      path: '/b3-extrato-real'
-      fullPath: '/b3-extrato-real'
-      preLoaderRoute: typeof AuthenticatedB3ExtratoRealRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-diagnostico': {
-      id: '/_authenticated/b3-diagnostico'
-      path: '/b3-diagnostico'
-      fullPath: '/b3-diagnostico'
-      preLoaderRoute: typeof AuthenticatedB3DiagnosticoRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-cockpit': {
-      id: '/_authenticated/b3-cockpit'
-      path: '/b3-cockpit'
-      fullPath: '/b3-cockpit'
-      preLoaderRoute: typeof AuthenticatedB3CockpitRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-calibracao': {
-      id: '/_authenticated/b3-calibracao'
-      path: '/b3-calibracao'
-      fullPath: '/b3-calibracao'
-      preLoaderRoute: typeof AuthenticatedB3CalibracaoRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3-auditoria': {
-      id: '/_authenticated/b3-auditoria'
-      path: '/b3-auditoria'
-      fullPath: '/b3-auditoria'
-      preLoaderRoute: typeof AuthenticatedB3AuditoriaRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/b3': {
-      id: '/_authenticated/b3'
-      path: '/b3'
-      fullPath: '/b3'
-      preLoaderRoute: typeof AuthenticatedB3RouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/auto-dashboard': {
-      id: '/_authenticated/auto-dashboard'
-      path: '/auto-dashboard'
-      fullPath: '/auto-dashboard'
-      preLoaderRoute: typeof AuthenticatedAutoDashboardRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/audit': {
-      id: '/_authenticated/audit'
-      path: '/audit'
-      fullPath: '/audit'
-      preLoaderRoute: typeof AuthenticatedAuditRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/assets': {
-      id: '/_authenticated/assets'
-      path: '/assets'
-      fullPath: '/assets'
-      preLoaderRoute: typeof AuthenticatedAssetsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/approval-desk': {
-      id: '/_authenticated/approval-desk'
-      path: '/approval-desk'
-      fullPath: '/approval-desk'
-      preLoaderRoute: typeof AuthenticatedApprovalDeskRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/alerts': {
-      id: '/_authenticated/alerts'
-      path: '/alerts'
-      fullPath: '/alerts'
-      preLoaderRoute: typeof AuthenticatedAlertsRouteImport
+    '/_authenticated/agent-rankings': {
+      id: '/_authenticated/agent-rankings'
+      path: '/agent-rankings'
+      fullPath: '/agent-rankings'
+      preLoaderRoute: typeof AuthenticatedAgentRankingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/agents': {
@@ -1501,67 +1130,389 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAgentsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/agent-rankings': {
-      id: '/_authenticated/agent-rankings'
-      path: '/agent-rankings'
-      fullPath: '/agent-rankings'
-      preLoaderRoute: typeof AuthenticatedAgentRankingsRouteImport
+    '/_authenticated/alerts': {
+      id: '/_authenticated/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AuthenticatedAlertsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/backtest/': {
-      id: '/_authenticated/backtest/'
-      path: '/backtest'
-      fullPath: '/backtest/'
-      preLoaderRoute: typeof AuthenticatedBacktestIndexRouteImport
+    '/_authenticated/approval-desk': {
+      id: '/_authenticated/approval-desk'
+      path: '/approval-desk'
+      fullPath: '/approval-desk'
+      preLoaderRoute: typeof AuthenticatedApprovalDeskRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/reports/$reportId': {
-      id: '/_authenticated/reports/$reportId'
-      path: '/$reportId'
-      fullPath: '/reports/$reportId'
-      preLoaderRoute: typeof AuthenticatedReportsReportIdRouteImport
-      parentRoute: typeof AuthenticatedReportsRoute
-    }
-    '/_authenticated/library/$expertId': {
-      id: '/_authenticated/library/$expertId'
-      path: '/$expertId'
-      fullPath: '/library/$expertId'
-      preLoaderRoute: typeof AuthenticatedLibraryExpertIdRouteImport
-      parentRoute: typeof AuthenticatedLibraryRoute
-    }
-    '/_authenticated/backtest/new': {
-      id: '/_authenticated/backtest/new'
-      path: '/backtest/new'
-      fullPath: '/backtest/new'
-      preLoaderRoute: typeof AuthenticatedBacktestNewRouteImport
+    '/_authenticated/assets': {
+      id: '/_authenticated/assets'
+      path: '/assets'
+      fullPath: '/assets'
+      preLoaderRoute: typeof AuthenticatedAssetsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/backtest/data': {
-      id: '/_authenticated/backtest/data'
-      path: '/backtest/data'
-      fullPath: '/backtest/data'
-      preLoaderRoute: typeof AuthenticatedBacktestDataRouteImport
+    '/_authenticated/audit': {
+      id: '/_authenticated/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AuthenticatedAuditRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/backtest/criteria': {
-      id: '/_authenticated/backtest/criteria'
-      path: '/backtest/criteria'
-      fullPath: '/backtest/criteria'
-      preLoaderRoute: typeof AuthenticatedBacktestCriteriaRouteImport
+    '/_authenticated/auto-dashboard': {
+      id: '/_authenticated/auto-dashboard'
+      path: '/auto-dashboard'
+      fullPath: '/auto-dashboard'
+      preLoaderRoute: typeof AuthenticatedAutoDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/backtest/$runId': {
-      id: '/_authenticated/backtest/$runId'
-      path: '/backtest/$runId'
-      fullPath: '/backtest/$runId'
-      preLoaderRoute: typeof AuthenticatedBacktestRunIdRouteImport
+    '/_authenticated/b3': {
+      id: '/_authenticated/b3'
+      path: '/b3'
+      fullPath: '/b3'
+      preLoaderRoute: typeof AuthenticatedB3RouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/b3_/bi': {
-      id: '/_authenticated/b3_/bi'
-      path: '/b3/bi'
-      fullPath: '/b3/bi'
-      preLoaderRoute: typeof AuthenticatedB3BiRouteImport
+    '/_authenticated/b3-auditoria': {
+      id: '/_authenticated/b3-auditoria'
+      path: '/b3-auditoria'
+      fullPath: '/b3-auditoria'
+      preLoaderRoute: typeof AuthenticatedB3AuditoriaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-calibracao': {
+      id: '/_authenticated/b3-calibracao'
+      path: '/b3-calibracao'
+      fullPath: '/b3-calibracao'
+      preLoaderRoute: typeof AuthenticatedB3CalibracaoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-cockpit': {
+      id: '/_authenticated/b3-cockpit'
+      path: '/b3-cockpit'
+      fullPath: '/b3-cockpit'
+      preLoaderRoute: typeof AuthenticatedB3CockpitRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-diagnostico': {
+      id: '/_authenticated/b3-diagnostico'
+      path: '/b3-diagnostico'
+      fullPath: '/b3-diagnostico'
+      preLoaderRoute: typeof AuthenticatedB3DiagnosticoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-extrato-real': {
+      id: '/_authenticated/b3-extrato-real'
+      path: '/b3-extrato-real'
+      fullPath: '/b3-extrato-real'
+      preLoaderRoute: typeof AuthenticatedB3ExtratoRealRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-listas': {
+      id: '/_authenticated/b3-listas'
+      path: '/b3-listas'
+      fullPath: '/b3-listas'
+      preLoaderRoute: typeof AuthenticatedB3ListasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-mt5sim': {
+      id: '/_authenticated/b3-mt5sim'
+      path: '/b3-mt5sim'
+      fullPath: '/b3-mt5sim'
+      preLoaderRoute: typeof AuthenticatedB3Mt5simRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-petr4': {
+      id: '/_authenticated/b3-petr4'
+      path: '/b3-petr4'
+      fullPath: '/b3-petr4'
+      preLoaderRoute: typeof AuthenticatedB3Petr4RouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-proporcional': {
+      id: '/_authenticated/b3-proporcional'
+      path: '/b3-proporcional'
+      fullPath: '/b3-proporcional'
+      preLoaderRoute: typeof AuthenticatedB3ProporcionalRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-sim-history': {
+      id: '/_authenticated/b3-sim-history'
+      path: '/b3-sim-history'
+      fullPath: '/b3-sim-history'
+      preLoaderRoute: typeof AuthenticatedB3SimHistoryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-vale3': {
+      id: '/_authenticated/b3-vale3'
+      path: '/b3-vale3'
+      fullPath: '/b3-vale3'
+      preLoaderRoute: typeof AuthenticatedB3Vale3RouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-wdo': {
+      id: '/_authenticated/b3-wdo'
+      path: '/b3-wdo'
+      fullPath: '/b3-wdo'
+      preLoaderRoute: typeof AuthenticatedB3WdoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/binance-audit': {
+      id: '/_authenticated/binance-audit'
+      path: '/binance-audit'
+      fullPath: '/binance-audit'
+      preLoaderRoute: typeof AuthenticatedBinanceAuditRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/binance-brain': {
+      id: '/_authenticated/binance-brain'
+      path: '/binance-brain'
+      fullPath: '/binance-brain'
+      preLoaderRoute: typeof AuthenticatedBinanceBrainRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/binance-fee-audit': {
+      id: '/_authenticated/binance-fee-audit'
+      path: '/binance-fee-audit'
+      fullPath: '/binance-fee-audit'
+      preLoaderRoute: typeof AuthenticatedBinanceFeeAuditRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/binance-wallet-health': {
+      id: '/_authenticated/binance-wallet-health'
+      path: '/binance-wallet-health'
+      fullPath: '/binance-wallet-health'
+      preLoaderRoute: typeof AuthenticatedBinanceWalletHealthRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/cockpit-real': {
+      id: '/_authenticated/cockpit-real'
+      path: '/cockpit-real'
+      fullPath: '/cockpit-real'
+      preLoaderRoute: typeof AuthenticatedCockpitRealRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/committee': {
+      id: '/_authenticated/committee'
+      path: '/committee'
+      fullPath: '/committee'
+      preLoaderRoute: typeof AuthenticatedCommitteeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/council': {
+      id: '/_authenticated/council'
+      path: '/council'
+      fullPath: '/council'
+      preLoaderRoute: typeof AuthenticatedCouncilRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/governance': {
+      id: '/_authenticated/governance'
+      path: '/governance'
+      fullPath: '/governance'
+      preLoaderRoute: typeof AuthenticatedGovernanceRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/incidents': {
+      id: '/_authenticated/incidents'
+      path: '/incidents'
+      fullPath: '/incidents'
+      preLoaderRoute: typeof AuthenticatedIncidentsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/intelligence': {
+      id: '/_authenticated/intelligence'
+      path: '/intelligence'
+      fullPath: '/intelligence'
+      preLoaderRoute: typeof AuthenticatedIntelligenceRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/kill-switch': {
+      id: '/_authenticated/kill-switch'
+      path: '/kill-switch'
+      fullPath: '/kill-switch'
+      preLoaderRoute: typeof AuthenticatedKillSwitchRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/knowledge': {
+      id: '/_authenticated/knowledge'
+      path: '/knowledge'
+      fullPath: '/knowledge'
+      preLoaderRoute: typeof AuthenticatedKnowledgeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/library': {
+      id: '/_authenticated/library'
+      path: '/library'
+      fullPath: '/library'
+      preLoaderRoute: typeof AuthenticatedLibraryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/logs': {
+      id: '/_authenticated/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof AuthenticatedLogsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/metrics': {
+      id: '/_authenticated/metrics'
+      path: '/metrics'
+      fullPath: '/metrics'
+      preLoaderRoute: typeof AuthenticatedMetricsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/operations': {
+      id: '/_authenticated/operations'
+      path: '/operations'
+      fullPath: '/operations'
+      preLoaderRoute: typeof AuthenticatedOperationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/orders': {
+      id: '/_authenticated/orders'
+      path: '/orders'
+      fullPath: '/orders'
+      preLoaderRoute: typeof AuthenticatedOrdersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/pipeline-diagnostics': {
+      id: '/_authenticated/pipeline-diagnostics'
+      path: '/pipeline-diagnostics'
+      fullPath: '/pipeline-diagnostics'
+      preLoaderRoute: typeof AuthenticatedPipelineDiagnosticsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/post-trade': {
+      id: '/_authenticated/post-trade'
+      path: '/post-trade'
+      fullPath: '/post-trade'
+      preLoaderRoute: typeof AuthenticatedPostTradeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/prd-autorizacoes': {
+      id: '/_authenticated/prd-autorizacoes'
+      path: '/prd-autorizacoes'
+      fullPath: '/prd-autorizacoes'
+      preLoaderRoute: typeof AuthenticatedPrdAutorizacoesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/radar': {
+      id: '/_authenticated/radar'
+      path: '/radar'
+      fullPath: '/radar'
+      preLoaderRoute: typeof AuthenticatedRadarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/ranking': {
+      id: '/_authenticated/ranking'
+      path: '/ranking'
+      fullPath: '/ranking'
+      preLoaderRoute: typeof AuthenticatedRankingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/real-dashboard': {
+      id: '/_authenticated/real-dashboard'
+      path: '/real-dashboard'
+      fullPath: '/real-dashboard'
+      preLoaderRoute: typeof AuthenticatedRealDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/real-risk': {
+      id: '/_authenticated/real-risk'
+      path: '/real-risk'
+      fullPath: '/real-risk'
+      preLoaderRoute: typeof AuthenticatedRealRiskRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/recommendations': {
+      id: '/_authenticated/recommendations'
+      path: '/recommendations'
+      fullPath: '/recommendations'
+      preLoaderRoute: typeof AuthenticatedRecommendationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/regimes': {
+      id: '/_authenticated/regimes'
+      path: '/regimes'
+      fullPath: '/regimes'
+      preLoaderRoute: typeof AuthenticatedRegimesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/reports': {
+      id: '/_authenticated/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof AuthenticatedReportsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/risk': {
+      id: '/_authenticated/risk'
+      path: '/risk'
+      fullPath: '/risk'
+      preLoaderRoute: typeof AuthenticatedRiskRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/seasons': {
+      id: '/_authenticated/seasons'
+      path: '/seasons'
+      fullPath: '/seasons'
+      preLoaderRoute: typeof AuthenticatedSeasonsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/strategic-memory': {
+      id: '/_authenticated/strategic-memory'
+      path: '/strategic-memory'
+      fullPath: '/strategic-memory'
+      preLoaderRoute: typeof AuthenticatedStrategicMemoryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/strategy-lab': {
+      id: '/_authenticated/strategy-lab'
+      path: '/strategy-lab'
+      fullPath: '/strategy-lab'
+      preLoaderRoute: typeof AuthenticatedStrategyLabRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/supervisor': {
+      id: '/_authenticated/supervisor'
+      path: '/supervisor'
+      fullPath: '/supervisor'
+      preLoaderRoute: typeof AuthenticatedSupervisorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/wallet': {
+      id: '/_authenticated/wallet'
+      path: '/wallet'
+      fullPath: '/wallet'
+      preLoaderRoute: typeof AuthenticatedWalletRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/war-room': {
+      id: '/_authenticated/war-room'
+      path: '/war-room'
+      fullPath: '/war-room'
+      preLoaderRoute: typeof AuthenticatedWarRoomRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/analysis/$assetId': {
+      id: '/_authenticated/analysis/$assetId'
+      path: '/analysis/$assetId'
+      fullPath: '/analysis/$assetId'
+      preLoaderRoute: typeof AuthenticatedAnalysisAssetIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/audit/$reportId': {
@@ -1571,95 +1522,74 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAuditReportIdRouteImport
       parentRoute: typeof AuthenticatedAuditRoute
     }
-    '/_authenticated/analysis/$assetId': {
-      id: '/_authenticated/analysis/$assetId'
-      path: '/analysis/$assetId'
-      fullPath: '/analysis/$assetId'
-      preLoaderRoute: typeof AuthenticatedAnalysisAssetIdRouteImport
+    '/_authenticated/b3_/bi': {
+      id: '/_authenticated/b3_/bi'
+      path: '/b3/bi'
+      fullPath: '/b3/bi'
+      preLoaderRoute: typeof AuthenticatedB3BiRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/hooks/weekly-report': {
-      id: '/api/public/hooks/weekly-report'
-      path: '/api/public/hooks/weekly-report'
-      fullPath: '/api/public/hooks/weekly-report'
-      preLoaderRoute: typeof ApiPublicHooksWeeklyReportRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_authenticated/backtest/': {
+      id: '/_authenticated/backtest/'
+      path: '/backtest'
+      fullPath: '/backtest/'
+      preLoaderRoute: typeof AuthenticatedBacktestIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/hooks/pipeline-tick': {
-      id: '/api/public/hooks/pipeline-tick'
-      path: '/api/public/hooks/pipeline-tick'
-      fullPath: '/api/public/hooks/pipeline-tick'
-      preLoaderRoute: typeof ApiPublicHooksPipelineTickRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_authenticated/backtest/$runId': {
+      id: '/_authenticated/backtest/$runId'
+      path: '/backtest/$runId'
+      fullPath: '/backtest/$runId'
+      preLoaderRoute: typeof AuthenticatedBacktestRunIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/hooks/health': {
-      id: '/api/public/hooks/health'
-      path: '/api/public/hooks/health'
-      fullPath: '/api/public/hooks/health'
-      preLoaderRoute: typeof ApiPublicHooksHealthRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_authenticated/backtest/criteria': {
+      id: '/_authenticated/backtest/criteria'
+      path: '/backtest/criteria'
+      fullPath: '/backtest/criteria'
+      preLoaderRoute: typeof AuthenticatedBacktestCriteriaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/hooks/daily-report': {
-      id: '/api/public/hooks/daily-report'
-      path: '/api/public/hooks/daily-report'
-      fullPath: '/api/public/hooks/daily-report'
-      preLoaderRoute: typeof ApiPublicHooksDailyReportRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_authenticated/backtest/data': {
+      id: '/_authenticated/backtest/data'
+      path: '/backtest/data'
+      fullPath: '/backtest/data'
+      preLoaderRoute: typeof AuthenticatedBacktestDataRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/hooks/confidence-recompute': {
-      id: '/api/public/hooks/confidence-recompute'
-      path: '/api/public/hooks/confidence-recompute'
-      fullPath: '/api/public/hooks/confidence-recompute'
-      preLoaderRoute: typeof ApiPublicHooksConfidenceRecomputeRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_authenticated/backtest/new': {
+      id: '/_authenticated/backtest/new'
+      path: '/backtest/new'
+      fullPath: '/backtest/new'
+      preLoaderRoute: typeof AuthenticatedBacktestNewRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/hooks/b3-simulation-tick': {
-      id: '/api/public/hooks/b3-simulation-tick'
-      path: '/api/public/hooks/b3-simulation-tick'
-      fullPath: '/api/public/hooks/b3-simulation-tick'
-      preLoaderRoute: typeof ApiPublicHooksB3SimulationTickRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_authenticated/library/$expertId': {
+      id: '/_authenticated/library/$expertId'
+      path: '/$expertId'
+      fullPath: '/library/$expertId'
+      preLoaderRoute: typeof AuthenticatedLibraryExpertIdRouteImport
+      parentRoute: typeof AuthenticatedLibraryRoute
     }
-    '/api/public/hooks/b3-mt5sim-tick-ingest': {
-      id: '/api/public/hooks/b3-mt5sim-tick-ingest'
-      path: '/api/public/hooks/b3-mt5sim-tick-ingest'
-      fullPath: '/api/public/hooks/b3-mt5sim-tick-ingest'
-      preLoaderRoute: typeof ApiPublicHooksB3Mt5simTickIngestRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_authenticated/reports/$reportId': {
+      id: '/_authenticated/reports/$reportId'
+      path: '/$reportId'
+      fullPath: '/reports/$reportId'
+      preLoaderRoute: typeof AuthenticatedReportsReportIdRouteImport
+      parentRoute: typeof AuthenticatedReportsRoute
     }
-    '/api/public/hooks/b3-mt5sim-tick': {
-      id: '/api/public/hooks/b3-mt5sim-tick'
-      path: '/api/public/hooks/b3-mt5sim-tick'
-      fullPath: '/api/public/hooks/b3-mt5sim-tick'
-      preLoaderRoute: typeof ApiPublicHooksB3Mt5simTickRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_authenticated/b3_/ativo/$symbol': {
+      id: '/_authenticated/b3_/ativo/$symbol'
+      path: '/b3/ativo/$symbol'
+      fullPath: '/b3/ativo/$symbol'
+      preLoaderRoute: typeof AuthenticatedB3AtivoSymbolRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/hooks/b3-mt5-estado-real': {
-      id: '/api/public/hooks/b3-mt5-estado-real'
-      path: '/api/public/hooks/b3-mt5-estado-real'
-      fullPath: '/api/public/hooks/b3-mt5-estado-real'
-      preLoaderRoute: typeof ApiPublicHooksB3Mt5EstadoRealRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/hooks/b3-mt5-commands-pending': {
-      id: '/api/public/hooks/b3-mt5-commands-pending'
-      path: '/api/public/hooks/b3-mt5-commands-pending'
-      fullPath: '/api/public/hooks/b3-mt5-commands-pending'
-      preLoaderRoute: typeof ApiPublicHooksB3Mt5CommandsPendingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/hooks/b3-mt5-commands-ack': {
-      id: '/api/public/hooks/b3-mt5-commands-ack'
-      path: '/api/public/hooks/b3-mt5-commands-ack'
-      fullPath: '/api/public/hooks/b3-mt5-commands-ack'
-      preLoaderRoute: typeof ApiPublicHooksB3Mt5CommandsAckRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/hooks/b3-guardiao-saida': {
-      id: '/api/public/hooks/b3-guardiao-saida'
-      path: '/api/public/hooks/b3-guardiao-saida'
-      fullPath: '/api/public/hooks/b3-guardiao-saida'
-      preLoaderRoute: typeof ApiPublicHooksB3GuardiaoSaidaRouteImport
+    '/api/public/hooks/auto-tick': {
+      id: '/api/public/hooks/auto-tick'
+      path: '/api/public/hooks/auto-tick'
+      fullPath: '/api/public/hooks/auto-tick'
+      preLoaderRoute: typeof ApiPublicHooksAutoTickRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/hooks/b3-exportacao-noturna': {
@@ -1669,19 +1599,89 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksB3ExportacaoNoturnaRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/hooks/auto-tick': {
-      id: '/api/public/hooks/auto-tick'
-      path: '/api/public/hooks/auto-tick'
-      fullPath: '/api/public/hooks/auto-tick'
-      preLoaderRoute: typeof ApiPublicHooksAutoTickRouteImport
+    '/api/public/hooks/b3-guardiao-saida': {
+      id: '/api/public/hooks/b3-guardiao-saida'
+      path: '/api/public/hooks/b3-guardiao-saida'
+      fullPath: '/api/public/hooks/b3-guardiao-saida'
+      preLoaderRoute: typeof ApiPublicHooksB3GuardiaoSaidaRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/b3_/ativo/$symbol': {
-      id: '/_authenticated/b3_/ativo/$symbol'
-      path: '/b3/ativo/$symbol'
-      fullPath: '/b3/ativo/$symbol'
-      preLoaderRoute: typeof AuthenticatedB3AtivoSymbolRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+    '/api/public/hooks/b3-mt5-commands-ack': {
+      id: '/api/public/hooks/b3-mt5-commands-ack'
+      path: '/api/public/hooks/b3-mt5-commands-ack'
+      fullPath: '/api/public/hooks/b3-mt5-commands-ack'
+      preLoaderRoute: typeof ApiPublicHooksB3Mt5CommandsAckRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/b3-mt5-commands-pending': {
+      id: '/api/public/hooks/b3-mt5-commands-pending'
+      path: '/api/public/hooks/b3-mt5-commands-pending'
+      fullPath: '/api/public/hooks/b3-mt5-commands-pending'
+      preLoaderRoute: typeof ApiPublicHooksB3Mt5CommandsPendingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/b3-mt5-estado-real': {
+      id: '/api/public/hooks/b3-mt5-estado-real'
+      path: '/api/public/hooks/b3-mt5-estado-real'
+      fullPath: '/api/public/hooks/b3-mt5-estado-real'
+      preLoaderRoute: typeof ApiPublicHooksB3Mt5EstadoRealRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/b3-mt5sim-tick': {
+      id: '/api/public/hooks/b3-mt5sim-tick'
+      path: '/api/public/hooks/b3-mt5sim-tick'
+      fullPath: '/api/public/hooks/b3-mt5sim-tick'
+      preLoaderRoute: typeof ApiPublicHooksB3Mt5simTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/b3-mt5sim-tick-ingest': {
+      id: '/api/public/hooks/b3-mt5sim-tick-ingest'
+      path: '/api/public/hooks/b3-mt5sim-tick-ingest'
+      fullPath: '/api/public/hooks/b3-mt5sim-tick-ingest'
+      preLoaderRoute: typeof ApiPublicHooksB3Mt5simTickIngestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/b3-simulation-tick': {
+      id: '/api/public/hooks/b3-simulation-tick'
+      path: '/api/public/hooks/b3-simulation-tick'
+      fullPath: '/api/public/hooks/b3-simulation-tick'
+      preLoaderRoute: typeof ApiPublicHooksB3SimulationTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/confidence-recompute': {
+      id: '/api/public/hooks/confidence-recompute'
+      path: '/api/public/hooks/confidence-recompute'
+      fullPath: '/api/public/hooks/confidence-recompute'
+      preLoaderRoute: typeof ApiPublicHooksConfidenceRecomputeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/daily-report': {
+      id: '/api/public/hooks/daily-report'
+      path: '/api/public/hooks/daily-report'
+      fullPath: '/api/public/hooks/daily-report'
+      preLoaderRoute: typeof ApiPublicHooksDailyReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/health': {
+      id: '/api/public/hooks/health'
+      path: '/api/public/hooks/health'
+      fullPath: '/api/public/hooks/health'
+      preLoaderRoute: typeof ApiPublicHooksHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/pipeline-tick': {
+      id: '/api/public/hooks/pipeline-tick'
+      path: '/api/public/hooks/pipeline-tick'
+      fullPath: '/api/public/hooks/pipeline-tick'
+      preLoaderRoute: typeof ApiPublicHooksPipelineTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/weekly-report': {
+      id: '/api/public/hooks/weekly-report'
+      path: '/api/public/hooks/weekly-report'
+      fullPath: '/api/public/hooks/weekly-report'
+      preLoaderRoute: typeof ApiPublicHooksWeeklyReportRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
