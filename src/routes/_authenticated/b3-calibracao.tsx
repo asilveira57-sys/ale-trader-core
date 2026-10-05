@@ -50,7 +50,8 @@ function CalibracaoPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const selecionadas = linhas.filter((l) => sel.has(l.id) && podeAplicar(l));
+  // Só o que está visível no filtro atual pode ser aplicado.
+  const selecionadas = vis.filter((l) => sel.has(l.id) && podeAplicar(l));
 
   return (
     <div className="space-y-4 p-6">
