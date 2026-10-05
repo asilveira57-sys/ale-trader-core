@@ -1,1 +1,2 @@
 - Calibração do stop diário aplica só em b3_simulation_mode_settings.daily_stop_mult (padrão 3,0; gatilho b3_derivar_limite_diario usa ele); nunca escreve em b3_prd_authorizations — real fica para depois, por decisão do operador.
+- Calibração semanal: mult_atual vem de b3_simulation_mode_settings.daily_stop_mult (robô com valor indeterminado é pulado e logado); nunca gravar sugestão igual ao atual — régua constante gerou ganhos falsos.

@@ -5,7 +5,7 @@ export type CalibLinha = {
   id: string; symbol: string; variant: string; mode: string; apelido: string | null;
   mult_atual: number; mult_sugerido: number; ganho_estimado: number; pregoes: number;
   confiavel: boolean; motivo: string | null; aplicado: boolean; aplicado_em: string | null;
-  tem_config: boolean; mult_vigente: number | null;
+  tem_config: boolean; mult_vigente: number | null; real_autorizado?: boolean;
 };
 
 export const MULT = (v: any) => Number(v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
@@ -32,12 +32,17 @@ export function CalibracaoConfirm({ linhas, open, onOpenChange, onConfirm, pendi
             {linhas.length} {linhas.length === 1 ? "robô vai mudar" : "robôs vão mudar"}. Só o simulado; o real não é tocado. Dá para desfazer depois.
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {(() => { const n = linhas.filter((l) => l.real_autorizado).length; return n > 0 ? (
+          <div className="rounded border border-destructive bg-destructive/10 p-2 text-sm font-semibold text-destructive">
+            Atenção: {n} de {linhas.length} {n === 1 ? "é robô autorizado" : "são robôs autorizados"} no dinheiro real.
+          </div>
+        ) : <div className="text-sm text-muted-foreground">Nenhum robô autorizado no real nesta seleção.</div>; })()}
         <ul className="space-y-2 text-sm">
           {linhas.map((l) => {
             const d = linhaDePara(l);
             return (
               <li key={l.id} className="rounded border border-border p-2">
-                <div className="font-semibold">{d.titulo}</div>
+                <div className="font-semibold">{d.titulo}{l.real_autorizado && <span className="ml-2 rounded bg-destructive px-1 text-xs text-destructive-foreground">REAL</span>}</div>
                 <div>{d.mult}</div>
                 <div className="text-muted-foreground">{d.ganho}</div>
               </li>
