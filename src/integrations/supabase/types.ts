@@ -3329,6 +3329,36 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_real_carteira: {
+        Row: {
+          criado_em: string
+          data: string
+          id: string
+          observacao: string | null
+          tipo: string
+          user_id: string
+          valor_brl: number
+        }
+        Insert: {
+          criado_em?: string
+          data?: string
+          id?: string
+          observacao?: string | null
+          tipo: string
+          user_id: string
+          valor_brl: number
+        }
+        Update: {
+          criado_em?: string
+          data?: string
+          id?: string
+          observacao?: string | null
+          tipo?: string
+          user_id?: string
+          valor_brl?: number
+        }
+        Relationships: []
+      }
       b3_real_execution_state: {
         Row: {
           daily_circuit_enabled: boolean
@@ -8229,6 +8259,7 @@ export type Database = {
           trav_pico: number
         }[]
       }
+      b3_vigiar_autorizacoes_reais: { Args: never; Returns: number }
       b3_vigiar_tique: { Args: never; Returns: string }
       has_role: {
         Args: {

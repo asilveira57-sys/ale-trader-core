@@ -8,6 +8,13 @@
       "when": 1791198737254,
       "tag": "0000_calibracao_regua_real",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791309326505,
+      "tag": "0001_b3_real_carteira",
+      "breakpoints": true
     }
   ]
 }

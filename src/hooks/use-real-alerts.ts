@@ -56,6 +56,9 @@ const CRITICOS = new Set([
   "disjuntor_diario_armado",        // disjuntor diário da conta real disparou
   "stop_pendente_nao_executado",    // stop enfileirado que o executor não executou
   "ordem_real_recusada",            // ordem real rejeitada pela corretora
+  "cotacao_parada",                 // ativo sem preço durante o pregão (system_logs)
+  "autorizacao_real_orfa",          // robô autorizado sem execução viva (system_logs)
+  "carteira_insuficiente",          // capital da carteira não cobre a margem (system_logs)
 ]);
 
 const MUDO_KEY = "b3.real.alertas.mudo";
@@ -204,6 +207,9 @@ export function useRealAlerts(input: UseRealAlertsInput) {
     // 1) avisos do payload leve — só os que o operador pediu
     for (const a of alerts ?? []) {
       if (!CRITICOS.has(a.kind)) continue;
+      // O payload pesado também usa "cotacao_parada" (idade da cotação); só o
+      // alarme "ATIVO SEM PRECO" do payload leve toca.
+      if (a.kind === "cotacao_parada" && a.title !== "Ativo sem preço durante o pregão") continue;
       eventos.push({
         id: `a:${a.kind}:${a.at ?? a.title}`,
         prio: "critico",
