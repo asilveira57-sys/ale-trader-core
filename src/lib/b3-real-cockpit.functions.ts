@@ -845,6 +845,34 @@ export const getB3RealCockpitLive = createServerFn({ method: "GET" })
       });
     }
 
+    // ── 8. Alarmes gravados em system_logs que a tela não mostrava (06/10) ──
+    // Só com pregão aberto. `at` é a assinatura da CONDIÇÃO (não o horário do
+    // log): o mesmo alerta não repete enquanto a condição não mudar.
+    if (pregaoOpen) {
+      const desde = new Date(nowMs - 20 * 60_000).toISOString();
+      const [{ data: semPreco }, { data: orfas }, { data: cart }] = await Promise.all([
+        (supabase as any).from("system_logs").select("message").ilike("message", "ATIVO SEM PRECO%").gte("created_at", desde).limit(50),
+        (supabase as any).from("system_logs").select("message, technical_data").eq("event_type", "autorizacao_real_orfa").gte("created_at", desde).limit(20),
+        (supabase as any).from("system_logs").select("message, technical_data").eq("event_type", "carteira_insuficiente").gte("created_at", desde)
+          .order("created_at", { ascending: false }).limit(20),
+      ]);
+      const ativosSemPreco = Array.from(new Set<string>((semPreco ?? []).map((r: any) => String(r.message).replace(/^ATIVO SEM PRECO:\s*/, "").split(" ")[0]))).sort();
+      if (ativosSemPreco.length) alerts.push({
+        kind: "cotacao_parada", severity: "critical", title: "Ativo sem preço durante o pregão",
+        detail: `${ativosSemPreco.join(", ")} sem cotação. Robôs desses ativos não têm preço para operar.`,
+        at: `${sessionDate}:${ativosSemPreco.join(",")}`,
+      });
+      if ((orfas ?? []).length) alerts.push({
+        kind: "autorizacao_real_orfa", severity: "critical", title: "Robô autorizado no real sem execução viva",
+        detail: String(orfas![0].message ?? ""), at: `${sessionDate}:${(orfas ?? []).length}`,
+      });
+      const ativosCart = Array.from(new Set<string>((cart ?? []).map((r: any) => String(r.technical_data?.symbol ?? "?")))).sort();
+      if (ativosCart.length) alerts.push({
+        kind: "carteira_insuficiente", severity: "critical", title: "Capital da carteira não cobre a margem — abertura real bloqueada",
+        detail: String(cart![0].message ?? ""), at: `${sessionDate}:${ativosCart.join(",")}`,
+      });
+    }
+
     return {
       live: true as const,
       server_time: now.toISOString(),

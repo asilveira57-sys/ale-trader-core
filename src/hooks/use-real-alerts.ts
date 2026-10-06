@@ -56,6 +56,9 @@ const CRITICOS = new Set([
   "disjuntor_diario_armado",        // disjuntor diário da conta real disparou
   "stop_pendente_nao_executado",    // stop enfileirado que o executor não executou
   "ordem_real_recusada",            // ordem real rejeitada pela corretora
+  "cotacao_parada",                 // ativo sem preço durante o pregão (system_logs)
+  "autorizacao_real_orfa",          // robô autorizado sem execução viva (system_logs)
+  "carteira_insuficiente",          // capital da carteira não cobre a margem (system_logs)
 ]);
 
 const MUDO_KEY = "b3.real.alertas.mudo";
