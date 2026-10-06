@@ -38,9 +38,16 @@ export function CarteiraRealPanel() {
         </div>
       )}
       <div className="grid gap-3 sm:grid-cols-3">
-        <div><div className="text-xs text-muted-foreground">Capital declarado</div><div className="font-mono text-lg">{BRL(c.declarado_brl)}</div></div>
-        <div><div className="text-xs text-muted-foreground">Resultado realizado ({c.ordens_fechadas} ordens)</div><div className={`font-mono text-lg ${cor(c.realizado_brl)}`}>{BRL(c.realizado_brl)}</div></div>
+        <div>
+          <div className="text-xs text-muted-foreground">Capital declarado</div>
+          <div className="font-mono text-lg">{BRL(c.declarado_brl)}</div>
+          {c.data_corte && <div className="text-xs text-muted-foreground">declarado em {String(c.data_corte).slice(8, 10)}/{String(c.data_corte).slice(5, 7)}</div>}
+        </div>
+        <div><div className="text-xs text-muted-foreground">Resultado desde a declaração ({c.ordens_fechadas} ordens)</div><div className={`font-mono text-lg ${cor(c.realizado_brl)}`}>{BRL(c.realizado_brl)}</div></div>
         <div><div className="text-xs text-muted-foreground">Capital operacional</div><div className={`font-mono text-2xl font-bold ${cor(c.capital_operacional_brl)}`}>{BRL(c.capital_operacional_brl)}</div></div>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        Histórico anterior à declaração (não entra na conta do capital): {BRL(c.realizado_historico_brl)} em {c.ordens_fechadas_historico} ordens.
       </div>
       <div className="text-sm">
         <div className="font-semibold">Contratos que o capital sustenta</div>
