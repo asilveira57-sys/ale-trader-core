@@ -8229,6 +8229,7 @@ export type Database = {
           trav_pico: number
         }[]
       }
+      b3_vigiar_autorizacoes_reais: { Args: never; Returns: number }
       b3_vigiar_tique: { Args: never; Returns: string }
       has_role: {
         Args: {
