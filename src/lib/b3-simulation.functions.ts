@@ -236,6 +236,35 @@ async function mirrorToReal(
   // de fato no real (definida na entrada), não o max_qty de agora.
   let quantity = Math.max(1, authMaxQty);
 
+  // ── PORTÃO DA CARTEIRA DO REAL (06/10/2026) — SÓ ABERTURA ──
+  // Capital operacional (lançamentos + realizado real) precisa cobrir a margem
+  // de 1 contrato do ativo com folga de 30%. Não fecha nada, não toca o simulado.
+  // Quantidade nunca passa do que o capital sustenta. Margem sem cadastro = sem
+  // como medir: não bloqueia (comportamento anterior). Falha de leitura = fecha.
+  if (action === "open") {
+    try {
+      const { lerCarteira, margemDoAtivo, contratosSustentados, FOLGA_MARGEM } = await import("@/lib/b3-carteira.server");
+      const cart = await lerCarteira(supabase, userId);
+      const margem = await margemDoAtivo(supabase, symbol);
+      const cap = contratosSustentados(cart.capital_operacional_brl, margem);
+      if (cap !== null && cap < 1) {
+        try {
+          await supabase.from("system_logs").insert({
+            event_type: "carteira_insuficiente", source: `b3_real_mirror:${symbol}:${variant}:${mode}`, severity: "critical",
+            message: `Abertura real BLOQUEADA: capital operacional R$ ${cart.capital_operacional_brl.toFixed(2)} não cobre ${symbol} (margem R$ ${margem} × ${FOLGA_MARGEM} = R$ ${(margem! * FOLGA_MARGEM).toFixed(2)})`,
+            technical_data: { symbol, variant, mode, side, run_id: runId, capital_operacional_brl: cart.capital_operacional_brl,
+              declarado_brl: cart.declarado_brl, realizado_brl: cart.realizado_brl, margem_brl: margem, folga: FOLGA_MARGEM, user_id: userId } as any,
+          });
+        } catch { /* registro nunca derruba o motor */ }
+        return { criado: false, motivo: "carteira_insuficiente" };
+      }
+      if (cap !== null && quantity > cap) quantity = cap;
+    } catch (e) {
+      await logFalhaTecnicaEspelho(supabase, symbol, variant, mode, side, runId, `leitura da carteira falhou: ${(e as Error).message}`);
+      return { criado: false, motivo: "falha_consulta_carteira" };
+    }
+  }
+
 
 
 
