@@ -207,6 +207,9 @@ export function useRealAlerts(input: UseRealAlertsInput) {
     // 1) avisos do payload leve — só os que o operador pediu
     for (const a of alerts ?? []) {
       if (!CRITICOS.has(a.kind)) continue;
+      // O payload pesado também usa "cotacao_parada" (idade da cotação); só o
+      // alarme "ATIVO SEM PRECO" do payload leve toca.
+      if (a.kind === "cotacao_parada" && a.title !== "Ativo sem preço durante o pregão") continue;
       eventos.push({
         id: `a:${a.kind}:${a.at ?? a.title}`,
         prio: "critico",
