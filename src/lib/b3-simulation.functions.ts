@@ -4780,7 +4780,7 @@ async function runB3SimulationTickInner(
         // Chave do SIMULADO desligada e do REAL ligada: o simulado abre na hora
         // e só o comando real espera (tratado na pré-passada, acima).
         // A regra decide SE abre; nunca fecha posição aberta.
-        let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number; sinal_em?: string | null; preco_sinal?: number | null; real_no_sinal?: boolean } | null = null;
+        let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number; melhor_janela_pts: number; sinal_em?: string | null; preco_sinal?: number | null; real_no_sinal?: boolean } | null = null;
         // ── O GATILHO DO REAL É O SINAL, NÃO A ORDEM SIMULADA (24/09/2026) ──
         // Correção estrutural: o comando real nascia da ordem simulada aberta,
         // então qualquer coisa que impedisse o simulado de abrir (inclusive a
@@ -4844,6 +4844,9 @@ async function runB3SimulationTickInner(
           if (av?.estado === "confirmou") {
             confirmadaAgora = {
               em: now.toISOString(), exigido_pts: av.exigido_pts, andou_pts: av.andou_pts,
+              // O que a regra mediu para confirmar é o melhor avanço dentro da
+              // janela; o preço de abertura é o deste instante (entryRounded).
+              melhor_janela_pts: av.melhor_janela_pts,
               sinal_em: pendAtual?.criado_em ?? null, preco_sinal: Number(pendAtual?.preco_sinal) || null,
               real_no_sinal: pendAtual?.real_enviado === true,
             };
@@ -5112,11 +5115,11 @@ async function runB3SimulationTickInner(
             user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
             symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
             estagio: "confirmacao_atingida",
-            motivo: `Entrada por confirmação atingida: andou ${Math.round(confirmadaAgora.andou_pts)} pts (exigido ${Math.round(confirmadaAgora.exigido_pts)}); ordem simulada aberta a ${entryRounded}; ${motivoEsp}.`.slice(0, 500),
+            motivo: `Entrada por confirmação atingida: melhor avanço na janela andou ${Math.round(confirmadaAgora.melhor_janela_pts)} pts (exigido ${Math.round(confirmadaAgora.exigido_pts)}); ordem simulada aberta a ${entryRounded}; ${motivoEsp}.`.slice(0, 500),
             detalhe: {
               sinal_em: confirmadaAgora.sinal_em, confirmou_em: confirmadaAgora.em,
               preco_sinal: confirmadaAgora.preco_sinal, preco_confirmacao: entryRounded,
-              exigido_pts: Math.round(confirmadaAgora.exigido_pts), andou_pts: Math.round(confirmadaAgora.andou_pts),
+              exigido_pts: Math.round(confirmadaAgora.exigido_pts), andou_pts: Math.round(confirmadaAgora.melhor_janela_pts),
               side: effectiveSide, simulation_order_id: insertedOrder.id,
               espelho_real: espelho === "barrado" ? "barrado" : "livre",
               espelho_desfecho: espelho, espelho_motivo: espelhoMotivo,

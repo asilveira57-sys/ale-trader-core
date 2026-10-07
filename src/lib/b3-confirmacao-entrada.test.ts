@@ -98,6 +98,26 @@ describe("regra ligada", () => {
     expect(avaliarPendente(pend, 100_034, t0 + 200_000).estado).toBe("expirou");
   });
 
+  it("confirma por TOQUE: alcançou o limiar dentro da janela e recuou antes do tique seguinte", () => {
+    const t0 = Date.parse("2026-09-23T13:00:00Z");
+    const pend = criarPendente({ side: "buy", precoSinal: 100_000, stopPtsFrozen: 280, gainPtsFrozen: 400, cfg, agoraMs: t0, ...ambos })!;
+    // O toque de 150 pts foi visto e gravado num tique; no tique seguinte o preço
+    // já caiu abaixo do exigido (140). A regra é por toque → confirmou (07/10/2026).
+    const av = avaliarPendente({ ...pend, melhor_janela_pts: 150, melhor_pts: 150 }, 100_060, t0 + 90_000);
+    expect(av.estado).toBe("confirmou");
+    expect(av.andou_pts).toBe(60);
+    expect(av.melhor_janela_pts).toBe(150);
+  });
+
+  it("avanço que só veio DEPOIS da janela não confirma", () => {
+    const t0 = Date.parse("2026-09-23T13:00:00Z");
+    const pend = criarPendente({ side: "buy", precoSinal: 100_000, stopPtsFrozen: 280, gainPtsFrozen: 400, cfg, agoraMs: t0, ...ambos })!;
+    const av = avaliarPendente({ ...pend, melhor_janela_pts: 20 }, 100_300, t0 + 200_000);
+    expect(av.estado).toBe("expirou");
+    expect(av.andou_pts).toBe(300);
+    expect(av.melhor_janela_pts).toBe(20);
+  });
+
   it("venda confirma quando o preço cai", () => {
     const t0 = Date.parse("2026-09-23T13:00:00Z");
     const pend = criarPendente({ side: "sell", precoSinal: 100_000, stopPtsFrozen: 200, gainPtsFrozen: 300, cfg, agoraMs: t0, ...ambos })!;
@@ -126,7 +146,7 @@ describe("regra ligada", () => {
     const soSim = criarPendente({ side: "buy", precoSinal: 100_000, stopPtsFrozen: 280, gainPtsFrozen: 400, cfg, agoraMs: t0, aguardaSimulado: true, aguardaReal: false })!;
     const av = avaliarPendente({ ...soSim, melhor_pts: 775, melhor_janela_pts: 40 }, 100_010, t0 + 1_666_000);
     expect(motivoNaoConfirmou(soSim, av, 50)).toBe(
-      "Dentro de 180s andou 40 pts; exigido 140 pts (50% do stop). Entrada descartada no simulado. (Depois da janela chegou a 775 pts em 28 min.)",
+      "Melhor avanço dentro de 180s: andou 40 pts; exigido 140 pts (50% do stop). Entrada descartada no simulado. (Depois da janela chegou a 775 pts em 28 min.)",
     );
     const soReal = { ...soSim, aguarda_simulado: false, aguarda_real: true };
     expect(motivoNaoConfirmou(soReal, av, 50)).toContain("descartada no real.");
