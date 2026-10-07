@@ -3307,9 +3307,11 @@ async function runB3SimulationTickInner(
             exigido_pts: Math.round(av.exigido_pts),
             // O que a regra mede é o avanço DENTRO da janela; a excursão total
             // (que pode vir muito depois) fica em campo próprio (24/09/2026).
-            andou_pts_na_janela: Math.round(av.melhor_janela_pts),
+            // Piso: descartou ⇒ andou menos que o exigido, e o registro não pode
+            // mostrar número igual ao limiar por arte de arredondamento.
+            andou_pts_na_janela: Math.floor(av.melhor_janela_pts),
             andou_pts_total: Math.round(av.melhor_pts),
-            andou_pts: Math.round(av.melhor_janela_pts),
+            andou_pts: Math.floor(av.melhor_janela_pts),
             janela_s: Number(pend?.janela_s) || null,
             preco_sinal: Number(pend?.preco_sinal) || null,
             side: String(pend?.side ?? ""),

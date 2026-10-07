@@ -288,7 +288,10 @@ export function motivoNaoConfirmou(pend: any, av: AvaliacaoPendente, pctStop: nu
   const pct = Number(pctStop);
   const p = Number.isFinite(pct) && pct > 0 ? pct : CONFIRMACAO_PADRAO.pct_stop;
   const janela = Math.round(Number(pend?.janela_s) || CONFIRMACAO_PADRAO.janela_s);
-  const dentro = Math.round(av.melhor_janela_pts);
+  // PISO, não arredondamento: se a regra descartou, o melhor avanço é por
+  // definição menor que o exigido, e o texto não pode mostrar número igual ou
+  // maior (139,6 pts não vira "140 pts" quando o exigido é 140).
+  const dentro = Math.floor(av.melhor_janela_pts);
   const total = Math.round(av.melhor_pts);
   const lado = ladoDoPendente(pend);
   const onde = lado === "ambos" ? "no simulado e no real" : `no ${lado}`;
