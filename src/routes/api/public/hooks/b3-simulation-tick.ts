@@ -133,16 +133,71 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
             .order("started_at", { ascending: false });
           if (error) throw new Error(`leitura de execuções ativas: ${error.message}`);
 
-          // Só 1 run ativa por usuário POR ATIVO E VARIANTE (chave = user_id +
-          // symbol + variant), para que o mesmo ativo possa rodar com
-          // entry_styles distintos em paralelo sem se cancelarem.
+          // DEDUPE DE EXECUÇÕES (guarda de 07/10/2026). Só 1 run ativa por
+          // usuário POR ATIVO E VARIANTE. Regras:
+          //  1) execução em b3_runs_experimentais fica FORA do dedupe (roda em paralelo);
+          //  2) execução com autorização real viva (raiz do símbolo × variant) nunca é cancelada;
+          //  3) entre as demais, preserva a MAIS ANTIGA (histórico/curadoria);
+          //  4) todo cancelamento grava dedupe_run_cancelada (critical).
+          const [{ data: exps, error: eExp }, { data: auths, error: eAuth }] = await Promise.all([
+            (supabaseAdmin as any).from("b3_runs_experimentais").select("run_id"),
+            (supabaseAdmin as any).from("b3_prd_authorizations").select("user_id, symbol, variant")
+              .eq("enabled", true).is("revoked_at", null),
+          ]);
+          // Sem saber quem é experimental ou autorizado, não cancela nada.
+          const guardaOk = !eExp && !eAuth;
+          const experimentais = new Set<string>((exps ?? []).map((x: any) => String(x.run_id)));
+          const raiz = (s: string | null | undefined) => {
+            const u = String(s ?? "").toUpperCase().trim();
+            return /^[A-Z]{3}[FGHJKMNQUVXZ]\d{2}$/.test(u) ? u.slice(0, 3) : u;
+          };
+          const autorizadas = new Set<string>((auths ?? []).map((a: any) => `${a.user_id}:${raiz(a.symbol)}:${a.variant}`));
+          const temReal = (r: any) => autorizadas.has(`${r.user_id}:${raiz(r.symbol ?? "WINQ26")}:${r.variant ?? "indicador"}`);
+
+          const grupos = new Map<string, any[]>();
+          const avulsas: any[] = [];
+          for (const r of runs ?? []) {
+            if (experimentais.has(String(r.id))) { avulsas.push(r); continue; }
+            const key = `${r.user_id}:${r.symbol ?? "WINQ26"}:${r.variant ?? "indicador"}`;
+            const g = grupos.get(key) ?? [];
+            g.push(r);
+            grupos.set(key, g);
+          }
           const latestByUserAsset = new Map<string, any>();
           const stale: string[] = [];
-          for (const r of runs ?? []) {
-            const key = `${r.user_id}:${r.symbol ?? "WINQ26"}:${r.variant ?? "indicador"}`;
-            if (!latestByUserAsset.has(key)) latestByUserAsset.set(key, r);
-            else stale.push(r.id);
+          const ts = (r: any) => new Date(r.started_at ?? 0).getTime();
+          for (const [key, g] of grupos) {
+            g.sort((a, b) => ts(a) - ts(b)); // mais antiga primeiro
+            if (g.length === 1 || !guardaOk) {
+              latestByUserAsset.set(key, g[0]);
+              if (g.length > 1) await registrar("dedupe_run_bloqueado", "critical",
+                `Duplicata em ${g[0].symbol}/${g[0].variant} não tratada: falha ao ler experimentais/autorizações. Nada cancelado.`,
+                { chave: key, runs: g.map((x) => x.id) });
+              continue;
+            }
+            const protegidas = g.filter(temReal);
+            const preservada = protegidas[0] ?? g[0];
+            latestByUserAsset.set(key, preservada);
+            if (protegidas.length > 1) {
+              await registrar("dedupe_run_bloqueado", "critical",
+                `Duas ou mais execuções de ${preservada.symbol}/${preservada.variant} com autorização real viva. Nenhuma cancelada — decisão humana necessária.`,
+                { chave: key, runs: protegidas.map((x) => ({ id: x.id, started_at: x.started_at })) });
+            }
+            for (const c of g) {
+              if (c.id === preservada.id || temReal(c)) continue;
+              stale.push(c.id);
+              await registrar("dedupe_run_cancelada", "critical",
+                `Dedupe cancelou a execução ${c.id} (${c.symbol}/${c.variant}) e preservou ${preservada.id}.`,
+                {
+                  cancelada_id: c.id, preservada_id: preservada.id,
+                  symbol: c.symbol, variant: c.variant,
+                  cancelada_started_at: c.started_at, preservada_started_at: preservada.started_at,
+                  cancelada_tinha_real: false, preservada_tem_real: temReal(preservada),
+                  motivo: temReal(preservada) ? "preservada tem autorização real viva" : "preservada é a mais antiga",
+                });
+            }
           }
+          avulsas.forEach((r) => latestByUserAsset.set(`exp:${r.id}`, r));
           if (stale.length) {
             await (supabaseAdmin as any)
               .from("b3_simulation_runs")
