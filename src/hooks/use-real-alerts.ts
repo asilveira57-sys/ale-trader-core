@@ -59,6 +59,7 @@ const CRITICOS = new Set([
   "cotacao_parada",                 // ativo sem preço durante o pregão (system_logs)
   "autorizacao_real_orfa",          // robô autorizado sem execução viva (system_logs)
   "carteira_insuficiente",          // capital da carteira não cobre a margem (system_logs)
+  "dedupe_run_cancelada",           // dedupe cancelou execução ou travou duplicata real (system_logs)
 ]);
 
 const MUDO_KEY = "b3.real.alertas.mudo";

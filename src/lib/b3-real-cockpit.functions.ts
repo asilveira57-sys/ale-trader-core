@@ -871,6 +871,18 @@ export const getB3RealCockpitLive = createServerFn({ method: "GET" })
         kind: "carteira_insuficiente", severity: "critical", title: "Capital da carteira não cobre a margem — abertura real bloqueada",
         detail: String(cart![0].message ?? ""), at: `${sessionDate}:${ativosCart.join(",")}`,
       });
+      // Dedupe de execuções (07/10): cancelamento ou duplicata travada por
+      // autorização real. Janela de 12 h: o evento acontece uma vez por dia.
+      const { data: dd } = await (supabase as any).from("system_logs").select("event_type, message, technical_data")
+        .in("event_type", ["dedupe_run_cancelada", "dedupe_run_bloqueado"])
+        .gte("created_at", new Date(nowMs - 12 * 3600_000).toISOString())
+        .order("created_at", { ascending: false }).limit(20);
+      const ids = Array.from(new Set<string>((dd ?? []).map((r: any) => String(r.technical_data?.cancelada_id ?? r.technical_data?.chave ?? "?")))).sort();
+      if (ids.length) alerts.push({
+        kind: "dedupe_run_cancelada", severity: "critical",
+        title: "Dedupe de execuções agiu — confira as execuções",
+        detail: String(dd![0].message ?? ""), at: `${sessionDate}:${ids.join(",")}`,
+      });
     }
 
     return {
