@@ -1,17 +1,38 @@
-// ── CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026) ───────────────────────────
+// ── CONFIRMAÇÃO DE ENTRADA (23/09/2026; emendas 23/09, 24/09 e 07/10/2026) ────
 //
-// Medição, não regra. O robô continua entrando exatamente como entra hoje. O que
-// se acrescenta é o REGISTRO do que teria acontecido se a entrada só valesse
-// depois de o preço andar a favor.
+// REGRA LIGADA, robô a robô, por duas chaves independentes. Com
+// `confirmacao_ativa_simulado` ligada, o sinal NÃO abre a ordem simulada na hora;
+// com `confirmacao_ativa_real` ligada, o comando real NÃO é enfileirado na hora.
+// No lado em que vale, a entrada espera o preço andar a favor um percentual do
+// stop DAQUELE robô dentro de uma janela em segundos. Confirmou → abre; não
+// confirmou → o sinal é descartado, com linha no log de decisão. Em 05, 06 e
+// 07/10/2026 a regra tirou 74%, 77% e 88% das entradas do WIN.
+//
+// Com as duas chaves desligadas (padrão de fábrica), o robô entra exatamente
+// como entrava e nada daqui é consultado.
 //
 // O limiar é PERCENTUAL DO STOP do próprio robô — 100 pontos no WIN não
 // significa nada parecido no dólar ou no BIT. A janela é em segundos.
 //
-// Nada aqui bloqueia, reduz, fecha ou atrasa qualquer entrada ou saída, nem no
-// simulado nem no real. Nenhum motor lê `confirmou` para decidir.
-// `stop_recalculado` e `alvo_recalculado` são onde o stop e o alvo FICARIAM se a
-// entrada fosse no preço de confirmação: registro, nunca aplicado — o stop e o
-// alvo contratados na abertura seguem valendo intactos.
+// A regra decide SE abre; nunca fecha posição aberta. Não é freio: não corta,
+// não reduz e não atrasa saída, e não mexe no stop nem no alvo contratados.
+//
+// CRITÉRIO POR TOQUE (07/10/2026): confirma se o preço ALCANÇOU o limiar em
+// qualquer instante dentro da janela — não só se estava acima dele no tique da
+// avaliação. O tique roda a cada ~45 s e a janela é de 180 s: movimento que
+// avançava e recuava entre dois tiques existia, era registrado e ficava invisível
+// para a decisão, que então descartava entradas que tinham andado o exigido.
+//
+// ABRE NO PREÇO DE AGORA: detectada a confirmação, a ordem entra no preço
+// corrente do tique, nunca no preço do toque que ficou para trás. O toque pode
+// ter acontecido 40 s antes e aquele preço não existe mais; abrir nele seria
+// otimismo que o dinheiro real não conseguiria reproduzir. Stop e alvo nascem
+// medidos do preço de abertura real, com a mesma distância em pontos.
+//
+// Na medição em sombra (ordem que abriu sem esperar), `stop_recalculado` e
+// `alvo_recalculado` são onde stop e alvo FICARIAM se a entrada fosse no preço de
+// confirmação: registro, nunca aplicado — o stop e o alvo da abertura seguem
+// valendo intactos.
 
 import { roundToTick } from "./b3-tick";
 
@@ -249,12 +270,20 @@ export function avaliarPendente(
   );
 
   const base = { andou_pts: andou, melhor_pts: melhor, melhor_janela_pts: melhorJanela, exigido_pts: exigido, decorrido_s: decorrido };
-  if (andou >= exigido) return { estado: "confirmou", ...base };
+  // CONFIRMA POR TOQUE (07/10/2026): vale o melhor avanço dentro da janela, não a
+  // posição do preço no instante do tique. Quem abre usa o preço CORRENTE
+  // (ctx.price no instante em que a confirmação é detectada), nunca o preço do
+  // toque — o toque pode ter acontecido 40 s antes e aquele preço não existe mais.
+  if (melhorJanela >= exigido) return { estado: "confirmou", ...base };
   if (decorrido > janela) return { estado: "expirou", ...base };
   return { estado: "aguardando", ...base };
 }
 
-/** Motivo curto do descarte, para o log de decisão — com o lado descartado. */
+/** Motivo curto do descarte, para o log de decisão — com o lado descartado.
+ *  O número reportado é o MESMO que a regra usou para descartar: o melhor avanço
+ *  dentro da janela (07/10/2026). Antes a decisão media um valor e o texto
+ *  reportava outro, e aparecia linha dizendo "andou 215; exigido 80" e descartando.
+ */
 export function motivoNaoConfirmou(pend: any, av: AvaliacaoPendente, pctStop: number | null | undefined): string {
   const pct = Number(pctStop);
   const p = Number.isFinite(pct) && pct > 0 ? pct : CONFIRMACAO_PADRAO.pct_stop;
@@ -267,7 +296,7 @@ export function motivoNaoConfirmou(pend: any, av: AvaliacaoPendente, pctStop: nu
   const depois = total > dentro
     ? ` (Depois da janela chegou a ${total} pts em ${Math.round(av.decorrido_s / 60)} min.)`
     : "";
-  return `Dentro de ${janela}s andou ${dentro} pts; exigido ${Math.round(av.exigido_pts)} pts (${Math.round(p)}% do stop). Entrada descartada ${onde}.${depois}`;
+  return `Melhor avanço dentro de ${janela}s: andou ${dentro} pts; exigido ${Math.round(av.exigido_pts)} pts (${Math.round(p)}% do stop). Entrada descartada ${onde}.${depois}`;
 }
 
 
