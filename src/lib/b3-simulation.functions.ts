@@ -346,6 +346,28 @@ async function mirrorToReal(
   // de 11/09 ("nenhuma posicao aberta em WINV26 para fechar"), quando a
   // abertura correspondente havia sido recusada.
   if (action === "close") {
+    // (08/10/2026) Só fecha ordem VIVA no livro: exit_time nulo e status vivo.
+    // Ordem já estampada (unknown_state, fechada pela corretora etc.) não gera
+    // `close` — era comando inútil, recusa no executor e alarme falso.
+    try {
+      const { data: vivas, error: vivErr } = await supabase.from("b3_live_orders")
+        .select("id").eq("user_id", userId).eq("magic_number", magic)
+        .is("exit_time", null)
+        .not("status", "in", "(unknown_state,closed,cancelled,rejected,fechada_pela_corretora,divergente_corretora,irreconciliavel)")
+        .limit(1);
+      if (!vivErr && (vivas ?? []).length === 0) {
+        try {
+          await supabase.from("system_logs").insert({
+            event_type: "b3_espelho_nao_fechou",
+            source: `b3_real_mirror:${symbol}:${variant}:${mode}`,
+            severity: "info",
+            message: `Saída do simulado sem ordem real viva no livro para o magic ${magic}: nenhum close enviado.`,
+            technical_data: { motivo: "sem_ordem_viva_no_livro", symbol, variant, mode, side, magic, run_id: runId } as any,
+          });
+        } catch { /* registro nunca derruba o motor */ }
+        return { criado: false, motivo: "sem_ordem_viva_no_livro" };
+      }
+    } catch { /* falha de leitura: segue a regra da corretora abaixo */ }
     if (broker.reported) {
       if (abertoNaCorretora <= 0) {
         try {
