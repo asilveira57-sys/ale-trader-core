@@ -23,6 +23,7 @@ export async function lerCarteira(supabase: any, userId: string) {
   let ordens = 0;
   let realizadoHistorico = 0;
   let ordensHistorico = 0;
+  let semResultado = 0;
   for (let from = 0; ; from += 1000) {
     const { data: rows, error } = await supabase.from("b3_live_orders").select("net_result_brl, exit_time")
       .eq("user_id", userId).not("exit_time", "is", null).range(from, from + 999);
@@ -30,7 +31,7 @@ export async function lerCarteira(supabase: any, userId: string) {
     for (const r of rows ?? []) {
       const v = Number(r.net_result_brl ?? 0);
       const posterior = dataCorte != null && String(r.exit_time).slice(0, 10) > dataCorte;
-      if (posterior) { realizado += v; ordens++; }
+      if (posterior) { realizado += v; ordens++; if (r.net_result_brl == null) semResultado++; }
       else { realizadoHistorico += v; ordensHistorico++; }
     }
     if (!rows || rows.length < 1000) break;
@@ -42,6 +43,7 @@ export async function lerCarteira(supabase: any, userId: string) {
     data_corte: dataCorte,
     realizado_brl: Math.round(realizado * 100) / 100,
     ordens_fechadas: ordens,
+    ordens_sem_resultado: semResultado,
     realizado_historico_brl: Math.round(realizadoHistorico * 100) / 100,
     ordens_fechadas_historico: ordensHistorico,
     capital_operacional_brl: Math.round((declarado + realizado) * 100) / 100,

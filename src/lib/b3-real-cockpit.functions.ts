@@ -883,6 +883,19 @@ export const getB3RealCockpitLive = createServerFn({ method: "GET" })
         title: "Dedupe de execuções agiu — confira as execuções",
         detail: String(dd![0].message ?? ""), at: `${sessionDate}:${ids.join(",")}`,
       });
+      // Ordem real fechada sem resultado (08/10/2026): exit_time no pregão de
+      // hoje, net_result_brl nulo há mais de 10 minutos.
+      const { data: semRes } = await (supabase as any).from("b3_live_orders")
+        .select("id, magic_number, status, exit_time").eq("user_id", userId)
+        .not("exit_time", "is", null).is("net_result_brl", null)
+        .gte("exit_time", `${sessionDate}T00:00:00-03:00`)
+        .lte("exit_time", new Date(nowMs - 10 * 60_000).toISOString()).limit(50);
+      if ((semRes ?? []).length) alerts.push({
+        kind: "ordem_real_sem_resultado", severity: "critical",
+        title: "Ordem real fechada sem resultado reconciliado",
+        detail: `${semRes!.length} ordem(ns) real(is) de hoje fechada(s) na corretora sem preço/resultado no livro (magic ${Array.from(new Set(semRes!.map((r: any) => r.magic_number))).join(", ")}). O capital e o disjuntor podem estar incompletos.`,
+        at: `${sessionDate}:${semRes!.map((r: any) => r.id).sort().join(",")}`,
+      });
     }
 
     return {
