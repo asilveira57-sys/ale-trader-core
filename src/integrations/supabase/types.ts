@@ -1596,6 +1596,7 @@ export type Database = {
           broker_ticket_exit: string | null
           command_id: string | null
           created_at: string
+          divergencias_leituras: number
           entry_price: number | null
           entry_time: string | null
           exit_price: number | null
@@ -1626,6 +1627,7 @@ export type Database = {
           broker_ticket_exit?: string | null
           command_id?: string | null
           created_at?: string
+          divergencias_leituras?: number
           entry_price?: number | null
           entry_time?: string | null
           exit_price?: number | null
@@ -1656,6 +1658,7 @@ export type Database = {
           broker_ticket_exit?: string | null
           command_id?: string | null
           created_at?: string
+          divergencias_leituras?: number
           entry_price?: number | null
           entry_time?: string | null
           exit_price?: number | null
@@ -1846,6 +1849,42 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_manual_sistema: {
+        Row: {
+          area: string
+          armadilha: string | null
+          atualizado_em: string
+          como_verificar: string | null
+          descoberto_em: string | null
+          gravidade: string
+          id: number
+          o_que_e: string
+          titulo: string
+        }
+        Insert: {
+          area: string
+          armadilha?: string | null
+          atualizado_em?: string
+          como_verificar?: string | null
+          descoberto_em?: string | null
+          gravidade?: string
+          id?: number
+          o_que_e: string
+          titulo: string
+        }
+        Update: {
+          area?: string
+          armadilha?: string | null
+          atualizado_em?: string
+          como_verificar?: string | null
+          descoberto_em?: string | null
+          gravidade?: string
+          id?: number
+          o_que_e?: string
+          titulo?: string
+        }
+        Relationships: []
+      }
       b3_mode_apelidos: {
         Row: {
           apelido: string
@@ -1965,6 +2004,7 @@ export type Database = {
           capital_pendente: number | null
           capital_pendente_leituras: number
           env: string | null
+          fechamentos: Json | null
           margem_livre: number | null
           modo_conta: string | null
           negociacao_permitida: boolean | null
@@ -1982,6 +2022,7 @@ export type Database = {
           capital_pendente?: number | null
           capital_pendente_leituras?: number
           env?: string | null
+          fechamentos?: Json | null
           margem_livre?: number | null
           modo_conta?: string | null
           negociacao_permitida?: boolean | null
@@ -1999,6 +2040,7 @@ export type Database = {
           capital_pendente?: number | null
           capital_pendente_leituras?: number
           env?: string | null
+          fechamentos?: Json | null
           margem_livre?: number | null
           modo_conta?: string | null
           negociacao_permitida?: boolean | null
@@ -3245,6 +3287,33 @@ export type Database = {
           trade_date?: string
           ultimo_tick?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      b3_pregoes_qualidade: {
+        Row: {
+          atualizado_em: string
+          classificacao: string
+          confirmado_por: string | null
+          evidencia: Json | null
+          motivo: string
+          pregao: string
+        }
+        Insert: {
+          atualizado_em?: string
+          classificacao: string
+          confirmado_por?: string | null
+          evidencia?: Json | null
+          motivo: string
+          pregao: string
+        }
+        Update: {
+          atualizado_em?: string
+          classificacao?: string
+          confirmado_por?: string | null
+          evidencia?: Json | null
+          motivo?: string
+          pregao?: string
         }
         Relationships: []
       }

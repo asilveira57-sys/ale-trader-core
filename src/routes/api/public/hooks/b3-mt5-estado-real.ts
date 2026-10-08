@@ -177,6 +177,9 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-estado-real")({
               return s === "HEDGE" || s === "NETTING" || s === "EXCHANGE" ? s : null;
             })(),
             posicoes: positions,
+            // Negócios de saída recentes lidos do histórico da corretora
+            // (08/10/2026). Ausente = executor antigo: null, nunca inventado.
+            fechamentos: Array.isArray(payload.fechamentos) ? payload.fechamentos : null,
             account_login: payload.conta == null && payload.account_login == null
               ? null
               : String(payload.conta ?? payload.account_login),
