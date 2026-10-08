@@ -1846,6 +1846,42 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_manual_sistema: {
+        Row: {
+          area: string
+          armadilha: string | null
+          atualizado_em: string
+          como_verificar: string | null
+          descoberto_em: string | null
+          gravidade: string
+          id: number
+          o_que_e: string
+          titulo: string
+        }
+        Insert: {
+          area: string
+          armadilha?: string | null
+          atualizado_em?: string
+          como_verificar?: string | null
+          descoberto_em?: string | null
+          gravidade?: string
+          id?: number
+          o_que_e: string
+          titulo: string
+        }
+        Update: {
+          area?: string
+          armadilha?: string | null
+          atualizado_em?: string
+          como_verificar?: string | null
+          descoberto_em?: string | null
+          gravidade?: string
+          id?: number
+          o_que_e?: string
+          titulo?: string
+        }
+        Relationships: []
+      }
       b3_mode_apelidos: {
         Row: {
           apelido: string
@@ -3245,6 +3281,33 @@ export type Database = {
           trade_date?: string
           ultimo_tick?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      b3_pregoes_qualidade: {
+        Row: {
+          atualizado_em: string
+          classificacao: string
+          confirmado_por: string | null
+          evidencia: Json | null
+          motivo: string
+          pregao: string
+        }
+        Insert: {
+          atualizado_em?: string
+          classificacao: string
+          confirmado_por?: string | null
+          evidencia?: Json | null
+          motivo: string
+          pregao: string
+        }
+        Update: {
+          atualizado_em?: string
+          classificacao?: string
+          confirmado_por?: string | null
+          evidencia?: Json | null
+          motivo?: string
+          pregao?: string
         }
         Relationships: []
       }
