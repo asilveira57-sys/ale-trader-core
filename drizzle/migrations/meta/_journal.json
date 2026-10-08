@@ -15,6 +15,13 @@
       "when": 1791309326505,
       "tag": "0001_b3_real_carteira",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791469852310,
+      "tag": "0002_migration",
+      "breakpoints": true
     }
   ]
 }

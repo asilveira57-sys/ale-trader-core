@@ -1596,6 +1596,7 @@ export type Database = {
           broker_ticket_exit: string | null
           command_id: string | null
           created_at: string
+          divergencias_leituras: number
           entry_price: number | null
           entry_time: string | null
           exit_price: number | null
@@ -1626,6 +1627,7 @@ export type Database = {
           broker_ticket_exit?: string | null
           command_id?: string | null
           created_at?: string
+          divergencias_leituras?: number
           entry_price?: number | null
           entry_time?: string | null
           exit_price?: number | null
@@ -1656,6 +1658,7 @@ export type Database = {
           broker_ticket_exit?: string | null
           command_id?: string | null
           created_at?: string
+          divergencias_leituras?: number
           entry_price?: number | null
           entry_time?: string | null
           exit_price?: number | null
@@ -2001,6 +2004,7 @@ export type Database = {
           capital_pendente: number | null
           capital_pendente_leituras: number
           env: string | null
+          fechamentos: Json | null
           margem_livre: number | null
           modo_conta: string | null
           negociacao_permitida: boolean | null
@@ -2018,6 +2022,7 @@ export type Database = {
           capital_pendente?: number | null
           capital_pendente_leituras?: number
           env?: string | null
+          fechamentos?: Json | null
           margem_livre?: number | null
           modo_conta?: string | null
           negociacao_permitida?: boolean | null
@@ -2035,6 +2040,7 @@ export type Database = {
           capital_pendente?: number | null
           capital_pendente_leituras?: number
           env?: string | null
+          fechamentos?: Json | null
           margem_livre?: number | null
           modo_conta?: string | null
           negociacao_permitida?: boolean | null
