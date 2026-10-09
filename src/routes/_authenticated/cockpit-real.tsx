@@ -468,6 +468,7 @@ function CockpitRealPage() {
       magic_divergences: heavy.broker?.magic_divergences ?? [],
       has_divergence: heavy.broker?.has_divergence ?? false,
       divergencia_critica: heavy.broker?.divergencia_critica === true && live.broker?.stale === false,
+      divergencia_escrituracao: heavy.broker?.divergencia_escrituracao === true && live.broker?.stale === false,
     };
     const alerts = [...(live.alerts ?? []), ...(heavy.alerts ?? [])];
     const seen = new Set<string>();
@@ -757,7 +758,39 @@ function CockpitRealPage() {
   // conhece é posição SEM STOP — o pior estado possível. Enquanto o relatório
   // está fresco, isso passa à frente de qualquer outra coisa na tela.
   const divCritica = vivo && broker.divergencia_critica === true;
-  const magicDiv = (broker.magic_divergences ?? []) as any[];
+  // Só o sentido A (corretora > sistema) é "sem controle". O sentido B
+  // (sistema > corretora) é escrituração: aviso âmbar próprio, nunca vermelho.
+  const magicDivAll = (broker.magic_divergences ?? []) as any[];
+  const rootDivAll = (broker.divergences ?? []) as any[];
+  const magicDiv = magicDivAll.filter((d) => d.sentido !== "B");
+  const rootDivA = rootDivAll.filter((d) => d.sentido !== "B");
+  const magicDivB = magicDivAll.filter((d) => d.sentido === "B");
+  const rootDivB = rootDivAll.filter((d) => d.sentido === "B");
+  const divEscrit = vivo && broker.divergencia_escrituracao === true && (magicDivB.length + rootDivB.length) > 0;
+  const EscrituracaoAlarm = () =>
+    !divEscrit ? null : (
+      <div className="mb-2 rounded-xl border-2 border-amber-300 bg-amber-500/20 px-3 py-3 text-amber-100">
+        <p className="flex items-center gap-2 text-base font-black leading-tight">
+          <AlertTriangle className="size-5 shrink-0" />
+          Registro em aberto sem posição na corretora
+        </p>
+        <ul className="mt-1 space-y-1 text-[12px] font-semibold">
+          {(magicDivB.length ? magicDivB : rootDivB).map((dv: any) => {
+            const n = Math.abs(dv.ledger_net) - Math.abs(dv.broker_net);
+            return (
+              <li key={`b-${dv.root}-${dv.magic_number ?? "r"}`}>
+                {dv.magic_number != null ? <>magic <b>{dv.magic_number}</b> ({assetLabel(dv.root)})</> : assetLabel(dv.root)}:
+                {" "}corretora <b>{dv.broker_net}</b> · sistema <b>{dv.ledger_net}</b> · diferença <b>+{n}</b> registro(s)
+                <span className="block font-normal opacity-95">
+                  Não há posição real aberta e nada a zerar. {n} ordem(ns) do livro fechou(aram) na corretora
+                  sem ser baixada(s) aqui — o resultado delas não entrou na carteira nem no disjuntor.
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
   const DivergenceAlarm = () =>
     !divCritica ? null : (
       <div className="mb-2 rounded-xl border-2 border-rose-300 bg-rose-700 px-3 py-3 text-white">
@@ -772,7 +805,7 @@ function CockpitRealPage() {
               {" "}· diferença <b>{dv.broker_net - dv.ledger_net}</b> contrato(s)
             </li>
           ))}
-          {(broker.divergences ?? []).map((dv: any) => (
+          {rootDivA.map((dv: any) => (
             <li key={`r-${dv.root}`}>
               {assetLabel(dv.root)}: corretora <b>{dv.broker_net}</b> · sistema <b>{dv.ledger_net}</b>
               {" "}· diferença <b>{dv.broker_net - dv.ledger_net}</b> contrato(s)
@@ -790,6 +823,7 @@ function CockpitRealPage() {
   return (
     <div className="mx-auto w-full max-w-[1500px] px-3 pb-16 pt-3 sm:px-6 sm:pt-4">
       <DivergenceAlarm />
+      <EscrituracaoAlarm />
 
       {/* ══════════ CELULAR: tela de emergência, uma mão, sem rolagem ══════════
           Ordem obrigatória: 1) tenho posição? 2) resultado e saldo 3) fechar. */}
