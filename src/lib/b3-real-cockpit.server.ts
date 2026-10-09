@@ -155,6 +155,11 @@ export function buildRealLedger(
   commands: RealCommandRow[],
   profileFor: ProfileLookup,
   accountMode: AccountMode = "HEDGE",
+  // Tickets de posição cujo registro no livro (b3_live_orders) já foi resolvido
+  // (closed, fechada_pela_corretora, divergente_corretora, irreconciliavel ou
+  // com exit_time). O lote de abertura correspondente NÃO conta como posição
+  // aberta na segunda opinião — senão o mesmo registro velho grita todo dia.
+  resolvedTickets?: Set<string>,
 ) {
   const netting = accountMode === "NETTING";
   const groups = new Map<string, RealCommandRow[]>();
@@ -256,7 +261,13 @@ export function buildRealLedger(
     }
 
     // Em HEDGE as duas pontas podem coexistir: cada uma vira uma posição.
-    for (const [lots, openSide] of [[longs, "buy"], [shorts, "sell"]] as [Lot[], "buy" | "sell"][]) {
+    for (const [allLots, openSide] of [[longs, "buy"], [shorts, "sell"]] as [Lot[], "buy" | "sell"][]) {
+      const lots = resolvedTickets?.size
+        ? allLots.filter((l) => !(
+            (l.ticket && resolvedTickets.has(String(l.ticket))) ||
+            (l.pos_ticket && resolvedTickets.has(String(l.pos_ticket)))
+          ))
+        : allLots;
       if (!lots.length) continue;
       const qty = lots.reduce((s, l) => s + l.qty, 0);
       if (qty <= 0) continue;
@@ -305,6 +316,13 @@ export interface BrokerPosition {
 }
 
 export const STALE_REPORT_S = 60;
+
+// A = corretora tem exposição que o sistema não conhece (inclui lado trocado).
+// B = sistema acha que tem mais do que a corretora — nenhuma exposição a mais.
+export function sentidoDe(brokerNet: number, ledgerNet: number): "A" | "B" {
+  if (brokerNet !== 0 && Math.sign(brokerNet) !== Math.sign(ledgerNet)) return "A";
+  return Math.abs(brokerNet) > Math.abs(ledgerNet) ? "A" : "B";
+}
 
 export function buildBrokerState(
   row: any | null | undefined,
@@ -357,17 +375,21 @@ export function buildBrokerState(
   const divergences = diff(
     net(positions, (p) => p.root),
     net(ledgerPositions, (p) => p.root),
-  ).map((d) => ({ root: d.key, broker_net: d.broker_net, ledger_net: d.ledger_net }));
+  ).map((d) => ({ root: d.key, broker_net: d.broker_net, ledger_net: d.ledger_net, sentido: sentidoDe(d.broker_net, d.ledger_net) }));
 
   const magicDivergences = diff(
     net(positions.filter((p) => p.magic_number != null), (p) => `${p.root}|${p.magic_number}`),
     net(ledgerPositions, (p) => `${p.root}|${p.magic_number}`),
   ).map((d) => {
     const [root = "", magic = "0"] = d.key.split("|");
-    return { root, magic_number: Number(magic), broker_net: d.broker_net, ledger_net: d.ledger_net };
+    return { root, magic_number: Number(magic), broker_net: d.broker_net, ledger_net: d.ledger_net, sentido: sentidoDe(d.broker_net, d.ledger_net) };
   });
 
   const fresh = ageS != null && ageS <= STALE_REPORT_S;
+  // Sentido A (corretora > sistema) = exposição real sem gestão → crítico.
+  // Sentido B (sistema > corretora) = registro nosso não baixado → só aviso.
+  const temA = divergences.some((d) => d.sentido === "A") || magicDivergences.some((d) => d.sentido === "A");
+  const temB = divergences.some((d) => d.sentido === "B") || magicDivergences.some((d) => d.sentido === "B");
 
   return {
     reported: !!row,
@@ -390,6 +412,7 @@ export function buildBrokerState(
     has_divergence: divergences.length > 0 || magicDivergences.length > 0,
     // Relatório fresco + divergência = posição possivelmente sem stop. É o pior
     // estado possível: a tela precisa gritar, não deixar nota de rodapé.
-    divergencia_critica: fresh && (divergences.length > 0 || magicDivergences.length > 0),
+    divergencia_critica: fresh && temA,
+    divergencia_escrituracao: fresh && temB,
   };
 }

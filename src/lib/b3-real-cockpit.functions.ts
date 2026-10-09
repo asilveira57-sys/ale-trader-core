@@ -131,7 +131,17 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     // é hedge desde 31/08/2026 e errar para hedge MOSTRA posição a mais, o erro
     // seguro; errar para netting esconde posição aberta sem stop).
     const accountMode = normalizeAccountMode((brokerRow as any)?.modo_conta);
-    const ledger = buildRealLedger(commands, profileFor, accountMode);
+    // Registros do livro já resolvidos: o open correspondente sai da segunda opinião.
+    const resolvedTickets = new Set<string>();
+    {
+      const { data: resolvidas } = await (supabase as any).from("b3_live_orders")
+        .select("broker_ticket_entry, status, exit_time")
+        .eq("user_id", userId).not("broker_ticket_entry", "is", null)
+        .or("exit_time.not.is.null,status.in.(closed,fechada_pela_corretora,divergente_corretora,irreconciliavel)")
+        .order("created_at", { ascending: false }).limit(2000);
+      for (const r of (resolvidas ?? []) as any[]) resolvedTickets.add(String(r.broker_ticket_entry));
+    }
+    const ledger = buildRealLedger(commands, profileFor, accountMode, resolvedTickets);
 
     // Cotação viva (sem cache) para marcar a mercado a posição aberta.
     const symbols = Array.from(new Set([
@@ -508,20 +518,33 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         at: broker.reported_at,
       });
     }
-    const divSeverity = broker.divergencia_critica ? "critical" : "warning";
+    // Sentido A (corretora > sistema): crítico se o relatório está fresco.
+    // Sentido B (sistema > corretora): sempre aviso — não há exposição.
+    const sevA = broker.divergencia_critica ? "critical" : "warning";
     for (const dv of broker.divergences) {
+      const a = dv.sentido === "A";
       alerts.push({
-        kind: "divergencia_posicao", severity: divSeverity,
-        title: `Divergência em ${dv.root}: corretora ${dv.broker_net} x comandos ${dv.ledger_net}`,
-        detail: "Algum comando expirou ou executou fora do previsto. A corretora é a verdade; o cálculo por comandos é segunda opinião.",
+        kind: a ? "divergencia_posicao" : "divergencia_escrituracao", severity: a ? sevA : "warning",
+        title: a
+          ? `Divergência em ${dv.root}: corretora ${dv.broker_net} x comandos ${dv.ledger_net}`
+          : `Registro em aberto sem posição na corretora — ${dv.root}: corretora ${dv.broker_net} x sistema ${dv.ledger_net}`,
+        detail: a
+          ? "Algum comando expirou ou executou fora do previsto. A corretora é a verdade; o cálculo por comandos é segunda opinião."
+          : "Não há posição real a mais e nada a zerar. Registro do livro não foi baixado aqui.",
         at: broker.reported_at,
       });
     }
     for (const dv of broker.magic_divergences ?? []) {
+      const a = dv.sentido === "A";
+      const n = Math.abs(dv.ledger_net) - Math.abs(dv.broker_net);
       alerts.push({
-        kind: "divergencia_posicao_magic", severity: divSeverity,
-        title: `Divergência no magic ${dv.magic_number} (${dv.root}): corretora ${dv.broker_net} x comandos ${dv.ledger_net}`,
-        detail: "Posição que a corretora tem e o sistema não conhece é posição SEM STOP. Confira na corretora agora.",
+        kind: a ? "divergencia_posicao_magic" : "divergencia_escrituracao_magic", severity: a ? sevA : "warning",
+        title: a
+          ? `Divergência no magic ${dv.magic_number} (${dv.root}): corretora ${dv.broker_net} x comandos ${dv.ledger_net}`
+          : `Registro em aberto sem posição na corretora — magic ${dv.magic_number} (${dv.root}): corretora ${dv.broker_net} · sistema ${dv.ledger_net}`,
+        detail: a
+          ? "Posição que a corretora tem e o sistema não conhece é posição SEM STOP. Confira na corretora agora."
+          : `Não há posição real aberta e nada a zerar. ${n} ordem(ns) do livro fechou(aram) na corretora sem ser baixada(s) aqui — o resultado não entrou na carteira nem no disjuntor.`,
         at: broker.reported_at,
       });
     }
