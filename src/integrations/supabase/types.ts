@@ -8084,6 +8084,10 @@ export type Database = {
         Args: { p_fim: string; p_ini: string }
         Returns: string
       }
+      b3_conferir_resumo: {
+        Args: { p_date: string; p_log?: boolean }
+        Returns: number
+      }
       b3_cor_do_robo: {
         Args: {
           p_caiu_em: string
@@ -8219,6 +8223,7 @@ export type Database = {
           variant: string
         }[]
       }
+      b3_raiz: { Args: { simbolo: string }; Returns: string }
       b3_ranking_medalhados: {
         Args: { p_criterio?: string }
         Returns: {
