@@ -741,6 +741,42 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_calibracao_proposta: {
+        Row: {
+          alvo_pct: number | null
+          base_pct: number | null
+          conf_novo: number | null
+          mode: string | null
+          ordem: number | null
+          raiz: string | null
+          score_novo: number | null
+          variant: string | null
+          votos_novo: number | null
+        }
+        Insert: {
+          alvo_pct?: number | null
+          base_pct?: number | null
+          conf_novo?: number | null
+          mode?: string | null
+          ordem?: number | null
+          raiz?: string | null
+          score_novo?: number | null
+          variant?: string | null
+          votos_novo?: number | null
+        }
+        Update: {
+          alvo_pct?: number | null
+          base_pct?: number | null
+          conf_novo?: number | null
+          mode?: string | null
+          ordem?: number | null
+          raiz?: string | null
+          score_novo?: number | null
+          variant?: string | null
+          votos_novo?: number | null
+        }
+        Relationships: []
+      }
       b3_calibracao_semanal: {
         Row: {
           apelido: string | null
