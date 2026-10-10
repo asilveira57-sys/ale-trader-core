@@ -8,6 +8,8 @@
 // O filtro de ativo trabalha com a RAIZ (WIN, WDO, PETR4): o contrato rola de
 // vencimento e ninguém quer remarcar "WINV26" a cada rolagem.
 
+import { b3Raiz } from "@/lib/b3-format";
+
 export interface CockpitFilterInput {
   variant?: string | null;
   variants?: string[] | null;
@@ -24,9 +26,7 @@ export interface CockpitFilter {
 
 /** Raiz do ativo: WINV26 -> WIN, WDOU26 -> WDO, PETR4 -> PETR4. */
 export function cockpitRootSymbol(symbol: string | null | undefined): string {
-  const s = String(symbol ?? "").toUpperCase();
-  const m = s.match(/^([A-Z]{3})[FGHJKMNQUVXZ]\d{2}$/);
-  return m ? m[1] : s;
+  return b3Raiz(symbol);
 }
 
 const clean = (arr: string[] | null | undefined): Set<string> | null => {

@@ -741,6 +741,42 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_calibracao_proposta: {
+        Row: {
+          alvo_pct: number | null
+          base_pct: number | null
+          conf_novo: number | null
+          mode: string | null
+          ordem: number | null
+          raiz: string | null
+          score_novo: number | null
+          variant: string | null
+          votos_novo: number | null
+        }
+        Insert: {
+          alvo_pct?: number | null
+          base_pct?: number | null
+          conf_novo?: number | null
+          mode?: string | null
+          ordem?: number | null
+          raiz?: string | null
+          score_novo?: number | null
+          variant?: string | null
+          votos_novo?: number | null
+        }
+        Update: {
+          alvo_pct?: number | null
+          base_pct?: number | null
+          conf_novo?: number | null
+          mode?: string | null
+          ordem?: number | null
+          raiz?: string | null
+          score_novo?: number | null
+          variant?: string | null
+          votos_novo?: number | null
+        }
+        Relationships: []
+      }
       b3_calibracao_semanal: {
         Row: {
           apelido: string | null
@@ -8048,6 +8084,10 @@ export type Database = {
         Args: { p_fim: string; p_ini: string }
         Returns: string
       }
+      b3_conferir_resumo: {
+        Args: { p_date: string; p_log?: boolean }
+        Returns: number
+      }
       b3_cor_do_robo: {
         Args: {
           p_caiu_em: string
@@ -8183,6 +8223,7 @@ export type Database = {
           variant: string
         }[]
       }
+      b3_raiz: { Args: { simbolo: string }; Returns: string }
       b3_ranking_medalhados: {
         Args: { p_criterio?: string }
         Returns: {

@@ -38,11 +38,12 @@ export const assetLabel = (symbol: string) =>
 
 // Contratos futuros (WINV26, WDOU26) rolam de vencimento; agrupa pela raiz do
 // ativo pra que a virada de contrato não quebre o agrupamento da tela.
-export const rootSymbol = (symbol: string) => {
-  const s = String(symbol ?? "").toUpperCase();
-  const m = s.match(/^([A-Z]{3})[A-Z]\d{2}$/);
-  return m ? m[1] : s;
-};
+// FUNÇÃO CANÔNICA DE RAIZ — a mesma regra de public.b3_raiz no banco: remove
+// letra de vencimento + dois dígitos do fim. Ações (PETR4, ITUB4) não mudam.
+// Nunca usar split por letra ("VALE3" virava vazio).
+export const b3Raiz = (symbol: string | null | undefined) =>
+  String(symbol ?? "").toUpperCase().replace(/[FGHJKMNQUVXZ]\d{2}$/, "");
+export const rootSymbol = (symbol: string) => b3Raiz(symbol);
 
 export const BRL = (v: number | null | undefined) =>
   Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
