@@ -3158,6 +3158,30 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_pausa_estado: {
+        Row: {
+          estava_ativo: boolean | null
+          jobid: number | null
+          jobname: string | null
+          pausado_em: string | null
+          schedule: string | null
+        }
+        Insert: {
+          estava_ativo?: boolean | null
+          jobid?: number | null
+          jobname?: string | null
+          pausado_em?: string | null
+          schedule?: string | null
+        }
+        Update: {
+          estava_ativo?: boolean | null
+          jobid?: number | null
+          jobname?: string | null
+          pausado_em?: string | null
+          schedule?: string | null
+        }
+        Relationships: []
+      }
       b3_prd_authorization_log: {
         Row: {
           de_enabled: boolean | null
