@@ -592,6 +592,12 @@ function CockpitPage() {
   const [period, setPeriod] = useState<PeriodInput>(DEFAULT_PERIOD);
   // Faixas de ativo recolhidas — preferência só enquanto a página está aberta.
   const [collapsedAssets, setCollapsedAssets] = useState<Set<string>>(new Set());
+  const [collapsedVariants, setCollapsedVariants] = useState<Set<string>>(new Set());
+  const toggleVariant = (key: string) => setCollapsedVariants((prev) => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
   const toggleAsset = (root: string) => setCollapsedAssets((prev) => {
     const next = new Set(prev);
     next.has(root) ? next.delete(root) : next.add(root);
@@ -839,6 +845,7 @@ function CockpitPage() {
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
       {vivo ? <Scoreboard filterArgs={filterArgs} filterKey={filterKey} /> : null}
+      {vivo && fiveQ.data?.rows_truncated ? <TruncatedNotice limit={fiveQ.data.rows_limit} /> : null}
 
       {/* ── Leitura histórica do período (modo histórico) ── */}
       {!vivo ? (
@@ -1054,10 +1061,20 @@ function CockpitPage() {
 
           {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
             const sub = (hdr?.por_modalidade ?? []).find((m: any) => m.variant === variant);
+            const variantKey = `${root}|${variant}`;
+            const variantCollapsed = collapsedVariants.has(variantKey);
             return (
             <div key={variant} className="@container overflow-hidden rounded-lg border border-border/40 bg-background/30">
               <div className={assetBand(root)}>
               <h3 className="flex min-h-11 flex-wrap items-center gap-2 px-3 py-2 text-sm font-black">
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-current"
+                  aria-label={`${variantCollapsed ? "Expandir" : "Recolher"} robôs de ${root} · ${variantLabel(variant)}`}
+                  title={variantCollapsed ? "Expandir robôs" : "Recolher robôs"}
+                  aria-expanded={!variantCollapsed}
+                  aria-controls={`robots-${variantKey}`}
+                  onClick={() => toggleVariant(variantKey)}>
+                  {variantCollapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+                </Button>
                 <span className="text-base font-black">{root} · {variantLabel(variant)}</span>
                 <span className="font-semibold opacity-80">{cards.length} robôs</span>
                 {/* Com uma única modalidade visível, a testeira do ativo já mostra
@@ -1094,7 +1111,7 @@ function CockpitPage() {
                   mede a largura real disponível — inclusive após recolher o menu
                   lateral — em vez do viewport. Cortes na área útil do grid:
                     < 380px → 1 col | 380–780 → 2 | 780–1500 → 4 | ≥1500 → 8. */}
-               <div className="grid grid-cols-1 gap-3 p-3 @[380px]:grid-cols-2 @[780px]:grid-cols-4 @[1500px]:grid-cols-8">
+               <div id={`robots-${variantKey}`} hidden={variantCollapsed} className={variantCollapsed ? "hidden" : "grid grid-cols-1 gap-3 p-3 @[380px]:grid-cols-2 @[780px]:grid-cols-4 @[1500px]:grid-cols-8"}>
                 {cards.map((c: any) => {
                   const key = `${c.run_id}:${c.mode}`;
                   const isOpen = expanded.has(key);
