@@ -1,6 +1,8 @@
 # Fila de trabalho
 
 ## Em andamento
+- [ ] A2: paginar as duas leituras do cockpit simulado e conferir faixa WIN/período de 30 dias; listar outros limites sem alterar.
+- [ ] B: recolhimento independente por modalidade — condicionado a crédito diário restante.
 - [ ] Redução de VOLUME do banco (votos só nas aprovadas, resumo diário do diário de decisões, retenção 48h) — **só depois das 18:00**, exige migração em tabela grande.
 
 

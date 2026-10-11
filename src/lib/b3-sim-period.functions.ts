@@ -46,7 +46,11 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       });
     }
 
-    const { data: rows } = await (supabase as any)
+    const rows: any[] = [];
+    let rowsTruncated = false;
+    for (let from = 0; from < limit; from += 1000) {
+      const pageSize = Math.min(1000, limit - from);
+      const { data: page, error } = await (supabase as any)
       .from("b3_simulation_orders")
       .select("simulation_run_id, mode, side, quantity, net_result_brl, entry_time, exit_time, close_reason, bloqueado_na_sombra, freios_na_sombra")
       .eq("user_id", userId)
@@ -54,7 +58,12 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       .gte("exit_time", period.start_utc)
       .lt("exit_time", period.end_utc)
       .order("exit_time", { ascending: true })
-      .limit(limit);
+      .range(from, from + pageSize - 1);
+      if (error) throw new Error(`Leitura do período: ${error.message}`);
+      rows.push(...(page ?? []));
+      if (rows.length >= limit) { rowsTruncated = true; break; }
+      if (!page || page.length < pageSize) break;
+    }
 
     const symbols = data?.symbols?.length ? new Set(data.symbols.map((s) => rootSymbol(s))) : null;
     const variants = data?.variants?.length ? new Set(data.variants) : null;
@@ -123,7 +132,8 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
         label: period.label, historical: !period.includes_today,
       },
       rows_limit: limit,
-      rows_truncated: (rows ?? []).length >= limit,
+      rows_read: rows.length,
+      rows_truncated: rowsTruncated,
       no_movement: sem.ops === 0,
       ...sem,
       com_freio: com,
@@ -160,7 +170,12 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
       });
     }
 
-    const { data: rows } = await (supabase as any)
+    const limit = 60_000;
+    const rows: any[] = [];
+    let rowsTruncated = false;
+    for (let from = 0; from < limit; from += 1000) {
+      const pageSize = Math.min(1000, limit - from);
+      const { data: page, error } = await (supabase as any)
       .from("b3_simulation_orders")
       .select("simulation_run_id, mode, net_result_brl, exit_time, freios_na_sombra")
       .eq("user_id", userId)
@@ -168,7 +183,12 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
       .gte("exit_time", startUtc)
       .lt("exit_time", endUtc)
       .order("exit_time", { ascending: false })
-      .limit(60_000);
+      .range(from, from + pageSize - 1);
+      if (error) throw new Error(`Leitura dos pregões: ${error.message}`);
+      rows.push(...(page ?? []));
+      if (rows.length >= limit) { rowsTruncated = true; break; }
+      if (!page || page.length < pageSize) break;
+    }
 
     const allDates = new Set<string>([today]);
     for (const row of (rows ?? []) as any[]) {
@@ -235,7 +255,9 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
     const shapedDays = (map: Map<string, Pair>) => dates.map((date) => ({ date, ...(map.get(date) ?? blank()) }));
     return {
       dates,
-      rows_truncated: (rows ?? []).length >= 60_000,
+      rows_limit: limit,
+      rows_read: rows.length,
+      rows_truncated: rowsTruncated,
       by_asset: Array.from(assets.entries()).map(([symbol, value]) => ({
         symbol,
         days: shapedDays(value.days),
