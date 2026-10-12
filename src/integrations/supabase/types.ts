@@ -1077,6 +1077,90 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_distribuicao_dia: {
+        Row: {
+          conf_maximo: number | null
+          conf_minimo: number | null
+          conf_n: number | null
+          conf_p10: number | null
+          conf_p25: number | null
+          conf_p50: number | null
+          conf_p75: number | null
+          conf_p90: number | null
+          gravado_em: string
+          mode: string
+          score_maximo: number | null
+          score_minimo: number | null
+          score_n: number | null
+          score_p10: number | null
+          score_p25: number | null
+          score_p50: number | null
+          score_p75: number | null
+          score_p90: number | null
+          symbol: string
+          trade_date: string
+          variant: string
+          votos_maximo: number | null
+          votos_n: number | null
+          votos_p50: number | null
+          votos_p90: number | null
+        }
+        Insert: {
+          conf_maximo?: number | null
+          conf_minimo?: number | null
+          conf_n?: number | null
+          conf_p10?: number | null
+          conf_p25?: number | null
+          conf_p50?: number | null
+          conf_p75?: number | null
+          conf_p90?: number | null
+          gravado_em?: string
+          mode: string
+          score_maximo?: number | null
+          score_minimo?: number | null
+          score_n?: number | null
+          score_p10?: number | null
+          score_p25?: number | null
+          score_p50?: number | null
+          score_p75?: number | null
+          score_p90?: number | null
+          symbol: string
+          trade_date: string
+          variant: string
+          votos_maximo?: number | null
+          votos_n?: number | null
+          votos_p50?: number | null
+          votos_p90?: number | null
+        }
+        Update: {
+          conf_maximo?: number | null
+          conf_minimo?: number | null
+          conf_n?: number | null
+          conf_p10?: number | null
+          conf_p25?: number | null
+          conf_p50?: number | null
+          conf_p75?: number | null
+          conf_p90?: number | null
+          gravado_em?: string
+          mode?: string
+          score_maximo?: number | null
+          score_minimo?: number | null
+          score_n?: number | null
+          score_p10?: number | null
+          score_p25?: number | null
+          score_p50?: number | null
+          score_p75?: number | null
+          score_p90?: number | null
+          symbol?: string
+          trade_date?: string
+          variant?: string
+          votos_maximo?: number | null
+          votos_n?: number | null
+          votos_p50?: number | null
+          votos_p90?: number | null
+        }
+        Relationships: []
+      }
       b3_engine_state: {
         Row: {
           counters: Json
@@ -8200,6 +8284,7 @@ export type Database = {
         Args: { p_dia?: string; p_hora?: number }
         Returns: number
       }
+      b3_gravar_distribuicao_dia: { Args: { p_date: string }; Returns: number }
       b3_m1_candles: {
         Args: { p_limit?: number; p_symbol: string; p_user_id: string }
         Returns: {
