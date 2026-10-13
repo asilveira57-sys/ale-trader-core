@@ -1317,6 +1317,96 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_ficha_do_dia: {
+        Row: {
+          ativo: string
+          confianca: number | null
+          confirmou: boolean | null
+          contratos: number | null
+          duracao_min: number | null
+          exigencia_pts: number | null
+          foi_real: boolean
+          freios_na_sombra: string[] | null
+          gerado_em: string
+          hora: string
+          janela_s: number | null
+          lado: string | null
+          mae_pts: number | null
+          mfe_pts: number | null
+          modalidade: string
+          motivo_saida: string | null
+          order_id: string
+          preco_entrada: number | null
+          preco_saida: number | null
+          pregao: string
+          resultado_brl: number | null
+          resumo: string | null
+          robo: string
+          score: number | null
+          setup: string | null
+          votos_detalhe: Json | null
+          votos_favor: number | null
+        }
+        Insert: {
+          ativo: string
+          confianca?: number | null
+          confirmou?: boolean | null
+          contratos?: number | null
+          duracao_min?: number | null
+          exigencia_pts?: number | null
+          foi_real?: boolean
+          freios_na_sombra?: string[] | null
+          gerado_em?: string
+          hora: string
+          janela_s?: number | null
+          lado?: string | null
+          mae_pts?: number | null
+          mfe_pts?: number | null
+          modalidade: string
+          motivo_saida?: string | null
+          order_id: string
+          preco_entrada?: number | null
+          preco_saida?: number | null
+          pregao: string
+          resultado_brl?: number | null
+          resumo?: string | null
+          robo: string
+          score?: number | null
+          setup?: string | null
+          votos_detalhe?: Json | null
+          votos_favor?: number | null
+        }
+        Update: {
+          ativo?: string
+          confianca?: number | null
+          confirmou?: boolean | null
+          contratos?: number | null
+          duracao_min?: number | null
+          exigencia_pts?: number | null
+          foi_real?: boolean
+          freios_na_sombra?: string[] | null
+          gerado_em?: string
+          hora?: string
+          janela_s?: number | null
+          lado?: string | null
+          mae_pts?: number | null
+          mfe_pts?: number | null
+          modalidade?: string
+          motivo_saida?: string | null
+          order_id?: string
+          preco_entrada?: number | null
+          preco_saida?: number | null
+          pregao?: string
+          resultado_brl?: number | null
+          resumo?: string | null
+          robo?: string
+          score?: number | null
+          setup?: string | null
+          votos_detalhe?: Json | null
+          votos_favor?: number | null
+        }
+        Relationships: []
+      }
       b3_grupo_estado_dia: {
         Row: {
           multiplicador: number
@@ -8112,6 +8202,59 @@ export type Database = {
         }
         Relationships: []
       }
+      v_b3_ficha_do_dia: {
+        Row: {
+          ativo: string | null
+          hora: string | null
+          modalidade: string | null
+          pregao: string | null
+          resultado_brl: number | null
+          resumo: string | null
+          robo: string | null
+          tipo: string | null
+          votos_detalhe: Json | null
+        }
+        Insert: {
+          ativo?: string | null
+          hora?: never
+          modalidade?: string | null
+          pregao?: string | null
+          resultado_brl?: number | null
+          resumo?: string | null
+          robo?: string | null
+          tipo?: never
+          votos_detalhe?: Json | null
+        }
+        Update: {
+          ativo?: string | null
+          hora?: never
+          modalidade?: string | null
+          pregao?: string | null
+          resultado_brl?: number | null
+          resumo?: string | null
+          robo?: string | null
+          tipo?: never
+          votos_detalhe?: Json | null
+        }
+        Relationships: []
+      }
+      v_b3_ficha_resumo_dia: {
+        Row: {
+          barradas_na_sombra: number | null
+          confianca_media: number | null
+          confirmaram: number | null
+          entradas: number | null
+          entradas_reais: number | null
+          ganhos: number | null
+          motivos_de_saida: string | null
+          perdas: number | null
+          pregao: string | null
+          resultado_brl: number | null
+          resultado_com_freio: number | null
+          score_medio: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       b3_alarme_cotacao_parada: {
@@ -8280,6 +8423,7 @@ export type Database = {
         }[]
       }
       b3_export_raiz: { Args: { p: string }; Returns: string }
+      b3_gerar_ficha_do_dia: { Args: { p_pregao: string }; Returns: number }
       b3_gravar_cenario_horario: {
         Args: { p_dia?: string; p_hora?: number }
         Returns: number
@@ -8306,8 +8450,10 @@ export type Database = {
         Args: { p_date?: string }
         Returns: number
       }
+      b3_marcar_reais_na_ficha: { Args: { p_pregao: string }; Returns: number }
       b3_materializar_m1: { Args: { p_date?: string }; Returns: number }
       b3_motor_noite: { Args: { p_ligar: boolean }; Returns: string }
+      b3_num: { Args: { v: number }; Returns: string }
       b3_prd_atualizar_parametros: {
         Args: {
           p_max_daily_loss_brl: number

@@ -218,8 +218,16 @@ function PrdAuthorizationsPage() {
         : brlFromMult(s.manual_daily_loss_mult, s.stop_pts, s.point_value_brl, 2),
     })),
   ).total_brl;
-  const saldo = (data as any).capital_liquido_brl ?? (data as any).saldo_brl ?? null;
-  const pctSaldo = saldo && saldo > 0 ? (stopGlobal / saldo) * 100 : null;
+  // BASE OFICIAL = CARTEIRA (13/10/2026). Antes era capital_liquido ?? saldo,
+  // os dois vindos de b3_mt5_account_state: o MT5 reportava R$ 2.150 contra
+  // R$ 532,67 de carteira, e a razao aparecia 8,9% em vez de 36,0%.
+  // O MT5 continua na tela, rotulado como conferencia, para que a divergencia
+  // fique VISIVEL em vez de desaparecer.
+  const capital = (data as any).capital_carteira_brl ?? null;
+  const saldoMt5 = (data as any).capital_liquido_brl ?? (data as any).saldo_brl ?? null;
+  const pctSaldo = capital && capital > 0 ? (stopGlobal / capital) * 100 : null;
+  const divergencia =
+    capital != null && saldoMt5 != null ? Math.round((saldoMt5 - capital) * 100) / 100 : null;
   const sizingFor = (r: Row) =>
     sizing.find((s) => s.symbol === rootSymbol(r.symbol) && s.variant === (r.variant ?? "indicador") && s.mode === r.mode);
   const focused = !!(focus.symbol || focus.variant || focus.mode);
@@ -343,23 +351,40 @@ function PrdAuthorizationsPage() {
             <div className="text-xs text-muted-foreground">soma do limite que de fato trava cada robô ligado</div>
           </div>
           <div>
-            <div className="text-xs uppercase text-muted-foreground">Saldo da conta</div>
-            <div className="font-mono text-2xl font-semibold">{brl(saldo)}</div>
+            <div className="text-xs uppercase text-muted-foreground">Capital da carteira</div>
+            <div className="font-mono text-2xl font-semibold">
+              {(data as any).carteira_erro ? "—" : brl(capital)}
+            </div>
             <div className="text-xs text-muted-foreground">
-              {(data as any).estado_reportado_em
-                ? `reportado em ${new Date((data as any).estado_reportado_em).toLocaleString("pt-BR")}`
-                : "sem relatório do executor"}
+              {(data as any).carteira_erro
+                ? `carteira indisponível: ${(data as any).carteira_erro}`
+                : (data as any).carteira_data_corte
+                  ? `lançado até ${new Date(`${(data as any).carteira_data_corte}T12:00:00`).toLocaleDateString("pt-BR")} + realizado depois`
+                  : "carteira sem lançamento — capital operacional zero"}
             </div>
           </div>
           <div>
-            <div className="text-xs uppercase text-muted-foreground">Global / saldo</div>
+            <div className="text-xs uppercase text-muted-foreground">Global / capital</div>
             <div className="font-mono text-2xl font-semibold">{pctSaldo == null ? "—" : `${pctSaldo.toFixed(1)}%`}</div>
+            <div className="text-xs text-muted-foreground">
+              MT5 {brl(saldoMt5)}
+              {(data as any).estado_reportado_em
+                ? ` · ${new Date((data as any).estado_reportado_em).toLocaleString("pt-BR")}`
+                : " · sem relatório"}
+            </div>
           </div>
           <div>
             <div className="text-xs uppercase text-muted-foreground">Se todos fossem 2 contratos</div>
             <div className="font-mono text-2xl font-semibold text-muted-foreground">{brl(stopGlobal2)}</div>
           </div>
         </div>
+        {divergencia != null && Math.abs(divergencia) >= 1 && (
+          <p className="text-xs text-amber-300">
+            Conferência: o MetaTrader reporta {brl(saldoMt5)} e a carteira tem {brl(capital)} —
+            diferença de {brl(divergencia)}. Quem manda é a carteira: é o único número que o portão
+            de abertura real consulta. O saldo do MT5 não acompanha a XP e serve só de conferência.
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">
           Ao alcançar o global, nenhum robô real abre nova posição — o simulado continua rodando normalmente.
           Por robô vale o MENOR entre o limite digitado e {STOPS_POR_DIA} stops no tamanho real — e o global é
