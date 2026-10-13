@@ -2,3 +2,4 @@
 - Calibração semanal: mult_atual vem de b3_simulation_mode_settings.daily_stop_mult (robô com valor indeterminado é pulado e logado); nunca gravar sugestão igual ao atual — régua constante gerou ganhos falsos.
 - Portão de abertura real usa capital operacional da carteira (b3_real_carteira + realizado de b3_live_orders), não a margem do MT5; MT5 é só conferência — o MT5 reporta patrimônio, não disponível.
 - Cockpit historical order reads must paginate in ranges of at most 1,000 rows up to their safety cap and flag that cap when reached; the Data API otherwise silently truncates larger requested limits.
+- Capital of the real account = b3_real_carteira via lerCarteira().capital_operacional_brl. The b3_mt5_account_state saldo is conference-only and must never be the base for a percentage, limit or gate.

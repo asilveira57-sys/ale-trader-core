@@ -52,6 +52,13 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
 
     const { loadRealSizing, globalStopFromSizing } = await import("@/lib/b3-real-stop.server");
+    // CAPITAL OFICIAL = CARTEIRA, nunca o saldo do MetaTrader (13/10/2026).
+    // O MT5 reporta um saldo que nao acompanha a XP; o unico numero que o
+    // portao de abertura real usa e capital_operacional_brl de lerCarteira()
+    // (ver b3-simulation.functions.ts, bloqueio de abertura por capital).
+    // Esta tela mostrava "Saldo da conta" lendo b3_mt5_account_state, e a
+    // razao "Global / saldo" saia quatro vezes menor que a verdadeira.
+    const { lerCarteira } = await import("@/lib/b3-carteira.server");
 
     const [rows, logs, sizing, estado, cmds] = await Promise.all([
       supabase
@@ -96,6 +103,17 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
     }
 
     const list = rows.data ?? [];
+
+    // Falha da carteira NAO derruba a tela: ela degrada para nulo e a tela
+    // avisa. Autorizacao real e tela de dinheiro — nao pode ficar branca.
+    let carteira: Awaited<ReturnType<typeof lerCarteira>> | null = null;
+    let carteiraErro: string | null = null;
+    try {
+      carteira = await lerCarteira(supabase, userId);
+    } catch (e) {
+      carteiraErro = (e as Error).message;
+    }
+
     return {
       authorizations: list,
       log: logs.data ?? [],
@@ -108,6 +126,13 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
       saldo_brl: (estado.data as any)?.saldo == null ? null : Number((estado.data as any).saldo),
       capital_liquido_brl: (estado.data as any)?.capital_liquido == null ? null : Number((estado.data as any).capital_liquido),
       estado_reportado_em: (estado.data as any)?.reportado_em ?? null,
+      // CAPITAL OFICIAL (carteira). saldo_brl/capital_liquido_brl acima
+      // continuam servidos, mas agora SO como conferencia do MT5.
+      capital_carteira_brl: carteira?.capital_operacional_brl ?? null,
+      carteira_declarado_brl: carteira?.declarado_brl ?? null,
+      carteira_realizado_brl: carteira?.realizado_brl ?? null,
+      carteira_data_corte: carteira?.data_corte ?? null,
+      carteira_erro: carteiraErro,
     };
   });
 
