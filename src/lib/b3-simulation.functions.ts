@@ -28,6 +28,7 @@ import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobot
 
 import { roundToTick } from "./b3-tick";
 import { aplicarProporcional } from "./b3-proporcional";
+import { directionalEfficiency } from "./b3-cockpit-measurements";
 
 // Portões geométricos do `trend_pullback` (14/10/2026). Só reprovam.
 export const LOOKBACK_PA = 20;              // velas M1 analisadas
@@ -2002,7 +2003,7 @@ async function runB3SimulationTickInner(
     if (w.length < 5 || !(amplitude > 0) || !Number.isFinite(c0) || !Number.isFinite(cN)) {
       return { ...base, veredito: "sem_candles", razao: "sem candles suficientes" };
     }
-    const ef = (cN - c0) / amplitude;
+    const ef = directionalEfficiency(cN - c0, amplitude);
     const pos = (price - lo) / amplitude;
     const g = { ...base, eficiencia_direcional: ef, posicao_na_faixa: pos };
     const f = (x: number) => x.toFixed(2);

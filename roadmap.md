@@ -1,7 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
-- [ ] Testeiras 14/10: controles independentes, picos diários e preço intradiário; validar sem publicar.
+- [x] Testeiras 14/10: controles independentes, picos diários e preço intradiário; compilação OK, 5 testes e controles autenticados em celular/computador; não publicado.
 - [x] A2: duas leituras paginadas; faixa leu 8.165 ordens e WIN conferiu as cinco referências; 30 dias leu 13.180 ordens; demais limites apenas listados.
 - [x] B: recolhimento independente por ativo×modalidade, preservando cabeçalho/faixa; testado recolher/reabrir Indicador sem afetar Price Action.
 - [ ] Redução de VOLUME do banco (votos só nas aprovadas, resumo diário do diário de decisões, retenção 48h) — **só depois das 18:00**, exige migração em tabela grande.

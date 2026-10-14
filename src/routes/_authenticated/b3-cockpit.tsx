@@ -1,4 +1,7 @@
 import { CalibracaoSugerida } from "@/components/b3/CalibracaoSugerida";
+import { AssetPricePath } from "@/components/b3/AssetPricePath";
+import { getCockpitDailyPeaks } from "@/lib/b3-cockpit-measurements.functions";
+import { peakSummary } from "@/lib/b3-cockpit-measurements";
 import { useState, useEffect } from "react";
 import { formatBrDate } from "@/lib/b3-period";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -173,8 +176,8 @@ const shortDate = (date: string) => {
 // e o valor em verde/vermelho conforme positivo/negativo. Hoje é o primeiro
 // card (ainda em andamento) e o "Total" soma somente os últimos 5 pregões.
 function PregaoCard({
-  label, com, sem, highlight,
-}: { label: string; com: number; sem: number; highlight?: boolean }) {
+  label, com, sem, highlight, peak,
+}: { label: string; com: number; sem: number; highlight?: boolean; peak?: number | null }) {
   return (
     <div className="min-w-[126px] rounded bg-black/70 px-2 py-1.5 text-left">
       <p className={`mb-1 ${highlight ? "font-black" : "font-bold"} text-white`}>{label}</p>
@@ -184,16 +187,18 @@ function PregaoCard({
       <p className="whitespace-nowrap font-bold text-white">
         Sem freio <span className={`ml-1 font-mono ${moneyColor(sem)}`}>{BRL(sem)}</span>
       </p>
+      {peak !== undefined && <p className="mt-1 text-[10px] text-foreground">Pico <span className="font-mono">{peak == null ? "sem dados" : BRL(peak)}</span></p>}
     </div>
   );
 }
 
-function EfeitoCincoPregoes({ days }: { days: any[] | null | undefined }) {
+function EfeitoCincoPregoes({ days, peaks }: { days: any[] | null | undefined; peaks?: Record<string, number> }) {
   const rows = days ?? [];
   // Total soma somente os últimos 5 (hoje é o primeiro, em andamento).
   const totalRows = rows.slice(1);
   const totalCom = totalRows.reduce((sum, day) => sum + Number(day.com_freio_brl ?? 0), 0);
   const totalSem = totalRows.reduce((sum, day) => sum + Number(day.sem_freio_brl ?? 0), 0);
+  const summary = peakSummary(totalRows.map((day) => day.date), peaks);
   return (
     <div className="border-t border-current/20 px-3 py-2">
       <p className="mb-2 text-[10px] font-black uppercase">Efeito nos últimos pregões</p>
@@ -204,6 +209,7 @@ function EfeitoCincoPregoes({ days }: { days: any[] | null | undefined }) {
             label={index === 0 ? `Hoje · ${shortDate(day.date)}` : shortDate(day.date)}
             com={Number(day.com_freio_brl ?? 0)}
             sem={Number(day.sem_freio_brl ?? 0)}
+            peak={peaks?.[day.date] ?? null}
           />
         ))}
         <PregaoCard
@@ -212,6 +218,12 @@ function EfeitoCincoPregoes({ days }: { days: any[] | null | undefined }) {
           sem={totalSem}
           highlight
         />
+        <div className="min-w-[126px] rounded bg-background/90 px-2 py-1.5 text-left text-foreground">
+          <p className="mb-1 font-black">Picos · 5 pregões</p>
+          <p className="font-bold">Maior pico <span className="font-mono text-success">{summary.max == null ? "sem dados" : BRL(summary.max)}</span></p>
+          <p className="font-bold">Média dos picos <span className="font-mono text-success">{summary.mean == null ? "sem dados" : BRL(summary.mean)}</span></p>
+          {summary.count < 5 && <p className="mt-1 text-muted-foreground">{summary.count}/5 dias com medição</p>}
+        </div>
       </div>
     </div>
   );
@@ -645,6 +657,14 @@ function CockpitPage() {
     refetchIntervalInBackground: false,
   });
   const fiveByAsset = new Map<string, any>(((fiveQ.data as any)?.by_asset ?? []).map((asset: any) => [asset.symbol, asset]));
+  const readPeaks = useServerFn(getCockpitDailyPeaks);
+  const peakDates: string[] = fiveQ.data?.dates ?? [];
+  const peaksQ = useQuery({
+    queryKey: ["b3-cockpit-daily-peaks", peakDates, filterKey],
+    queryFn: () => readPeaks({ data: { dates: peakDates, ...filterArgs } }),
+    enabled: vivo && peakDates.length > 0,
+    staleTime: 60000,
+  });
 
   const all: any[] = q.data?.cards ?? [];
   const porAtivo: any[] = q.data?.por_ativo ?? [];
@@ -760,7 +780,8 @@ function CockpitPage() {
   const orderedAssets = Array.from(bySymbol.entries()).sort(
     (a, b) => assetDir * (Number(headerByAsset.get(a[0])?.resultado_brl ?? 0) - Number(headerByAsset.get(b[0])?.resultado_brl ?? 0)),
   );
-  const allCollapsed = orderedAssets.length > 0 && orderedAssets.every(([root]) => collapsedAssets.has(root));
+  const variantKeys = orderedAssets.flatMap(([root, group]) => Array.from(group.byVariant.keys()).map((variant) => `${root}|${variant}`));
+  const allCollapsed = variantKeys.length > 0 && variantKeys.every((key) => collapsedVariants.has(key));
 
 
   // mx-auto + teto largo: o `container` do Tailwind satura em 1536px e impede
@@ -940,10 +961,14 @@ function CockpitPage() {
               {label}
             </Button>
           ))}
-          <Button size="sm" variant="outline" className="h-7 text-[11px] ml-auto"
-            onClick={() => setCollapsedAssets(allCollapsed ? new Set() : new Set(orderedAssets.map(([r]) => r)))}>
+          <Button size="sm" variant="outline" className="min-h-11 text-xs ml-auto"
+            onClick={() => {
+              setCollapsedVariants(allCollapsed ? new Set() : new Set(variantKeys));
+              // Global robots view must reveal every asset/variant header and strip.
+              if (!allCollapsed) setCollapsedAssets(new Set());
+            }}>
             {allCollapsed ? <ChevronDown className="w-3 h-3 mr-1" /> : <ChevronUp className="w-3 h-3 mr-1" />}
-            {allCollapsed ? "Expandir todos" : "Recolher todos"}
+            {allCollapsed ? "Expandir todos os robôs" : "Recolher todos os robôs"}
           </Button>
         </div>
 
@@ -1019,11 +1044,6 @@ function CockpitPage() {
           {/* ── Testeira do ativo: sempre visível, mesmo recolhida ── */}
           <div className={`overflow-hidden rounded-lg border border-current/30 shadow-sm ${assetBand(root)}`}>
             <div className="flex items-start gap-2 flex-wrap px-3 py-2">
-              <button type="button" onClick={() => toggleAsset(root)}
-                aria-label={isCollapsed ? `Expandir ${root}` : `Recolher ${root}`}
-                className="mt-0.5 rounded p-0.5 opacity-80 hover:opacity-100">
-                {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-              </button>
               <div className="min-w-0 flex-1 space-y-0.5">
                 <div className="flex items-center gap-2 flex-wrap text-sm font-semibold">
                    <span className="text-lg font-black">{root}</span>
@@ -1055,8 +1075,15 @@ function CockpitPage() {
                   <Link to="/b3/ativo/$symbol" params={{ symbol: root }}>ver painel</Link>
                 </Button>
               </div>
+              <Button variant="outline" className="ml-auto min-h-11 border-border bg-background text-foreground hover:text-accent-foreground"
+                aria-label={`${isCollapsed ? "Expandir" : "Recolher"} modalidades de ${root}`} aria-expanded={!isCollapsed}
+                onClick={() => toggleAsset(root)}>
+                {isCollapsed ? "Expandir modalidades" : "Recolher modalidades"}
+                {isCollapsed ? <ChevronDown /> : <ChevronUp />}
+              </Button>
             </div>
-            <EfeitoCincoPregoes days={history?.days} />
+            <EfeitoCincoPregoes days={history?.days} peaks={peaksQ.data?.rows_truncated ? undefined : peaksQ.data?.assets[root]} />
+            {peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
           </div>
 
           {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
@@ -1067,14 +1094,6 @@ function CockpitPage() {
             <div key={variant} className="@container overflow-hidden rounded-lg border border-border/40 bg-background/30">
               <div className={assetBand(root)}>
               <h3 className="flex min-h-11 flex-wrap items-center gap-2 px-3 py-2 text-sm font-black">
-                <Button size="icon" variant="ghost" className="h-7 w-7 text-current"
-                  aria-label={`${variantCollapsed ? "Expandir" : "Recolher"} robôs de ${root} · ${variantLabel(variant)}`}
-                  title={variantCollapsed ? "Expandir robôs" : "Recolher robôs"}
-                  aria-expanded={!variantCollapsed}
-                  aria-controls={`robots-${variantKey}`}
-                  onClick={() => toggleVariant(variantKey)}>
-                  {variantCollapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
-                </Button>
                 <span className="text-base font-black">{root} · {variantLabel(variant)}</span>
                 <span className="font-semibold opacity-80">{cards.length} robôs</span>
                 {/* Com uma única modalidade visível, a testeira do ativo já mostra
@@ -1102,9 +1121,15 @@ function CockpitPage() {
                   onClick={() => copyCards(cards, `${root} · ${variantLabel(variant).toLowerCase()}`)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo + modalidade
                 </Button>
-
+                <Button variant="outline" className="ml-auto min-h-11 border-border bg-background text-foreground hover:text-accent-foreground"
+                  aria-label={`${variantCollapsed ? "Expandir" : "Recolher"} robôs de ${root} · ${variantLabel(variant)}`}
+                  aria-expanded={!variantCollapsed} aria-controls={`robots-${variantKey}`} onClick={() => toggleVariant(variantKey)}>
+                  {variantCollapsed ? "Expandir robôs" : "Recolher robôs"}
+                  {variantCollapsed ? <ChevronDown /> : <ChevronUp />}
+                </Button>
                </h3>
-               <EfeitoCincoPregoes days={history?.by_variant?.find((item: any) => item.variant === variant)?.days} />
+               <EfeitoCincoPregoes days={history?.by_variant?.find((item: any) => item.variant === variant)?.days}
+                 peaks={peaksQ.data?.rows_truncated ? undefined : peaksQ.data?.variants[variantKey]} />
                </div>
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
