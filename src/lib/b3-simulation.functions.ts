@@ -28,6 +28,12 @@ import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobot
 
 import { roundToTick } from "./b3-tick";
 import { aplicarProporcional } from "./b3-proporcional";
+
+// Portões geométricos do `trend_pullback` (14/10/2026). Só reprovam.
+export const LOOKBACK_PA = 20;              // velas M1 analisadas
+export const PA_EFICIENCIA_MIN = 0.30;      // |eficiência| abaixo disto = lateral
+export const PA_POSICAO_MAX_COMPRA = 0.65;  // compra acima disto na faixa = esticado
+export const PA_POSICAO_MIN_VENDA = 0.35;   // venda abaixo disto na faixa = esticado
 import {
   avaliarConfirmacao, confirmacaoNaAbertura, confirmacaoArmada, avaliarPendente,
   criarPendente, motivoNaoConfirmou, ladoDoPendente, type ConfirmacaoPendente,
@@ -1981,6 +1987,32 @@ async function runB3SimulationTickInner(
   // EMA/VWAP. Só é chamada quando cfg.entry_style === 'price_action'.
   // A série vem de b3_m1_candles (candles M1 reais); snapshots não servem
   // porque candle_high/candle_low neles são extremos acumulados de janela.
+  // Geometria do price action sobre as últimas LOOKBACK_PA velas M1.
+  // Portões na ordem: sem_candles → lateral → contra_tendencia → esticado.
+  function geometriaPA(sorted: any[], price: number, side: "buy" | "sell") {
+    const w = sorted.slice(-LOOKBACK_PA);
+    const highs = w.map((c: any) => Number(c.candle_high)).filter(Number.isFinite);
+    const lows = w.map((c: any) => Number(c.candle_low)).filter(Number.isFinite);
+    const hi = highs.length ? Math.max(...highs) : NaN;
+    const lo = lows.length ? Math.min(...lows) : NaN;
+    const amplitude = hi - lo;
+    const c0 = Number(w[0]?.candle_close), cN = Number(w[w.length - 1]?.candle_close);
+    const base = { amplitude_pts: Number.isFinite(amplitude) ? amplitude : null, velas: w.length,
+      eficiencia_direcional: null as number | null, posicao_na_faixa: null as number | null };
+    if (w.length < 5 || !(amplitude > 0) || !Number.isFinite(c0) || !Number.isFinite(cN)) {
+      return { ...base, veredito: "sem_candles", razao: "sem candles suficientes" };
+    }
+    const ef = (cN - c0) / amplitude;
+    const pos = (price - lo) / amplitude;
+    const g = { ...base, eficiencia_direcional: ef, posicao_na_faixa: pos };
+    const f = (x: number) => x.toFixed(2);
+    if (Math.abs(ef) < PA_EFICIENCIA_MIN) return { ...g, veredito: "lateral", razao: `sem tendência: mercado lateral (eficiência ${f(ef)})` };
+    if ((side === "sell" && !(ef < 0)) || (side === "buy" && !(ef > 0))) return { ...g, veredito: "contra_tendencia", razao: `contra a tendência (eficiência ${f(ef)}, lado ${side})` };
+    if (side === "buy" && pos > PA_POSICAO_MAX_COMPRA) return { ...g, veredito: "esticado", razao: `esticado: entrada no topo da faixa (${f(pos)}), não é recuo` };
+    if (side === "sell" && pos < PA_POSICAO_MIN_VENDA) return { ...g, veredito: "esticado", razao: `esticado: entrada no fundo da faixa (${f(pos)}), não é recuo` };
+    return { ...g, veredito: "confirmado", razao: "" };
+  }
+
   function classifySetupPriceAction(params: {
     ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
   }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
@@ -2055,7 +2087,15 @@ async function runB3SimulationTickInner(
     const failures = [...hardBlock, ...(softOk ? [] : failedSoft)];
     Object.assign(details, { stop_ref: stopRef, target_ref: targetRef, risk_reward: Number(rr.toFixed(2)), soft_hits: hits, soft_total: soft.length });
 
+    // ── PORTÕES GEOMÉTRICOS (14/10/2026) — só podem REPROVAR ──
+    // `trend_pullback` passa a ser verificado: tendência real (eficiência
+    // direcional), a favor do lado, e entrada em recuo (não no extremo).
+    const geo = geometriaPA(sorted, price, intendedSide);
+    details.geo = geo;
     if (hardBlock.length === 0 && softOk) {
+      if (geo.veredito !== "confirmado") {
+        return { name: "no_valid_setup", ok: false, reasons: [geo.razao], details };
+      }
       return { name: "trend_pullback", ok: true, reasons: [], details };
     }
     return { name: "no_valid_setup", ok: false, reasons: failures, details };
@@ -5065,6 +5105,21 @@ async function runB3SimulationTickInner(
           entry_confidence: numOrNull(decision.avg_confidence),
           entry_approve_votes: numOrNull((decision as any).approve_votes),
           entry_setup: setupInfo?.name ?? null,
+          // Geometria e votos DO TIQUE CORRENTE (em memória) — nunca casar
+          // votos por janela de tempo. Fora de price action, geo_* = nulo.
+          ...(() => {
+            const g: any = cfg.entry_style === "price_action" ? (setupInfo as any)?.details?.geo : null;
+            return {
+              geo_eficiencia_direcional: g ? numOrNull(g.eficiencia_direcional) : null,
+              geo_posicao_na_faixa: g ? numOrNull(g.posicao_na_faixa) : null,
+              geo_amplitude_pts: g ? numOrNull(g.amplitude_pts) : null,
+              geo_velas: g ? numOrNull(g.velas) : null,
+              geo_veredito: g?.veredito ?? null,
+            };
+          })(),
+          agentes_votos: Array.isArray(votes)
+            ? votes.map((v: any) => ({ agente: v.agent_name, voto: v.vote, confianca: v.confidence, razao: v.reason }))
+            : null,
         };
         let insertedOrder: { id: string } | null = null;
         {

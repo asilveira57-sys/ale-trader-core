@@ -4546,6 +4546,7 @@ export type Database = {
       }
       b3_simulation_orders: {
         Row: {
+          agentes_votos: Json | null
           alvo_recalculado: number | null
           bloqueado_na_sombra: boolean
           close_reason: string | null
@@ -4569,6 +4570,11 @@ export type Database = {
           fees: number
           freios_na_sombra: string[]
           gain_pts: number | null
+          geo_amplitude_pts: number | null
+          geo_eficiencia_direcional: number | null
+          geo_posicao_na_faixa: number | null
+          geo_velas: number | null
+          geo_veredito: string | null
           gross_result_brl: number
           gross_result_points: number
           id: string
@@ -4606,6 +4612,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          agentes_votos?: Json | null
           alvo_recalculado?: number | null
           bloqueado_na_sombra?: boolean
           close_reason?: string | null
@@ -4629,6 +4636,11 @@ export type Database = {
           fees?: number
           freios_na_sombra?: string[]
           gain_pts?: number | null
+          geo_amplitude_pts?: number | null
+          geo_eficiencia_direcional?: number | null
+          geo_posicao_na_faixa?: number | null
+          geo_velas?: number | null
+          geo_veredito?: string | null
           gross_result_brl?: number
           gross_result_points?: number
           id?: string
@@ -4666,6 +4678,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          agentes_votos?: Json | null
           alvo_recalculado?: number | null
           bloqueado_na_sombra?: boolean
           close_reason?: string | null
@@ -4689,6 +4702,11 @@ export type Database = {
           fees?: number
           freios_na_sombra?: string[]
           gain_pts?: number | null
+          geo_amplitude_pts?: number | null
+          geo_eficiencia_direcional?: number | null
+          geo_posicao_na_faixa?: number | null
+          geo_velas?: number | null
+          geo_veredito?: string | null
           gross_result_brl?: number
           gross_result_points?: number
           id?: string

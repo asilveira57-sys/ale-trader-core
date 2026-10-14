@@ -191,7 +191,16 @@ export const Route = createFileRoute("/api/public/hooks/b3-mt5-commands-ack")({
 
         // ─────────── comando confirmado como executado: grava/atualiza b3_live_orders ───────────
         if (cmd.action === "open") {
+          // Modalidade vem da EXECUÇÃO que originou o comando, nunca do
+          // default da coluna (14/10/2026: magic 2504 gravou 'indicador').
+          let runVariant: string | null = null;
+          if (cmd.simulation_run_id) {
+            const { data: rv } = await (supabaseAdmin as any).from("b3_simulation_runs")
+              .select("variant").eq("id", cmd.simulation_run_id).maybeSingle();
+            runVariant = rv?.variant ?? null;
+          }
           const { error: insErr } = await (supabaseAdmin as any).from("b3_live_orders").insert({
+            ...(runVariant ?? cmd.variant ? { variant: runVariant ?? cmd.variant } : {}),
             user_id: payload.user_id,
             command_id: cmd.id,
             simulation_run_id: cmd.simulation_run_id,
