@@ -1983,6 +1983,11 @@ async function runB3SimulationTickInner(
   // porque candle_high/candle_low neles são extremos acumulados de janela.
   function classifySetupPriceAction(params: {
     ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
+  }) {
+    return classifySetupPriceActionBase(params);
+  }
+  function classifySetupPriceActionBase(params: {
+    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
   }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
     const { ctxLocal, intendedSide, cfg, m1Candles } = params;
     const price = Number(ctxLocal.price);
