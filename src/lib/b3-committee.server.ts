@@ -4,6 +4,11 @@
 export type B3Vote = "approve" | "reject" | "neutral";
 export type B3Side = "buy" | "sell";
 
+// Anti-Euforia simétrico (14/10/2026): compra com RSI >= SOBRECOMPRA rejeita;
+// venda com RSI <= SOBREVENDA rejeita. Ajustável pelo operador.
+export const ANTI_EUFORIA_RSI_SOBRECOMPRA = 70;
+export const ANTI_EUFORIA_RSI_SOBREVENDA = 30;
+
 export interface B3Context {
   symbol: string;            // ex: WIN
   contract_code: string;     // ex: WINFUT
@@ -243,8 +248,11 @@ function aAntiTendencia(c: B3Context, side: B3Side, counterTrend = false): B3Age
   // novo extremo local — isso disparava veto em quase todo tick com
   // tendência real, cravando o score final em 25. Mantida como proteção,
   // porém sem o falso-positivo do "extremo de janela".
-  const overbought = c.rsi > 78 && side === "buy";
-  const oversold = c.rsi < 22 && side === "sell";
+  // Simétrico pelo LADO DA OPERAÇÃO (14/10/2026). Limites em ANTI_EUFORIA_*
+  // no topo do arquivo. Antes: >78 / <22 — os novos (>=70 / <=30) são
+  // superconjunto estrito: só passam a rejeitar, nunca a aprovar.
+  const overbought = side === "buy" && c.rsi >= ANTI_EUFORIA_RSI_SOBRECOMPRA;
+  const oversold = side === "sell" && c.rsi <= ANTI_EUFORIA_RSI_SOBREVENDA;
   const block = overbought || oversold;
   // Em modalidades contrárias à tendência, comprar pânico e vender euforia É a
   // tese: RSI extremo a favor do lado passa a ser APROVAÇÃO. Só continua
@@ -256,9 +264,9 @@ function aAntiTendencia(c: B3Context, side: B3Side, counterTrend = false): B3Age
   const reason = counterAligned
     ? `RSI ${c.rsi.toFixed(0)} em extremo a favor da reversão — gatilho da modalidade.`
     : overbought
-    ? `RSI ${c.rsi.toFixed(0)} sobrecomprado — evitar FOMO em compra.`
+    ? `RSI ${c.rsi.toFixed(0)} sobrecomprado — compra no topo, não é recuo`
     : oversold
-    ? `RSI ${c.rsi.toFixed(0)} sobrevendido — evitar pânico em venda.`
+    ? `RSI ${c.rsi.toFixed(0)} sobrevendido — venda no fundo, não é recuo`
     : `RSI ${c.rsi.toFixed(0)} em zona neutra — sem sinais de euforia.`;
   return {
     agent_name: "Anti-Euforia",
