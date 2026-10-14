@@ -4,6 +4,7 @@
 export const LISTA_VARIANT_LABEL: Record<string, string> = {
   indicador: "Indicador",
   price_action: "Price action",
+  price_action_sc: "Price action SC",
   mean_reversion: "Reversão à média",
   range: "Faixa",
   rompimento: "Rompimento",
