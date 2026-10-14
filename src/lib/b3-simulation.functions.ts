@@ -1981,12 +1981,33 @@ async function runB3SimulationTickInner(
   // EMA/VWAP. Só é chamada quando cfg.entry_style === 'price_action'.
   // A série vem de b3_m1_candles (candles M1 reais); snapshots não servem
   // porque candle_high/candle_low neles são extremos acumulados de janela.
-  function classifySetupPriceAction(params: {
-    ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
-  }) {
-    return classifySetupPriceActionBase(params);
+  // Geometria do price action sobre as últimas LOOKBACK_PA velas M1.
+  // Portões na ordem: sem_candles → lateral → contra_tendencia → esticado.
+  function geometriaPA(sorted: any[], price: number, side: "buy" | "sell") {
+    const w = sorted.slice(-LOOKBACK_PA);
+    const highs = w.map((c: any) => Number(c.candle_high)).filter(Number.isFinite);
+    const lows = w.map((c: any) => Number(c.candle_low)).filter(Number.isFinite);
+    const hi = highs.length ? Math.max(...highs) : NaN;
+    const lo = lows.length ? Math.min(...lows) : NaN;
+    const amplitude = hi - lo;
+    const c0 = Number(w[0]?.candle_close), cN = Number(w[w.length - 1]?.candle_close);
+    const base = { amplitude_pts: Number.isFinite(amplitude) ? amplitude : null, velas: w.length,
+      eficiencia_direcional: null as number | null, posicao_na_faixa: null as number | null };
+    if (w.length < 5 || !(amplitude > 0) || !Number.isFinite(c0) || !Number.isFinite(cN)) {
+      return { ...base, veredito: "sem_candles", razao: "sem candles suficientes" };
+    }
+    const ef = (cN - c0) / amplitude;
+    const pos = (price - lo) / amplitude;
+    const g = { ...base, eficiencia_direcional: ef, posicao_na_faixa: pos };
+    const f = (x: number) => x.toFixed(2);
+    if (Math.abs(ef) < PA_EFICIENCIA_MIN) return { ...g, veredito: "lateral", razao: `sem tendência: mercado lateral (eficiência ${f(ef)})` };
+    if ((side === "sell" && !(ef < 0)) || (side === "buy" && !(ef > 0))) return { ...g, veredito: "contra_tendencia", razao: `contra a tendência (eficiência ${f(ef)}, lado ${side})` };
+    if (side === "buy" && pos > PA_POSICAO_MAX_COMPRA) return { ...g, veredito: "esticado", razao: `esticado: entrada no topo da faixa (${f(pos)}), não é recuo` };
+    if (side === "sell" && pos < PA_POSICAO_MIN_VENDA) return { ...g, veredito: "esticado", razao: `esticado: entrada no fundo da faixa (${f(pos)}), não é recuo` };
+    return { ...g, veredito: "confirmado", razao: "" };
   }
-  function classifySetupPriceActionBase(params: {
+
+  function classifySetupPriceAction(params: {
     ctxLocal: any; intendedSide: "buy" | "sell"; cfg: any; m1Candles: any[];
   }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any> } {
     const { ctxLocal, intendedSide, cfg, m1Candles } = params;
