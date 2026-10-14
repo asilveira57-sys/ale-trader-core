@@ -42,6 +42,20 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
       (supabase as any).from("b3_trading_settings").select("price_source").eq("user_id", userId).maybeSingle(),
     ]);
     const isMt5 = settings?.price_source === "mt5_xp_demo";
+    // Modos que existem nesta execução (inclui experimentais criados por SQL):
+    // ordem conhecida primeiro, extras no fim, ordenados.
+    const { data: modeSettings } = await (supabase as any).from("b3_simulation_mode_settings")
+      .select("mode").eq("simulation_run_id", data.run_id).eq("user_id", userId);
+    const existentes = new Set<string>([
+      ...((modeSettings ?? []) as any[]).map((r) => String(r.mode)),
+      ...((modes ?? []) as any[]).map((r) => String(r.mode)),
+    ]);
+    const modosDaRun: string[] = existentes.size
+      ? [
+          ...MODES.filter((m) => existentes.has(m)),
+          ...Array.from(existentes).filter((m) => !(MODES as string[]).includes(m)).sort(),
+        ]
+      : [...MODES];
 
     // Ordens fechadas no período
     let q = (supabase as any).from("b3_simulation_orders")
@@ -79,7 +93,7 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
 
     // Métricas por modo no período selecionado
     const metricsByMode: Record<string, any> = {};
-    for (const mode of MODES) {
+    for (const mode of modosDaRun) {
       const mRow = (modes ?? []).find((x: any) => x.mode === mode);
       const ordsAll = (orders ?? []).filter((o: any) => o.mode === mode);
       const ords = ordsAll;
@@ -189,7 +203,7 @@ export const getB3SimulationReport = createServerFn({ method: "POST" })
       period: data.period,
       from: fromISO,
       to: toISO,
-      modes: MODES.map((m) => metricsByMode[m]),
+      modes: modosDaRun.map((m) => metricsByMode[m]),
       block_events: blockEvents ?? [],
       price_source: settings?.price_source ?? "csv",
       legacy_orders_hidden: isMt5 ? ((ordersRaw ?? []) as any[]).length - orders.length : 0,
