@@ -607,6 +607,24 @@ const MODES: Mode[] = [
   "semi_agressivo", "arrojado", "agressivo", "enoir",
 ];
 
+// Modos que EXISTEM nas execuções lidas: ordem conhecida primeiro, extras
+// (ex.: `_sc` experimentais) no fim, ordenados. Só apresentação/relatório —
+// MODE_DEFAULTS e criação de linhas continuam restritos a MODES.
+function ordenarModos(list: Iterable<string>): string[] {
+  const s = new Set(Array.from(list).filter(Boolean).map(String));
+  return [
+    ...MODES.filter((m) => s.has(m)),
+    ...Array.from(s).filter((m) => !(MODES as string[]).includes(m)).sort(),
+  ];
+}
+async function modosDasRuns(supabase: any, userId: string, runIds: string[], extras: string[] = []): Promise<string[]> {
+  if (!runIds.length) return [...MODES];
+  const { data } = await supabase.from("b3_simulation_mode_settings")
+    .select("mode").in("simulation_run_id", runIds).eq("user_id", userId);
+  const lista = ordenarModos([...(data ?? []).map((r: any) => r.mode), ...extras]);
+  return lista.length ? lista : [...MODES];
+}
+
 // Instrumentação da gestão de posição aberta: no máximo 1 gravação por minuto
 // por ordem (chave = order_id → minuto epoch já registrado).
 const openEvalLogMinute = new Map<string, number>();
@@ -5689,8 +5707,9 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
 
 
     // contadores por robô
+    const modos = await modosDasRuns(supabase, userId, scope.runIds);
     const perMode: Record<string, any> = {};
-    for (const mode of MODES) {
+    for (const mode of modos) {
       perMode[mode] = {
         mode,
         ticks_received: 0,
@@ -5796,7 +5815,7 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
     history.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
     allDecisions.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
     allTradeEvents.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-    for (const mk of MODES) {
+    for (const mk of modos) {
       const b = perMode[mk];
       b.decisions = b.decisions.slice(-50).reverse();
       b.trade_events = b.trade_events.slice(-20).reverse();
@@ -5826,7 +5845,7 @@ export const getB3PipelineAudit = createServerFn({ method: "GET" })
 
     return {
       run,
-      modes: MODES.map((m) => perMode[m]),
+      modes: modos.map((m) => perMode[m]),
       history: history.slice(0, 100),
       decisions: allDecisions.slice(0, 100),
       trade_events: allTradeEvents.slice(0, 50),
@@ -5903,8 +5922,9 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
       .gte("entry_time", since);
 
 
+    const modos = await modosDasRuns(supabase, userId, scope.runIds, (orders ?? []).map((o: any) => o.mode));
     const ordersByMode: Record<string, { total: number; net: number }> = {};
-    for (const m of MODES) ordersByMode[m] = { total: 0, net: 0 };
+    for (const m of modos) ordersByMode[m] = { total: 0, net: 0 };
     for (const o of orders ?? []) {
       const b = ordersByMode[o.mode]; if (!b) continue;
       b.total += 1; b.net += Number(o.net_result_brl ?? 0);
@@ -5920,10 +5940,10 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
     type Group = { mode: string; category: string; step_key: string; label: string; detail: string; first_at: string; last_at: string; repetitions: number; observed_values: number[]; limit_values: number[] };
     const groups: Group[] = [];
     const activeByMode: Record<string, Group | null> = {};
-    for (const m of MODES) activeByMode[m] = null;
+    for (const m of modos) activeByMode[m] = null;
 
     const funnel: Record<string, any> = {};
-    for (const m of MODES) {
+    for (const m of modos) {
       funnel[m] = {
         mode: m,
         ciclos: 0,
@@ -6025,7 +6045,7 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
     }
 
     // Somar ordens executadas do banco (fonte de verdade)
-    for (const m of MODES) {
+    for (const m of modos) {
       funnel[m].entradas_executadas = ordersByMode[m].total;
       funnel[m].resultado_liquido_brl = Math.round(ordersByMode[m].net * 100) / 100;
     }
@@ -6051,7 +6071,7 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
     // Ranking de motivos: agrupar por (mode, step_key), somando ocorrências únicas e repetições
     type ReasonAgg = { mode: string; category: string; category_label: string; step_key: string; label: string; occurrences: number; repetitions: number; first_at: string; last_at: string; avg_observed: number | null; avg_limit: number | null; avg_distance: number | null; last_detail: string };
     const rmap = new Map<string, ReasonAgg>();
-    const modeSignals: Record<string, number> = Object.fromEntries(MODES.map((m) => [m, funnel[m].ciclos || 1]));
+    const modeSignals: Record<string, number> = Object.fromEntries(modos.map((m) => [m, funnel[m].ciclos || 1]));
     for (const g of groups) {
       const k = `${g.mode}|${g.step_key}`;
       const obs = g.observed_values.length ? g.observed_values.reduce((a, b) => a + b, 0) / g.observed_values.length : null;
@@ -6078,7 +6098,7 @@ export const getB3EntryAuditReport = createServerFn({ method: "POST" })
     return {
       run,
       period: { since, until: latestAt, hours: data.hours },
-      modes: MODES.map((m) => {
+      modes: modos.map((m) => {
         const f = funnel[m];
         const sinais = f.sinais_brutos || 0;
         const comite = f.enviados_comite || 0;
@@ -6309,7 +6329,8 @@ export const listB3ModeSettings = createServerFn({ method: "POST" })
       const { data: created } = await (supabase as any).from("b3_simulation_mode_settings").insert(ins).select("*");
       for (const r of created ?? []) byMode[r.mode] = r;
     }
-    return MODES.map(m => byMode[m]);
+    // Modos extras (ex.: execuções experimentais criadas por SQL) entram no fim.
+    return ordenarModos(Object.keys(byMode)).map(m => byMode[m]).filter(Boolean);
   });
 
 const SETTING_FIELDS = [

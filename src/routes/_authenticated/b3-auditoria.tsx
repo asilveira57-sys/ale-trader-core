@@ -151,7 +151,7 @@ function Page() {
                   <SelectTrigger className="w-[160px]"><SelectValue placeholder="Robô" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os robôs</SelectItem>
-                    {apelidos.sortModes([...MODE_KEYS] as string[]).map((k) => <SelectItem key={k} value={k}>{apelidos.nick(k)}</SelectItem>)}
+                    {apelidos.sortModes(apelidos.rows.length ? apelidos.rows.map((r) => r.mode) : ([...MODE_KEYS] as string[])).map((k) => <SelectItem key={k} value={k}>{apelidos.nick(k)}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={catFilter} onValueChange={setCatFilter}>
