@@ -43,6 +43,13 @@
       "when": 1791801682410,
       "tag": "0005_b3_export_decisoes_percentis",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791975829702,
+      "tag": "0006_orders_entry_geometry",
+      "breakpoints": true
     }
   ]
 }
