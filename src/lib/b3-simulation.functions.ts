@@ -28,6 +28,12 @@ import { loadRealSizing, loadRealDayResult, globalStopFromSizing, type RealRobot
 
 import { roundToTick } from "./b3-tick";
 import { aplicarProporcional } from "./b3-proporcional";
+
+// Portões geométricos do `trend_pullback` (14/10/2026). Só reprovam.
+export const LOOKBACK_PA = 20;              // velas M1 analisadas
+export const PA_EFICIENCIA_MIN = 0.30;      // |eficiência| abaixo disto = lateral
+export const PA_POSICAO_MAX_COMPRA = 0.65;  // compra acima disto na faixa = esticado
+export const PA_POSICAO_MIN_VENDA = 0.35;   // venda abaixo disto na faixa = esticado
 import {
   avaliarConfirmacao, confirmacaoNaAbertura, confirmacaoArmada, avaliarPendente,
   criarPendente, motivoNaoConfirmou, ladoDoPendente, type ConfirmacaoPendente,
