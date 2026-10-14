@@ -2058,16 +2058,11 @@ async function runB3SimulationTickInner(
     // ── PORTÕES GEOMÉTRICOS (14/10/2026) — só podem REPROVAR ──
     // `trend_pullback` passa a ser verificado: tendência real (eficiência
     // direcional), a favor do lado, e entrada em recuo (não no extremo).
-    const geo = geometriaPA(sorted, price);
-    Object.assign(details, { geo });
+    const geo = geometriaPA(sorted, price, intendedSide);
+    details.geo = geo;
     if (hardBlock.length === 0 && softOk) {
       if (geo.veredito !== "confirmado") {
-        return { name: "no_valid_setup", ok: false, reasons: [geo.razao_por_lado(intendedSide)], details };
-      }
-      const gs = geo.vereditoLado(intendedSide);
-      if (gs.veredito !== "confirmado") {
-        details.geo = { ...geo, veredito: gs.veredito };
-        return { name: "no_valid_setup", ok: false, reasons: [gs.razao], details };
+        return { name: "no_valid_setup", ok: false, reasons: [geo.razao], details };
       }
       return { name: "trend_pullback", ok: true, reasons: [], details };
     }
