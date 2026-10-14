@@ -5105,6 +5105,21 @@ async function runB3SimulationTickInner(
           entry_confidence: numOrNull(decision.avg_confidence),
           entry_approve_votes: numOrNull((decision as any).approve_votes),
           entry_setup: setupInfo?.name ?? null,
+          // Geometria e votos DO TIQUE CORRENTE (em memória) — nunca casar
+          // votos por janela de tempo. Fora de price action, geo_* = nulo.
+          ...(() => {
+            const g: any = cfg.entry_style === "price_action" ? (setupInfo as any)?.details?.geo : null;
+            return {
+              geo_eficiencia_direcional: g ? numOrNull(g.eficiencia_direcional) : null,
+              geo_posicao_na_faixa: g ? numOrNull(g.posicao_na_faixa) : null,
+              geo_amplitude_pts: g ? numOrNull(g.amplitude_pts) : null,
+              geo_velas: g ? numOrNull(g.velas) : null,
+              geo_veredito: g?.veredito ?? null,
+            };
+          })(),
+          agentes_votos: Array.isArray(votes)
+            ? votes.map((v: any) => ({ agente: v.agent_name, voto: v.vote, confianca: v.confidence, razao: v.reason }))
+            : null,
         };
         let insertedOrder: { id: string } | null = null;
         {
