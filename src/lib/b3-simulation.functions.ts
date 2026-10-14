@@ -2055,7 +2055,20 @@ async function runB3SimulationTickInner(
     const failures = [...hardBlock, ...(softOk ? [] : failedSoft)];
     Object.assign(details, { stop_ref: stopRef, target_ref: targetRef, risk_reward: Number(rr.toFixed(2)), soft_hits: hits, soft_total: soft.length });
 
+    // ── PORTÕES GEOMÉTRICOS (14/10/2026) — só podem REPROVAR ──
+    // `trend_pullback` passa a ser verificado: tendência real (eficiência
+    // direcional), a favor do lado, e entrada em recuo (não no extremo).
+    const geo = geometriaPA(sorted, price);
+    Object.assign(details, { geo });
     if (hardBlock.length === 0 && softOk) {
+      if (geo.veredito !== "confirmado") {
+        return { name: "no_valid_setup", ok: false, reasons: [geo.razao_por_lado(intendedSide)], details };
+      }
+      const gs = geo.vereditoLado(intendedSide);
+      if (gs.veredito !== "confirmado") {
+        details.geo = { ...geo, veredito: gs.veredito };
+        return { name: "no_valid_setup", ok: false, reasons: [gs.razao], details };
+      }
       return { name: "trend_pullback", ok: true, reasons: [], details };
     }
     return { name: "no_valid_setup", ok: false, reasons: failures, details };
