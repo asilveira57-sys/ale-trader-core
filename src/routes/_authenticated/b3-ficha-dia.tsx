@@ -153,7 +153,7 @@ function Detalhe({ o }: { o: any }) {
   const mfe = n(o.mfe_pts), pts = n(o.gross_result_points);
   const captura = mfe == null || mfe === 0 || pts == null ? "—" : `${((pts / mfe) * 100).toFixed(0)}%`;
   const votos: any[] | null = Array.isArray(o.agentes_votos) ? o.agentes_votos : null;
-  const rejeita = (v: any) => /reject|rejeit|contra|no|veto/i.test(String(v?.voto ?? v?.vote ?? ""));
+  const rejeita = (v: any) => /reject|rejeit|veto/i.test(String(v?.voto ?? v?.vote ?? ""));
   const card = "space-y-1 rounded-md border bg-background p-3";
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -184,7 +184,7 @@ function Detalhe({ o }: { o: any }) {
         <h3 className="font-semibold">Comitê</h3>
         {!votos ? SR : votos.map((v, i) => (
           <div key={i} className={`rounded p-1.5 ${rejeita(v) ? "border border-red-500 bg-red-500/10" : ""}`}>
-            <div className="flex justify-between font-medium"><span>{v.agente ?? v.nome ?? v.agent_name}</span><span className={rejeita(v) ? "font-bold text-red-500" : ""}>{v.voto ?? v.vote} · {v.confianca ?? v.confidence ?? "—"}</span></div>
+            <div className="flex justify-between font-medium"><span>{v.agente ?? v.nome ?? v.agent_name}</span><span className={rejeita(v) ? "font-bold text-red-500" : ""}>{v.voto ?? v.vote} · {fmt(v.confianca ?? v.confidence, 1)}</span></div>
             <div className="text-xs text-muted-foreground">{v.razao ?? v.reason}</div>
           </div>
         ))}
