@@ -4256,6 +4256,10 @@ export type Database = {
           minimum_trades_before_profit_lock: number
           mode: string
           notes: string | null
+          pa_estrutura_modo: string
+          pa_min_swings: number
+          pa_near_struct_mult: number
+          pa_near_struct_piso_pts: number
           peak_giveback_pct: number
           peak_lock_min_profit_brl: number | null
           peak_lock_min_profit_pct: number | null
@@ -4311,6 +4315,10 @@ export type Database = {
           minimum_trades_before_profit_lock?: number
           mode: string
           notes?: string | null
+          pa_estrutura_modo?: string
+          pa_min_swings?: number
+          pa_near_struct_mult?: number
+          pa_near_struct_piso_pts?: number
           peak_giveback_pct?: number
           peak_lock_min_profit_brl?: number | null
           peak_lock_min_profit_pct?: number | null
@@ -4366,6 +4374,10 @@ export type Database = {
           minimum_trades_before_profit_lock?: number
           mode?: string
           notes?: string | null
+          pa_estrutura_modo?: string
+          pa_min_swings?: number
+          pa_near_struct_mult?: number
+          pa_near_struct_piso_pts?: number
           peak_giveback_pct?: number
           peak_lock_min_profit_brl?: number | null
           peak_lock_min_profit_pct?: number | null

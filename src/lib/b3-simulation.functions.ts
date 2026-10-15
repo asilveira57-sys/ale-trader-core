@@ -2058,34 +2058,70 @@ async function runB3SimulationTickInner(
       if ([hp, hc, hn].every(Number.isFinite) && hc > hp && hc > hn) swingHighs.push(hc);
     }
 
-    const details: Record<string, any> = { swing_lows_found: swingLows.length, swing_highs_found: swingHighs.length, m1_candles: sorted.length };
+    // Parâmetros da estrutura fractal (15/10/2026). Defaults = regra fixa anterior
+    // (dow_estrito, 2 swings, 0.6 × stop, piso 20) → caminho idêntico ao de antes.
+    const modoRaw = String((cfg as any).pa_estrutura_modo ?? "dow_estrito");
+    const estruturaModo: "dow_estrito" | "dow_lado" | "desligado" =
+      modoRaw === "dow_lado" || modoRaw === "desligado" ? modoRaw : "dow_estrito";
+    const minSwingsRaw = Number((cfg as any).pa_min_swings ?? 2);
+    const minSwings = Number.isFinite(minSwingsRaw) && minSwingsRaw >= 0 ? Math.floor(minSwingsRaw) : 2;
+    const nearMultRaw = Number((cfg as any).pa_near_struct_mult ?? 0.6);
+    const nearMult = Number.isFinite(nearMultRaw) ? nearMultRaw : 0.6;
+    const nearPisoRaw = Number((cfg as any).pa_near_struct_piso_pts ?? 20);
+    const nearPiso = Number.isFinite(nearPisoRaw) ? nearPisoRaw : 20;
 
+    const details: Record<string, any> = {
+      swing_lows_found: swingLows.length, swing_highs_found: swingHighs.length, m1_candles: sorted.length,
+      pa_estrutura_modo: estruturaModo, pa_min_swings: minSwings,
+    };
 
-    if (swingLows.length < 2 || swingHighs.length < 2) {
-      return { name: "no_valid_setup", ok: false, reasons: ["estrutura insuficiente — menos de 2 fundos/topos confirmados hoje"], details };
+    // Mínimo de swings: vale nos modos dow_*; em 'desligado' não bloqueia.
+    if (estruturaModo !== "desligado" && (swingLows.length < minSwings || swingHighs.length < minSwings)) {
+      return { name: "no_valid_setup", ok: false, reasons: [`estrutura insuficiente — menos de ${minSwings} fundos/topos confirmados hoje`], details };
     }
 
-    const [prevLow, lastLow] = swingLows.slice(-2);
-    const [prevHigh, lastHigh] = swingHighs.slice(-2);
-    const higherLow = lastLow > prevLow;
-    const lowerHigh = lastHigh < prevHigh;
-    const higherHigh = lastHigh > prevHigh;
-    const lowerLow = lastLow < prevLow;
+    const lastLow: number | undefined = swingLows.length >= 1 ? swingLows[swingLows.length - 1] : undefined;
+    const prevLow: number | undefined = swingLows.length >= 2 ? swingLows[swingLows.length - 2] : undefined;
+    const lastHigh: number | undefined = swingHighs.length >= 1 ? swingHighs[swingHighs.length - 1] : undefined;
+    const prevHigh: number | undefined = swingHighs.length >= 2 ? swingHighs[swingHighs.length - 2] : undefined;
+    const temPar = prevLow !== undefined && lastLow !== undefined && prevHigh !== undefined && lastHigh !== undefined;
+    const higherLow = temPar && (lastLow as number) > (prevLow as number);
+    const lowerHigh = temPar && (lastHigh as number) < (prevHigh as number);
+    const higherHigh = temPar && (lastHigh as number) > (prevHigh as number);
+    const lowerLow = temPar && (lastLow as number) < (prevLow as number);
     Object.assign(details, { prev_low: prevLow, last_low: lastLow, prev_high: prevHigh, last_high: lastHigh });
 
     const hardBlock: string[] = [];
     let stopRef: number, targetRef: number;
+    const gainPtsCfg = Math.max(0, Number(cfg.gain_pts) || 0);
 
     if (intendedSide === "buy") {
-      const structureUp = higherLow && higherHigh;
-      if (!structureUp) hardBlock.push("sem estrutura de alta confirmada (precisa fundo e topo mais altos)");
-      if (price < lastLow) hardBlock.push("rompeu o último fundo estrutural — estrutura de alta invalidada");
-      stopRef = lastLow; targetRef = lastHigh;
+      if (estruturaModo === "dow_estrito") {
+        if (!(higherLow && higherHigh)) hardBlock.push("sem estrutura de alta confirmada (modo dow_estrito — precisa fundo e topo mais altos)");
+      } else if (estruturaModo === "dow_lado") {
+        if (!higherLow) hardBlock.push("sem estrutura de alta confirmada (modo dow_lado — precisa fundo mais alto)");
+      }
+      // Rompimento estrutural: SEMPRE ativo quando há swing para calcular.
+      if (lastLow !== undefined && price < lastLow) hardBlock.push("rompeu o último fundo estrutural — estrutura de alta invalidada");
     } else {
-      const structureDown = lowerHigh && lowerLow;
-      if (!structureDown) hardBlock.push("sem estrutura de baixa confirmada (precisa topo e fundo mais baixos)");
-      if (price > lastHigh) hardBlock.push("rompeu o último topo estrutural — estrutura de baixa invalidada");
-      stopRef = lastHigh; targetRef = lastLow;
+      if (estruturaModo === "dow_estrito") {
+        if (!(lowerHigh && lowerLow)) hardBlock.push("sem estrutura de baixa confirmada (modo dow_estrito — precisa topo e fundo mais baixos)");
+      } else if (estruturaModo === "dow_lado") {
+        if (!lowerHigh) hardBlock.push("sem estrutura de baixa confirmada (modo dow_lado — precisa topo mais baixo)");
+      }
+      if (lastHigh !== undefined && price > lastHigh) hardBlock.push("rompeu o último topo estrutural — estrutura de baixa invalidada");
+    }
+
+    // Referência de stop/alvo: estrutura quando existe último fundo E topo;
+    // senão fallback explícito na configuração do robô.
+    if (lastLow !== undefined && lastHigh !== undefined) {
+      if (intendedSide === "buy") { stopRef = lastLow; targetRef = lastHigh; }
+      else { stopRef = lastHigh; targetRef = lastLow; }
+      details.stop_ref_origem = "estrutura";
+    } else {
+      if (intendedSide === "buy") { stopRef = price - stopPts; targetRef = price + gainPtsCfg; }
+      else { stopRef = price + stopPts; targetRef = price - gainPtsCfg; }
+      details.stop_ref_origem = "cfg_stop_gain";
     }
 
     const stopDist = Math.abs(price - stopRef);
@@ -2093,7 +2129,7 @@ async function runB3SimulationTickInner(
     const rr = stopDist > 0 ? targetDist / stopDist : 0;
 
     const soft: { label: string; pass: boolean }[] = [];
-    const nearStructPts = Math.max(stopPts * 0.6, 20);
+    const nearStructPts = Math.max(stopPts * nearMult, nearPiso);
     soft.push({ label: "longe do fundo/topo estrutural (pullback não confirmado)", pass: stopDist <= nearStructPts });
     soft.push({ label: intendedSide === "buy" ? "candle atual não é comprador" : "candle atual não é vendedor",
       pass: intendedSide === "buy" ? price > open : price < open });
