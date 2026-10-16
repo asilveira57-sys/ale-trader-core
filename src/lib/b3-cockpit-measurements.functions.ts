@@ -87,5 +87,5 @@ export const getCockpitPricePath = createServerFn({ method: "GET" })
     }
     // Use only stored M1 history, including its real gaps (10–13/10 absent).
     const candles = rows.filter((row) => rootSymbol(row.symbol) === root);
-    return { ...candlePath(candles, data.step), rows_truncated: truncated };
+    return { ...candlePath(candles, data.step), rows_truncated: truncated, source: "hist" as const };
   });
