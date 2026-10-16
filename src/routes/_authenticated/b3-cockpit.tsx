@@ -761,6 +761,14 @@ function CockpitPage() {
     if (!group.byVariant.has(v)) group.byVariant.set(v, []);
     group.byVariant.get(v)!.push(c);
   }
+  // Modalidade com TODOS os robôs desligados e sem posição aberta sai da tela
+  // (ex.: WIN VWAP desligado). Religar pelo cadastro traz o bloco de volta.
+  for (const group of bySymbol.values()) {
+    for (const [vk, list] of Array.from(group.byVariant.entries())) {
+      if (vk === REAL_GROUP) continue;
+      if (list.length > 0 && list.every((c) => c.enabled === false && !c.open)) group.byVariant.delete(vk);
+    }
+  }
 
   // Ordenação opcional por resultado do dia (realizado + aberto a mercado),
   // aplicada dentro de cada modalidade e também na ordem dos ativos.
