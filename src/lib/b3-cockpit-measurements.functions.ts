@@ -47,6 +47,32 @@ export const getCockpitPricePath = createServerFn({ method: "GET" })
     const root = rootSymbol(data.symbol);
     const rows: (HistoryCandle & { symbol: string })[] = [];
     let truncated = false;
+    const todayBrt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+    if (data.date === todayBrt) {
+      // Today's M1 history is only materialized after close: read the live
+      // candles built from received quotes (read-only RPC), same day window.
+      const { data: runs } = await context.supabase.from("b3_simulation_runs")
+        .select("symbol").eq("user_id", context.userId);
+      const contracts = Array.from(new Set((runs ?? []).map((r: any) => String(r.symbol))))
+        .filter((s) => rootSymbol(s) === root);
+      const startMs = Date.parse(`${data.date}T03:00:00.000Z`);
+      const endMs = Date.parse(`${addDays(data.date, 1)}T03:00:00.000Z`);
+      let best: HistoryCandle[] = [];
+      for (const contract of contracts) {
+        const { data: live, error } = await context.supabase.rpc("b3_m1_candles", {
+          p_user_id: context.userId, p_symbol: contract, p_limit: 900,
+        });
+        if (error) throw new Error("Não foi possível ler o preço ao vivo");
+        const inDay = ((live ?? []) as any[]).filter((c) => {
+          const t = Date.parse(c.minute_ts); return t >= startMs && t < endMs;
+        }).map((c) => ({
+          minute_ts: c.minute_ts, candle_open: Number(c.candle_open), candle_high: Number(c.candle_high),
+          candle_low: Number(c.candle_low), candle_close: Number(c.candle_close),
+        })).sort((a, b) => Date.parse(a.minute_ts) - Date.parse(b.minute_ts));
+        if (inDay.length > best.length) best = inDay;
+      }
+      return { ...candlePath(best, data.step), rows_truncated: false, source: "live" as const };
+    }
     for (let from = 0; from < 5000; from += 1000) {
       const { data: page, error } = await context.supabase.from("b3_m1_candles_hist")
         .select("symbol,minute_ts,candle_open,candle_high,candle_low,candle_close")
@@ -61,5 +87,5 @@ export const getCockpitPricePath = createServerFn({ method: "GET" })
     }
     // Use only stored M1 history, including its real gaps (10–13/10 absent).
     const candles = rows.filter((row) => rootSymbol(row.symbol) === root);
-    return { ...candlePath(candles, data.step), rows_truncated: truncated };
+    return { ...candlePath(candles, data.step), rows_truncated: truncated, source: "hist" as const };
   });

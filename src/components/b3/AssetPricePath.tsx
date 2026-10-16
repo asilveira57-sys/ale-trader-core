@@ -55,6 +55,7 @@ export function AssetPricePath({ symbol, today }: { symbol: string; today: strin
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
           <span>Abertura <strong>{number(query.data?.opening ?? 0)}</strong></span>
           <span>Amplitude <strong>{number(query.data?.amplitude ?? 0)}</strong></span>
+          <span className="rounded border border-border px-1">{query.data?.source === "live" ? "ao vivo" : "histórico"}</span>
           <span>Eficiência direcional <strong>{query.data?.efficiency == null ? "—" : `${number(query.data.efficiency * 100)}%`}</strong></span>
         </div>
         <svg viewBox="0 0 700 150" className="mt-2 h-40 w-full text-primary" role="img" aria-label={`Preço de ${symbol} em ${date}`}>
