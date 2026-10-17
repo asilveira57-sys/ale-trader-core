@@ -3,7 +3,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { simularDisjuntor, type OrdemSim } from "./b3-sim-disjuntor";
+import type { OrdemSim } from "./b3-sim-disjuntor";
 
 const PAGE = 1000;
 const CAP = 60_000;
