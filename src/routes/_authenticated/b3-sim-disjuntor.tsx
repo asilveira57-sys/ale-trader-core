@@ -6,6 +6,7 @@ import { getSimDisjuntor, getSimDisjuntorOpcoes } from "@/lib/b3-sim-disjuntor.f
 import { CENARIOS, simularDisjuntor } from "@/lib/b3-sim-disjuntor";
 import { BRL } from "@/lib/b3-format";
 import { modeFullLabel } from "@/lib/mode-nick-registry";
+import { copiarTexto, tabular } from "@/lib/b3-copiar";
 
 export const Route = createFileRoute("/_authenticated/b3-sim-disjuntor")({
   head: () => ({
@@ -131,8 +132,25 @@ function Page() {
       {q.isLoading && <div className="text-sm text-muted-foreground">Carregando…</div>}
       {calc && q.data && (
         <>
-          <div className="rounded-md border-2 border-primary/60 bg-primary/10 p-3 text-base font-semibold">
-            {calc.todos.length} pregões no período, {calc.status.filter((s) => s.limpo).length} limpos, usando {calc.usados.length}
+          <div className="flex flex-wrap items-center gap-3 rounded-md border-2 border-primary/60 bg-primary/10 p-3 text-base font-semibold">
+            <span className="mr-auto">{calc.todos.length} pregões no período, {calc.status.filter((s) => s.limpo).length} limpos, usando {calc.usados.length}</span>
+            <button className="h-9 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-muted" onClick={() => {
+              const t = (v: number | null) => (v == null ? "—" : BRL(v));
+              const cab = [
+                "Simulação de disjuntor de perda",
+                `Ativo: ${ativo}`, `Modalidade: ${variant}`, `Robô: ${mode ? modeFullLabel(mode as any) : "todos os robôs da modalidade"}`,
+                `Período: últimos ${dias} dias${soLimpo ? " (só pregão limpo)" : " (todos os pregões)"}`,
+                `Base usada: ${BRL(calc.base)} ${baseTxt ? "(digitada)" : `(sugerida: mediana do pico de margem diário do grupo, ${q.data!.dias_com_pico} dias com medição)`}`,
+                `${calc.todos.length} pregões no período, ${calc.status.filter((s) => s.limpo).length} limpos, usando ${calc.usados.length}`,
+              ];
+              if (q.data!.sem_resultado > 0) cab.push(`${q.data!.sem_resultado} ordens sem resultado reconciliado, excluídas`);
+              if (q.data!.rows_truncated) cab.push("Leitura atingiu o teto de segurança — resultado incompleto");
+              const tab = tabular(["Cenário", "Corte (R$)", "Resultado total", "Dia mediano", "Pior dia", "Melhor dia", "Pregões", "Disparos", "Ops impedidas", "Observação"],
+                calc.cen.map((c) => [pctTxt(c.pct), c.pct == null ? "—" : BRL(c.pct * calc.base), t(c.total), t(c.mediana), t(c.pior), t(c.melhor), c.pregoes,
+                  c.pct == null ? "—" : c.disparos, c.pct == null ? "—" : c.impedidas,
+                  c.pregoes < MIN_PREGOES ? "amostra insuficiente" : calc.melhor === c ? "sugestão sobre histórico" : ""]));
+              copiarTexto(cab.join("\n") + "\n\n" + tab);
+            }}>Copiar tabela</button>
           </div>
           <div className="text-sm text-muted-foreground space-y-1">
             <div>Base do percentual: {BRL(calc.base)} {baseTxt ? "(digitada)" : `(mediana do pico de margem diário do grupo, ${q.data.dias_com_pico} dias com medição)`}.</div>
