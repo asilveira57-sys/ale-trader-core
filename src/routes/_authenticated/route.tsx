@@ -149,6 +149,7 @@ const PRINCIPAL_NAV = [
   { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
   { to: "/b3-diagnostico", label: "Diagnóstico diário", icon: Stethoscope },
   { to: "/b3-ficha-dia", label: "Ficha do dia (por que entrou/saiu)", icon: Table2 },
+  { to: "/b3-sim-disjuntor", label: "Simulação de disjuntor", icon: Table2 },
   { to: "/b3-calibracao", label: "Calibração do stop diário", icon: Stethoscope },
   { to: "/b3-proporcional", label: "Limites proporcionais", icon: Table2 },
   { to: "/b3-listas", label: "Resultado por combinação", icon: Table2 },
