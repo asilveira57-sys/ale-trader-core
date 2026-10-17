@@ -51,6 +51,13 @@ export const getB3FichaDia = createServerFn({ method: "POST" })
       runs.push(...(r ?? []));
     }
     const variantByRun = new Map(runs.map((r) => [r.id, String(r.variant ?? "")]));
+    // stop_pts configurado do robô (só exibição na explicação da ordem perdedora).
+    const stopBy = new Map<string, number>();
+    for (let i = 0; i < runIds.length; i += 200) {
+      const { data: s, error } = await sb.from("b3_simulation_mode_settings").select("simulation_run_id, mode, stop_pts").in("simulation_run_id", runIds.slice(i, i + 200));
+      if (error) throw error;
+      for (const x of s ?? []) if (x.stop_pts != null) stopBy.set(`${x.simulation_run_id}|${x.mode}`, Number(x.stop_pts));
+    }
 
     const [authR, live] = await Promise.all([
       sb.from("b3_prd_authorizations").select("symbol, variant, mode, magic_number").eq("user_id", userId),
@@ -88,7 +95,7 @@ export const getB3FichaDia = createServerFn({ method: "POST" })
         }
         if (best) { usados.add(best.id); real = best; }
       }
-      return { ...o, root, variant, magic_number: magic, real };
+      return { ...o, root, variant, magic_number: magic, real, stop_pts: stopBy.get(`${o.simulation_run_id}|${o.mode}`) ?? null };
     });
 
     return { date: data.date, orders: out, truncated: orders.truncated || live.truncated };
