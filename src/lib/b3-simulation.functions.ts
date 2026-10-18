@@ -5263,6 +5263,16 @@ async function runB3SimulationTickInner(
             insertedOrder = res.data;
           }
         }
+        // Decisão que ABRIU ordem: votos não amostrados são gravados agora, já
+        // com order_id. Instrumentação nunca derruba o motor.
+        try {
+          const pend = pendingVoteRowsByMode[mode];
+          if (pend?.length && insertedOrder?.id) {
+            await (supabase as any).from("b3_simulation_agent_votes")
+              .insert(pend.map((r) => ({ ...r, order_id: insertedOrder.id })));
+          }
+          delete pendingVoteRowsByMode[mode];
+        } catch { /* instrumentação nunca derruba o motor */ }
         // Vincula os votos deste tique/modo à ordem criada (order_id).
         try {
           const ids = lastVoteIdsByMode[mode] ?? [];
