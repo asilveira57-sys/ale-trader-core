@@ -1565,6 +1565,13 @@ function Scoreboard({ filterArgs, filterKey }: {
 
   return (
     <section className="rounded-xl border border-border/60 bg-card p-4 space-y-4">
+      <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+        <span>Placar, faixas e picos recarregam ao abrir/fechar posição ou por aqui.</span>
+        <Button size="sm" variant="outline" className="min-h-9" disabled={q.isFetching}
+          onClick={() => qcSb.invalidateQueries({ queryKey: ["b3-cockpit-pesado"] })}>
+          <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} /> Atualizar placar e faixas
+        </Button>
+      </div>
       {/* Faixa de alerta — stop pendente não executado */}
       {stopsPendentes > 0 && (
         <div className="-m-4 mb-0 rounded-t-xl bg-rose-600/90 px-4 py-2 text-sm font-semibold text-white flex items-center gap-2">
