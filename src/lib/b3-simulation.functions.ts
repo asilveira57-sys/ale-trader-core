@@ -35,6 +35,13 @@ export const LOOKBACK_PA = 20;              // velas M1 analisadas
 export const PA_EFICIENCIA_MIN = 0.30;      // |eficiência| abaixo disto = lateral
 export const PA_POSICAO_MAX_COMPRA = 0.65;  // compra acima disto na faixa = esticado
 export const PA_POSICAO_MIN_VENDA = 0.35;   // venda abaixo disto na faixa = esticado
+
+// Amostragem dos votos em b3_simulation_agent_votes (18/10/2026). Só gravação:
+// nenhuma decisão lê esta tabela. Votos da decisão que ABRE ordem são sempre
+// gravados (vinculados à ordem); das decisões que NÃO abrem, grava-se 1 em
+// VOTOS_AMOSTRA_1_EM — mantém a estatística (ex.: alcance do Anti-Euforia) a
+// ~5% do custo. 1 = grava todas, como antes.
+export const VOTOS_AMOSTRA_1_EM = 20;
 import {
   avaliarConfirmacao, confirmacaoNaAbertura, confirmacaoArmada, avaliarPendente,
   criarPendente, motivoNaoConfirmou, ladoDoPendente, type ConfirmacaoPendente,
@@ -3362,6 +3369,8 @@ async function runB3SimulationTickInner(
     // Instrumentação: ids dos últimos votos gravados por modo, para vincular
     // a ordem criada no mesmo tique (order_id). Não afeta decisões.
     const lastVoteIdsByMode: Record<string, string[]> = {};
+    // Votos não amostrados deste tique: gravados só se a decisão abrir ordem.
+    const pendingVoteRowsByMode: Record<string, any[]> = {};
 
     // Diagnóstico de recusa de entrada, por robô (gravação, não decisão).
     // Uma linha só quando o MOTIVO MUDA em relação à última avaliação daquele
@@ -4894,12 +4903,19 @@ async function runB3SimulationTickInner(
         })) as any[];
         // Instrumentação: guardamos os ids inseridos para vincular à ordem
         // criada neste mesmo tique/modo (order_id só existe depois do insert).
-        try {
-          const { data: insertedVotes } = await (supabase as any)
-            .from("b3_simulation_agent_votes").insert(voteRows).select("id");
-          lastVoteIdsByMode[mode] = (insertedVotes ?? []).map((r: any) => r.id);
-        } catch {
-          await (supabase as any).from("b3_simulation_agent_votes").insert(voteRows);
+        // Amostragem: só 1 em VOTOS_AMOSTRA_1_EM vai já para o banco; os demais
+        // ficam em memória e são gravados SÓ se esta decisão abrir ordem.
+        const amostrado = VOTOS_AMOSTRA_1_EM <= 1 || Math.floor(Math.random() * VOTOS_AMOSTRA_1_EM) === 0;
+        if (amostrado) {
+          try {
+            const { data: insertedVotes } = await (supabase as any)
+              .from("b3_simulation_agent_votes").insert(voteRows).select("id");
+            lastVoteIdsByMode[mode] = (insertedVotes ?? []).map((r: any) => r.id);
+          } catch {
+            await (supabase as any).from("b3_simulation_agent_votes").insert(voteRows);
+          }
+        } else {
+          pendingVoteRowsByMode[mode] = voteRows;
         }
       }
 
@@ -5247,6 +5263,16 @@ async function runB3SimulationTickInner(
             insertedOrder = res.data;
           }
         }
+        // Decisão que ABRIU ordem: votos não amostrados são gravados agora, já
+        // com order_id. Instrumentação nunca derruba o motor.
+        try {
+          const pend = pendingVoteRowsByMode[mode];
+          if (pend?.length && insertedOrder?.id) {
+            await (supabase as any).from("b3_simulation_agent_votes")
+              .insert(pend.map((r) => ({ ...r, order_id: insertedOrder.id })));
+          }
+          delete pendingVoteRowsByMode[mode];
+        } catch { /* instrumentação nunca derruba o motor */ }
         // Vincula os votos deste tique/modo à ordem criada (order_id).
         try {
           const ids = lastVoteIdsByMode[mode] ?? [];

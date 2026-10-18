@@ -141,8 +141,11 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
     };
   });
 
-// Faixa fixa do cockpit vivo: hoje + os quatro pregões anteriores com
-// movimento. É uma leitura separada para não alterar nenhuma conta do motor.
+// Faixa fixa do cockpit vivo: hoje + as 5 datas anteriores com movimento.
+// Desde 18/10/2026 lê a função b3_cockpit_cinco_pregoes, que já devolve as
+// linhas somadas por dia × raiz × modalidade (mesma semântica: 21 dias,
+// status closed, semeadura de dia zerado, "com freio" = freios_na_sombra
+// vazio). O nível do ativo é a soma das modalidades dele.
 export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
@@ -155,50 +158,17 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const today = brtDate(new Date());
-    const startUtc = `${addDays(today, -21)}T03:00:00.000Z`;
-    const endUtc = `${addDays(today, 1)}T03:00:00.000Z`;
-
-    const { data: runs } = await (supabase as any)
-      .from("b3_simulation_runs")
-      .select("id, symbol, variant")
-      .eq("user_id", userId);
-    const runById = new Map<string, { root: string; variant: string }>();
-    for (const run of (runs ?? []) as any[]) {
-      runById.set(String(run.id), {
-        root: rootSymbol(String(run.symbol)),
-        variant: String(run.variant ?? "indicador"),
-      });
-    }
-
-    const limit = 60_000;
-    const rows: any[] = [];
-    let rowsTruncated = false;
-    for (let from = 0; from < limit; from += 1000) {
-      const pageSize = Math.min(1000, limit - from);
-      const { data: page, error } = await (supabase as any)
-      .from("b3_simulation_orders")
-      .select("simulation_run_id, mode, net_result_brl, exit_time, freios_na_sombra")
-      .eq("user_id", userId)
-      .eq("status", "closed")
-      .gte("exit_time", startUtc)
-      .lt("exit_time", endUtc)
-      .order("exit_time", { ascending: false })
-      .range(from, from + pageSize - 1);
-      if (error) throw new Error(`Leitura dos pregões: ${error.message}`);
-      rows.push(...(page ?? []));
-      if (rows.length >= limit) { rowsTruncated = true; break; }
-      if (!page || page.length < pageSize) break;
-    }
-
-    const allDates = new Set<string>([today]);
-    for (const row of (rows ?? []) as any[]) {
-      if (row.exit_time) allDates.add(brtDate(new Date(row.exit_time)));
-    }
-    // Hoje + os últimos 5 pregões com movimento: o card de hoje fica visível
-    // (ainda em andamento) e o total soma somente os 5 anteriores, já fechados.
-    const dates = Array.from(allDates).filter((date) => date <= today).sort().reverse().slice(0, 6);
-    // Em implantação nova pode ainda não haver datas gravadas. Mantém a faixa
-    // estável com dias úteis anteriores, sempre explicitamente zerados.
+    const { data: linhas, error } = await (supabase as any).rpc("b3_cockpit_cinco_pregoes", {
+      p_user_id: userId,
+      p_symbols: data.symbols?.length ? data.symbols.map((s) => rootSymbol(s)) : null,
+      p_variants: data.variants?.length ? data.variants : null,
+      p_modes: data.modes?.length ? data.modes : null,
+    });
+    if (error) throw new Error(`Leitura dos pregões: ${error.message}`);
+    const rows = (linhas ?? []) as any[];
+    const dateSet = new Set<string>([today]);
+    for (const r of rows) dateSet.add(String(r.trade_date).slice(0, 10));
+    const dates = Array.from(dateSet).filter((d) => d <= today).sort().reverse().slice(0, 6);
     let cursor = today;
     while (dates.length < 6) {
       cursor = addDays(cursor, -1);
@@ -206,65 +176,36 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
       if (weekday !== 0 && weekday !== 6 && !dates.includes(cursor)) dates.push(cursor);
     }
     dates.sort().reverse();
-    const chosen = new Set(dates);
-    const symbols = data.symbols?.length ? new Set(data.symbols.map((symbol) => rootSymbol(symbol))) : null;
-    const variants = data.variants?.length ? new Set(data.variants) : null;
-    const modes = data.modes?.length ? new Set(data.modes) : null;
     type Pair = { com_freio_brl: number; sem_freio_brl: number };
     const blank = (): Pair => ({ com_freio_brl: 0, sem_freio_brl: 0 });
     const assets = new Map<string, { days: Map<string, Pair>; variants: Map<string, Map<string, Pair>> }>();
-    const ensureAsset = (root: string) => {
-      const current = assets.get(root);
-      if (current) return current;
-      const created = { days: new Map<string, Pair>(), variants: new Map<string, Map<string, Pair>>() };
-      assets.set(root, created);
-      return created;
+    const add = (map: Map<string, Pair>, date: string, com: number, sem: number) => {
+      const p = map.get(date) ?? blank();
+      p.com_freio_brl += com; p.sem_freio_brl += sem; map.set(date, p);
     };
-    // Semeia os ativos e modalidades visíveis para que dias sem operação sejam
-    // mostrados como R$ 0,00 em vez de desaparecerem da faixa.
-    for (const run of runById.values()) {
-      if (symbols && !symbols.has(run.root)) continue;
-      if (variants && !variants.has(run.variant)) continue;
-      const asset = ensureAsset(run.root);
-      if (!asset.variants.has(run.variant)) asset.variants.set(run.variant, new Map<string, Pair>());
+    let ordens = 0;
+    for (const r of rows) {
+      const root = String(r.raiz); const variant = String(r.variant ?? "indicador");
+      const date = String(r.trade_date).slice(0, 10);
+      const a = assets.get(root) ?? { days: new Map(), variants: new Map() };
+      assets.set(root, a);
+      const v = a.variants.get(variant) ?? new Map<string, Pair>();
+      a.variants.set(variant, v);
+      const com = Number(r.com_freio_brl ?? 0), sem = Number(r.sem_freio_brl ?? 0);
+      ordens += Number(r.ordens ?? 0);
+      add(a.days, date, com, sem);
+      add(v, date, com, sem);
     }
-    const add = (map: Map<string, Pair>, date: string, value: number, comFreio: boolean) => {
-      const pair = map.get(date) ?? blank();
-      pair.sem_freio_brl += value;
-      if (comFreio) pair.com_freio_brl += value;
-      map.set(date, pair);
-    };
-
-    for (const row of (rows ?? []) as any[]) {
-      const run = runById.get(String(row.simulation_run_id));
-      if (!run || !row.exit_time) continue;
-      const date = brtDate(new Date(row.exit_time));
-      if (!chosen.has(date)) continue;
-      if (symbols && !symbols.has(run.root)) continue;
-      if (variants && !variants.has(run.variant)) continue;
-      if (modes && !modes.has(String(row.mode ?? ""))) continue;
-      const value = Number(row.net_result_brl ?? 0);
-      const comFreio = !Array.isArray(row.freios_na_sombra) || row.freios_na_sombra.length === 0;
-      const asset = ensureAsset(run.root);
-      add(asset.days, date, value, comFreio);
-      const variantDays = asset.variants.get(run.variant) ?? new Map<string, Pair>();
-      add(variantDays, date, value, comFreio);
-      asset.variants.set(run.variant, variantDays);
-    }
-
     const shapedDays = (map: Map<string, Pair>) => dates.map((date) => ({ date, ...(map.get(date) ?? blank()) }));
     return {
       dates,
-      rows_limit: limit,
-      rows_read: rows.length,
-      rows_truncated: rowsTruncated,
+      rows_limit: 0,
+      rows_read: ordens,
+      rows_truncated: false,
       by_asset: Array.from(assets.entries()).map(([symbol, value]) => ({
         symbol,
         days: shapedDays(value.days),
-        by_variant: Array.from(value.variants.entries()).map(([variant, variantDays]) => ({
-          variant,
-          days: shapedDays(variantDays),
-        })),
+        by_variant: Array.from(value.variants.entries()).map(([variant, variantDays]) => ({ variant, days: shapedDays(variantDays) })),
       })),
     };
   });

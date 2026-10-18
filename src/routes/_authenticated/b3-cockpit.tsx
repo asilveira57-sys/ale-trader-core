@@ -24,6 +24,7 @@ import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval"
 import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, freiosAcionadosTexto, somarSombrasDia, type SombraDia } from "@/lib/b3-format";
 import { confirmacaoRegraTexto } from "@/lib/b3-confirmacao-entrada";
 import { buildCockpitCopyText } from "@/lib/b3-cockpit-copy";
+import { buildCockpitFilter, cockpitKeep } from "@/lib/b3-cockpit-filter";
 import {
   getB3CockpitOverview, getB3CockpitScoreboard, closeModeOrderManually, closeAllPositionsOnly, disableAllModes,
   resetB3DailyStop, updateB3ModeSettings,
@@ -628,12 +629,27 @@ function CockpitPage() {
   const filterKey = JSON.stringify(filterArgs);
 
   const vivo = (period.preset ?? "hoje") === "hoje";
+  // LEVE (18/10/2026): a leitura viva é UMA só, sem recorte — o filtro de
+  // ativo/modalidade/robô é aplicado no navegador. Trocar filtro não refaz
+  // leitura nem cria nova entrada de cache.
   const q = useQuery({
-    queryKey: ["b3-cockpit", filterKey],
-    queryFn: () => getOverview({ data: filterArgs as any }),
+    queryKey: ["b3-cockpit"],
+    queryFn: () => getOverview({ data: {} as any }),
     refetchInterval: useVisibleRefetchInterval(10000),
     refetchIntervalInBackground: false,
+    staleTime: 8_000,
+    gcTime: 60_000,
     enabled: vivo,
+  });
+  const recorteServidor = !allSymbols || !allVariants || !allModes;
+  // PESADO: testeiras por ativo/modalidade com recorte (somas do servidor).
+  // Sem polling; só quando há recorte — sem recorte a leitura viva já traz.
+  const headersQ = useQuery({
+    queryKey: ["b3-cockpit-pesado", "testeiras", filterKey],
+    queryFn: () => getOverview({ data: filterArgs as any }),
+    enabled: vivo && recorteServidor,
+    staleTime: Infinity,
+    gcTime: 60_000,
   });
 
   // Leitura histórica (só quando o recorte não é "hoje"): agregados do período
@@ -650,24 +666,34 @@ function CockpitPage() {
   const hd = hq.data as any;
   const lado: any = ladoFreio === "com" ? (hd as any)?.com_freio : (hd as any)?.sem_freio;
   const fiveQ = useQuery({
-    queryKey: ["b3-cockpit-five-sessions", filterKey],
+    queryKey: ["b3-cockpit-pesado", "five-sessions", filterKey],
     queryFn: () => getCincoPregoes({ data: filterArgs as any }),
     enabled: vivo,
-    refetchInterval: useVisibleRefetchInterval(60000),
-    refetchIntervalInBackground: false,
+    staleTime: Infinity,
+    gcTime: 60_000,
   });
   const fiveByAsset = new Map<string, any>(((fiveQ.data as any)?.by_asset ?? []).map((asset: any) => [asset.symbol, asset]));
   const readPeaks = useServerFn(getCockpitDailyPeaks);
   const peakDates: string[] = fiveQ.data?.dates ?? [];
   const peaksQ = useQuery({
-    queryKey: ["b3-cockpit-daily-peaks", peakDates, filterKey],
+    queryKey: ["b3-cockpit-pesado", "daily-peaks", peakDates, filterKey],
     queryFn: () => readPeaks({ data: { dates: peakDates, ...filterArgs } }),
     enabled: vivo && peakDates.length > 0,
-    staleTime: 60000,
+    staleTime: Infinity,
+    gcTime: 60_000,
   });
 
-  const all: any[] = q.data?.cards ?? [];
-  const porAtivo: any[] = q.data?.por_ativo ?? [];
+  const filtroCliente = buildCockpitFilter(filterArgs);
+  const all: any[] = ((q.data?.cards ?? []) as any[]).filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode));
+  const porAtivo: any[] = recorteServidor ? ((headersQ.data as any)?.por_ativo ?? []) : (q.data?.por_ativo ?? []);
+  // Pesado recarrega quando uma posição abre ou fecha (ou pelo botão).
+  const abertasSig = ((q.data?.cards ?? []) as any[]).filter((c) => !!c.open).map((c) => `${c.run_id}|${c.mode}`).sort().join(",");
+  const [abertasPrev, setAbertasPrev] = useState<string | null>(null);
+  useEffect(() => {
+    if (!q.data) return;
+    if (abertasPrev !== null && abertasPrev !== abertasSig) qc.invalidateQueries({ queryKey: ["b3-cockpit-pesado"] });
+    setAbertasPrev(abertasSig);
+  }, [abertasSig]); // eslint-disable-line react-hooks/exhaustive-deps
   const runIds = Array.from(new Set(all.map((c) => c.run_id)));
 
 
@@ -710,7 +736,7 @@ function CockpitPage() {
     if (!cards.length) { toast.error("Nada para copiar"); return; }
     const text = buildCockpitCopyText(cards, {
       scope,
-      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-scoreboard", filterKey]) : undefined,
+      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-pesado", "scoreboard", filterKey]) : undefined,
       includeScoreboard,
     });
     try {
@@ -1524,11 +1550,12 @@ function Scoreboard({ filterArgs, filterKey }: {
 }) {
   const getScoreboard = useServerFn(getB3CockpitScoreboard);
   const q = useQuery({
-    queryKey: ["b3-cockpit-scoreboard", filterKey],
+    queryKey: ["b3-cockpit-pesado", "scoreboard", filterKey],
     queryFn: () => getScoreboard({ data: filterArgs as any }),
-    refetchInterval: useVisibleRefetchInterval(10000),
-    refetchIntervalInBackground: false,
+    staleTime: Infinity,
+    gcTime: 60_000,
   });
+  const qcSb = useQueryClient();
   const d: any = q.data;
   if (!d) return <section className="rounded-lg border border-border/60 bg-card p-4 text-sm text-muted-foreground">Carregando placar do dia...</section>;
 
@@ -1538,6 +1565,13 @@ function Scoreboard({ filterArgs, filterKey }: {
 
   return (
     <section className="rounded-xl border border-border/60 bg-card p-4 space-y-4">
+      <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+        <span>Placar, faixas e picos recarregam ao abrir/fechar posição ou por aqui.</span>
+        <Button size="sm" variant="outline" className="min-h-9" disabled={q.isFetching}
+          onClick={() => qcSb.invalidateQueries({ queryKey: ["b3-cockpit-pesado"] })}>
+          <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} /> Atualizar placar e faixas
+        </Button>
+      </div>
       {/* Faixa de alerta — stop pendente não executado */}
       {stopsPendentes > 0 && (
         <div className="-m-4 mb-0 rounded-t-xl bg-rose-600/90 px-4 py-2 text-sm font-semibold text-white flex items-center gap-2">

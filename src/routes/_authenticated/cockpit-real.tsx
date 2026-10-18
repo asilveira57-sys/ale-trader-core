@@ -36,6 +36,10 @@ import {
   DEFAULT_PERIOD, type PeriodInput,
 } from "@/components/b3/PeriodBar";
 
+// Botão de emergência ZERAR: branco com letra preta, explícito (pedido do dono,
+// 3ª vez). Não herda o fundo escuro do tema em nenhum tamanho de tela.
+const ZERAR_STYLE = { backgroundColor: "#ffffff", color: "#000000", borderColor: "#000000" } as const;
+
 export const Route = createFileRoute("/_authenticated/cockpit-real")({
   head: () => ({
     meta: [
@@ -902,7 +906,8 @@ function CockpitRealPage() {
           <RefreshNow className="justify-center" />
           <Button
             variant="outline"
-            className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal border-2 py-2 text-sm font-black"
+            style={ZERAR_STYLE}
+            className="h-auto min-h-14 w-full justify-center gap-2 whitespace-normal border-2 py-2 text-sm font-black shadow-lg hover:brightness-95 disabled:opacity-100"
             onClick={() => setConfirmCloseAll(true)}
             disabled={!zeraveisCount || mCloseAll.isPending}
           >
@@ -1451,7 +1456,8 @@ function CockpitRealPage() {
               <Button
                 size="lg"
                 variant="outline"
-                className="h-auto min-h-16 w-full justify-start gap-3 whitespace-normal border-2 py-2"
+                style={ZERAR_STYLE}
+                className="h-auto min-h-16 w-full justify-start gap-3 whitespace-normal border-2 py-2 shadow-lg hover:brightness-95 disabled:opacity-100"
                 onClick={() => setConfirmCloseAll(true)}
                 disabled={!zeraveisCount || mCloseAll.isPending}
               >
