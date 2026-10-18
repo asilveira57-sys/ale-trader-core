@@ -6,3 +6,4 @@
 - `trend_pullback` may only be labeled after the three geometric gates (directional efficiency, trend aligned with side, entry position in range) verify trend and pullback; why: the label carried no information when merely declared.
 - Every indicator-reading agent must be symmetric with respect to the trade side (buy tests the top extreme, sell the bottom); why: one-sided checks approved sells into oversold markets.
 - Cockpit measurements use authenticated read-only functions separate from result reads, and directional efficiency is a shared pure division; why: display additions must not change motor behavior or results.
+- Simulated cockpit polls one unfiltered live read and filters in the browser; aggregates (scoreboard, 5-session strip, peaks, filtered headers) sit under the 'b3-cockpit-pesado' key without polling and refresh on position open/close or button; why: per-filter cache entries and 35 reads/10 s froze the owner's machine.
