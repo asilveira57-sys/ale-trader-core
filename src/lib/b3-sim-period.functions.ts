@@ -199,7 +199,7 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
     const shapedDays = (map: Map<string, Pair>) => dates.map((date) => ({ date, ...(map.get(date) ?? blank()) }));
     return {
       dates,
-      rows_limit: null as number | null,
+      rows_limit: 0,
       rows_read: ordens,
       rows_truncated: false,
       by_asset: Array.from(assets.entries()).map(([symbol, value]) => ({
