@@ -8365,6 +8365,22 @@ export type Database = {
         Args: { p_fim: string; p_ini: string }
         Returns: string
       }
+      b3_cockpit_cinco_pregoes: {
+        Args: {
+          p_modes?: string[]
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: {
+          com_freio_brl: number
+          ordens: number
+          raiz: string
+          sem_freio_brl: number
+          trade_date: string
+          variant: string
+        }[]
+      }
       b3_conferir_resumo: {
         Args: { p_date: string; p_log?: boolean }
         Returns: number
