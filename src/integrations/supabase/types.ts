@@ -4590,6 +4590,7 @@ export type Database = {
           contract_code: string
           created_at: string
           diagnostic_payload: Json
+          entrada_geometria: Json | null
           entry_approve_votes: number | null
           entry_confidence: number | null
           entry_price: number
@@ -4656,6 +4657,7 @@ export type Database = {
           contract_code?: string
           created_at?: string
           diagnostic_payload?: Json
+          entrada_geometria?: Json | null
           entry_approve_votes?: number | null
           entry_confidence?: number | null
           entry_price: number
@@ -4722,6 +4724,7 @@ export type Database = {
           contract_code?: string
           created_at?: string
           diagnostic_payload?: Json
+          entrada_geometria?: Json | null
           entry_approve_votes?: number | null
           entry_confidence?: number | null
           entry_price?: number

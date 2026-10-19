@@ -1,0 +1,1 @@
+ALTER TABLE public.b3_simulation_orders ADD COLUMN entrada_geometria jsonb;
