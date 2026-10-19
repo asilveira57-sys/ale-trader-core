@@ -5176,6 +5176,9 @@ async function runB3SimulationTickInner(
           entry_confidence: numOrNull(decision.avg_confidence),
           entry_approve_votes: numOrNull((decision as any).approve_votes),
           entry_setup: setupInfo?.name ?? null,
+          // Evidência completa do classificador DO TIQUE CORRENTE, somente no
+          // INSERT de abertura; sem consulta ao log, seleção ou reformatação.
+          entrada_geometria: setupInfo?.details ?? null,
           // Geometria e votos DO TIQUE CORRENTE (em memória) — nunca casar
           // votos por janela de tempo. Fora de price action, geo_* = nulo.
           ...(() => {

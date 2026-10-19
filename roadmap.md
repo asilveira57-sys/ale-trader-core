@@ -1,6 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
+- [ ] Evidência 19/10: coluna nullable entrada_geometria e details integral do tique corrente no insert de abertura; validar sem executar tique nem publicar.
 - [x] Testeiras 14/10: controles independentes, picos diários e preço intradiário; compilação OK, 5 testes e controles autenticados em celular/computador; não publicado.
 - [x] A2: duas leituras paginadas; faixa leu 8.165 ordens e WIN conferiu as cinco referências; 30 dias leu 13.180 ordens; demais limites apenas listados.
 - [x] B: recolhimento independente por ativo×modalidade, preservando cabeçalho/faixa; testado recolher/reabrir Indicador sem afetar Price Action.
