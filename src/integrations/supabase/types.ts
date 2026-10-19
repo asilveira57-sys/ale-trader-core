@@ -4267,6 +4267,13 @@ export type Database = {
           post_target_size_reduction: number
           profit_multiplier_before_lock: number
           proporcional_capital_ref_brl: number | null
+          pullback_candles: number | null
+          pullback_lookback_candles: number | null
+          pullback_max_retracement: number | null
+          pullback_min_leg_efficiency: number | null
+          pullback_min_leg_pts: number | null
+          pullback_min_retracement: number | null
+          pullback_target_leg_ratio: number | null
           range_min_size_pts: number | null
           risco_contratos_pct: number | null
           simulation_run_id: string
@@ -4326,6 +4333,13 @@ export type Database = {
           post_target_size_reduction?: number
           profit_multiplier_before_lock?: number
           proporcional_capital_ref_brl?: number | null
+          pullback_candles?: number | null
+          pullback_lookback_candles?: number | null
+          pullback_max_retracement?: number | null
+          pullback_min_leg_efficiency?: number | null
+          pullback_min_leg_pts?: number | null
+          pullback_min_retracement?: number | null
+          pullback_target_leg_ratio?: number | null
           range_min_size_pts?: number | null
           risco_contratos_pct?: number | null
           simulation_run_id: string
@@ -4385,6 +4399,13 @@ export type Database = {
           post_target_size_reduction?: number
           profit_multiplier_before_lock?: number
           proporcional_capital_ref_brl?: number | null
+          pullback_candles?: number | null
+          pullback_lookback_candles?: number | null
+          pullback_max_retracement?: number | null
+          pullback_min_leg_efficiency?: number | null
+          pullback_min_leg_pts?: number | null
+          pullback_min_retracement?: number | null
+          pullback_target_leg_ratio?: number | null
           range_min_size_pts?: number | null
           risco_contratos_pct?: number | null
           simulation_run_id?: string
