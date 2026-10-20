@@ -265,7 +265,7 @@ function FreioEfeitoQuadro({ data, pending, error }: { data: Awaited<ReturnType<
       </div>
       {pending ? <p className="text-sm text-muted-foreground">Carregando…</p> : error || !d ? <p className="text-sm text-muted-foreground">Não foi possível ler o efeito do freio.</p> : <>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[420px] text-xs">
+          <table className="w-full min-w-[560px] text-xs">
             <thead className="text-[10px] uppercase text-muted-foreground"><tr className="border-b border-border">
               <th className="py-1 text-left">Dia</th><th className="py-1 text-right">Com freio</th><th className="py-1 text-right">Sem freio</th><th className="py-1 text-right">Efeito</th><th className="py-1 text-right">Barrados</th></tr></thead>
             <tbody>{d.days.map((x) => <tr key={x.date} className="border-b border-border">
@@ -1600,9 +1600,7 @@ function RobotPair({ label, comFreio, semFreio }: { label: string; comFreio: any
       <div className="grid grid-cols-[auto_1fr] gap-x-3 text-xs">
         <span className="text-muted-foreground">Com freio</span><RobotValue robot={comFreio} />
         <span className="text-muted-foreground">Sem freio</span>
-        {/* Freio só corta prejuízo: mesmo robô e mesmo valor = freio não agiu nele. */}
-        {comFreio && semFreio && comFreio.symbol === semFreio.symbol && comFreio.variant === semFreio.variant && comFreio.mode === semFreio.mode && Number(comFreio.brl) === Number(semFreio.brl)
-          ? <span className="text-muted-foreground">não acionado</span> : <RobotValue robot={semFreio} />}
+        <RobotValue robot={semFreio} />
       </div>
     </div>
   );
