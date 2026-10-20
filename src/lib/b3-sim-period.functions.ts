@@ -176,12 +176,42 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
       if (weekday !== 0 && weekday !== 6 && !dates.includes(cursor)) dates.push(cursor);
     }
     dates.sort().reverse();
-    type Pair = { com_freio_brl: number; sem_freio_brl: number };
-    const blank = (): Pair => ({ com_freio_brl: 0, sem_freio_brl: 0 });
+    // Only activation evidence is read from orders. RPC amounts stay untouched.
+    const { data: countRuns, error: runsError } = await supabase.from("b3_simulation_runs")
+      .select("id,symbol,variant").eq("user_id", userId);
+    if (runsError) throw new Error("Não foi possível ler os grupos do freio");
+    const runIndex = new Map((countRuns ?? []).map((r) => [r.id, { root: rootSymbol(r.symbol), variant: r.variant ?? "indicador" }]));
+    const counts = new Map<string, number>();
+    const wantedDates = new Set(dates);
+    const oldest = dates[dates.length - 1];
+    let countsTruncated = false;
+    if (oldest) for (let from = 0; from < 60_000; from += 1000) {
+      let query = supabase.from("b3_simulation_orders")
+        .select("simulation_run_id,mode,exit_time").eq("user_id", userId).eq("status", "closed")
+        .eq("bloqueado_na_sombra", true).gte("exit_time", `${oldest}T03:00:00.000Z`)
+        .lt("exit_time", `${addDays(today, 1)}T03:00:00.000Z`).order("exit_time").order("id");
+      if (data.modes?.length) query = query.in("mode", data.modes);
+      const { data: page, error: countError } = await query.range(from, from + 999);
+      if (countError) throw new Error("Não foi possível contar as ordens com freio");
+      for (const o of page ?? []) {
+        const run = runIndex.get(o.simulation_run_id);
+        if (!run || !o.exit_time) continue;
+        const date = brtDate(new Date(o.exit_time));
+        if (!wantedDates.has(date)) continue;
+        const key = `${run.root}|${run.variant}|${date}`;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      if (!page || page.length < 1000) break;
+      if (from + 1000 >= 60_000) countsTruncated = true;
+    }
+    type Pair = { com_freio_brl: number; sem_freio_brl: number; ordens: number; barrados: number | null };
+    const blank = (): Pair => ({ com_freio_brl: 0, sem_freio_brl: 0, ordens: 0, barrados: countsTruncated ? null : 0 });
     const assets = new Map<string, { days: Map<string, Pair>; variants: Map<string, Map<string, Pair>> }>();
-    const add = (map: Map<string, Pair>, date: string, com: number, sem: number) => {
+    const add = (map: Map<string, Pair>, date: string, com: number, sem: number, n: number, blocked: number) => {
       const p = map.get(date) ?? blank();
-      p.com_freio_brl += com; p.sem_freio_brl += sem; map.set(date, p);
+      p.com_freio_brl += com; p.sem_freio_brl += sem; p.ordens += n;
+      if (p.barrados != null) p.barrados += blocked;
+      map.set(date, p);
     };
     let ordens = 0;
     for (const r of rows) {
@@ -193,8 +223,9 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
       a.variants.set(variant, v);
       const com = Number(r.com_freio_brl ?? 0), sem = Number(r.sem_freio_brl ?? 0);
       ordens += Number(r.ordens ?? 0);
-      add(a.days, date, com, sem);
-      add(v, date, com, sem);
+      const blocked = counts.get(`${root}|${variant}|${date}`) ?? 0;
+      add(a.days, date, com, sem, Number(r.ordens ?? 0), blocked);
+      add(v, date, com, sem, Number(r.ordens ?? 0), blocked);
     }
     const shapedDays = (map: Map<string, Pair>) => dates.map((date) => ({ date, ...(map.get(date) ?? blank()) }));
     return {
@@ -202,6 +233,7 @@ export const getB3CockpitFiveSessions = createServerFn({ method: "GET" })
       rows_limit: 0,
       rows_read: ordens,
       rows_truncated: false,
+      counts_truncated: countsTruncated,
       by_asset: Array.from(assets.entries()).map(([symbol, value]) => ({
         symbol,
         days: shapedDays(value.days),
