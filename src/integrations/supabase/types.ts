@@ -8524,6 +8524,24 @@ export type Database = {
       b3_materializar_m1: { Args: { p_date?: string }; Returns: number }
       b3_motor_noite: { Args: { p_ligar: boolean }; Returns: string }
       b3_num: { Args: { v: number }; Returns: string }
+      b3_pico_realizado_dia: {
+        Args: {
+          p_dias?: number
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: {
+          devolveu_brl: number
+          fechamento_brl: number
+          hora_do_pico_brt: string
+          ordens: number
+          pico_realizado_brl: number
+          raiz: string
+          trade_date: string
+          variant: string
+        }[]
+      }
       b3_prd_atualizar_parametros: {
         Args: {
           p_max_daily_loss_brl: number
