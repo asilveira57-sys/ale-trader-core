@@ -4,37 +4,62 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { addDays } from "@/lib/b3-period";
 import { rootSymbol } from "@/lib/b3-format";
-import { aggregateDailyPeaks, candlePath, type DailyPeak, type HistoryCandle } from "./b3-cockpit-measurements";
+import { indexRealizedPeaks, freioEfeito, candlePath, type RealizedPeak, type FreioRow, type HistoryCandle } from const filterInput = z.object({
+  dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).min(1).max(6),
+  symbols: z.array(z.string()).nullish(), variants: z.array(z.string()).nullish(), modes: z.array(z.string()).nullish(),
+});
 
+// Realized peak (closed orders only) from b3_pico_realizado_dia. The margin
+// constant pico_margem_brl is NOT a peak and is never read here.
 export const getCockpitDailyPeaks = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({
-    dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).min(1).max(6),
-    symbols: z.array(z.string()).nullish(), variants: z.array(z.string()).nullish(), modes: z.array(z.string()).nullish(),
-  }).parse(input))
+  .inputValidator((input: unknown) => filterInput.parse(input))
   .handler(async ({ data, context }) => {
-    const rows: DailyPeak[] = [];
+    const oldest = [...data.dates].sort()[0]!;
+    const todayBrt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+    const dias = Math.min(60, Math.ceil((Date.parse(todayBrt) - Date.parse(oldest)) / 86_400_000) + 2);
+    const { data: rows, error } = await context.supabase.rpc("b3_pico_realizado_dia" as any, {
+      p_user_id: context.userId, p_dias: dias,
+      p_symbols: data.symbols ? Array.from(new Set(data.symbols.map(rootSymbol))) : null,
+      p_variants: data.variants ?? null,
+    } as any);
+    if (error) throw new Error("Não foi possível ler os picos realizados");
+    const list = ((rows ?? []) as any[]).map((r) => ({ ...r, trade_date: String(r.trade_date).slice(0, 10),
+      pico_realizado_brl: r.pico_realizado_brl == null ? null : Number(r.pico_realizado_brl),
+      fechamento_brl: r.fechamento_brl == null ? null : Number(r.fechamento_brl),
+      devolveu_brl: r.devolveu_brl == null ? null : Number(r.devolveu_brl) })) as RealizedPeak[];
+    // The function has no mode filter: peaks always cover every mode.
+    return { ...indexRealizedPeaks(list, data.dates), modes_ignored: !!data.modes, rows_truncated: false };
+  });
+
+// Brake effect per day: net_brl (with brake) vs net_brl_livre (without).
+export const getCockpitFreioEfeito = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => filterInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const rows: FreioRow[] = [];
     const limit = 10_000;
     let truncated = false;
     for (let from = 0; from < limit; from += 1000) {
       let query = context.supabase.from("b3_robot_daily_score")
-        .select("trade_date,symbol,variant,mode,pico_margem_brl")
+        .select("trade_date,symbol,variant,mode,net_brl,net_brl_livre,trades_bloqueado_sombra")
         .eq("user_id", context.userId).in("trade_date", data.dates)
         .order("trade_date").order("symbol").order("variant").order("mode");
       if (data.variants) query = query.in("variant", data.variants);
       if (data.modes) query = query.in("mode", data.modes);
       const { data: page, error } = await query.range(from, from + 999);
-      if (error) throw new Error("Não foi possível ler os picos dos pregões");
-      rows.push(...(page ?? []));
+      if (error) throw new Error("Não foi possível ler o efeito do freio");
+      rows.push(...((page ?? []) as any));
       if (rows.length >= limit) { truncated = true; break; }
       if (!page || page.length < 1000) break;
     }
     const selected = data.symbols ? new Set(data.symbols.map(rootSymbol)) : null;
-    const filtered = rows.map((row) => ({ ...row, symbol: rootSymbol(row.symbol) }))
-      .filter((row) => !selected || selected.has(row.symbol));
-    // Example intent: WIN 05/10 reached a peak then returned most of it by close.
-    // Daily robot peaks are aggregated per date BEFORE maximum/mean across dates.
-    return { ...aggregateDailyPeaks(filtered), rows_truncated: truncated };
+    const filtered = rows.map((r) => ({ ...r, symbol: rootSymbol(r.symbol) })).filter((r) => !selected || selected.has(r.symbol));
+    const dates = [...data.dates].sort().reverse();
+    return { ...freioEfeito(filtered, dates), rows_truncated: truncated };
+  });
+
+runcated: truncated };
   });
 
 export const getCockpitPricePath = createServerFn({ method: "GET" })

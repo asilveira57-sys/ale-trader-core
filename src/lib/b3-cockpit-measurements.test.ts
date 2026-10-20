@@ -1,25 +1,37 @@
 import { describe, it, expect } from "vitest";
-import { aggregateDailyPeaks, peakSummary, candlePath, directionalEfficiency } from "./b3-cockpit-measurements";
+import { indexRealizedPeaks, peakSummary, freioEfeito, candlePath, directionalEfficiency } from "./b3-cockpit-measurements";
 
 describe("read-only cockpit measurements", () => {
   it("keeps the motor division identical for either side", () => {
     for (const amplitude of [1, 50, 1000]) for (const displacement of [-80, 0, 80]) {
       expect(directionalEfficiency(displacement, amplitude)).toBe(displacement / amplitude);
-    }
-  });
-  it("sums robots within each date before taking the daily max and mean", () => {
-    const dates = ["a", "b", "c", "d", "e"];
-    const rows = dates.flatMap((trade_date, index) => [
-      { trade_date, symbol: "WIN", variant: "indicador", mode: "a", pico_margem_brl: index * 10 },
-      { trade_date, symbol: "WIN", variant: "price_action", mode: "b", pico_margem_brl: 100 - index * 10 },
+  it("takes max and mean of daily realized peaks, never a sum, asset from (ativo)", () => {
+    const dates = ["2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-19"];
+    const picos = [-66, 2878, 3704, 2760, 238];
+    const rows = dates.flatMap((trade_date, i) => [
+      { trade_date, raiz: "WIN", variant: "(ativo)", pico_realizado_brl: picos[i], fechamento_brl: 0, devolveu_brl: 0, hora_do_pico_brt: null, ordens: 1 },
+      { trade_date, raiz: "WIN", variant: "range", pico_realizado_brl: 99999, fechamento_brl: 0, devolveu_brl: 0, hora_do_pico_brt: null, ordens: 1 },
     ]);
-    const result = aggregateDailyPeaks(rows);
-    expect(peakSummary(dates, result.assets.WIN)).toEqual({ max: 100, mean: 100, count: 5 });
-    expect(peakSummary(dates, result.variants["WIN|indicador"])).toEqual({ max: 40, mean: 20, count: 5 });
+    const idx = indexRealizedPeaks(rows, dates);
+    const s = peakSummary(dates, idx.assets.WIN);
+    expect(s.max).toBe(3704);
+    expect(s.mean).toBeCloseTo(1902.8, 6);
+    expect(s.count).toBe(5);
   });
-  it("does not invent zero or a five-day mean for absent measurements", () => {
-    expect(peakSummary(["a", "b", "c", "d", "e"], { a: 10 })).toEqual({ max: 10, mean: null, count: 1 });
+  it("averages only existing days and never treats a missing day as zero", () => {
+    expect(peakSummary(["a", "b", "c", "d", "e"], { a: 10, b: 20, c: 30, d: 40 })).toEqual({ max: 40, mean: 25, count: 4 });
     expect(peakSummary(["a"], {})).toEqual({ max: null, mean: null, count: 0 });
+  });
+  it("brake effect is net_brl minus net_brl_livre per day", () => {
+    const r = freioEfeito([
+      { trade_date: "2026-10-19", symbol: "WDO", variant: "indicador", mode: "agressivo", net_brl: -116, net_brl_livre: -880, trades_bloqueado_sombra: 20 },
+      { trade_date: "2026-10-19", symbol: "WIN", variant: "range", mode: "x", net_brl: 50, net_brl_livre: 50, trades_bloqueado_sombra: 0 },
+    ], ["2026-10-19", "2026-10-16"]);
+    expect(r.days[0].efeito).toBe(764);
+    expect(r.days[1].efeito).toBeNull();
+    expect(r.top.map((t) => t.salvou)).toEqual([764]);
+  });
+0 });
   });
   it("uses true M1 extrema and opening independent of display step", () => {
     const rows = Array.from({ length: 60 }, (_, index) => ({
