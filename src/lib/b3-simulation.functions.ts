@@ -2015,7 +2015,11 @@ async function runB3SimulationTickInner(
   // porque candle_high/candle_low neles são extremos acumulados de janela.
   // Geometria do price action sobre as últimas LOOKBACK_PA velas M1.
   // Portões na ordem: sem_candles → lateral → contra_tendencia → esticado.
-  function geometriaPA(sorted: any[], price: number, side: "buy" | "sell") {
+  function geometriaPA(sorted: any[], price: number, side: "buy" | "sell", cfg: any) {
+    const efMin = Number((cfg as any).pa_eficiencia_min ?? PA_EFICIENCIA_MIN);
+    const posMaxCompra = Number((cfg as any).pa_posicao_max_compra ?? PA_POSICAO_MAX_COMPRA);
+    const posMinVenda = Number((cfg as any).pa_posicao_min_venda ?? PA_POSICAO_MIN_VENDA);
+    const geometriaAtiva = (cfg as any).pa_geometria_ativa !== false;
     const w = sorted.slice(-LOOKBACK_PA);
     const highs = w.map((c: any) => Number(c.candle_high)).filter(Number.isFinite);
     const lows = w.map((c: any) => Number(c.candle_low)).filter(Number.isFinite);
@@ -2023,7 +2027,9 @@ async function runB3SimulationTickInner(
     const lo = lows.length ? Math.min(...lows) : NaN;
     const amplitude = hi - lo;
     const c0 = Number(w[0]?.candle_close), cN = Number(w[w.length - 1]?.candle_close);
-    const base = { amplitude_pts: Number.isFinite(amplitude) ? amplitude : null, velas: w.length,
+    const base = { pa_eficiencia_min: efMin, pa_posicao_max_compra: posMaxCompra,
+      pa_posicao_min_venda: posMinVenda, pa_geometria_ativa: geometriaAtiva,
+      amplitude_pts: Number.isFinite(amplitude) ? amplitude : null, velas: w.length,
       eficiencia_direcional: null as number | null, posicao_na_faixa: null as number | null };
     if (w.length < 5 || !(amplitude > 0) || !Number.isFinite(c0) || !Number.isFinite(cN)) {
       return { ...base, veredito: "sem_candles", razao: "sem candles suficientes" };
@@ -2032,10 +2038,10 @@ async function runB3SimulationTickInner(
     const pos = (price - lo) / amplitude;
     const g = { ...base, eficiencia_direcional: ef, posicao_na_faixa: pos };
     const f = (x: number) => x.toFixed(2);
-    if (Math.abs(ef) < PA_EFICIENCIA_MIN) return { ...g, veredito: "lateral", razao: `sem tendência: mercado lateral (eficiência ${f(ef)})` };
-    if ((side === "sell" && !(ef < 0)) || (side === "buy" && !(ef > 0))) return { ...g, veredito: "contra_tendencia", razao: `contra a tendência (eficiência ${f(ef)}, lado ${side})` };
-    if (side === "buy" && pos > PA_POSICAO_MAX_COMPRA) return { ...g, veredito: "esticado", razao: `esticado: entrada no topo da faixa (${f(pos)}), não é recuo` };
-    if (side === "sell" && pos < PA_POSICAO_MIN_VENDA) return { ...g, veredito: "esticado", razao: `esticado: entrada no fundo da faixa (${f(pos)}), não é recuo` };
+    if (geometriaAtiva && Math.abs(ef) < efMin) return { ...g, veredito: "lateral", razao: `sem tendência: mercado lateral (eficiência ${f(ef)})` };
+    if (geometriaAtiva && ((side === "sell" && !(ef < 0)) || (side === "buy" && !(ef > 0)))) return { ...g, veredito: "contra_tendencia", razao: `contra a tendência (eficiência ${f(ef)}, lado ${side})` };
+    if (geometriaAtiva && side === "buy" && pos > posMaxCompra) return { ...g, veredito: "esticado", razao: `esticado: entrada no topo da faixa (${f(pos)}), não é recuo` };
+    if (geometriaAtiva && side === "sell" && pos < posMinVenda) return { ...g, veredito: "esticado", razao: `esticado: entrada no fundo da faixa (${f(pos)}), não é recuo` };
     return { ...g, veredito: "confirmado", razao: "" };
   }
 
@@ -2048,11 +2054,16 @@ async function runB3SimulationTickInner(
     const stopPts = Math.max(1, Number(cfg.stop_pts) || 0);
 
     const sorted = (m1Candles ?? []).slice().sort((a: any, b: any) => new Date(a.minute_ts).getTime() - new Date(b.minute_ts).getTime());
+    const geo = geometriaPA(sorted, price, intendedSide, cfg);
+    const geoParametros = {
+      pa_eficiencia_min: geo.pa_eficiencia_min, pa_posicao_max_compra: geo.pa_posicao_max_compra,
+      pa_posicao_min_venda: geo.pa_posicao_min_venda, pa_geometria_ativa: geo.pa_geometria_ativa,
+    };
     if (sorted.length < 5) {
       return {
         name: "no_valid_setup", ok: false,
         reasons: ["aguardando candles de 1 minuto"],
-        details: { m1_candles: sorted.length },
+        details: { m1_candles: sorted.length, ...geoParametros },
       };
     }
     const swingLows: number[] = [];
@@ -2080,6 +2091,7 @@ async function runB3SimulationTickInner(
     const details: Record<string, any> = {
       swing_lows_found: swingLows.length, swing_highs_found: swingHighs.length, m1_candles: sorted.length,
       pa_estrutura_modo: estruturaModo, pa_min_swings: minSwings,
+      ...geoParametros,
     };
 
     // Mínimo de swings: vale nos modos dow_*; em 'desligado' não bloqueia.
@@ -2149,10 +2161,10 @@ async function runB3SimulationTickInner(
     const failures = [...hardBlock, ...(softOk ? [] : failedSoft)];
     Object.assign(details, { stop_ref: stopRef, target_ref: targetRef, risk_reward: Number(rr.toFixed(2)), soft_hits: hits, soft_total: soft.length });
 
-    // ── PORTÕES GEOMÉTRICOS (14/10/2026) — só podem REPROVAR ──
+    // ── PORTÕES GEOMÉTRICOS — defaults de 14/10 preservados ──
     // `trend_pullback` passa a ser verificado: tendência real (eficiência
     // direcional), a favor do lado, e entrada em recuo (não no extremo).
-    const geo = geometriaPA(sorted, price, intendedSide);
+    // A chave false desliga só lateral/contra_tendencia/esticado; sem_candles permanece duro.
     details.geo = geo;
     if (hardBlock.length === 0 && softOk) {
       if (geo.veredito !== "confirmado") {
