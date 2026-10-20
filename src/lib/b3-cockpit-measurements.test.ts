@@ -5,6 +5,8 @@ describe("read-only cockpit measurements", () => {
   it("keeps the motor division identical for either side", () => {
     for (const amplitude of [1, 50, 1000]) for (const displacement of [-80, 0, 80]) {
       expect(directionalEfficiency(displacement, amplitude)).toBe(displacement / amplitude);
+    }
+  });
   it("takes max and mean of daily realized peaks, never a sum, asset from (ativo)", () => {
     const dates = ["2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-19"];
     const picos = [-66, 2878, 3704, 2760, 238];
@@ -30,8 +32,6 @@ describe("read-only cockpit measurements", () => {
     expect(r.days[0].efeito).toBe(764);
     expect(r.days[1].efeito).toBeNull();
     expect(r.top.map((t) => t.salvou)).toEqual([764]);
-  });
-0 });
   });
   it("uses true M1 extrema and opening independent of display step", () => {
     const rows = Array.from({ length: 60 }, (_, index) => ({

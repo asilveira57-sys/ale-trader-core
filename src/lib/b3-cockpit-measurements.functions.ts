@@ -4,7 +4,9 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { addDays } from "@/lib/b3-period";
 import { rootSymbol } from "@/lib/b3-format";
-import { indexRealizedPeaks, freioEfeito, candlePath, type RealizedPeak, type FreioRow, type HistoryCandle } from const filterInput = z.object({
+import { indexRealizedPeaks, freioEfeito, candlePath, type RealizedPeak, type FreioRow, type HistoryCandle } from "./b3-cockpit-measurements";
+
+const filterInput = z.object({
   dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).min(1).max(6),
   symbols: z.array(z.string()).nullish(), variants: z.array(z.string()).nullish(), modes: z.array(z.string()).nullish(),
 });
@@ -57,9 +59,6 @@ export const getCockpitFreioEfeito = createServerFn({ method: "GET" })
     const filtered = rows.map((r) => ({ ...r, symbol: rootSymbol(r.symbol) })).filter((r) => !selected || selected.has(r.symbol));
     const dates = [...data.dates].sort().reverse();
     return { ...freioEfeito(filtered, dates), rows_truncated: truncated };
-  });
-
-runcated: truncated };
   });
 
 export const getCockpitPricePath = createServerFn({ method: "GET" })
