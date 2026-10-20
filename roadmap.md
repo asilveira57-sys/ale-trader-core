@@ -1,7 +1,8 @@
 # Fila de trabalho
 
 ## Em andamento
-- [ ] Portões PA 19/10 noite: quatro colunas com defaults idênticos, fallback, chave só nos três portões, evidência em details, testes de equivalência e publicação solicitada.
+- [x] Portões PA 19/10 noite: quatro colunas nullable/defaults conferidos em 776 configurações sem diferenças; fallback e chave só nos três portões; valores no details; 18 testes OK e 12.000 comparações do classificador anterior/novo idênticas exceto evidência nova; compilação OK, sem tique real.
+- [ ] Publicar portões PA 19/10 noite conforme solicitação — aguarda resultado da publicação.
 - [x] Evidência 19/10: entrada_geometria nullable sem default; details integral no insert instrumentado de abertura; 10 testes OK, coluna conferida, compilação OK; sem executar tique nem publicar. Retry legado sem instrumentação preservado para não alterar abertura.
 - [x] Testeiras 14/10: controles independentes, picos diários e preço intradiário; compilação OK, 5 testes e controles autenticados em celular/computador; não publicado.
 - [x] A2: duas leituras paginadas; faixa leu 8.165 ordens e WIN conferiu as cinco referências; 30 dias leu 13.180 ordens; demais limites apenas listados.
