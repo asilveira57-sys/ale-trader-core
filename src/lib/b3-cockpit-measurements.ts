@@ -1,36 +1,61 @@
 // Pure measurement shared with geometriaPA; callers choose their own window.
 export const directionalEfficiency = (displacement: number, amplitude: number) => displacement / amplitude;
 
-export interface DailyPeak {
-  trade_date: string; symbol: string; variant: string; mode: string; pico_margem_brl: number | null;
+// Realized peak per day from b3_pico_realizado_dia: max over time of the
+// group's cumulative closed result. Never sum peaks on any axis.
+export interface RealizedPeak {
+  trade_date: string; raiz: string; variant: string;
+  pico_realizado_brl: number | null; fechamento_brl: number | null; devolveu_brl: number | null;
+  hora_do_pico_brt: string | null; ordens: number | null;
 }
 
-export function aggregateDailyPeaks(rows: DailyPeak[]) {
-  const assets: Record<string, Record<string, number>> = {};
-  const variants: Record<string, Record<string, number>> = {};
+export function indexRealizedPeaks(rows: RealizedPeak[], dates: string[]) {
+  const wanted = new Set(dates);
+  const assets: Record<string, Record<string, RealizedPeak>> = {};
+  const variants: Record<string, Record<string, RealizedPeak>> = {};
   for (const row of rows) {
-    if (row.pico_margem_brl == null || !Number.isFinite(Number(row.pico_margem_brl))) continue;
-    const value = Number(row.pico_margem_brl);
-    const asset = assets[row.symbol] ??= {};
-    const variant = variants[`${row.symbol}|${row.variant}`] ??= {};
-    // Only sum robots WITHIN one date, never maxima across dates.
-    asset[row.trade_date] = (asset[row.trade_date] ?? 0) + value;
-    variant[row.trade_date] = (variant[row.trade_date] ?? 0) + value;
+    if (!wanted.has(row.trade_date) || row.pico_realizado_brl == null) continue;
+    // The asset line is the '(ativo)' curve, never a sum of modalities.
+    if (row.variant === "(ativo)") (assets[row.raiz] ??= {})[row.trade_date] = row;
+    else (variants[`${row.raiz}|${row.variant}`] ??= {})[row.trade_date] = row;
   }
   return { assets, variants };
 }
 
-export function peakSummary(dates: string[], peaks?: Record<string, number>) {
+export function peakSummary(dates: string[], peaks?: Record<string, { pico_realizado_brl: number | null } | number>) {
   let mean = 0, count = 0, max = -Infinity;
   for (const date of dates) {
-    const value = peaks?.[date];
-    if (value == null || !Number.isFinite(value)) continue;
+    const raw = peaks?.[date];
+    const value = raw == null ? null : typeof raw === "number" ? raw : raw.pico_realizado_brl;
+    if (value == null || !Number.isFinite(Number(value))) continue;
     count += 1;
-    mean += (value - mean) / count;
-    max = Math.max(max, value);
+    mean += (Number(value) - mean) / count;
+    max = Math.max(max, Number(value));
   }
-  // Do not disguise an absent day as zero or average a different window.
-  return { max: count ? max : null, mean: count === 5 && dates.length === 5 ? mean : null, count };
+  // Missing days are excluded (never zero); count says over how many days.
+  return { max: count ? max : null, mean: count ? mean : null, count };
+}
+
+export interface FreioRow {
+  trade_date: string; symbol: string; variant: string; mode: string;
+  net_brl: number | null; net_brl_livre: number | null; trades_bloqueado_sombra: number | null;
+}
+
+export function freioEfeito(rows: FreioRow[], dates: string[]) {
+  const days = dates.map((date) => {
+    const of = rows.filter((r) => r.trade_date === date && r.net_brl != null && r.net_brl_livre != null);
+    const com = of.reduce((s, r) => s + Number(r.net_brl), 0);
+    const sem = of.reduce((s, r) => s + Number(r.net_brl_livre), 0);
+    return { date, robots: of.length, com: of.length ? com : null, sem: of.length ? sem : null,
+      efeito: of.length ? com - sem : null, barrados: of.reduce((s, r) => s + Number(r.trades_bloqueado_sombra ?? 0), 0) };
+  });
+  const lastDate = days.find((d) => d.robots > 0)?.date ?? null;
+  const top = rows.filter((r) => r.trade_date === lastDate && Number(r.trades_bloqueado_sombra ?? 0) > 0
+      && r.net_brl != null && r.net_brl_livre != null)
+    .map((r) => ({ ...r, salvou: Number(r.net_brl) - Number(r.net_brl_livre) }))
+    .filter((r) => r.salvou > 0).sort((a, b) => b.salvou - a.salvou).slice(0, 3);
+  const valid = days.filter((d) => d.efeito != null);
+  return { days, top, top_date: lastDate, saldo: valid.reduce((s, d) => s + (d.efeito ?? 0), 0), dias_com_dado: valid.length };
 }
 
 export interface HistoryCandle {
