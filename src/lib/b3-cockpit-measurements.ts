@@ -36,28 +36,6 @@ export function peakSummary(dates: string[], peaks?: Record<string, { pico_reali
   return { max: count ? max : null, mean: count ? mean : null, count };
 }
 
-export interface FreioRow {
-  trade_date: string; symbol: string; variant: string; mode: string;
-  net_brl: number | null; net_brl_livre: number | null; trades_bloqueado_sombra: number | null;
-}
-
-export function freioEfeito(rows: FreioRow[], dates: string[]) {
-  const days = dates.map((date) => {
-    const of = rows.filter((r) => r.trade_date === date && r.net_brl != null && r.net_brl_livre != null);
-    const com = of.reduce((s, r) => s + Number(r.net_brl), 0);
-    const sem = of.reduce((s, r) => s + Number(r.net_brl_livre), 0);
-    return { date, robots: of.length, com: of.length ? com : null, sem: of.length ? sem : null,
-      efeito: of.length ? com - sem : null, barrados: of.reduce((s, r) => s + Number(r.trades_bloqueado_sombra ?? 0), 0) };
-  });
-  const lastDate = days.find((d) => d.robots > 0)?.date ?? null;
-  const top = rows.filter((r) => r.trade_date === lastDate && Number(r.trades_bloqueado_sombra ?? 0) > 0
-      && r.net_brl != null && r.net_brl_livre != null)
-    .map((r) => ({ ...r, salvou: Number(r.net_brl) - Number(r.net_brl_livre) }))
-    .filter((r) => r.salvou > 0).sort((a, b) => b.salvou - a.salvou).slice(0, 3);
-  const valid = days.filter((d) => d.efeito != null);
-  return { days, top, top_date: lastDate, saldo: valid.reduce((s, d) => s + (d.efeito ?? 0), 0), dias_com_dado: valid.length };
-}
-
 export interface HistoryCandle {
   minute_ts: string; candle_open: number; candle_high: number; candle_low: number; candle_close: number;
 }
