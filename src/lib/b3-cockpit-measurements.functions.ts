@@ -4,7 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { addDays } from "@/lib/b3-period";
 import { rootSymbol } from "@/lib/b3-format";
-import { indexRealizedPeaks, freioEfeito, candlePath, type RealizedPeak, type FreioRow, type HistoryCandle } from "./b3-cockpit-measurements";
+import { indexRealizedPeaks, candlePath, type RealizedPeak, type HistoryCandle } from "./b3-cockpit-measurements";
 
 const filterInput = z.object({
   dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).min(1).max(6),
@@ -32,33 +32,6 @@ export const getCockpitDailyPeaks = createServerFn({ method: "GET" })
       devolveu_brl: r.devolveu_brl == null ? null : Number(r.devolveu_brl) })) as RealizedPeak[];
     // The function has no mode filter: peaks always cover every mode.
     return { ...indexRealizedPeaks(list, data.dates), modes_ignored: !!data.modes, rows_truncated: false };
-  });
-
-// Brake effect per day: net_brl (with brake) vs net_brl_livre (without).
-export const getCockpitFreioEfeito = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => filterInput.parse(input))
-  .handler(async ({ data, context }) => {
-    const rows: FreioRow[] = [];
-    const limit = 10_000;
-    let truncated = false;
-    for (let from = 0; from < limit; from += 1000) {
-      let query = context.supabase.from("b3_robot_daily_score")
-        .select("trade_date,symbol,variant,mode,net_brl,net_brl_livre,trades_bloqueado_sombra")
-        .eq("user_id", context.userId).in("trade_date", data.dates)
-        .order("trade_date").order("symbol").order("variant").order("mode");
-      if (data.variants) query = query.in("variant", data.variants);
-      if (data.modes) query = query.in("mode", data.modes);
-      const { data: page, error } = await query.range(from, from + 999);
-      if (error) throw new Error("Não foi possível ler o efeito do freio");
-      rows.push(...((page ?? []) as any));
-      if (rows.length >= limit) { truncated = true; break; }
-      if (!page || page.length < 1000) break;
-    }
-    const selected = data.symbols ? new Set(data.symbols.map(rootSymbol)) : null;
-    const filtered = rows.map((r) => ({ ...r, symbol: rootSymbol(r.symbol) })).filter((r) => !selected || selected.has(r.symbol));
-    const dates = [...data.dates].sort().reverse();
-    return { ...freioEfeito(filtered, dates), rows_truncated: truncated };
   });
 
 export const getCockpitPricePath = createServerFn({ method: "GET" })
