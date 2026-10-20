@@ -1,7 +1,8 @@
 import { CalibracaoSugerida } from "@/components/b3/CalibracaoSugerida";
 import { AssetPricePath } from "@/components/b3/AssetPricePath";
-import { getCockpitDailyPeaks } from "@/lib/b3-cockpit-measurements.functions";
-import { peakSummary } from "@/lib/b3-cockpit-measurements";
+import { getCockpitDailyPeaks, getCockpitFreioEfeito } from "@/lib/b3-cockpit-measurements.functions";
+import { peakSummary, type RealizedPeak } from "@/lib/b3-cockpit-measurements";
+import { copiarTexto, tabular } from "@/lib/b3-copiar";
 import { useState, useEffect } from "react";
 import { formatBrDate } from "@/lib/b3-period";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -178,7 +179,7 @@ const shortDate = (date: string) => {
 // card (ainda em andamento) e o "Total" soma somente os últimos 5 pregões.
 function PregaoCard({
   label, com, sem, highlight, peak,
-}: { label: string; com: number; sem: number; highlight?: boolean; peak?: number | null }) {
+}: { label: string; com: number; sem: number; highlight?: boolean; peak?: RealizedPeak | null }) {
   return (
     <div className="min-w-[126px] rounded bg-black/70 px-2 py-1.5 text-left">
       <p className={`mb-1 ${highlight ? "font-black" : "font-bold"} text-white`}>{label}</p>
@@ -188,21 +189,39 @@ function PregaoCard({
       <p className="whitespace-nowrap font-bold text-white">
         Sem freio <span className={`ml-1 font-mono ${moneyColor(sem)}`}>{BRL(sem)}</span>
       </p>
-      {peak !== undefined && <p className="mt-1 text-[10px] text-foreground">Pico <span className="font-mono">{peak == null ? "sem dados" : BRL(peak)}</span></p>}
+      {peak !== undefined && <p className="mt-1 text-[9px] leading-tight text-white/80">
+        {peak == null ? "pico: sem dados" : <>pico <span className="font-mono">{BRL(Number(peak.pico_realizado_brl))}</span>
+          {peak.hora_do_pico_brt ? ` às ${peak.hora_do_pico_brt.slice(0, 5)}` : ""}<br />devolveu <span className="font-mono">{BRL(Number(peak.devolveu_brl ?? 0))}</span></>}
+      </p>}
     </div>
   );
 }
 
-function EfeitoCincoPregoes({ days, peaks }: { days: any[] | null | undefined; peaks?: Record<string, number> }) {
+const peakLine = (p?: RealizedPeak | null) => p == null ? "sem registro"
+  : `${BRL(Number(p.pico_realizado_brl))}${p.hora_do_pico_brt ? ` às ${p.hora_do_pico_brt.slice(0, 5)}` : ""} · devolveu ${BRL(Number(p.devolveu_brl ?? 0))} · fechou ${BRL(Number(p.fechamento_brl ?? 0))}`;
+
+function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored }: { days: any[] | null | undefined; peaks?: Record<string, RealizedPeak>; titulo: string; modesIgnored?: boolean }) {
   const rows = days ?? [];
   // Total soma somente os últimos 5 (hoje é o primeiro, em andamento).
   const totalRows = rows.slice(1);
   const totalCom = totalRows.reduce((sum, day) => sum + Number(day.com_freio_brl ?? 0), 0);
   const totalSem = totalRows.reduce((sum, day) => sum + Number(day.sem_freio_brl ?? 0), 0);
   const summary = peakSummary(totalRows.map((day) => day.date), peaks);
+  const maxDay = totalRows.map((d) => peaks?.[d.date]).find((p) => p != null && summary.max != null && Number(p.pico_realizado_brl) === summary.max);
+  const copy = () => copiarTexto(`${titulo} — pico realizado (ordens fechadas, sem lucro flutuante)\n` + tabular(
+    ["pregão", "com freio", "sem freio", "pico realizado", "hora do pico", "devolveu", "fechamento"],
+    rows.map((d) => { const p = peaks?.[d.date]; return [shortDate(d.date), BRL(Number(d.com_freio_brl ?? 0)), BRL(Number(d.sem_freio_brl ?? 0)),
+      p ? BRL(Number(p.pico_realizado_brl)) : "sem registro", p?.hora_do_pico_brt?.slice(0, 5) ?? "sem registro",
+      p ? BRL(Number(p.devolveu_brl ?? 0)) : "sem registro", p ? BRL(Number(p.fechamento_brl ?? 0)) : "sem registro"]; }),
+  ) + `\nMaior pico (5 pregões): ${summary.max == null ? "sem registro" : BRL(summary.max)}\nMédia dos picos: ${summary.mean == null ? "sem registro" : `${BRL(summary.mean)} (média de ${summary.count} pregões)`}${modesIgnored ? "\nPico cobre todos os modos (filtro de modo não se aplica)." : ""}`);
   return (
     <div className="border-t border-current/20 px-3 py-2">
-      <p className="mb-2 text-[10px] font-black uppercase">Efeito nos últimos pregões</p>
+      <div className="mb-2 flex items-center gap-2">
+        <p className="text-[10px] font-black uppercase">Efeito nos últimos pregões</p>
+        <Button variant="outline" className="ml-auto min-h-11 border-border bg-background text-foreground" onClick={copy} aria-label={`Copiar pregões e picos de ${titulo}`}>
+          <Copy className="mr-1 size-4" />Copiar
+        </Button>
+      </div>
       <div className="flex flex-wrap items-stretch justify-start gap-x-3 gap-y-2 text-[10px]">
         {rows.map((day, index) => (
           <PregaoCard
@@ -210,23 +229,68 @@ function EfeitoCincoPregoes({ days, peaks }: { days: any[] | null | undefined; p
             label={index === 0 ? `Hoje · ${shortDate(day.date)}` : shortDate(day.date)}
             com={Number(day.com_freio_brl ?? 0)}
             sem={Number(day.sem_freio_brl ?? 0)}
-            peak={peaks?.[day.date] ?? null}
+            peak={peaks ? peaks[day.date] ?? null : undefined}
           />
         ))}
-        <PregaoCard
-          label="Total · 5 pregões"
-          com={totalCom}
-          sem={totalSem}
-          highlight
-        />
-        <div className="min-w-[126px] rounded bg-background/90 px-2 py-1.5 text-left text-foreground">
-          <p className="mb-1 font-black">Picos · 5 pregões</p>
+        <PregaoCard label="Total · 5 pregões" com={totalCom} sem={totalSem} highlight />
+        <div className="min-w-[150px] rounded bg-background/90 px-2 py-1.5 text-left text-foreground">
+          <p className="mb-1 font-black">Pico realizado · 5 pregões</p>
           <p className="font-bold">Maior pico <span className="font-mono text-success">{summary.max == null ? "sem dados" : BRL(summary.max)}</span></p>
+          {maxDay && <p className="text-muted-foreground">{shortDate(maxDay.trade_date)}{maxDay.hora_do_pico_brt ? ` às ${maxDay.hora_do_pico_brt.slice(0, 5)}` : ""} · devolveu {BRL(Number(maxDay.devolveu_brl ?? 0))}</p>}
           <p className="font-bold">Média dos picos <span className="font-mono text-success">{summary.mean == null ? "sem dados" : BRL(summary.mean)}</span></p>
-          {summary.count < 5 && <p className="mt-1 text-muted-foreground">{summary.count}/5 dias com medição</p>}
+          {summary.count > 0 && summary.count < 5 && <p className="text-muted-foreground">média de {summary.count} pregões</p>}
+          <p className="mt-1 max-w-[200px] text-[9px] text-muted-foreground">Só ordens fechadas, sem lucro flutuante. Durante o pregão o pico ao vivo é maior.{modesIgnored ? " Cobre todos os modos." : ""}</p>
         </div>
       </div>
     </div>
+  );
+}
+
+function FreioEfeitoQuadro({ dates, filterArgs, filterKey }: { dates: string[]; filterArgs: any; filterKey: string }) {
+  const read = useServerFn(getCockpitFreioEfeito);
+  const q = useQuery({
+    queryKey: ["b3-cockpit-pesado", "freio-efeito", dates, filterKey],
+    queryFn: () => read({ data: { dates, ...filterArgs } }),
+    enabled: dates.length > 0, staleTime: Infinity, gcTime: 60_000,
+  });
+  const d = q.data;
+  const money = (v: number | null) => v == null ? "sem registro" : BRL(v);
+  const copy = () => d && copiarTexto("Efeito do freio no dia (com freio = net_brl, sem freio = net_brl_livre)\n" + tabular(
+    ["dia", "com freio", "sem freio", "efeito", "trades barrados", "robôs"],
+    d.days.map((x) => [shortDate(x.date), money(x.com), money(x.sem), money(x.efeito), x.robots ? x.barrados : "sem registro", x.robots]),
+  ) + `\nSaldo do freio em ${d.dias_com_dado} pregões: ${BRL(d.saldo)}\nFreio que mais ajudou ${d.top_date ? shortDate(d.top_date) : "sem registro"}:\n` +
+    (d.top.length ? d.top.map((t) => `${t.symbol} · ${variantLabel(t.variant).toLowerCase()} · ${t.mode}: ${BRL(Number(t.net_brl))} contra ${BRL(Number(t.net_brl_livre))} (salvou ${BRL(t.salvou)}, barrou ${t.trades_bloqueado_sombra})`).join("\n") : "sem registro"));
+  return (
+    <section className="rounded-xl border border-border/60 bg-card p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-black">Efeito do freio no dia</p>
+        <Button variant="outline" className="ml-auto min-h-11" onClick={copy} disabled={!d}><Copy className="mr-1 size-4" />Copiar</Button>
+      </div>
+      {q.isPending ? <p className="text-sm text-muted-foreground">Carregando…</p> : q.isError || !d ? <p className="text-sm text-muted-foreground">Não foi possível ler o efeito do freio.</p> : <>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[420px] text-xs">
+            <thead className="text-[10px] uppercase tracking-wide text-muted-foreground"><tr className="border-b border-border">
+              <th className="py-1 text-left">Dia</th><th className="py-1 text-right">Com freio</th><th className="py-1 text-right">Sem freio</th><th className="py-1 text-right">Efeito</th><th className="py-1 text-right">Barrados</th></tr></thead>
+            <tbody>{d.days.map((x) => <tr key={x.date} className="border-b border-border/50">
+              <td className="py-1">{shortDate(x.date)}</td>
+              <td className={`py-1 text-right font-mono ${x.com == null ? "" : moneyColor(x.com)}`}>{money(x.com)}</td>
+              <td className={`py-1 text-right font-mono ${x.sem == null ? "" : moneyColor(x.sem)}`}>{money(x.sem)}</td>
+              <td className={`py-1 text-right font-mono font-black ${x.efeito == null ? "" : moneyColor(x.efeito)}`}>{money(x.efeito)}</td>
+              <td className="py-1 text-right font-mono">{x.robots ? x.barrados : "—"}</td>
+            </tr>)}
+            <tr className="font-black"><td className="py-1">Saldo · {d.dias_com_dado} pregões</td><td /><td /><td className={`py-1 text-right font-mono ${moneyColor(d.saldo)}`}>{BRL(d.saldo)}</td><td /></tr></tbody>
+          </table>
+        </div>
+        <div className="text-xs">
+          <p className="font-bold">Freio que mais ajudou {d.top_date ? `em ${shortDate(d.top_date)}` : ""}</p>
+          {d.top.length ? <ol className="list-decimal pl-5">{d.top.map((t) => <li key={`${t.symbol}${t.variant}${t.mode}`}>
+            {t.symbol} · {variantLabel(t.variant).toLowerCase()} · {t.mode}: <span className="font-mono">{BRL(Number(t.net_brl))}</span> contra <span className="font-mono">{BRL(Number(t.net_brl_livre))}</span> — salvou <span className="font-mono text-success">{BRL(t.salvou)}</span>, barrou {t.trades_bloqueado_sombra}
+          </li>)}</ol> : <p className="text-muted-foreground">sem registro</p>}
+        </div>
+        <p className="text-[10px] text-muted-foreground">Resultado fechado do pregão (placar diário). O dia de hoje entra depois do fechamento.</p>
+        {d.rows_truncated && <p className="text-xs text-warning">Leitura atingiu o limite; quadro incompleto.</p>}
+      </>}
+    </section>
   );
 }
 
@@ -900,6 +964,7 @@ function CockpitPage() {
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
       {vivo ? <Scoreboard filterArgs={filterArgs} filterKey={filterKey} /> : null}
+      {vivo && peakDates.length > 1 ? <FreioEfeitoQuadro dates={peakDates.slice(1)} filterArgs={filterArgs} filterKey={filterKey} /> : null}
       {vivo && fiveQ.data?.rows_truncated ? <TruncatedNotice limit={fiveQ.data.rows_limit} /> : null}
 
       {/* ── Leitura histórica do período (modo histórico) ── */}
@@ -1116,7 +1181,7 @@ function CockpitPage() {
                 {isCollapsed ? <ChevronDown /> : <ChevronUp />}
               </Button>
             </div>
-            <EfeitoCincoPregoes days={history?.days} peaks={peaksQ.data?.rows_truncated ? undefined : peaksQ.data?.assets[root]} />
+            <EfeitoCincoPregoes titulo={root} days={history?.days} peaks={peaksQ.data ? peaksQ.data.assets[root] ?? {} : undefined} modesIgnored={peaksQ.data?.modes_ignored} />
             {peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
           </div>
 
@@ -1162,8 +1227,8 @@ function CockpitPage() {
                   {variantCollapsed ? <ChevronDown /> : <ChevronUp />}
                 </Button>
                </h3>
-               <EfeitoCincoPregoes days={history?.by_variant?.find((item: any) => item.variant === variant)?.days}
-                 peaks={peaksQ.data?.rows_truncated ? undefined : peaksQ.data?.variants[variantKey]} />
+               <EfeitoCincoPregoes titulo={`${root} · ${variantLabel(variant)}`} days={history?.by_variant?.find((item: any) => item.variant === variant)?.days}
+                 peaks={peaksQ.data ? peaksQ.data.variants[variantKey] ?? {} : undefined} modesIgnored={peaksQ.data?.modes_ignored} />
                </div>
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
@@ -1538,7 +1603,10 @@ function RobotPair({ label, comFreio, semFreio }: { label: string; comFreio: any
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <div className="grid grid-cols-[auto_1fr] gap-x-3 text-xs">
         <span className="text-muted-foreground">Com freio</span><RobotValue robot={comFreio} />
-        <span className="text-muted-foreground">Sem freio</span><RobotValue robot={semFreio} />
+        <span className="text-muted-foreground">Sem freio</span>
+        {/* Freio só corta prejuízo: mesmo robô e mesmo valor = freio não agiu nele. */}
+        {comFreio && semFreio && comFreio.symbol === semFreio.symbol && comFreio.variant === semFreio.variant && comFreio.mode === semFreio.mode && Number(comFreio.brl) === Number(semFreio.brl)
+          ? <span className="text-muted-foreground">não acionado</span> : <RobotValue robot={semFreio} />}
       </div>
     </div>
   );
