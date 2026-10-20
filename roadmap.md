@@ -1,6 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
+- [ ] Emenda Testeira v2 20/10: freio da RPC cinco pregões, contagem das ordens marcadas, “não acionado” nos dois níveis e total; remover placar diário desta tela, preservar pico/motor, validar sem publicar.
 - [x] Portões PA 19/10 noite: quatro colunas nullable/defaults conferidos em 776 configurações sem diferenças; fallback e chave só nos três portões; valores no details; 18 testes OK e 12.000 comparações do classificador anterior/novo idênticas exceto evidência nova; compilação OK, sem tique real.
 - [ ] Publicar portões PA 19/10 noite: publicação solicitada/agendada; conclusão depende do serviço de publicação. Permanecem 13 alertas críticos preexistentes, não bloqueantes neste workspace.
 - [x] Evidência 19/10: entrada_geometria nullable sem default; details integral no insert instrumentado de abertura; 10 testes OK, coluna conferida, compilação OK; sem executar tique nem publicar. Retry legado sem instrumentação preservado para não alterar abertura.
