@@ -72,11 +72,7 @@ export const getSimDisjuntor = createServerFn({ method: "POST" })
       ordens.push(...r.rows); truncated ||= r.truncated;
     }
 
-    let peakQ = sb.from("b3_robot_daily_score").select("trade_date, mode, pico_margem_brl")
-      .eq("user_id", uid).eq("variant", data.variant).ilike("symbol", `${data.ativo}%`).gte("trade_date", iniD);
-    if (data.mode) peakQ = peakQ.eq("mode", data.mode);
-    const [peaks, qual, saude, modesR] = await Promise.all([
-      paged((a, b) => peakQ.order("trade_date").order("mode").range(a, b)),
+    const [qual, saude, modesR] = await Promise.all([
       sb.from("b3_pregoes_qualidade").select("pregao, classificacao, motivo").gte("pregao", iniD),
       sb.from("b3_pregao_saude").select("trade_date, cobertura_pct, maior_buraco_min, cotacao_parada, stops_pendentes, ordens_fantasma, fechamentos_manuais, primeiro_tick, limpo, motivo_sujo").eq("user_id", uid).gte("trade_date", iniD),
       sb.from("b3_simulation_mode_settings").select("mode").in("simulation_run_id", runIds.length ? runIds : ["00000000-0000-0000-0000-000000000000"]),
@@ -87,11 +83,10 @@ export const getSimDisjuntor = createServerFn({ method: "POST" })
       .filter((o) => !(o.net_result_brl == null || o.status === "divergente_corretora"))
       .map((o) => ({ dia: diaBR(o.entry_time), entry: o.entry_time, exit: o.exit_time, net: Number(o.net_result_brl), contrato: o.contract_code ?? null }));
 
-    // Base = pico de margem do grupo por dia (soma dos robôs DENTRO do dia), mediana entre os dias.
-    const picoDia = new Map<string, number>();
-    for (const p of peaks.rows) if (p.pico_margem_brl != null) picoDia.set(p.trade_date, (picoDia.get(p.trade_date) ?? 0) + Number(p.pico_margem_brl));
-    const pv = [...picoDia.values()].sort((a, b) => a - b);
-    const baseSugerida = pv.length ? pv[Math.floor((pv.length - 1) / 2)]! : null;
+    // The former margin source is under investigation. Never substitute a
+    // different capital base or silently rerun scenarios with another number.
+    const baseSugerida = null;
+    const pv: number[] = [];
 
     // Contrato por dia (para detectar rolagem).
     const contratos = new Map<string, Set<string>>();
@@ -107,6 +102,6 @@ export const getSimDisjuntor = createServerFn({ method: "POST" })
       saude: (saude.data ?? []) as any[],
       contratos_por_dia: Object.fromEntries([...contratos].map(([d, s]) => [d, [...s]])),
       modos: [...new Set(((modesR.data ?? []) as any[]).map((m) => String(m.mode)))].sort(),
-      fonte_faltante: "b3_robot_daily_score e b3_grupo_sombra_dia só têm o total do dia; para saber o que o disjuntor impediria DEPOIS do disparo é preciso a sequência das operações, lida de b3_simulation_orders (resultado gravado, sem recalcular). O pico de margem diário vem de b3_robot_daily_score.",
+      fonte_faltante: "Ordens fechadas de b3_simulation_orders, com resultado gravado. Sugestão automática de base suspensa: fonte anterior sob investigação. Informe uma base para consultar os cenários; nenhuma base substituta foi calculada.",
     };
   });

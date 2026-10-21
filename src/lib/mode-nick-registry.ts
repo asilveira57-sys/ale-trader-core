@@ -27,11 +27,11 @@ const fallback = (mode: string) => {
 
 /** Apelido em destaque. Modo fora da tabela cai no nome técnico. */
 export const modeNick = (mode: string | null | undefined) =>
-  byMode.get(String(mode ?? ""))?.apelido || fallback(String(mode ?? ""));
+  byMode.get(String(mode ?? ""))?.apelido || (String(mode ?? "").endsWith("_sc") && byMode.get(String(mode).slice(0, -3))?.apelido ? `${byMode.get(String(mode).slice(0, -3))?.apelido} SC` : fallback(String(mode ?? "")));
 
 /** Rótulo técnico. */
 export const modeTechLabel = (mode: string | null | undefined) =>
-  byMode.get(String(mode ?? ""))?.rotulo_tecnico || fallback(String(mode ?? ""));
+  byMode.get(String(mode ?? ""))?.rotulo_tecnico || byMode.get(String(mode ?? "").replace(/_sc$/, ""))?.rotulo_tecnico || fallback(String(mode ?? ""));
 
 /** "Davi (Semi agressivo)" — para texto puro, CSV e PDF. */
 export const modeFullLabel = (mode: string | null | undefined) => {

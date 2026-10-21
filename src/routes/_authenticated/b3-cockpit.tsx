@@ -1,3 +1,5 @@
+import { getCockpitLabelEvidence } from "@/lib/b3-cockpit-evidence.functions";
+import { robotLabel, groupBrake, aggregateBrakePhrase, exposureForAsset, allConfirmed, SHADOW_EXPLANATION, type BrakeEvidence, type ExposureEvidence } from "@/lib/b3-cockpit-labels";
 import { CalibracaoSugerida } from "@/components/b3/CalibracaoSugerida";
 import { AssetPricePath } from "@/components/b3/AssetPricePath";
 import { getCockpitDailyPeaks } from "@/lib/b3-cockpit-measurements.functions";
@@ -153,14 +155,14 @@ const PCT_SIGNED = (v: number | null | undefined) =>
   v == null ? "—" : `${Number(v) > 0 ? "+" : ""}${PCT(v, 1)}`;
 const BRL0 = (v: number) =>
   Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-const moneyColor = (v: number) => (Number(v ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300");
+const moneyColor = (v: number) => Number(v) > 0 ? "text-success" : Number(v) < 0 ? "text-destructive" : "text-foreground";
 const VARIANT_SHORT: Record<string, string> = {
   indicador: "ind", price_action: "PA", mean_reversion: "rev", range: "faixa",
   rompimento: "romp",
   pullback: "rep", vwap: "vwap",
 };
 const roboShort = (r: any) =>
-  !r ? "—" : `${VARIANT_SHORT[r.variant] ?? r.variant} ${String(r.mode).replace("_", "-")} ${SIGNED_HDR(r.brl)}`;
+  !r ? "—" : `${VARIANT_SHORT[r.variant] ?? r.variant} ${robotLabel(r.mode, r.variant)} ${SIGNED_HDR(r.brl)}`;
 
 // Testeiras de ativo/modalidade com 30% de transparência (70% de opacidade):
 // os tons cheios estavam poluindo o visual ao rolar a página.
@@ -179,8 +181,8 @@ const shortDate = (date: string) => {
 // e o valor em verde/vermelho conforme positivo/negativo. Hoje é o primeiro
 // card (ainda em andamento) e o "Total" soma somente os últimos 5 pregões.
 function PregaoCard({
-  label, com, sem, highlight, peak, barrados,
-}: { label: string; com: number; sem: number; highlight?: boolean; peak?: RealizedPeak | null; barrados?: number | null }) {
+  label, com, sem, highlight, peak, barrados, frase,
+}: { label: string; com: number; sem: number; highlight?: boolean; peak?: RealizedPeak | null; barrados?: number | null; frase?: string }) {
   return (
     <div className="min-w-[126px] rounded bg-black/70 px-2 py-1.5 text-left">
       <p className={`mb-1 ${highlight ? "font-black" : "font-bold"} text-white`}>{label}</p>
@@ -188,8 +190,9 @@ function PregaoCard({
         Com freio <span className={`ml-1 font-mono ${moneyColor(com)}`}>{BRL(com)}</span>
       </p>
       <p className="whitespace-nowrap font-bold text-white">
-        Sem freio <span className={`ml-1 font-mono ${moneyColor(sem)}`}>{brakeNotActivated(barrados) ? "não acionado" : BRL(sem)}</span>
+        Sem freio <span className={`ml-1 font-mono ${brakeNotActivated(barrados) ? "text-foreground" : moneyColor(sem)}`}>{brakeNotActivated(barrados) ? "não acionado" : BRL(sem)}</span>
       </p>
+      {frase && <p className="mt-1 max-w-[220px] text-[10px] text-foreground">{frase}</p>}
       {peak !== undefined && <p className="mt-1 text-[9px] leading-tight text-white/80">
         {peak == null ? "pico: sem dados" : <>pico <span className="font-mono">{BRL(Number(peak.pico_realizado_brl))}</span>
           {peak.hora_do_pico_brt ? ` às ${peak.hora_do_pico_brt.slice(0, 5)}` : ""}<br />devolveu <span className="font-mono">{BRL(Number(peak.devolveu_brl ?? 0))}</span></>}
@@ -201,8 +204,8 @@ function PregaoCard({
 const peakLine = (p?: RealizedPeak | null) => p == null ? "sem registro"
   : `${BRL(Number(p.pico_realizado_brl))}${p.hora_do_pico_brt ? ` às ${p.hora_do_pico_brt.slice(0, 5)}` : ""} · devolveu ${BRL(Number(p.devolveu_brl ?? 0))} · fechou ${BRL(Number(p.fechamento_brl ?? 0))}`;
 
-function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored }: { days: any[] | null | undefined; peaks?: Record<string, RealizedPeak>; titulo: string; modesIgnored?: boolean }) {
-  const rows = days ?? [];
+function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], root, variant }: { evidence?: BrakeEvidence[]; root?: string; variant?: string; days: any[] | null | undefined; peaks?: Record<string, RealizedPeak>; titulo: string; modesIgnored?: boolean }) {
+  const rows = (days ?? []).map((day) => ({ ...day, frase: groupBrake(evidence, day.date, root, variant)?.frase }));
   // Total soma somente os últimos 5 (hoje é o primeiro, em andamento).
   const totalRows = rows.slice(1);
   const totalCom = totalRows.reduce((sum, day) => sum + Number(day.com_freio_brl ?? 0), 0);
@@ -211,8 +214,8 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored }: { days: any[]
   const summary = peakSummary(totalRows.map((day) => day.date), peaks);
   const maxDay = totalRows.map((d) => peaks?.[d.date]).find((p) => p != null && summary.max != null && Number(p.pico_realizado_brl) === summary.max);
   const copy = () => copiarTexto(`${titulo} — pico realizado (ordens fechadas, sem lucro flutuante)\n` + tabular(
-    ["pregão", "com freio", "sem freio", "ordens barradas", "pico realizado", "hora do pico", "devolveu", "fechamento"],
-    rows.map((d) => { const p = peaks?.[d.date]; return [shortDate(d.date), BRL(Number(d.com_freio_brl ?? 0)), (brakeNotActivated(d.barrados) ? "não acionado" : BRL(Number(d.sem_freio_brl ?? 0))), d.barrados ?? "sem registro",
+    ["pregão", "com freio", "sem freio", "ordens barradas", "efeito do freio", "pico realizado", "hora do pico", "devolveu", "fechamento"],
+    rows.map((d) => { const p = peaks?.[d.date]; return [shortDate(d.date), BRL(Number(d.com_freio_brl ?? 0)), (brakeNotActivated(d.barrados) ? "não acionado" : BRL(Number(d.sem_freio_brl ?? 0))), d.barrados ?? "sem registro", d.frase ?? "sem registro",
       p ? BRL(Number(p.pico_realizado_brl)) : "sem registro", p?.hora_do_pico_brt?.slice(0, 5) ?? "sem registro",
       p ? BRL(Number(p.devolveu_brl ?? 0)) : "sem registro", p ? BRL(Number(p.fechamento_brl ?? 0)) : "sem registro"]; }),
   ) + `\nTotal · 5 pregões: Com freio ${BRL(totalCom)} · Sem freio ${brakeNotActivated(totalBarrados) ? "não acionado" : BRL(totalSem)} · ordens barradas ${totalBarrados ?? "sem registro"}\nMaior pico (5 pregões): ${summary.max == null ? "sem registro" : BRL(summary.max)}\nMédia dos picos: ${summary.mean == null ? "sem registro" : `${BRL(summary.mean)} (média de ${summary.count} pregões)`}${modesIgnored ? "\nPico cobre todos os modos (filtro de modo não se aplica)." : ""}`);
@@ -232,10 +235,11 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored }: { days: any[]
             com={Number(day.com_freio_brl ?? 0)}
             sem={Number(day.sem_freio_brl ?? 0)}
             barrados={day.barrados}
+            frase={day.frase}
             peak={peaks ? peaks[day.date] ?? null : undefined}
           />
         ))}
-        <PregaoCard label="Total · 5 pregões" com={totalCom} sem={totalSem} barrados={totalBarrados} highlight />
+        <PregaoCard label="Total · 5 pregões" com={totalCom} sem={totalSem} barrados={totalBarrados} frase={aggregateBrakePhrase(totalCom, totalSem, totalBarrados)} highlight />
         <div className="min-w-[150px] rounded bg-background/90 px-2 py-1.5 text-left text-foreground">
           <p className="mb-1 font-black">Pico realizado · 5 pregões</p>
           <p className="font-bold">Maior pico <span className="font-mono text-success">{summary.max == null ? "sem dados" : BRL(summary.max)}</span></p>
@@ -249,14 +253,16 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored }: { days: any[]
   );
 }
 
-function FreioEfeitoQuadro({ data, pending, error }: { data: Awaited<ReturnType<typeof getB3CockpitFiveSessions>> | undefined; pending: boolean; error: boolean }) {
-  const d = data ? cockpitBrakeEffect(data.by_asset, data.dates.slice(1)) : null;
+function FreioEfeitoQuadro({ data, pending, error, evidence = [] }: { evidence?: BrakeEvidence[]; data: Awaited<ReturnType<typeof getB3CockpitFiveSessions>> | undefined; pending: boolean; error: boolean }) {
+  const original = data ? cockpitBrakeEffect(data.by_asset, data.dates.slice(1)) : null;
+  const d = original ? { ...original, days: original.days.map((x) => ({ ...x, frase: groupBrake(evidence, x.date)?.frase ?? "sem registro" })),
+    top: evidence.filter((r) => r.trade_date === original.top_date && r.mode !== "(modalidade)" && r.ordens_barradas > 0 && Number(r.efeito_brl) > 0).sort((a, b) => Number(b.efeito_brl) - Number(a.efeito_brl)).slice(0, 3) } : null;
   const money = (v: number | null) => v == null ? "sem registro" : BRL(v);
-  const copy = () => d && copiarTexto("Efeito do freio — b3_cockpit_cinco_pregoes (com_freio_brl − sem_freio_brl)\n" + tabular(
+  const copy = () => d && copiarTexto("Efeito do freio — frases de b3_efeito_freio_dia; resultados de b3_cockpit_cinco_pregoes\n" + tabular(
     ["dia", "com freio", "sem freio", "efeito", "ordens barradas", "ordens fechadas"],
-    d.days.map((x) => [shortDate(x.date), money(x.com), money(x.sem), money(x.efeito), x.barrados ?? "sem registro", x.ordens]),
-  ) + `\nSaldo em ${d.dias_com_dado} pregões: ${BRL(d.saldo)}\nFreio que mais ajudou ${d.top_date ? shortDate(d.top_date) : "sem registro"}:\n` +
-    (d.top.length ? d.top.map((t) => `${t.symbol} · ${variantLabel(t.variant)}: ${BRL(t.com_freio_brl)} contra ${BRL(t.sem_freio_brl)} (efeito ${BRL(t.salvou)}, barrados ${t.barrados ?? "sem registro"})`).join("\n") : "sem registro"));
+    d.days.map((x) => [shortDate(x.date), money(x.com), (brakeNotActivated(x.barrados) ? "não acionado" : money(x.sem)), x.frase, x.barrados ?? "sem registro", x.ordens]),
+  ) + `\nSaldo em ${d.dias_com_dado} pregões: ${money(d.saldo)} — ${aggregateBrakePhrase(d.days.reduce((s, x) => s + (x.com ?? 0), 0), d.days.reduce((s, x) => s + (x.sem ?? 0), 0), totalBlocked(d.days))}\nFreio que mais ajudou ${d.top_date ? shortDate(d.top_date) : "sem registro"}:\n` +
+    (d.top.length ? d.top.map((t) => `${t.raiz} · ${variantLabel(t.variant)} · ${robotLabel(t.mode, t.variant, t.apelido)}: ${BRL(Number(t.com_freio_brl))} contra ${BRL(Number(t.sem_freio_brl))} — ${t.frase}, barrados ${t.ordens_barradas}`).join("\n") : "sem registro"));
   return (
     <section className="border-y border-border py-4 space-y-3">
       <div className="flex items-center gap-2">
@@ -267,21 +273,21 @@ function FreioEfeitoQuadro({ data, pending, error }: { data: Awaited<ReturnType<
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-xs">
             <thead className="text-[10px] uppercase text-muted-foreground"><tr className="border-b border-border">
-              <th className="py-1 text-left">Dia</th><th className="py-1 text-right">Com freio</th><th className="py-1 text-right">Sem freio</th><th className="py-1 text-right">Efeito</th><th className="py-1 text-right">Barrados</th></tr></thead>
+              <th className="py-1 text-left">Dia</th><th className="py-1 text-right">Com freio</th><th className="py-1 text-right">Sem freio</th><th className="px-4 py-1 text-left">Efeito do freio (não é resultado)</th><th className="py-1 text-right">Barrados</th></tr></thead>
             <tbody>{d.days.map((x) => <tr key={x.date} className="border-b border-border">
               <td className="py-1">{shortDate(x.date)}</td>
-              <td className="py-1 text-right font-mono">{money(x.com)}</td>
-              <td className="py-1 text-right font-mono">{money(x.sem)}</td>
-              <td className={`py-1 text-right font-mono font-black ${x.efeito == null ? "" : moneyColor(x.efeito)}`}>{money(x.efeito)}</td>
+              <td className={`py-1 text-right font-mono ${x.com == null ? "" : moneyColor(x.com)}`}>{money(x.com)}</td>
+              <td className={`py-1 text-right font-mono ${brakeNotActivated(x.barrados) ? "text-foreground" : x.sem == null ? "" : moneyColor(x.sem)}`}>{brakeNotActivated(x.barrados) ? "não acionado" : money(x.sem)}</td>
+              <td className="px-4 py-2 text-left text-foreground">{x.frase}</td>
               <td className="py-1 text-right font-mono">{x.barrados ?? "sem registro"}</td>
             </tr>)}
-            <tr className="font-black"><td className="py-1">Saldo · {d.dias_com_dado} pregões</td><td /><td /><td className="py-1 text-right font-mono">{BRL(d.saldo)}</td><td /></tr></tbody>
+            <tr className="font-black"><td className="py-1">Saldo · {d.dias_com_dado} pregões</td><td /><td /><td className="px-4 py-2 text-left"><span className="font-mono">{money(d.saldo)}</span><br />{aggregateBrakePhrase(d.days.reduce((s, x) => s + (x.com ?? 0), 0), d.days.reduce((s, x) => s + (x.sem ?? 0), 0), totalBlocked(d.days))}</td><td /></tr></tbody>
           </table>
         </div>
         <div className="text-xs">
           <p className="font-bold">Freio que mais ajudou {d.top_date ? `em ${shortDate(d.top_date)}` : ""}</p>
-          {d.top.length ? <ol className="list-decimal pl-5">{d.top.map((t) => <li key={`${t.symbol}|${t.variant}`}>
-            {t.symbol} · {variantLabel(t.variant)}: {BRL(t.com_freio_brl)} contra {BRL(t.sem_freio_brl)} — efeito {BRL(t.salvou)}, barrou {t.barrados ?? "sem registro"}
+          {d.top.length ? <ol className="list-decimal pl-5">{d.top.map((t) => <li key={`${t.raiz}|${t.variant}|${t.mode}`}>
+            {t.raiz} · {variantLabel(t.variant)} · {robotLabel(t.mode, t.variant, t.apelido)}: <span className={moneyColor(Number(t.com_freio_brl))}>{BRL(Number(t.com_freio_brl))}</span> contra <span className={moneyColor(Number(t.sem_freio_brl))}>{BRL(Number(t.sem_freio_brl))}</span> — {t.frase}, barrou {t.ordens_barradas}
           </li>)}</ol> : <p className="text-muted-foreground">sem registro</p>}
         </div>
         {data?.counts_truncated && <p className="text-xs text-warning">Contagem atingiu o limite; acionamento sem registro.</p>}
@@ -367,16 +373,13 @@ function HistoricoAgrupado({ robots, nick }: { robots: any[]; nick: (mode: strin
   );
 }
 
-function EfeitoDia({ sombra }: { sombra: SombraDia | null | undefined }) {
-  const comFreio = Number(sombra?.resultado_sombra_brl ?? 0);
-  const semFreio = Number(sombra?.resultado_livre_brl ?? 0);
-  return (
-    <div className="mt-2 border-t border-border/40 pt-2 text-left">
-      <p className="mb-1 text-[9px] font-semibold uppercase text-muted-foreground">Efeito no dia</p>
-      <p className="text-[10px] text-muted-foreground">Com freio <strong className={`ml-1 font-mono ${moneyColor(comFreio)}`}>{BRL(comFreio)}</strong></p>
-      <p className="text-[10px] text-muted-foreground">Sem freio <strong className={`ml-1 font-mono ${moneyColor(semFreio)}`}>{BRL(semFreio)}</strong></p>
-    </div>
-  );
+function EfeitoDia({ evidence }: { evidence: BrakeEvidence | undefined }) {
+  return <div className="mt-2 border-t border-border/40 pt-2 text-left">
+    <p className="mb-1 text-[9px] font-semibold uppercase text-muted-foreground">Efeito no dia</p>
+    <p className="text-[10px] text-muted-foreground">Com freio <strong className={`ml-1 font-mono ${evidence ? moneyColor(Number(evidence.com_freio_brl)) : ""}`}>{evidence ? BRL(Number(evidence.com_freio_brl)) : "sem registro"}</strong></p>
+    <p className="text-[10px] text-muted-foreground">Sem freio <strong className={`ml-1 font-mono ${evidence && evidence.ordens_barradas > 0 ? moneyColor(Number(evidence.sem_freio_brl)) : "text-foreground"}`}>{!evidence ? "sem registro" : evidence.ordens_barradas === 0 ? "não acionado" : BRL(Number(evidence.sem_freio_brl))}</strong></p>
+    <p className="mt-1 text-[10px] text-foreground">{evidence?.frase ?? "sem registro"}</p>
+  </div>;
 }
 
 // CONFIRMAÇÃO DE ENTRADA, EM SOMBRA (23/09/2026). Só leitura do que o motor
@@ -400,7 +403,7 @@ function ConfirmacaoDia({ conf }: { conf: any }) {
         <span className="text-muted-foreground">Com confirmação</span>
         <span className={`text-right font-mono ${moneyColor(com)}`}>{BRL(com)}</span>
         <span className="text-muted-foreground">Sem confirmação</span>
-        <span className={`text-right font-mono ${moneyColor(sem)}`}>{BRL(sem)}</span>
+        <span className={`text-right font-mono ${allConfirmed(conf) ? "text-foreground" : moneyColor(sem)}`}>{allConfirmed(conf) ? "todas confirmaram — sem diferença" : BRL(sem)}</span>
       </div>
       <p className="mt-1 text-[9px] text-muted-foreground">
         entradas: {conf.entradas} no dia, {conf.confirmadas} teriam confirmado
@@ -743,8 +746,12 @@ function CockpitPage() {
     gcTime: 60_000,
   });
 
+  const readLabels = useServerFn(getCockpitLabelEvidence);
+  const labelsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "label-evidence", filterKey], queryFn: () => readLabels({ data: filterArgs }), enabled: vivo, staleTime: Infinity, gcTime: 60_000 });
+  const labelEvidence = labelsQ.data?.brake ?? [];
+  const currentDate = q.data?.session_date ?? peakDates[0];
   const filtroCliente = buildCockpitFilter(filterArgs);
-  const all: any[] = ((q.data?.cards ?? []) as any[]).filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode));
+  const all: any[] = ((q.data?.cards ?? []) as any[]).filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode)).map((c) => ({ ...c, brake_evidence: labelEvidence.find((r) => r.trade_date === currentDate && r.raiz === rootSymbol(c.symbol) && r.variant === c.variant && r.mode === c.mode) }));
   const porAtivo: any[] = recorteServidor ? ((headersQ.data as any)?.por_ativo ?? []) : (q.data?.por_ativo ?? []);
   // Pesado recarrega quando uma posição abre ou fecha (ou pelo botão).
   const abertasSig = ((q.data?.cards ?? []) as any[]).filter((c) => !!c.open).map((c) => `${c.run_id}|${c.mode}`).sort().join(",");
@@ -959,8 +966,8 @@ function CockpitPage() {
       <HistoricalBanner resolved={hd?.period} />
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
-      {vivo ? <Scoreboard filterArgs={filterArgs} filterKey={filterKey} /> : null}
-      {vivo && peakDates.length > 1 ? <FreioEfeitoQuadro data={fiveQ.data} pending={fiveQ.isPending} error={fiveQ.isError} /> : null}
+      {vivo ? <Scoreboard filterArgs={filterArgs} filterKey={filterKey} evidence={labelsQ.data} /> : null}
+      {vivo && peakDates.length > 1 ? <FreioEfeitoQuadro data={fiveQ.data} pending={fiveQ.isPending} error={fiveQ.isError || labelsQ.isError} evidence={labelEvidence} /> : null}
       {vivo && fiveQ.data?.rows_truncated ? <TruncatedNotice limit={fiveQ.data.rows_limit} /> : null}
 
       {/* ── Leitura histórica do período (modo histórico) ── */}
@@ -1001,7 +1008,7 @@ function CockpitPage() {
 
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-muted-foreground">Por robô</p>
-                <HistoricoAgrupado robots={(lado?.robots ?? []) as any[]} nick={apelidos.nick} />
+                <HistoricoAgrupado robots={(lado?.robots ?? []) as any[]} nick={(mode) => robotLabel(mode)} />
               </div>
               <div className="space-y-1">
                 <Comparativo com={(hd as any)?.com_freio} sem={(hd as any)?.sem_freio} />
@@ -1114,7 +1121,7 @@ function CockpitPage() {
               <Button key={m} size="sm" variant={modesSel.includes(m) ? "default" : "outline"}
                 className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique marca e desmarca; os três recortes se combinam"
                 onClick={(e) => clickItem("modes", m, e)}>
-                {apelidos.nick(m)}
+                {robotLabel(m)}
               </Button>
             ))}
           </div>
@@ -1162,11 +1169,11 @@ function CockpitPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="h-6 border-current/40 bg-background/15 text-[10px] text-current hover:bg-background/25 hover:text-current"
+                <Button size="sm" variant="outline" className="min-h-11 border-current/40 bg-background/15 text-[10px] text-current hover:bg-background/25 hover:text-current"
                   onClick={() => copyCards(Array.from(group.byVariant.values()).flat(), root, true)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo
                 </Button>
-                <Button asChild size="sm" variant="outline" className="h-6 border-current/40 bg-background/15 text-[10px] text-current hover:bg-background/25 hover:text-current">
+                <Button asChild size="sm" variant="outline" className="min-h-11 border-current/40 bg-background/15 text-[10px] text-current hover:bg-background/25 hover:text-current">
                   <Link to="/b3/ativo/$symbol" params={{ symbol: root }}>ver painel</Link>
                 </Button>
               </div>
@@ -1177,7 +1184,7 @@ function CockpitPage() {
                 {isCollapsed ? <ChevronDown /> : <ChevronUp />}
               </Button>
             </div>
-            <EfeitoCincoPregoes titulo={root} days={history?.days} peaks={peaksQ.data ? peaksQ.data.assets[root] ?? {} : undefined} modesIgnored={peaksQ.data?.modes_ignored} />
+            <EfeitoCincoPregoes titulo={root} days={history?.days} evidence={labelEvidence} root={root} peaks={peaksQ.data ? peaksQ.data.assets[root] ?? {} : undefined} modesIgnored={peaksQ.data?.modes_ignored} />
             {peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
           </div>
 
@@ -1212,7 +1219,7 @@ function CockpitPage() {
                   escopo="grupo" root={root} variant={variant} mode={null}
                   libs={liberacoes} liberarM={liberarM} travarM={travarM} defaultFreio="grupo"
                 />}
-                 <Button size="sm" variant="outline" className="ml-auto h-6 border-current/40 bg-background/15 text-[10px] text-current hover:bg-background/25 hover:text-current"
+                 <Button size="sm" variant="outline" className="ml-auto min-h-11 border-current/40 bg-background/15 text-[10px] text-current hover:bg-background/25 hover:text-current"
                   onClick={() => copyCards(cards, `${root} · ${variantLabel(variant).toLowerCase()}`)}>
                   <Copy className="w-3 h-3 mr-1" />Copiar ativo + modalidade
                 </Button>
@@ -1223,7 +1230,7 @@ function CockpitPage() {
                   {variantCollapsed ? <ChevronDown /> : <ChevronUp />}
                 </Button>
                </h3>
-               <EfeitoCincoPregoes titulo={`${root} · ${variantLabel(variant)}`} days={history?.by_variant?.find((item: any) => item.variant === variant)?.days}
+               <EfeitoCincoPregoes titulo={`${root} · ${variantLabel(variant)}`} days={history?.by_variant?.find((item: any) => item.variant === variant)?.days} evidence={labelEvidence} root={root} variant={variant}
                  peaks={peaksQ.data ? peaksQ.data.variants[variantKey] ?? {} : undefined} modesIgnored={peaksQ.data?.modes_ignored} />
                </div>
 
@@ -1271,24 +1278,24 @@ function CockpitPage() {
                         <ShieldAlert className="w-3.5 h-3.5" />
                       </Link>
                       {/* Copiar este robô — fora do <button> do card pra não aninhar botões */}
-                      <button
+                      <Button variant="ghost"
                         type="button"
                         aria-label="Copiar este robô"
                         title="Copiar este robô"
-                        className="absolute top-1.5 right-1.5 z-10 rounded p-1 text-muted-foreground/70 hover:text-foreground hover:bg-muted/50"
+                        className="absolute top-1 right-1 z-10 min-h-11 min-w-11 text-muted-foreground"
                         onClick={(e) => {
                           e.stopPropagation();
-                          copyCards([c], `${rootSymbol(c.symbol)} · ${variantLabel(c.variant ?? "indicador").toLowerCase()} · ${String(c.mode).replace("_", " ")}`);
+                          copyCards([c], `${rootSymbol(c.symbol)} · ${variantLabel(c.variant ?? "indicador").toLowerCase()} · ${robotLabel(c.mode, c.variant)}`);
                         }}
                       >
-                        <Copy className="w-3 h-3" />
-                      </button>
+                        <Copy className="w-4 h-4" />
+                      </Button>
                       {/* ── Cabeçalho compacto: sempre visível ── */}
                       <button className="w-full text-left p-3 space-y-2" onClick={() => toggleExpand(key)}>
 
-                        <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center justify-between gap-1 pt-10">
                           <div className="flex flex-wrap items-center gap-1">
-                            <Badge className={`text-[10px] ${MODE_COLOR[c.mode]}`}>{apelidos.nick(c.mode)}<span className="ml-1 opacity-70 text-[9px]">{apelidos.tech(c.mode)}</span></Badge>
+                            <Badge className={`text-[10px] ${MODE_COLOR[c.mode]}`}>{robotLabel(c.mode, c.variant)}</Badge>
                             <Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge>
                             {/* DINHEIRO DE VERDADE (04/09/2026): autorização ligada
                                 e não revogada para este ativo/modalidade/modo. Sem
@@ -1354,7 +1361,7 @@ function CockpitPage() {
                         {/* ── Resultado do dia, separado do acumulado ── */}
                         <div className="text-[11px] space-y-0.5 pt-1 border-t border-border/40">
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Realizado hoje</span>
+                            <span className="text-muted-foreground">Realizado hoje (sem freio)</span>
                             <span className={`font-mono ${Number(c.realized_today) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
                               {BRL(c.realized_today)}
                             </span>
@@ -1377,6 +1384,7 @@ function CockpitPage() {
                           </div>
                         </div>
 
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">{SHADOW_EXPLANATION}</p>
                         {c.reactivated_today && (
                           <p className="text-[10px] text-amber-300/80">
                             Reativado hoje após stop diário — resultado do dia não é limpo.
@@ -1408,9 +1416,7 @@ function CockpitPage() {
                             </div>
                           );
                         })()}
-                        <EfeitoDia
-                          sombra={c.grupo?.sombra}
-                        />
+                        <EfeitoDia evidence={c.brake_evidence} />
                         <ConfirmacaoDia conf={c.confirmacao} />
 
 
@@ -1462,7 +1468,7 @@ function CockpitPage() {
                             </DialogTrigger>
                             <DialogContent>
                               <DialogHeader>
-                                <DialogTitle>Fechar {c.mode} · {variantLabel(c.variant)} ({c.symbol}) agora?</DialogTitle>
+                                <DialogTitle>Fechar {robotLabel(c.mode, c.variant)} · {variantLabel(c.variant)} ({c.symbol}) agora?</DialogTitle>
                               </DialogHeader>
                               <p className="text-sm text-muted-foreground">
                                 Encerra a posição de {c.open.side === "buy" ? "compra" : "venda"} ao preço de mercado
@@ -1520,7 +1526,7 @@ function CockpitPage() {
                               </DialogTrigger>
                               <DialogContent>
                                 <DialogHeader>
-                                  <DialogTitle>Reativar {c.mode} · {variantLabel(c.variant)} ({c.symbol})?</DialogTitle>
+                                  <DialogTitle>Reativar {robotLabel(c.mode, c.variant)} · {variantLabel(c.variant)} ({c.symbol})?</DialogTitle>
                                 </DialogHeader>
                                 <p className="text-sm text-muted-foreground">
                                   O robô bateu o stop diário. Escreva o motivo da reativação (mínimo 20 caracteres).
@@ -1562,10 +1568,10 @@ function CockpitPage() {
 
 // ── Placar digital do dia: poucos números grandes, o resto em linha secundária.
 // Somente leitura; nada aqui altera o motor de simulação.
-const pnlColorOf = (v: number) => (v >= 0 ? "text-emerald-400" : "text-rose-400");
+const pnlColorOf = moneyColor;
 
-function PairedMoney({ label, comFreio, semFreio, large = false }: {
-  label: string; comFreio: number; semFreio: number; large?: boolean;
+function PairedMoney({ label, comFreio, semFreio, large = false, barrados }: {
+  label: string; comFreio: number; semFreio: number; large?: boolean; barrados?: number | null;
 }) {
   const comFreioExibido = Math.round(comFreio);
   const semFreioExibido = Math.round(semFreio);
@@ -1576,7 +1582,7 @@ function PairedMoney({ label, comFreio, semFreio, large = false }: {
         <span className="text-muted-foreground">Com freio</span>
         <span className={`text-right font-mono font-semibold ${pnlColorOf(comFreioExibido)}`}>{BRL(comFreioExibido)}</span>
         <span className="text-muted-foreground">Sem freio</span>
-        <span className={`text-right font-mono font-semibold ${pnlColorOf(semFreioExibido)}`}>{BRL(semFreioExibido)}</span>
+        <span className={`text-right font-mono font-semibold ${brakeNotActivated(barrados) ? "text-foreground" : pnlColorOf(semFreioExibido)}`}>{brakeNotActivated(barrados) ? "não acionado" : BRL(semFreioExibido)}</span>
       </div>
     </div>
   );
@@ -1587,26 +1593,27 @@ function RobotValue({ robot }: { robot: any }) {
   return (
     <span className="min-w-0">
       <span className="font-medium">{rootSymbol(robot.symbol)}</span>
-      <span className="text-muted-foreground"> · {variantLabel(robot.variant).toLowerCase()} · {robot.mode} </span>
+      <span className="text-muted-foreground"> · {variantLabel(robot.variant).toLowerCase()} · {robotLabel(robot.mode, robot.variant)} </span>
       <span className={`font-mono ${pnlColorOf(Number(robot.brl))}`}>{BRL(Number(robot.brl))}</span>
     </span>
   );
 }
 
-function RobotPair({ label, comFreio, semFreio }: { label: string; comFreio: any; semFreio: any }) {
+function RobotPair({ label, comFreio, semFreio, evidence = [], date, inactive }: { label: string; comFreio: any; semFreio: any; evidence?: BrakeEvidence[]; date?: string; inactive?: boolean }) {
   return (
     <div>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <div className="grid grid-cols-[auto_1fr] gap-x-3 text-xs">
         <span className="text-muted-foreground">Com freio</span><RobotValue robot={comFreio} />
         <span className="text-muted-foreground">Sem freio</span>
-        <RobotValue robot={semFreio} />
+        {inactive || (semFreio && evidence.some((r) => r.trade_date === date && r.raiz === rootSymbol(semFreio.symbol) && r.variant === semFreio.variant && r.mode === semFreio.mode && r.ordens_barradas === 0)) ? <span>não acionado</span> : <RobotValue robot={semFreio} />}
       </div>
     </div>
   );
 }
 
-function Scoreboard({ filterArgs, filterKey }: {
+function Scoreboard({ filterArgs, filterKey, evidence }: {
+  evidence?: Awaited<ReturnType<typeof getCockpitLabelEvidence>>;
   filterArgs: { symbols: string[] | null; variants: string[] | null; modes: string[] | null };
   filterKey: string;
 }) {
@@ -1621,15 +1628,21 @@ function Scoreboard({ filterArgs, filterKey }: {
   const d: any = q.data;
   if (!d) return <section className="rounded-lg border border-border/60 bg-card p-4 text-sm text-muted-foreground">Carregando placar do dia...</section>;
 
+  const blocked = groupBrake(evidence?.brake ?? [], d.session_date)?.blocked ?? (evidence ? 0 : null);
+  const exposures = (evidence?.exposure ?? []).filter((r) => r.trade_date === d.session_date && r.variant === "(ativo)");
+  const exposureText = (r: ExposureEvidence) => `${r.raiz}: ${r.pico_contratos} contratos · ${BRL(Number(r.pico_margem_com_folga_brl))} · ${r.hora_do_pico_brt?.slice(0, 5) ?? "sem registro"}`;
+  const fields = [["Saldo do dia", "saldo_dia"], ["Se fechasse agora", "se_fechasse_agora"], ["Exposição atual", "exposicao_atual"], ["Lucro bruto do dia", "lucro_bruto"], ["Prejuízo bruto do dia", "prejuizo_bruto"], ["Aberto positivo", "aberto_positivo"], ["Aberto negativo", "aberto_negativo"]];
+  const copyScoreboard = () => copiarTexto(`Testeira de resultado — ${d.session_date}\n` + fields.map(([label, key]) => `${label}\nCom freio: ${BRL(Math.round(Number(d[`${key}_com_freio_brl`])))}\nSem freio: ${brakeNotActivated(blocked) ? "não acionado" : BRL(Math.round(Number(d[`${key}_brl`])))}`).join("\n\n") + "\n\n" + [["Melhor robô do dia", d.melhor_robo_com_freio, d.melhor_robo], ["Pior robô do dia", d.pior_robo_com_freio, d.pior_robo]].map(([label, com, sem]) => `${label}\nCom freio: ${roboShort(com)}\nSem freio: ${sem && evidence?.brake.some((r) => r.trade_date === d.session_date && r.raiz === rootSymbol(sem.symbol) && r.variant === sem.variant && r.mode === sem.mode && r.ordens_barradas === 0) ? "não acionado" : roboShort(sem)}`).join("\n\n") + `\n\nPico de exposição (contratos abertos ao mesmo tempo)\n${exposures.length ? exposures.map((r) => `${r.cenario}: ${exposureText(r)}`).join("\n") : "sem registro"}\nMargem exigida com folga de 30%; capital comprometido, não lucro.${evidence?.exposure_modes_ignored ? " Pico cobre todos os modos." : ""}\n${groupBrake(evidence?.brake ?? [], d.session_date)?.frase ?? "sem registro"}\n${SHADOW_EXPLANATION}\nStops pendentes: ${d.stops_pendentes ?? "sem registro"}\nCotação: ${(d.quotes_health ?? []).map((r: any) => `${rootSymbol(r.symbol)} ${r.age_s ?? "sem registro"}s`).join(" · ") || "sem registro"}`);
   const stopsPendentes = Number(d.stops_pendentes ?? 0);
   const quotes: any[] = d.quotes_health ?? [];
   const guardLimit = Number(d.quote_guard_limit_s ?? 45);
 
   return (
     <section className="rounded-xl border border-border/60 bg-card p-4 space-y-4">
-      <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-        <span>Placar, faixas e picos recarregam ao abrir/fechar posição ou por aqui.</span>
-        <Button size="sm" variant="outline" className="min-h-9" disabled={q.isFetching}
+      <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
+        <span className="w-full sm:w-auto">Placar, faixas e picos recarregam ao abrir/fechar posição ou por aqui.</span>
+        <Button variant="outline" className="min-h-11" onClick={copyScoreboard} aria-label="Copiar testeira de resultado"><Copy className="size-4" />Copiar</Button>
+        <Button size="sm" variant="outline" className="min-h-11" disabled={q.isFetching}
           onClick={() => qcSb.invalidateQueries({ queryKey: ["b3-cockpit-pesado"] })}>
           <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} /> Atualizar placar e faixas
         </Button>
@@ -1644,24 +1657,28 @@ function Scoreboard({ filterArgs, filterKey }: {
 
       {/* Linha 1 — números em corpo muito grande */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <PairedMoney label="Saldo do dia" comFreio={Number(d.saldo_dia_com_freio_brl)} semFreio={Number(d.saldo_dia_brl)} large />
-        <PairedMoney label="Se fechasse agora" comFreio={Number(d.se_fechasse_agora_com_freio_brl)} semFreio={Number(d.se_fechasse_agora_brl)} large />
-        <PairedMoney label="Exposição atual" comFreio={Number(d.exposicao_atual_com_freio_brl)} semFreio={Number(d.exposicao_atual_brl)} large />
+        <PairedMoney barrados={blocked} label="Saldo do dia" comFreio={Number(d.saldo_dia_com_freio_brl)} semFreio={Number(d.saldo_dia_brl)} large />
+        <PairedMoney barrados={blocked} label="Se fechasse agora" comFreio={Number(d.se_fechasse_agora_com_freio_brl)} semFreio={Number(d.se_fechasse_agora_brl)} large />
+        <PairedMoney barrados={blocked} label="Exposição atual" comFreio={Number(d.exposicao_atual_com_freio_brl)} semFreio={Number(d.exposicao_atual_brl)} large />
       </div>
 
       {/* Linha 2 — corpo médio */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border/40 pt-3">
-        <PairedMoney label="Lucro bruto do dia" comFreio={Number(d.lucro_bruto_com_freio_brl)} semFreio={Number(d.lucro_bruto_brl)} />
-        <PairedMoney label="Prejuízo bruto do dia" comFreio={Number(d.prejuizo_bruto_com_freio_brl)} semFreio={Number(d.prejuizo_bruto_brl)} />
-        <PairedMoney label="Aberto positivo" comFreio={Number(d.aberto_positivo_com_freio_brl)} semFreio={Number(d.aberto_positivo_brl)} />
-        <PairedMoney label="Aberto negativo" comFreio={Number(d.aberto_negativo_com_freio_brl)} semFreio={Number(d.aberto_negativo_brl)} />
+        <PairedMoney barrados={blocked} label="Lucro bruto do dia" comFreio={Number(d.lucro_bruto_com_freio_brl)} semFreio={Number(d.lucro_bruto_brl)} />
+        <PairedMoney barrados={blocked} label="Prejuízo bruto do dia" comFreio={Number(d.prejuizo_bruto_com_freio_brl)} semFreio={Number(d.prejuizo_bruto_brl)} />
+        <PairedMoney barrados={blocked} label="Aberto positivo" comFreio={Number(d.aberto_positivo_com_freio_brl)} semFreio={Number(d.aberto_positivo_brl)} />
+        <PairedMoney barrados={blocked} label="Aberto negativo" comFreio={Number(d.aberto_negativo_com_freio_brl)} semFreio={Number(d.aberto_negativo_brl)} />
       </div>
 
       {/* Linha 3 — corpo pequeno */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-border/40 pt-3">
-        <RobotPair label="Melhor robô do dia" comFreio={d.melhor_robo_com_freio} semFreio={d.melhor_robo} />
-        <RobotPair label="Pior robô do dia" comFreio={d.pior_robo_com_freio} semFreio={d.pior_robo} />
-        <PairedMoney label="Pico de exposição do dia" comFreio={Number(d.pico_exposicao_com_freio_brl)} semFreio={Number(d.pico_exposicao_brl)} />
+        <RobotPair evidence={evidence?.brake} date={d.session_date} label="Melhor robô do dia" comFreio={d.melhor_robo_com_freio} semFreio={d.melhor_robo} />
+        <RobotPair evidence={evidence?.brake} date={d.session_date} label="Pior robô do dia" comFreio={d.pior_robo_com_freio} semFreio={d.pior_robo} />
+        <div className="space-y-1 text-xs">
+          <p className="text-[10px] uppercase text-muted-foreground">Pico de exposição (contratos abertos ao mesmo tempo)</p>
+          {exposures.length ? exposures.map((r) => <p key={`${r.raiz}|${r.cenario}`}><span className="text-muted-foreground">{r.cenario}: </span>{exposureText(r)}</p>) : <p>sem registro</p>}
+          <p className="text-muted-foreground">Margem exigida com folga de 30%. Não é lucro: é capital comprometido.{evidence?.exposure_modes_ignored ? " Pico cobre todos os modos." : ""}</p>
+        </div>
       </div>
 
       {/* Saúde da cotação — idade do último tick por ativo */}
@@ -1688,16 +1705,30 @@ function Scoreboard({ filterArgs, filterKey }: {
 function TesteiraPeriodo({ com, sem, umDia }: { com: any; sem: any; umDia: boolean }) {
   if (!com || !sem) return null;
   const s = umDia ? "do dia" : "do período";
+  const blocked = (sem.robots ?? []).reduce((sum: number, r: any) => sum + Number(r.sombra_ops ?? 0), 0);
+  const robotBlocked = (robot: any) => robot ? (sem.robots ?? []).find((r: any) => r.symbol === robot.symbol && r.variant === robot.variant && r.mode === robot.mode)?.sombra_ops : null;
+  const pairText = (v: number) => blocked === 0 ? "não acionado" : BRL(v);
+  const copyPeriod = () => copiarTexto(`Resultado ${s}\n` + tabular(
+    ["Quadro", "Com freio", "Sem freio"],
+    [
+      ["Saldo", BRL(Number(com.total_brl)), pairText(Number(sem.total_brl))],
+      ["Lucro bruto", BRL(Number(com.lucro_bruto_brl)), pairText(Number(sem.lucro_bruto_brl))],
+      ["Prejuízo bruto", BRL(Number(com.prejuizo_bruto_brl)), pairText(Number(sem.prejuizo_bruto_brl))],
+      ["Melhor robô", roboShort(com.melhor_robo), robotBlocked(sem.melhor_robo) === 0 ? "não acionado" : roboShort(sem.melhor_robo)],
+      ["Pior robô", roboShort(com.pior_robo), robotBlocked(sem.pior_robo) === 0 ? "não acionado" : roboShort(sem.pior_robo)],
+    ],
+  ));
   return (
     <div className="space-y-3 rounded-lg border border-border/60 bg-background/40 p-3">
+      <Button variant="outline" className="min-h-11" onClick={copyPeriod}><Copy className="size-4" />Copiar testeira de resultado</Button>
       <div className="grid gap-3 md:grid-cols-3">
-        <PairedMoney label={`Saldo ${s}`} comFreio={Number(com.total_brl)} semFreio={Number(sem.total_brl)} large />
-        <PairedMoney label={`Lucro bruto ${s}`} comFreio={Number(com.lucro_bruto_brl)} semFreio={Number(sem.lucro_bruto_brl)} />
-        <PairedMoney label={`Prejuízo bruto ${s}`} comFreio={Number(com.prejuizo_bruto_brl)} semFreio={Number(sem.prejuizo_bruto_brl)} />
+        <PairedMoney barrados={blocked} label={`Saldo ${s}`} comFreio={Number(com.total_brl)} semFreio={Number(sem.total_brl)} large />
+        <PairedMoney barrados={blocked} label={`Lucro bruto ${s}`} comFreio={Number(com.lucro_bruto_brl)} semFreio={Number(sem.lucro_bruto_brl)} />
+        <PairedMoney barrados={blocked} label={`Prejuízo bruto ${s}`} comFreio={Number(com.prejuizo_bruto_brl)} semFreio={Number(sem.prejuizo_bruto_brl)} />
       </div>
       <div className="grid gap-3 md:grid-cols-2">
-        <RobotPair label={`Melhor robô ${s}`} comFreio={com.melhor_robo} semFreio={sem.melhor_robo} />
-        <RobotPair label={`Pior robô ${s}`} comFreio={com.pior_robo} semFreio={sem.pior_robo} />
+        <RobotPair label={`Melhor robô ${s}`} comFreio={com.melhor_robo} semFreio={robotBlocked(sem.melhor_robo) === 0 ? null : sem.melhor_robo} inactive={robotBlocked(sem.melhor_robo) === 0} />
+        <RobotPair label={`Pior robô ${s}`} comFreio={com.pior_robo} semFreio={robotBlocked(sem.pior_robo) === 0 ? null : sem.pior_robo} inactive={robotBlocked(sem.pior_robo) === 0} />
       </div>
     </div>
   );
@@ -1721,14 +1752,14 @@ function Comparativo({ com, sem }: { com: any; sem: any }) {
       <td className="py-1">{k}</td>
       <td className={`py-1 text-right font-mono ${moneyColor(v.c)}`}>{BRL(v.c)}</td>
       <td className={`py-1 text-right font-mono ${moneyColor(v.s)}`}>{BRL(v.s)}</td>
-      <td className={`py-1 text-right font-mono ${moneyColor(v.c - v.s)}`}>{BRL(v.c - v.s)}</td>
+      <td className="px-3 py-1 text-foreground">{aggregateBrakePhrase(v.c, v.s, (sem.robots ?? []).reduce((n: number, r: any) => n + Number(r.sombra_ops ?? 0), 0))}</td>
     </tr>
   );
   const Tabela = ({ titulo, rows, total }: { titulo: string; rows: [string, { c: number; s: number }][]; total?: boolean }) => (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[420px] text-xs">
         <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          <tr className="border-b border-border"><th className="py-1 text-left">{titulo}</th><th className="py-1 text-right">Com freio</th><th className="py-1 text-right">Sem freio</th><th className="py-1 text-right">Diferença</th></tr>
+          <tr className="border-b border-border"><th className="py-1 text-left">{titulo}</th><th className="py-1 text-right">Com freio</th><th className="py-1 text-right">Sem freio</th><th className="py-1 text-left">Efeito do freio (não é resultado)</th></tr>
         </thead>
         <tbody>
           {rows.map(([k, v]) => <Linha key={k} k={k} v={v} />)}

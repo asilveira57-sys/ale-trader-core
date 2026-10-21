@@ -81,6 +81,7 @@ function Page() {
     });
     const usados = soLimpo ? status.filter((s) => s.limpo).map((s) => s.dia) : todos;
     const base = baseTxt ? Number(baseTxt.replace(",", ".")) : (d.base_sugerida_brl ?? 0);
+    if (!(base > 0)) return null;
     const cen = CENARIOS.map((p) => simularDisjuntor(d.ordens, usados, base, p));
     const validos = cen.filter((c) => c.pregoes >= MIN_PREGOES);
     const ord = [...validos].sort((a, b) => b.total - a.total);
@@ -93,6 +94,7 @@ function Page() {
 
   return (
     <main className="p-4 md:p-6 space-y-4 max-w-6xl">
+      <p className="text-sm text-warning">Sugestão automática de base suspensa: fonte anterior sob investigação. Informe a base para consultar, sem substituição automática.</p>
       <div>
         <h1 className="text-xl font-semibold">Simulação de disjuntor de perda</h1>
         <p className="text-sm text-muted-foreground">Somente leitura. Simula sobre resultados já gravados; não altera nenhuma configuração. Um ativo e uma modalidade por vez — não há soma entre ativos.</p>
@@ -115,7 +117,7 @@ function Page() {
         <label className="space-y-1"><div>Período (dias)</div>
           <input className="h-9 w-20 rounded border border-border bg-background px-2" type="number" min={5} max={180} value={dias} onChange={(e) => setDias(Math.min(180, Math.max(5, Number(e.target.value) || 30)))} /></label>
         <label className="space-y-1"><div>Base do % (R$)</div>
-          <input className="h-9 w-28 rounded border border-border bg-background px-2" inputMode="decimal" placeholder={q.data?.base_sugerida_brl != null ? q.data.base_sugerida_brl.toFixed(0) : "—"} value={baseTxt} onChange={(e) => setBaseTxt(e.target.value.replace(/[^\d,.]/g, ""))} /></label>
+          <input className="h-11 w-28 rounded border border-border bg-background px-2" inputMode="decimal" placeholder="Informe a base" value={baseTxt} onChange={(e) => setBaseTxt(e.target.value.replace(/[^\d,.]/g, ""))} /></label>
         <label className="flex items-center gap-2 h-9"><input type="checkbox" checked={soLimpo} onChange={(e) => setSoLimpo(e.target.checked)} /> só pregão limpo</label>
       </div>
 

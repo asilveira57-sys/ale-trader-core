@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw, ArrowLeft, ArrowUp, ArrowDown } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
-import { getB3BiDashboard } from "@/lib/b3-simulation.functions";
+import type { getB3BiDashboard } from "@/lib/b3-simulation.functions";
 import { BRL, SIGNED_BRL, shortBRL } from "@/lib/b3-format";
 
 export const Route = createFileRoute("/_authenticated/b3_/bi")({
@@ -25,7 +25,7 @@ export const Route = createFileRoute("/_authenticated/b3_/bi")({
       { name: "twitter:card", content: "summary" },
     ],
   }),
-  component: BiPage,
+  component: () => <section className="p-6 space-y-3"><h1 className="text-2xl font-bold">BI do B3</h1><p className="text-muted-foreground">Consulta suspensa: a fonte anterior está sob investigação. Nenhum resultado foi recalculado.</p><Button variant="outline" className="min-h-11" asChild><Link to="/b3-cockpit">Cockpit</Link></Button></section>,
 });
 
 // ─────────────────────────── datas (America/Sao_Paulo) ───────────────────────────
@@ -125,7 +125,7 @@ type SortKey =
 
 function BiPage() {
   const today = brtToday();
-  const fetchBi = useServerFn(getB3BiDashboard);
+  const fetchBi = async (_input: unknown): Promise<Awaited<ReturnType<typeof getB3BiDashboard>>> => { throw new Error("Fonte sob investigação; consulta suspensa"); };
 
   const [preset, setPreset] = useState<Preset>("30d");
   const [custom, setCustom] = useState(() => rangeForPreset("30d", today));

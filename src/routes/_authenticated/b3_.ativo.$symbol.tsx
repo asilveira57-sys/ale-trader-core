@@ -12,7 +12,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RefreshCw, ArrowLeft, ChevronLeft, ChevronRight, CalendarDays, Copy, FileSpreadsheet, FileText } from "lucide-react";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
-import { getB3AssetDashboard } from "@/lib/b3-simulation.functions";
+import { getB3AssetDashboardOrders as getB3AssetDashboard } from "@/lib/b3-asset-read.functions";
 import { BRL, SIGNED_BRL, shortBRL, assetLabel } from "@/lib/b3-format";
 import { buildAssetCopyText, buildModeCopyText, exportAssetXlsx, exportAssetPdf } from "@/lib/b3-asset-export";
 
