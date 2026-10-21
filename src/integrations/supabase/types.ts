@@ -8343,6 +8343,7 @@ export type Database = {
           out_motivo: string
         }[]
       }
+      b3_brl: { Args: { v: number }; Returns: string }
       b3_calcular_paridade: { Args: { p_desde?: string }; Returns: number }
       b3_calcular_score_dia: { Args: { p_date?: string }; Returns: number }
       b3_calibrar_limites: {
@@ -8469,6 +8470,28 @@ export type Database = {
       b3_disparar_exportacao: { Args: never; Returns: string }
       b3_disparar_guardiao: { Args: never; Returns: string }
       b3_disparar_tique: { Args: never; Returns: string }
+      b3_efeito_freio_dia: {
+        Args: {
+          p_dias?: number
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: {
+          apelido: string
+          com_freio_brl: number
+          efeito_brl: number
+          frase: string
+          freio_acionado: boolean
+          mode: string
+          ordens: number
+          ordens_barradas: number
+          raiz: string
+          sem_freio_brl: number
+          trade_date: string
+          variant: string
+        }[]
+      }
       b3_export_csv_bloqueios: {
         Args: { p_ativo: string; p_date: string }
         Returns: {
@@ -8536,6 +8559,26 @@ export type Database = {
       b3_materializar_m1: { Args: { p_date?: string }; Returns: number }
       b3_motor_noite: { Args: { p_ligar: boolean }; Returns: string }
       b3_num: { Args: { v: number }; Returns: string }
+      b3_pico_exposicao_dia: {
+        Args: {
+          p_dias?: number
+          p_folga?: number
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: {
+          cenario: string
+          hora_do_pico_brt: string
+          pico_contratos: number
+          pico_margem_brl: number
+          pico_margem_com_folga_brl: number
+          posicoes_no_pico: number
+          raiz: string
+          trade_date: string
+          variant: string
+        }[]
+      }
       b3_pico_realizado_dia: {
         Args: {
           p_dias?: number

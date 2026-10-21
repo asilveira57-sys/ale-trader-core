@@ -1,6 +1,8 @@
 # Fila de trabalho
 
 ## Em andamento
+- [x] Cards e rótulos 21/10: cópia completa, apelidos/SC, acionamento por ordens e frases, exposição da RPC, legenda sombra/confirmação; 15 testes e consulta autenticada/cópia/celular verificados; motor intacto, não publicado. BI e sugestão de base suspensos sem substitutos.
+- [ ] Eliminar leitura indireta de b3_robot_daily_score em b3_cores_dos_robos — bloqueada pela regra permanente de manter b3_cor_do_robo/constância e não mudar regras; exige autorização específica para a fonte do rank_day. Leituras diretas do cockpit removidas.
 - [x] Emenda Testeira v2 20/10: freio da RPC cinco pregões, contagem paginada das ordens marcadas, “não acionado” nos dois níveis e total; placar diário removido desta tela, pico/motor preservados; 9 testes OK, compilação OK, consulta autenticada conferida em computador/celular (WIN Indicador e total sem acionamento; faixa 19/10 +1260); não publicado.
 - [x] Portões PA 19/10 noite: quatro colunas nullable/defaults conferidos em 776 configurações sem diferenças; fallback e chave só nos três portões; valores no details; 18 testes OK e 12.000 comparações do classificador anterior/novo idênticas exceto evidência nova; compilação OK, sem tique real.
 - [ ] Publicar portões PA 19/10 noite: publicação solicitada/agendada; conclusão depende do serviço de publicação. Permanecem 13 alertas críticos preexistentes, não bloqueantes neste workspace.

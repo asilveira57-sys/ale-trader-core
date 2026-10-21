@@ -4,6 +4,7 @@
 import { decimalsForTick, freiosAcionadosTexto, openSinceText, PX, rootSymbol, somarSombrasDia } from "./b3-format";
 import { modeFullLabel } from "./mode-nick-registry";
 import { confirmacaoRegraTexto } from "./b3-confirmacao-entrada";
+import { robotLabel, allConfirmed, SHADOW_EXPLANATION } from "./b3-cockpit-labels";
 
 const BRL = (v: number | null | undefined) =>
   Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -46,7 +47,7 @@ const isRiskBlocked = (c: any) =>
 function robotBlock(c: any): string {
   const tick = Number(c.tick_size ?? 5);
   const lines: string[] = [];
-  lines.push(`${rootSymbol(c.symbol)} · ${variantLabel(c.variant ?? "indicador")} · ${modeLabel(c.mode)}`);
+  lines.push(`${rootSymbol(c.symbol)} · ${variantLabel(c.variant ?? "indicador")} · ${robotLabel(c.mode, c.variant)}`);
 
   if (isRiskBlocked(c)) {
     // No simulado o freio não bloqueia: é rótulo. A cópia diz isso.
@@ -83,11 +84,12 @@ function robotBlock(c: any): string {
     lines.push(`  ⚠ STOP PENDENTE há ${min} min · ${beyond} pts além do nível`);
   }
 
-  const res: string[] = [`realizado hoje ${BRL(c.realized_today)}`];
+  const res: string[] = [`realizado hoje (sem freio) ${BRL(c.realized_today)}`];
   if (c.open && c.unrealized_brl != null) res.push(`em aberto ${BRL(c.unrealized_brl)}`);
   res.push(`total ${BRL(c.total_today)}`);
   res.push(`acumulado ${BRL(c.pnl_accumulated)}`);
   lines.push(`  ${res.join(" · ")}`);
+  lines.push(`  ${SHADOW_EXPLANATION}`);
 
   // Regra geral: a cópia tem TUDO o que o card mostra, na mesma ordem.
   if (c.reactivated_today) lines.push("  reativado hoje após stop diário — resultado do dia não é limpo");
@@ -99,12 +101,12 @@ function robotBlock(c: any): string {
     lines.push(`  FREIOS ACIONADOS (sombra): ${freiosAgora}`);
     lines.push("  entradas continuam, marcadas como sombra");
   }
-  if (c.grupo?.sombra && Number(c.grupo.sombra.ops_livre) > 0) {
-    const sombra = c.grupo.sombra;
-    lines.push("  EFEITO NO DIA");
-    lines.push(`    Com freio  ${BRL(sombra.resultado_sombra_brl)}`);
-    lines.push(`    Sem freio  ${BRL(sombra.resultado_livre_brl)}`);
-  }
+  const evidence = c.brake_evidence;
+  lines.push("  EFEITO NO DIA");
+  lines.push(`    Com freio  ${evidence ? BRL(evidence.com_freio_brl) : "sem registro"}`);
+  lines.push(`    Sem freio  ${!evidence ? "sem registro" : evidence.ordens_barradas === 0 ? "não acionado" : BRL(evidence.sem_freio_brl)}`);
+  lines.push(`    ${evidence?.frase ?? "sem registro"}`);
+  lines.push(`    ordens barradas: ${evidence?.ordens_barradas ?? "sem registro"}`);
   // Confirmação de entrada: a cópia mostra o que o card mostra, com os lados.
   if (c.confirmacao && Number(c.confirmacao.entradas ?? 0) > 0) {
     const cf = c.confirmacao;
@@ -113,7 +115,7 @@ function robotBlock(c: any): string {
       : cf.ativo_real ? "ligada no real" : "sombra";
     lines.push(`  CONFIRMAÇÃO DE ENTRADA (${onde}) — ${confirmacaoRegraTexto(cf.pct_stop, cf.janela_s)}`);
     lines.push(`    Com confirmação  ${BRL(cf.com_confirmacao_brl)}`);
-    lines.push(`    Sem confirmação  ${BRL(cf.sem_confirmacao_brl)}`);
+    lines.push(`    Sem confirmação  ${allConfirmed(cf) ? "todas confirmaram — sem diferença" : BRL(cf.sem_confirmacao_brl)}`);
     lines.push(`    entradas: ${cf.entradas} no dia, ${cf.confirmadas} teriam confirmado`);
   }
 

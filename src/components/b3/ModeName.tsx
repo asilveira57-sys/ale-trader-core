@@ -21,14 +21,14 @@ export function ModeName({
     return (
       <span className={`inline-flex flex-col leading-tight ${className}`}>
         <span className="font-medium">{apelido}</span>
-        {showTech ? <span className="text-[10px] text-muted-foreground">{tecnico}</span> : null}
+        {showTech ? <span className="text-[10px] text-muted-foreground">({tecnico})</span> : null}
       </span>
     );
   }
   return (
     <span className={`inline-flex items-baseline gap-1 ${className}`}>
       <span className="font-medium">{apelido}</span>
-      {showTech ? <span className="text-[10px] text-muted-foreground">{tecnico}</span> : null}
+      {showTech ? <span className="text-[10px] text-muted-foreground">({tecnico})</span> : null}
     </span>
   );
 }

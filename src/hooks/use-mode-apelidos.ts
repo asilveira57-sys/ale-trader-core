@@ -46,9 +46,9 @@ export function useModeApelidos(): ModeApelidoApi {
 
   return useMemo(() => {
     const byMode = new Map(rows.map((r) => [String(r.mode), r]));
-    const nick = (m: string | null | undefined) => byMode.get(String(m ?? ""))?.apelido || fallbackTech(String(m ?? ""));
+    const nick = (m: string | null | undefined) => byMode.get(String(m ?? ""))?.apelido || (String(m ?? "").endsWith("_sc") && byMode.get(String(m).slice(0, -3))?.apelido ? `${byMode.get(String(m).slice(0, -3))?.apelido} SC` : fallbackTech(String(m ?? "")));
     const tech = (m: string | null | undefined) => {
-      const r = byMode.get(String(m ?? ""));
+      const r = byMode.get(String(m ?? "")) ?? byMode.get(String(m ?? "").replace(/_sc$/, ""));
       const t = r?.rotulo_tecnico || fallbackTech(String(m ?? ""));
       return r?.apelido && r.apelido !== t ? t : r ? t : "";
     };
