@@ -289,7 +289,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
 
         let emVooNoEstouro: string[] = [];
         try {
-          await comPrazo(corpo(), DEADLINE_MS, "passada do tique");
+          await comPrazo(corpo(), Math.max(1_000, DEADLINE_MS - (Date.now() - inicio)), "passada do tique");
         } catch (e) {
           estourou = e instanceof TempoEsgotado;
           erroFatal = (e as Error).message;
