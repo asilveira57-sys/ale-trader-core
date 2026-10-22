@@ -101,21 +101,41 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
         let erroFatal: string | null = null;
         let estourou = false;
 
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        // TETO DA PASSADA INTEIRA (22/10/2026). Antes o deadline de 40 s só
+        // envolvia `corpo()`; o import, o log de arrendamento vencido e o resumo
+        // final ficavam fora e sem timeout. Agora cada passo é rastreado e cada
+        // chamada externa fora do laço tem timeout próprio (< deadline).
+        let passo = "inicio";
+        let passoDesde = Date.now();
+        const marcarPasso = (p: string) => { passo = p; passoDesde = Date.now(); };
+        const LOG_TIMEOUT_MS = 5_000;
+        const DB_TIMEOUT_MS = 10_000;
+
+        marcarPasso("import_cliente");
+        let supabaseAdmin: any;
+        try {
+          ({ supabaseAdmin } = await comPrazo(import("@/integrations/supabase/client.server"), DB_TIMEOUT_MS, "import do cliente"));
+        } catch (e) {
+          runningSince = 0; emVoo = [];
+          return Response.json({ ok: false, error: (e as Error).message, passo }, { status: 504 });
+        }
 
         const registrar = async (evento: string, severidade: string, mensagem: string, dados: any) => {
           try {
-            await (supabaseAdmin as any).from("system_logs").insert({
+            await comPrazo(Promise.resolve((supabaseAdmin as any).from("system_logs").insert({
               event_type: evento,
               source: "b3-simulation-tick",
               severity: severidade,
               message: mensagem,
               technical_data: dados,
-            });
-          } catch { /* log nunca deve derrubar o cron */ }
+            })), LOG_TIMEOUT_MS, `log ${evento}`);
+          } catch (e) {
+            console.error(`[b3-simulation-tick] log ${evento} falhou/estourou: ${(e as Error).message}`);
+          }
         };
 
         if (leaseExpirado) {
+          marcarPasso("log_lease_expirado");
           await registrar(
             "b3_tick_lease_expirado",
             "critical",
@@ -125,6 +145,7 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
         }
 
         const corpo = async () => {
+          marcarPasso("leitura_runs");
           // todas as runs ativas (todos os usuários)
           const { data: runs, error } = await (supabaseAdmin as any)
             .from("b3_simulation_runs")
