@@ -6274,11 +6274,38 @@ export async function closeOrder(supabase: any, userId: string, run: any, mode: 
     provider_name: exitAudit.provider_name,
   }).eq("id", order.id).eq("user_id", userId);
   if (onlyIfOpen) closeUpdate = closeUpdate.eq("status", "open");
-  const { data: closedOrder, error: closeError } = await closeUpdate.select("id, status").maybeSingle();
+  let { data: closedOrder, error: closeError } = await closeUpdate.select("id, status").maybeSingle();
+
+  // RETRY DO FECHAMENTO (22/10/2026). Antes de repetir, relê a ordem: se outro
+  // caminho (guardião) já a fechou, não regrava — evitaria contabilizar duas vezes.
+  // Repete o MESMO payload uma única vez; nada de preço estimado.
+  let jaFechadaPorOutro = false;
+  if (closeError || closedOrder?.status !== "closed") {
+    const { data: atual } = await supabase.from("b3_simulation_orders")
+      .select("id, status").eq("id", order.id).eq("user_id", userId).maybeSingle();
+    if (atual?.status === "closed") {
+      jaFechadaPorOutro = true;
+    } else {
+      const retry = await closeUpdate.select("id, status").maybeSingle();
+      closedOrder = retry.data; closeError = retry.error;
+    }
+  }
 
   if (closeError || closedOrder?.status !== "closed") {
-    const failureMessage = closeError?.message
-      ?? `UPDATE de fechamento não confirmou status closed para a ordem ${order.id}`;
+    const failureMessage = jaFechadaPorOutro
+      ? `Ordem ${order.id} já estava fechada por outro caminho; fechamento não regravado`
+      : closeError?.message
+      ?? `UPDATE de fechamento não confirmou status closed para a ordem ${order.id} (após nova tentativa)`;
+    if (!jaFechadaPorOutro) {
+      try {
+        await supabase.from("b3_fechamento_pendente").insert({
+          user_id: userId, order_id: order.id, run_id: run.id, mode: mode.mode,
+          symbol: assetProfile.symbol, close_reason: reason,
+          attempted_execution_price: exitAudit.execution_price, tentativas: 2,
+          erro: failureMessage, detalhes: { quote_bid: exitAudit.quote_bid, quote_ask: exitAudit.quote_ask, quote_last: exitAudit.quote_last },
+        });
+      } catch { /* o log crítico abaixo continua registrando */ }
+    }
     const failureDetails = {
       order_id: order.id,
       run_id: run.id,
