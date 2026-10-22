@@ -147,11 +147,11 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
         const corpo = async () => {
           marcarPasso("leitura_runs");
           // todas as runs ativas (todos os usuários)
-          const { data: runs, error } = await (supabaseAdmin as any)
+          const { data: runs, error } = await comPrazo(Promise.resolve((supabaseAdmin as any)
             .from("b3_simulation_runs")
             .select("id, user_id, status, started_at, symbol, variant")
             .eq("status", "running")
-            .order("started_at", { ascending: false });
+            .order("started_at", { ascending: false })), DB_TIMEOUT_MS, "leitura de execuções ativas") as any;
           if (error) throw new Error(`leitura de execuções ativas: ${error.message}`);
 
           // DEDUPE DE EXECUÇÕES (guarda de 07/10/2026). Só 1 run ativa por
@@ -160,11 +160,12 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
           //  2) execução com autorização real viva (raiz do símbolo × variant) nunca é cancelada;
           //  3) entre as demais, preserva a MAIS ANTIGA (histórico/curadoria);
           //  4) todo cancelamento grava dedupe_run_cancelada (critical).
-          const [{ data: exps, error: eExp }, { data: auths, error: eAuth }] = await Promise.all([
-            (supabaseAdmin as any).from("b3_runs_experimentais").select("run_id"),
-            (supabaseAdmin as any).from("b3_prd_authorizations").select("user_id, symbol, variant")
-              .eq("enabled", true).is("revoked_at", null),
-          ]);
+          marcarPasso("leitura_guarda_dedupe");
+          const [{ data: exps, error: eExp }, { data: auths, error: eAuth }] = await comPrazo(Promise.all([
+            Promise.resolve((supabaseAdmin as any).from("b3_runs_experimentais").select("run_id")),
+            Promise.resolve((supabaseAdmin as any).from("b3_prd_authorizations").select("user_id, symbol, variant")
+              .eq("enabled", true).is("revoked_at", null)),
+          ]), DB_TIMEOUT_MS, "leitura de experimentais/autorizações") as any;
           // Sem saber quem é experimental ou autorizado, não cancela nada.
           const guardaOk = !eExp && !eAuth;
           const experimentais = new Set<string>((exps ?? []).map((x: any) => String(x.run_id)));
@@ -220,12 +221,14 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
           }
           avulsas.forEach((r) => latestByUserAsset.set(`exp:${r.id}`, r));
           if (stale.length) {
-            await (supabaseAdmin as any)
+            marcarPasso("cancelar_duplicadas");
+            await comPrazo(Promise.resolve((supabaseAdmin as any)
               .from("b3_simulation_runs")
               .update({ status: "cancelled" })
-              .in("id", stale);
+              .in("id", stale)), DB_TIMEOUT_MS, "cancelamento de duplicadas");
           }
           staleIds = stale;
+          marcarPasso("laco_runs");
 
           // PARALELIZAÇÃO DO LAÇO DO TIQUE (26/08/2026)
           // A unidade paralelizada é a EXECUÇÃO (já deduplicada acima) e cada
@@ -300,6 +303,20 @@ export const Route = createFileRoute("/api/public/hooks/b3-simulation-tick")({
         }
 
         const janela_ms = Date.now() - inicio;
+
+        if (estourou) {
+          await registrar(
+            "b3_tick_deadline_abortado",
+            "critical",
+            `Passada ${passada} abortada pelo teto de ${DEADLINE_MS} ms no passo "${passo}" (${Date.now() - passoDesde} ms nesse passo).`,
+            {
+              passada, passo, passo_ms: Date.now() - passoDesde, janela_ms,
+              em_voo_no_estouro: emVooNoEstouro, runs_concluidas: summary.length,
+              deadline_ms: DEADLINE_MS, erro: erroFatal,
+            },
+          );
+        }
+        marcarPasso("log_resumo");
 
         // Resumo SEMPRE, inclusive quando a passada falhou ou estourou — antes
         // só existia registro no caminho de sucesso, que é justamente quando o
