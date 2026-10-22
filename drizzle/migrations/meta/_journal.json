@@ -71,6 +71,13 @@
       "when": 1792455123307,
       "tag": "0009_b3_pa_geometria_parametros",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792691795819,
+      "tag": "0010_fila_fechamento_pendente",
+      "breakpoints": true
     }
   ]
 }

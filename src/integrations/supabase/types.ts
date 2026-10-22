@@ -1317,6 +1317,57 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_fechamento_pendente: {
+        Row: {
+          attempted_execution_price: number | null
+          close_reason: string | null
+          created_at: string
+          detalhes: Json | null
+          erro: string | null
+          id: string
+          mode: string | null
+          order_id: string
+          resolvido_em: string | null
+          run_id: string | null
+          status: string
+          symbol: string | null
+          tentativas: number
+          user_id: string
+        }
+        Insert: {
+          attempted_execution_price?: number | null
+          close_reason?: string | null
+          created_at?: string
+          detalhes?: Json | null
+          erro?: string | null
+          id?: string
+          mode?: string | null
+          order_id: string
+          resolvido_em?: string | null
+          run_id?: string | null
+          status?: string
+          symbol?: string | null
+          tentativas?: number
+          user_id: string
+        }
+        Update: {
+          attempted_execution_price?: number | null
+          close_reason?: string | null
+          created_at?: string
+          detalhes?: Json | null
+          erro?: string | null
+          id?: string
+          mode?: string | null
+          order_id?: string
+          resolvido_em?: string | null
+          run_id?: string | null
+          status?: string
+          symbol?: string | null
+          tentativas?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_ficha_do_dia: {
         Row: {
           ativo: string
