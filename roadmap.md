@@ -1,6 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
+- [x] Ficha do Dia 23/10: tabela e resumo das duas funções do banco, geometria genérica, dois botões de copiar; não publicado (pregão aberto).
 - [x] Cards e rótulos 21/10: cópia completa, apelidos/SC, acionamento por ordens e frases, exposição da RPC, legenda sombra/confirmação; 15 testes e consulta autenticada/cópia/celular verificados; motor intacto, não publicado. BI e sugestão de base suspensos sem substitutos.
 - [ ] Eliminar leitura indireta de b3_robot_daily_score em b3_cores_dos_robos — bloqueada pela regra permanente de manter b3_cor_do_robo/constância e não mudar regras; exige autorização específica para a fonte do rank_day. Leituras diretas do cockpit removidas.
 - [x] Emenda Testeira v2 20/10: freio da RPC cinco pregões, contagem paginada das ordens marcadas, “não acionado” nos dois níveis e total; placar diário removido desta tela, pico/motor preservados; 9 testes OK, compilação OK, consulta autenticada conferida em computador/celular (WIN Indicador e total sem acionamento; faixa 19/10 +1260); não publicado.

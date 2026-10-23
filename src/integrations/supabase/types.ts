@@ -8611,6 +8611,39 @@ export type Database = {
           votos: number
         }[]
       }
+      b3_ficha_do_dia_resumo: {
+        Args: {
+          p_dia?: string
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: {
+          abertas: number
+          acerto_pct: number
+          ativos: number
+          barradas_na_sombra: number
+          com_confirmacao_exigida: number
+          dia: string
+          entrou_no_preco_do_sinal: number
+          fechadas: number
+          ganhos: number
+          melhor_brl: number
+          modalidades: number
+          no_limite_do_quorum: number
+          ordens: number
+          perdas: number
+          pior_brl: number
+          resultado_brl: number
+          resultado_brl_formatado: string
+          robos: number
+          saiu_no_alvo: number
+          saiu_no_meio: number
+          saiu_no_stop: number
+          sem_quorum_declarado: number
+          zeradas: number
+        }[]
+      }
       b3_gerar_ficha_do_dia: { Args: { p_pregao: string }; Returns: number }
       b3_gravar_cenario_horario: {
         Args: { p_dia?: string; p_hora?: number }
