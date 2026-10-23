@@ -39,7 +39,7 @@ function mover(d: string, passo: number) {
 }
 const robo = (o: any) => robotLabel(o.mode, o.variant, o.apelido);
 const HEAD = ["Hora", "Ativo · modalidade", "Robô", "Lado", "Contratos", "Entrada", "Stop", "Alvo", "Score", "Confiança", "Votos", "Resultado", "Saiu", "MFE (pts)", "MAE (pts)", "Barrada na sombra"];
-const linhaTxt = (o: any) => [o.hora_brt ?? SR, `${o.raiz} · ${vLabel(o.variant)}`, robo(o), lado(o.lado), num(o.contratos), num(o.entrada, 2), num(o.stop, 2), num(o.alvo, 2), num(o.score, 1), num(o.confianca, 1), num(o.votos), o.resultado_brl == null ? SR : BRL(Number(o.resultado_brl)), o.saiu ?? SR, num(o.mfe_pts), num(o.mae_pts), o.barrada_na_sombra ? "sim" : "não"];
+const linhaTxt = (o: any) => [o.hora_brt ? String(o.hora_brt).slice(0, 8) : SR, `${o.raiz} · ${vLabel(o.variant)}`, robo(o), lado(o.lado), num(o.contratos), num(o.entrada, 2), num(o.stop, 2), num(o.alvo, 2), num(o.score, 1), num(o.confianca, 1), num(o.votos), o.resultado_brl == null ? SR : BRL(Number(o.resultado_brl)), o.saiu ?? SR, num(o.mfe_pts), num(o.mae_pts), o.barrada_na_sombra ? "sim" : "não"];
 const confTxt = (o: any) => (o.confirmacao_exigida_pts == null ? null : `a confirmação exigia ${num(o.confirmacao_exigida_pts)} pontos; entrou a ${num(o.preco_confirmacao, 2)}`);
 
 function fichaTxt(o: any) {
