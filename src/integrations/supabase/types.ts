@@ -8579,6 +8579,38 @@ export type Database = {
         }[]
       }
       b3_export_raiz: { Args: { p: string }; Returns: string }
+      b3_ficha_do_dia: {
+        Args: {
+          p_dia?: string
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: {
+          alvo: number
+          apelido: string
+          barrada_na_sombra: boolean
+          confianca: number
+          confirmacao_exigida_pts: number
+          contratos: number
+          entrada: number
+          geometria: Json
+          hora_brt: string
+          lado: string
+          mae_pts: number
+          mfe_pts: number
+          mode: string
+          preco_confirmacao: number
+          raiz: string
+          resultado_brl: number
+          saiu: string
+          score: number
+          setup: string
+          stop: number
+          variant: string
+          votos: number
+        }[]
+      }
       b3_gerar_ficha_do_dia: { Args: { p_pregao: string }; Returns: number }
       b3_gravar_cenario_horario: {
         Args: { p_dia?: string; p_hora?: number }
