@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { maximumDaily, periodCards, CLOSED_PERIOD } from "./b3-cockpit-period-view";
+import { maximumDaily, periodCards } from "./b3-cockpit-period-view";
 it("keeps robots without orders in the period", () => {
   const rows = periodCards([{ symbol: "WIN", variant: "range", mode: "conservador" }], []);
   expect(rows).toHaveLength(1); expect(rows[0].ops).toBe(0); expect(rows[0].open).toBeNull();

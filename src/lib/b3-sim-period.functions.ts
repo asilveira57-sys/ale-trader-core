@@ -36,15 +36,20 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
     const timings: { chamada: string; ms: number; linhas: number }[] = [];
     let clock = performance.now();
 
-    const { data: runs } = await (supabase as any)
+    const { data: runs, error: runsError } = await (supabase as any)
       .from("b3_simulation_runs")
       .select("id, symbol, variant")
       .eq("user_id", userId);
+    if (runsError) throw new Error("Não foi possível ler as execuções do período");
     timings.push({ chamada: "execucoes", ms: Math.round(performance.now() - clock), linhas: runs?.length ?? 0 });
     clock = performance.now();
     const { data: modesCatalog, error: catalogError } = await supabase.from("b3_simulation_modes").select("simulation_run_id,mode").eq("user_id", userId);
     if (catalogError) throw new Error("Não foi possível ler o catálogo dos robôs");
     timings.push({ chamada: "catalogo", ms: Math.round(performance.now() - clock), linhas: modesCatalog?.length ?? 0 });
+    clock = performance.now();
+    const { data: colors, error: colorError } = await (supabase as any).rpc("b3_cores_dos_robos");
+    if (colorError) throw new Error("Não foi possível ler as cores dos robôs");
+    timings.push({ chamada: "cores", ms: Math.round(performance.now() - clock), linhas: colors?.length ?? 0 });
     const runById = new Map<string, { root: string; variant: string }>();
     for (const r of (runs ?? []) as any[]) {
       runById.set(String(r.id), {
@@ -155,7 +160,7 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       catalog: (modesCatalog ?? []).flatMap((c) => {
         const run = runById.get(c.simulation_run_id);
         if (!run || (symbols && !symbols.has(run.root)) || (variants && !variants.has(run.variant)) || (modes && !modes.has(c.mode))) return [];
-        return [{ run_id: c.simulation_run_id, symbol: run.root, variant: run.variant, mode: c.mode }];
+        return [{ run_id: c.simulation_run_id, symbol: run.root, variant: run.variant, mode: c.mode, cor: (colors ?? []).find((r: any) => rootSymbol(r.symbol) === run.root && r.variant === run.variant && r.mode === c.mode)?.cor ?? "neutro" }];
       }),
       rows_truncated: rowsTruncated,
       no_movement: sem.ops === 0,
