@@ -22,7 +22,7 @@ export const Route = createFileRoute("/_authenticated/b3_/ativo/$symbol")({
     return {
       meta: [
         { title: `Painel do ativo ${s} — AleTrader AI` },
-        { name: "description", content: `Painel de corrida do ativo ${s}: resultado do dia contra o limite de perda, ganhos, perdas, pico de exposição e taxa de acerto por modo.` },
+        { name: "description", content: `Painel de corrida do ativo ${s}: resultado do dia contra o limite de perda, ganhos, perdas, pico de capital exposto e taxa de acerto por modo.` },
         { property: "og:title", content: `Painel do ativo ${s} — AleTrader AI` },
         { property: "og:description", content: `Velocímetro do resultado do dia de ${s} com fundo de escala no limite de perda diário e desempenho por modo.` },
         { property: "og:type", content: "website" },
@@ -124,13 +124,13 @@ function AssetDashboardPage() {
       <header className="flex items-start justify-between flex-wrap gap-2">
         <div>
           <div className="flex items-center gap-2">
-            <Button size="icon" variant="outline" className="h-7 w-7" disabled={!prevDay}
+            <Button size="icon" variant="outline" className="min-h-11 w-7" disabled={!prevDay}
               title={prevDay ? `Pregão de ${dmy(prevDay)}` : "Sem pregão anterior"}
               onClick={() => prevDay && setDay(prevDay)}>
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <h1 className="text-2xl font-bold">Painel do ativo — {root}</h1>
-            <Button size="icon" variant="outline" className="h-7 w-7" disabled={!nextDay}
+            <Button size="icon" variant="outline" className="min-h-11 w-7" disabled={!nextDay}
               title={nextDay ? `Pregão de ${dmy(nextDay)}` : "Sem pregão posterior"}
               onClick={() => nextDay && setDay(nextDay)}>
               <ChevronRight className="w-4 h-4" />
@@ -164,20 +164,20 @@ function AssetDashboardPage() {
       {/* ── Datas: atalhos, período e calendário ── */}
       <section className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] text-muted-foreground">Data:</span>
-        <Button size="sm" variant={de === today && ate === today ? "default" : "outline"} className="h-7 text-[11px]"
+        <Button size="sm" variant={de === today && ate === today ? "default" : "outline"} className="min-h-11 text-[11px]"
           onClick={() => setDay(today)}>Hoje</Button>
-        <Button size="sm" variant={de === addDays(today, -1) && ate === de ? "default" : "outline"} className="h-7 text-[11px]"
+        <Button size="sm" variant={de === addDays(today, -1) && ate === de ? "default" : "outline"} className="min-h-11 text-[11px]"
           onClick={() => setDay(addDays(today, -1))}>Ontem</Button>
-        <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={!lastSession}
+        <Button size="sm" variant="outline" className="min-h-11 text-[11px]" disabled={!lastSession}
           onClick={() => lastSession && setDay(lastSession)}>
           Último pregão{lastSession ? ` (${dmy(lastSession)})` : ""}
         </Button>
         <span className="text-[11px] text-muted-foreground ml-2">Período:</span>
-        <Button size="sm" variant={de === addDays(today, -6) && ate === today ? "default" : "outline"} className="h-7 text-[11px]"
+        <Button size="sm" variant={de === addDays(today, -6) && ate === today ? "default" : "outline"} className="min-h-11 text-[11px]"
           onClick={() => setPeriod(addDays(today, -6), today)}>7 dias</Button>
-        <Button size="sm" variant={de === addDays(today, -29) && ate === today ? "default" : "outline"} className="h-7 text-[11px]"
+        <Button size="sm" variant={de === addDays(today, -29) && ate === today ? "default" : "outline"} className="min-h-11 text-[11px]"
           onClick={() => setPeriod(addDays(today, -29), today)}>30 dias</Button>
-        <Button size="sm" variant={de === startOfMonth(today) && ate === today ? "default" : "outline"} className="h-7 text-[11px]"
+        <Button size="sm" variant={de === startOfMonth(today) && ate === today ? "default" : "outline"} className="min-h-11 text-[11px]"
           onClick={() => setPeriod(startOfMonth(today), today)}>Mês atual</Button>
         <DayPicker label={`De ${dmy(de)}`} value={de} onChange={(v) => setDe(v > ate ? ate : v)} />
         <DayPicker label={`Até ${dmy(ate)}`} value={ate} onChange={(v) => setAte(v < de ? de : v)} />
@@ -187,25 +187,25 @@ function AssetDashboardPage() {
       <section className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           {assetsPresent.map((a) => (
-            <Button key={a} asChild size="sm" variant={a === root ? "default" : "outline"} className="h-7 text-[11px]" title={assetLabel(a)}>
+            <Button key={a} asChild size="sm" variant={a === root ? "default" : "outline"} className="min-h-11 text-[11px]" title={assetLabel(a)}>
               <Link to="/b3/ativo/$symbol" params={{ symbol: a }}>{a}</Link>
             </Button>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] text-muted-foreground">Modalidade:</span>
-          <Button size="sm" variant={variant === "all" ? "default" : "outline"} className="h-7 text-[11px]"
+          <Button size="sm" variant={variant === "all" ? "default" : "outline"} className="min-h-11 text-[11px]"
             onClick={() => { setVariant("all"); setMode("all"); }}>
             Todas
           </Button>
           {variantsPresent.map((v) => (
-            <Button key={v} size="sm" variant={variant === v ? "default" : "outline"} className="h-7 text-[11px]"
+            <Button key={v} size="sm" variant={variant === v ? "default" : "outline"} className="min-h-11 text-[11px]"
               onClick={() => { setVariant(v); setMode("all"); }}>
               {variantLabel(v)}
             </Button>
           ))}
           {mode !== "all" && (
-            <Button size="sm" variant="secondary" className="h-7 text-[11px]" onClick={() => setMode("all")}>
+            <Button size="sm" variant="secondary" className="min-h-11 text-[11px]" onClick={() => setMode("all")}>
               Modo: {modeLabel(mode)} ✕
             </Button>
           )}
@@ -235,7 +235,7 @@ function AssetDashboardPage() {
             <Reading label="Ganhos" value={SIGNED_BRL(Number(d.ganhos_brl ?? 0))} color="text-emerald-400" />
             <Reading label="Perdas" value={BRL(Number(d.perdas_brl ?? 0))} color="text-rose-400" />
             <Reading
-              label={multiDay ? "Maior pico de exposição" : "Pico de exposição"}
+              label={multiDay ? "Maior pico de capital exposto" : "Pico de capital exposto"}
               value={BRL(Number(d.pico_exposicao_brl ?? 0))}
               sub={`${d.pico_exposicao_data && multiDay ? dmy(d.pico_exposicao_data) + " " : ""}${d.pico_exposicao_hora ?? "—"} · ${NUM(Number(d.pico_contratos ?? 0))} contratos`}
             />
@@ -282,7 +282,7 @@ function DayPicker({ label, value, onChange }: { label: string; value: string; o
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button size="sm" variant="outline" className="h-7 text-[11px]">
+        <Button size="sm" variant="outline" className="min-h-11 text-[11px]">
           <CalendarDays className="w-3.5 h-3.5 mr-1" />{label}
         </Button>
       </PopoverTrigger>

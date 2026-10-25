@@ -76,7 +76,7 @@ export function buildAssetCopyText(d: any): string {
     `ganhos ${SIGNED_BRL(d.ganhos_brl)} · perdas ${BRL(d.perdas_brl)} · ${d.ops_total ?? 0} ops (${d.ops_lucro ?? 0} no lucro)`,
   );
   lines.push(
-    `pico de exposição ${BRL(d.pico_exposicao_brl)} · ${d.pico_exposicao_data ? dm(d.pico_exposicao_data) + " " : ""}${d.pico_exposicao_hora ?? "—"} · ${d.pico_contratos ?? 0} contratos`,
+    `pico de capital exposto ${BRL(d.pico_exposicao_brl)} · ${d.pico_exposicao_data ? dm(d.pico_exposicao_data) + " " : ""}${d.pico_exposicao_hora ?? "—"} · ${d.pico_contratos ?? 0} contratos`,
   );
 
   if (d.multi_day && d.dias?.length) {
@@ -191,7 +191,7 @@ export function exportAssetPdf(d: any) {
     `Resultado: ${SIGNED_BRL(d.resultado_dia_brl)}   (realizado ${BRL(d.realizado_brl)} · em aberto ${BRL(d.aberto_brl)})`,
     `Ganhos: ${SIGNED_BRL(d.ganhos_brl)}   Perdas: ${BRL(d.perdas_brl)}`,
     `Operações: ${d.ops_total ?? 0}   No lucro: ${d.ops_lucro ?? 0}`,
-    `Pico de exposição: ${BRL(d.pico_exposicao_brl)} (${d.pico_exposicao_data ? dm(d.pico_exposicao_data) + " " : ""}${d.pico_exposicao_hora ?? "—"} · ${d.pico_contratos ?? 0} contratos)`,
+    `Pico de capital exposto: ${BRL(d.pico_exposicao_brl)} (${d.pico_exposicao_data ? dm(d.pico_exposicao_data) + " " : ""}${d.pico_exposicao_hora ?? "—"} · ${d.pico_contratos ?? 0} contratos)`,
     d.multi_day
       ? `Pregões no período: ${d.dias?.length ?? 0}`
       : `Limite de perda diário: ${BRL(d.scale_brl)} · ${Number(d.pior_ponto_pct ?? 0).toFixed(0)}% usado no pior momento`,
