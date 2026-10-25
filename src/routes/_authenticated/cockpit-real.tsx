@@ -211,7 +211,7 @@ function Tile({ label, value, sub, cls }: { label: string; value: string; sub?: 
   );
 }
 
-// ─────────── Freio de pico da CONTA, ao vivo ───────────
+// ─────────── Devolução de pico de lucro no dia da CONTA, ao vivo ───────────
 // Mostra ANTES de virar prejuízo: pico do dia, resultado agora, quanto já foi
 // devolvido (R$ e %) e quanto ainda falta para o freio armar. A configuração
 // aqui é SÓ da camada da conta — não toca em nenhum parâmetro de robô.
@@ -233,7 +233,7 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
         peak_giveback_pct: Math.min(95, Math.max(5, Number(pct || (peak?.peak_giveback_pct ?? 0.35) * 100))) / 100,
         peak_min_pct_of_global: floorPctNum / 100,
       } }),
-    onSuccess: () => { toast.success("Freio de pico da conta atualizado"); onSaved(); },
+    onSuccess: () => { toast.success("Devolução de pico de lucro no dia atualizada"); onSaved(); },
     onError: (e: any) => toast.error(e?.message ?? "falha ao salvar"),
   });
 
@@ -250,7 +250,7 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
         <div>
           <h2 className="flex items-center gap-2 text-sm font-black tracking-tight">
             <TrendingDown className="size-4" />
-            Freio de pico da CONTA {armed ? "— ARMADO" : "— vigiando"}
+            Devolução de pico de lucro no dia da CONTA {armed ? "— ARMADO" : "— vigiando"}
           </h2>
           <p className="text-[11px] leading-snug text-muted-foreground">
             {armed
@@ -262,7 +262,7 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Devolução máx. (%)
             <Input
-              className="mt-0.5 h-8 w-20"
+              className="mt-0.5 h-11 w-20"
               inputMode="decimal"
               value={pct === "" ? String(Math.round(pctCfg * 100)) : pct}
               onChange={(e) => setPct(e.target.value)}
@@ -272,7 +272,7 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
             Piso do pico de lucro no dia (% do stop global)
             <span className="mt-0.5 flex items-center gap-2">
               <Input
-                className="h-8 w-20"
+                className="h-11 w-20"
                 inputMode="decimal"
                 value={floorPct === "" ? String(Math.round(floorPctCfg * 100)) : floorPct}
                 onChange={(e) => setFloorPct(e.target.value)}
@@ -352,13 +352,13 @@ function DailyCircuitPanel({ circuit, onSaved }: { circuit: any | null; onSaved:
         <div className="flex items-end gap-2">
           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Meta de ganho (%)
-            <Input className="mt-0.5 h-8 w-20" inputMode="decimal"
+            <Input className="mt-0.5 h-11 w-20" inputMode="decimal"
               value={gain === "" ? String(Math.round(gainCfg * 100)) : gain}
               onChange={(e) => setGain(e.target.value)} />
           </label>
           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Teto de perda (%)
-            <Input className="mt-0.5 h-8 w-20" inputMode="decimal"
+            <Input className="mt-0.5 h-11 w-20" inputMode="decimal"
               value={loss === "" ? String(Math.round(lossCfg * 100)) : loss}
               onChange={(e) => setLoss(e.target.value)} />
           </label>
