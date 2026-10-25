@@ -3605,7 +3605,7 @@ async function runB3SimulationTickInner(
           if (av.melhor_pts > Number(pend.melhor_pts ?? 0) || av.melhor_janela_pts > Number(pend.melhor_janela_pts ?? 0)) {
             await gravarPendente({ ...pend, melhor_pts: av.melhor_pts, melhor_janela_pts: av.melhor_janela_pts });
           }
-          pendSimPronto = (m as any).confirmacao_pendente;
+          pendSimPronto = confSimArmada ? (m as any).confirmacao_pendente : null;
         } else if (passo.acao === "atualizar_melhor") {
           // Melhor avanço a favor, dentro da janela e no total, para o registro
           // do descarte dizer as duas coisas. Só grava quando melhora.
