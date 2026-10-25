@@ -13,7 +13,7 @@ const hour = (time: number) => new Intl.DateTimeFormat("pt-BR", { timeZone: "Ame
 
 const W = 760, H = 240, L = 64, R = 12, T = 14, B = 26;
 
-export function AssetPricePath({ symbol, today }: { symbol: string; today: string }) {
+export function AssetPricePath({ symbol, today, historical = false }: { symbol: string; today: string; historical?: boolean }) {
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(today);
   const [step, setStep] = useState<5 | 10 | 15 | 30 | 60>(30);
@@ -25,7 +25,9 @@ export function AssetPricePath({ symbol, today }: { symbol: string; today: strin
     queryFn: () => read({ data: { symbol, date, step } }),
     enabled: open && !!date,
     staleTime: 60000,
-    refetchInterval: open && date === today ? interval : false,
+    refetchInterval: !historical && open && date === today ? interval : false,
+    refetchOnWindowFocus: historical ? false : undefined,
+    refetchOnReconnect: historical ? false : undefined,
     refetchIntervalInBackground: false,
   });
   const points = query.data?.points ?? [];

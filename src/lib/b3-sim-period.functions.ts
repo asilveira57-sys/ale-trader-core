@@ -33,11 +33,23 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
     // e aviso na tela se ele for atingido — número truncado nunca pode parecer
     // completo.
     const limit = periodRowLimit(period.days, 3000, 4000, 60_000);
+    const timings: { chamada: string; ms: number; linhas: number }[] = [];
+    let clock = performance.now();
 
-    const { data: runs } = await (supabase as any)
+    const { data: runs, error: runsError } = await (supabase as any)
       .from("b3_simulation_runs")
       .select("id, symbol, variant")
       .eq("user_id", userId);
+    if (runsError) throw new Error("Não foi possível ler as execuções do período");
+    timings.push({ chamada: "execucoes", ms: Math.round(performance.now() - clock), linhas: runs?.length ?? 0 });
+    clock = performance.now();
+    const { data: modesCatalog, error: catalogError } = await supabase.from("b3_simulation_modes").select("simulation_run_id,mode").eq("user_id", userId);
+    if (catalogError) throw new Error("Não foi possível ler o catálogo dos robôs");
+    timings.push({ chamada: "catalogo", ms: Math.round(performance.now() - clock), linhas: modesCatalog?.length ?? 0 });
+    clock = performance.now();
+    const { data: colors, error: colorError } = await (supabase as any).rpc("b3_cores_dos_robos");
+    if (colorError) throw new Error("Não foi possível ler as cores dos robôs");
+    timings.push({ chamada: "cores", ms: Math.round(performance.now() - clock), linhas: colors?.length ?? 0 });
     const runById = new Map<string, { root: string; variant: string }>();
     for (const r of (runs ?? []) as any[]) {
       runById.set(String(r.id), {
@@ -50,6 +62,7 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
     let rowsTruncated = false;
     for (let from = 0; from < limit; from += 1000) {
       const pageSize = Math.min(1000, limit - from);
+      clock = performance.now();
       const { data: page, error } = await (supabase as any)
       .from("b3_simulation_orders")
       .select("simulation_run_id, mode, side, quantity, net_result_brl, entry_time, exit_time, close_reason, bloqueado_na_sombra, freios_na_sombra")
@@ -59,6 +72,7 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       .lt("exit_time", period.end_utc)
       .order("exit_time", { ascending: true })
       .range(from, from + pageSize - 1);
+      timings.push({ chamada: `ordens-${from}`, ms: Math.round(performance.now() - clock), linhas: page?.length ?? 0 });
       if (error) throw new Error(`Leitura do período: ${error.message}`);
       rows.push(...(page ?? []));
       if (rows.length >= limit) { rowsTruncated = true; break; }
@@ -77,6 +91,7 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
     // do dia). "Sem freio" = todas as fechadas do período.
     const agregar = (soComFreio: boolean) => {
       const byRobot = new Map<string, Agg>();
+      const dailyRobots = new Map<string, Agg & { date: string }>();
       const byDay = new Map<string, { date: string; realized_brl: number; trades: number; wins: number; losses: number; sem_preco: number }>();
       let total = 0, ops = 0, lucro = 0, prejuizo = 0;
       for (const o of (rows ?? []) as any[]) {
@@ -106,6 +121,13 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
         }
         if (o.bloqueado_na_sombra === true) a.sombra_ops += 1;
         byRobot.set(key, a);
+        const dailyKey = `${day}|${key}`;
+        const daily = dailyRobots.get(dailyKey) ?? { key, date: day, symbol: run.root, variant: run.variant, mode, resultado_brl: 0, ops: 0, ganhos: 0, perdas: 0, sombra_brl: 0, sombra_ops: 0 };
+        daily.ops += 1; daily.resultado_brl += brl ?? 0;
+        if (brl != null && brl > 0) daily.ganhos += 1;
+        if (brl != null && brl < 0) daily.perdas += 1;
+        if (o.bloqueado_na_sombra === true) daily.sombra_ops += 1;
+        dailyRobots.set(dailyKey, daily);
         ops += 1;
       }
       const robots = Array.from(byRobot.values()).sort((a, b) => a.resultado_brl - b.resultado_brl);
@@ -119,6 +141,7 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
         pior_robo: toBest(robots[0]),
         by_day: Array.from(byDay.values()).sort((a, b) => (a.date < b.date ? 1 : -1)),
         robots,
+        daily_robots: [...dailyRobots.values()],
       };
     };
     const sem = agregar(false);
@@ -133,6 +156,12 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       },
       rows_limit: limit,
       rows_read: rows.length,
+      timings,
+      catalog: (modesCatalog ?? []).flatMap((c) => {
+        const run = runById.get(c.simulation_run_id);
+        if (!run || (symbols && !symbols.has(run.root)) || (variants && !variants.has(run.variant)) || (modes && !modes.has(c.mode))) return [];
+        return [{ run_id: c.simulation_run_id, symbol: run.root, variant: run.variant, mode: c.mode, cor: (colors ?? []).find((r: any) => rootSymbol(r.symbol) === run.root && r.variant === run.variant && r.mode === c.mode)?.cor ?? "neutro" }];
+      }),
       rows_truncated: rowsTruncated,
       no_movement: sem.ops === 0,
       ...sem,
