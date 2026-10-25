@@ -13,3 +13,8 @@ it("shows one robot across reruns without multiplying its period result", () => 
   const cards = periodCards(catalog, [{ key: "WIN|range|conservador", resultado_brl: -2640, ops: 319 }]);
   expect(cards).toHaveLength(1); expect(cards[0].total_today).toBe(-2640); expect(cards[0].ops).toBe(319);
 });
+it("uses maximum exposure from the asset line and retains its date", () => {
+  const rows = [{ trade_date: "2026-10-21", variant: "(ativo)", margin: 6045 }, { trade_date: "2026-10-22", variant: "(ativo)", margin: 6448 }, { trade_date: "2026-10-22", variant: "range", margin: 9000 }];
+  const max = maximumDaily(rows.filter((r) => r.variant === "(ativo)"), (r) => r.margin);
+  expect(max?.margin).toBe(6448); expect(max?.trade_date).toBe("2026-10-22");
+});
