@@ -4863,10 +4863,22 @@ async function runB3SimulationTickInner(
       // à tendência (mean_reversion, range) escolhem o próprio lado, e o comitê
       // precisa julgar o lado que será realmente operado — antes ele votava no
       // lado do cruzamento de médias e a ordem saía no lado oposto.
-      const setupInfo = classifySetupFor(cfg.entry_style, {
+      const setupInfoTique = classifySetupFor(cfg.entry_style, {
         ctxLocal: localCtx, derived, intendedSide, cfg, m1Candles,
       });
-      const effectiveSide: B3Side = setupInfo.side_override ?? intendedSide;
+      // Sinal confirmado nesta passada: lado, stop e alvo são os CONGELADOS no
+      // instante do sinal (o exigido foi calculado sobre esse stop). O
+      // classificador do tique só segue como evidência.
+      const setupInfo = pendSimPronto
+        ? {
+            ...setupInfoTique,
+            stop_pts_override: Number(pendSimPronto.stop_pts) > 0 ? Number(pendSimPronto.stop_pts) : setupInfoTique.stop_pts_override,
+            gain_pts_override: Number(pendSimPronto.gain_pts) > 0 ? Number(pendSimPronto.gain_pts) : setupInfoTique.gain_pts_override,
+          }
+        : setupInfoTique;
+      const effectiveSide: B3Side = pendSimPronto
+        ? (String(pendSimPronto.side) === "buy" ? "buy" : "sell")
+        : (setupInfo.side_override ?? intendedSide);
       if (setupInfo.side_override && setupInfo.side_override !== intendedSide) {
         snapshotExtra.side_overrides = {
           ...(snapshotExtra.side_overrides ?? {}),
