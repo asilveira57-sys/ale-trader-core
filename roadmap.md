@@ -3,6 +3,8 @@
 ## Em andamento
 - [x] Pedido 25/10 (2º): nomes dos picos/margem crua, simulação por dia/intervalo, selo WIN somente leitura e piso percentual atual; três referências 23/10 conferidas pela tela, cópia e intervalo/celular verificados, 45 testes passaram. Publicação solicitada em 25/10 às 12:34 UTC; conclusão depende do serviço.
 - [x] Cockpit 25/10: total completo, hierarquia por data, encerrado/max diário, cópias/recolhimento/celular e instrumentação conferidos; relatório docs/cockpit-25-10-medicao.md. Sem alteração SQL nem otimização; leitura de efeito atinge 1.000 e exposição ampla falha, sinalizadas.
+- [x] Portão de confirmação 25/10 (3º): sinal tocado na janela entra na mesma passada sem reaprovação do comitê; evento `confirmacao_avaliada_atrasada`; 25%/180 s intactos. Pronto, NÃO publicado.
+- [ ] Publicar o conserto da confirmação — aguarda decisão do dono sobre a autorização real WIN/price_action/semi_agressivo.
 - [ ] Confirmar publicação solicitada do cockpit 25/10 + rótulos 21/10 + emenda 20/10 + pedido 25/10 (2º) — depende da conclusão do serviço de publicação; dono autorizou, 13 alertas críticos preexistentes permanecem sem alteração de permissões.
 - [x] Ficha do Dia 23/10: tabela e resumo das duas funções do banco, geometria genérica, dois botões de copiar; não publicado (pregão aberto).
 - [x] Cards e rótulos 21/10: cópia completa, apelidos/SC, acionamento por ordens e frases, exposição da RPC, legenda sombra/confirmação; 15 testes e consulta autenticada/cópia/celular verificados; motor intacto, não publicado. BI e sugestão de base suspensos sem substitutos.
