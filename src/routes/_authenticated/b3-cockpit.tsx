@@ -957,7 +957,7 @@ function CockpitPage() {
 
 
 
-          <Button size="sm" variant="outline" className="min-h-11" onClick={() => vivo ? q.refetch() : Promise.all([hq.refetch(), periodPeaksQ.refetch()])}>
+          <Button size="sm" variant="outline" className={vivo ? undefined : "min-h-11"} onClick={() => vivo ? q.refetch() : Promise.all([hq.refetch(), periodPeaksQ.refetch()])}>
             <RefreshCw className="w-4 h-4 mr-1" />Atualizar
           </Button>
           <Button size="sm" variant="outline"

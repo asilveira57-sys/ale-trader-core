@@ -1,5 +1,5 @@
-// Ficha do dia — SOMENTE LEITURA. Duas RPCs por recorte: b3_ficha_do_dia
-// (uma linha por ordem) e b3_ficha_do_dia_resumo (totais do mesmo recorte).
+// Ficha do dia — SOMENTE LEITURA. Duas RPCs por recorte: b3_ficha_dia_ordens
+// (uma linha por ordem) e b3_ficha_dia_resumo (totais do mesmo recorte).
 // Nada é calculado aqui.
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -20,8 +20,8 @@ export const getB3FichaDia = createServerFn({ method: "POST" })
       p_variants: data.variants?.length ? data.variants : null,
     };
     const [linhas, resumo] = await Promise.all([
-      sb.rpc("b3_ficha_do_dia", args),
-      sb.rpc("b3_ficha_do_dia_resumo", args),
+      sb.rpc("b3_ficha_dia_ordens", args),
+      sb.rpc("b3_ficha_dia_resumo", args),
     ]);
     if (linhas.error) throw new Error(linhas.error.message);
     if (resumo.error) throw new Error(resumo.error.message);
