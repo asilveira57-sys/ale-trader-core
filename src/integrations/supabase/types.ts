@@ -8518,6 +8518,38 @@ export type Database = {
         }[]
       }
       b3_diagnosticar_dia: { Args: { p_date: string }; Returns: number }
+      b3_disjuntor_simulado: {
+        Args: {
+          p_capital_base?: number
+          p_devolucao_pico_pct?: number
+          p_dia: string
+          p_ganho_pct?: number
+          p_perdas_pct?: number[]
+          p_piso_pico_brl?: number
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: {
+          base_origem: string
+          capital_base_brl: number
+          dia: string
+          diferenca_brl: number
+          disparou: string
+          frase: string
+          hora_disparo_brt: string
+          limite_perda_brl: number
+          melhor_momento_brl: number
+          meta_ganho_brl: number
+          ordens_antes: number
+          ordens_evitadas: number
+          ordens_no_dia: number
+          perda_pct: number
+          pior_momento_brl: number
+          resultado_com_disjuntor_brl: number
+          resultado_sem_disjuntor_brl: number
+        }[]
+      }
       b3_disparar_exportacao: { Args: never; Returns: string }
       b3_disparar_guardiao: { Args: never; Returns: string }
       b3_disparar_tique: { Args: never; Returns: string }

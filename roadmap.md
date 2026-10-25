@@ -1,6 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
+- [ ] Pedido 25/10 (2º): nomes dos picos/margem crua, simulação por dia/intervalo, selo WIN somente leitura, piso percentual atual e conferência 23/10; publicar com entregas anteriores autorizadas.
 - [x] Cockpit 25/10: total completo, hierarquia por data, encerrado/max diário, cópias/recolhimento/celular e instrumentação conferidos; relatório docs/cockpit-25-10-medicao.md. Sem alteração SQL nem otimização; leitura de efeito atinge 1.000 e exposição ampla falha, sinalizadas.
 - [ ] Publicar cockpit 25/10 + rótulos 21/10 + emenda 20/10 — aguardando decisão do dono sobre os 13 alertas críticos preexistentes apresentados antes da publicação.
 - [x] Ficha do Dia 23/10: tabela e resumo das duas funções do banco, geometria genérica, dois botões de copiar; não publicado (pregão aberto).
