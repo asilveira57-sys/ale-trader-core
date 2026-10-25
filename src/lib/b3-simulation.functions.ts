@@ -4900,7 +4900,7 @@ async function runB3SimulationTickInner(
       // classificador ainda não conseguiu derivar um lado, o setup termina
       // aqui; o comitê nunca é consultado com o lado das médias.
       const classifierSideStyle = cfg.entry_style === "mean_reversion" || cfg.entry_style === "range" || cfg.entry_style === "rompimento" || cfg.entry_style === "pullback" || cfg.entry_style === "vwap";
-      if (classifierSideStyle && !setupInfo.side_override) {
+      if (classifierSideStyle && !setupInfo.side_override && !pendSimPronto) {
         const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "lado ainda não derivado pelo classificador"}`;
         log.push({ mode, action: "reject", reason: "no_classifier_side", setup: setupInfo.name });
         finalizeAudit(reason, {
@@ -4992,7 +4992,7 @@ async function runB3SimulationTickInner(
       }
 
 
-      if (decision.final === "approved" && !setupAllowed) {
+      if (decision.final === "approved" && !setupAllowed && !pendSimPronto) {
         // Comitê aprovou, mas o setup técnico não é operável (Fase 1: só trend_pullback).
         const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "critérios de trend_pullback não atendidos"}`;
         if (sigChanged(`block:${mode}`, `no_valid_setup:${setupInfo.name}`)) {
@@ -5009,7 +5009,7 @@ async function runB3SimulationTickInner(
           committee: decision,
           setup: setupInfo,
         });
-      } else if (decision.final === "approved") {
+      } else if (decision.final === "approved" || pendSimPronto) {
         // ── CONFIRMAÇÃO DE ENTRADA, DOIS LADOS (23/09/2026, segunda emenda) ─
         // Chave do SIMULADO ligada: o sinal NÃO abre na hora — espera o preço
         // andar a favor o percentual configurado do stop dentro da janela; ao
@@ -5617,6 +5617,11 @@ async function runB3SimulationTickInner(
 
     // Um único INSERT por tique com os robôs cujo motivo de recusa MUDOU.
     // Falha em silêncio: diagnóstico nunca derruba nem atrasa o motor.
+    if (confirmacaoAtrasadaRows.length) {
+      try {
+        await (supabase as any).from("system_logs").insert(confirmacaoAtrasadaRows);
+      } catch { /* registro nunca derruba o motor */ }
+    }
     if (entryStageRows.length) {
       try {
         await supabase.from("b3_entry_decision_log").insert(entryStageRows);
