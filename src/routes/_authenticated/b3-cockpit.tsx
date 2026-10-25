@@ -82,7 +82,9 @@ function historicalFive(hd: any) {
   }) };
 }
 function HistoricalRobot({ c, expanded, toggle, copy }: { c: any; expanded: boolean; toggle: () => void; copy: () => void }) {
-  return <div className="relative rounded-lg border border-border bg-card overflow-hidden">
+  const cor = robotColor(c.cor);
+  return <div className={`relative rounded-lg border bg-card overflow-hidden ${cor ? cor.border : "border-border"}`}>
+    {cor && <span aria-hidden className={`absolute left-0 top-0 h-full w-1 ${cor.bar}`} />} 
     <Button variant="ghost" aria-label="Copiar este robô" className="absolute right-1 top-1 min-h-11 min-w-11" onClick={copy}><Copy className="size-4" /></Button>
     <Button variant="ghost" className="h-auto w-full flex-col items-stretch whitespace-normal px-3 py-3 pt-14 text-left" onClick={toggle} aria-expanded={expanded}>
       <span className="flex flex-wrap gap-1"><Badge className={`text-[10px] ${MODE_COLOR[c.mode]}`}>{robotLabel(c.mode, c.variant)}</Badge><Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge></span>
@@ -243,7 +245,7 @@ const peakLine = (p?: RealizedPeak | null) => p == null ? "sem registro"
   : `${BRL(Number(p.pico_realizado_brl))}${p.hora_do_pico_brt ? ` às ${p.hora_do_pico_brt.slice(0, 5)}` : ""} · devolveu ${BRL(Number(p.devolveu_brl ?? 0))} · fechou ${BRL(Number(p.fechamento_brl ?? 0))}`;
 
 function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], root, variant, encerrado = false }: { encerrado?: boolean; evidence?: BrakeEvidence[]; root?: string; variant?: string; days: any[] | null | undefined; peaks?: Record<string, RealizedPeak>; titulo: string; modesIgnored?: boolean }) {
-  const rows = (days ?? []).map((day) => ({ ...day, frase: groupBrake(evidence, day.date, root, variant)?.frase }));
+  const rows = (days ?? []).map((day) => ({ ...day, frase: groupBrake(evidence, day.date, root, variant)?.frase ?? (encerrado ? aggregateBrakePhrase(day.com_freio_brl, day.sem_freio_brl, day.barrados) : undefined) }));
   // Total soma somente os últimos 5 (hoje é o primeiro, em andamento).
   const totalRows = encerrado ? rows : rows.slice(1);
   const totalCom = totalRows.reduce((sum, day) => sum + Number(day.com_freio_brl ?? 0), 0);
@@ -256,7 +258,7 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], 
     rows.map((d) => { const p = peaks?.[d.date]; return [shortDate(d.date), BRL(Number(d.com_freio_brl ?? 0)), (brakeNotActivated(d.barrados) ? "não acionado" : BRL(Number(d.sem_freio_brl ?? 0))), d.barrados ?? "sem registro", d.frase ?? "sem registro",
       p ? BRL(Number(p.pico_realizado_brl)) : "sem registro", p?.hora_do_pico_brt?.slice(0, 5) ?? "sem registro",
       p ? BRL(Number(p.devolveu_brl ?? 0)) : "sem registro", p ? BRL(Number(p.fechamento_brl ?? 0)) : "sem registro"]; }),
-  ) + `\nTotal · 5 pregões: Com freio ${BRL(totalCom)} · Sem freio ${brakeNotActivated(totalBarrados) ? "não acionado" : BRL(totalSem)} · ordens barradas ${totalBarrados ?? "sem registro"}\nMaior pico (5 pregões): ${summary.max == null ? "sem registro" : BRL(summary.max)}\nMédia dos picos: ${summary.mean == null ? "sem registro" : `${BRL(summary.mean)} (média de ${summary.count} pregões)`}${modesIgnored ? "\nPico cobre todos os modos (filtro de modo não se aplica)." : ""}`);
+  ) + `\nTotal · ${encerrado ? "período" : "5 pregões"}: Com freio ${BRL(totalCom)} · Sem freio ${brakeNotActivated(totalBarrados) ? "não acionado" : BRL(totalSem)} · ordens barradas ${totalBarrados ?? "sem registro"}\nMaior pico (${encerrado ? "período" : "5 pregões"}): ${summary.max == null ? "sem registro" : BRL(summary.max)}${maxDay ? ` · ${shortDate(maxDay.trade_date)}` : ""}\nMédia dos picos: ${summary.mean == null ? "sem registro" : `${BRL(summary.mean)} (média de ${summary.count} pregões)`}${modesIgnored ? "\nPico cobre todos os modos (filtro de modo não se aplica)." : ""}`);
   return (
     <div className="border-t border-current/20 px-3 py-2">
       <div className="mb-2 flex items-center gap-2">
@@ -293,11 +295,11 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], 
 
 function FreioEfeitoQuadro({ data, pending, error, evidence = [], encerrado = false }: { encerrado?: boolean; evidence?: BrakeEvidence[]; data: Awaited<ReturnType<typeof getB3CockpitFiveSessions>> | undefined; pending: boolean; error: boolean }) {
   const original = data ? cockpitBrakeEffect(data.by_asset, encerrado ? data.dates : data.dates.slice(1)) : null;
-  const d = original ? { ...original, days: original.days.map((x) => ({ ...x, frase: groupBrake(evidence, x.date)?.frase ?? "sem registro" })),
+  const d = original ? { ...original, days: original.days.map((x) => ({ ...x, frase: groupBrake(evidence, x.date)?.frase ?? (encerrado && x.com != null && x.sem != null ? aggregateBrakePhrase(x.com, x.sem, x.barrados) : "sem registro") })),
     top: evidence.filter((r) => r.trade_date === original.top_date && r.mode !== "(modalidade)" && r.ordens_barradas > 0 && Number(r.efeito_brl) > 0).sort((a, b) => Number(b.efeito_brl) - Number(a.efeito_brl)).slice(0, 3) } : null;
   const total = d ? brakeTableTotal(d.days) : null;
   const money = (v: number | null) => v == null ? "sem registro" : BRL(v);
-  const copy = () => d && copiarTexto("Efeito do freio — frases de b3_efeito_freio_dia; resultados de b3_cockpit_cinco_pregoes\n" + tabular(
+  const copy = () => d && copiarTexto((encerrado ? `Efeito do freio — período ${data?.dates.join(", ")} — ordens fechadas\n` : "Efeito do freio — frases de b3_efeito_freio_dia; resultados de b3_cockpit_cinco_pregoes\n") + tabular(
     ["dia", "com freio", "sem freio", "efeito", "ordens barradas", "ordens fechadas"],
     [...d.days.map((x) => [shortDate(x.date), money(x.com), money(x.sem), `${money(x.efeito)} — ${x.frase}`, x.barrados ?? "sem registro", x.ordens]), ...(total ? [["TOTAL", money(total.com), money(total.sem), `${money(total.efeito)} — ${aggregateBrakePhrase(total.com, total.sem, total.barrados)}`, total.barrados ?? "sem registro", total.ordens]] : [])],
   ) + `\nSaldo em ${d.dias_com_dado} pregões: ${money(d.saldo)} — ${aggregateBrakePhrase(d.days.reduce((s, x) => s + (x.com ?? 0), 0), d.days.reduce((s, x) => s + (x.sem ?? 0), 0), totalBlocked(d.days))}\nFreio que mais ajudou ${d.top_date ? shortDate(d.top_date) : "sem registro"}:\n` +
@@ -316,7 +318,7 @@ function FreioEfeitoQuadro({ data, pending, error, evidence = [], encerrado = fa
             <tbody>{d.days.map((x) => <tr key={x.date} className="border-b border-border">
               <td className="py-1">{shortDate(x.date)}</td>
               <td className={`py-1 text-right font-mono ${x.com == null ? "" : moneyColor(x.com)}`}>{money(x.com)}</td>
-              <td className={`py-1 text-right font-mono ${brakeNotActivated(x.barrados) ? "text-foreground" : x.sem == null ? "" : moneyColor(x.sem)}`}>{money(x.sem)}</td>
+              <td className={`py-1 text-right font-mono ${x.sem == null ? "" : moneyColor(x.sem)}`}>{money(x.sem)}</td>
               <td className="px-4 py-2 text-left text-foreground">{money(x.efeito)} · {x.frase}</td>
               <td className="py-1 text-right font-mono">{x.barrados ?? "sem registro"}</td><td className="py-1 text-right font-mono">{x.ordens}</td>
             </tr>)}
@@ -1145,6 +1147,7 @@ function CockpitPage() {
         <p className="text-sm text-muted-foreground">Nenhum robô para o filtro selecionado.</p>
       )}
 
+      <Profiler id="cockpit-hierarquia" onRender={(...args) => { if (!vivo) cockpitRenderTiming(...args.slice(0, 4) as [string, string, number, number]); }}>
       {(vivo || (hd && !hd.no_movement)) && orderedAssets.map(([root, group]) => {
         const hdr = headerByAsset.get(root);
         const history = vivo ? fiveByAsset.get(root) : historicalFive(hd).by_asset.find((a: any) => a.symbol === root);
@@ -1204,6 +1207,7 @@ function CockpitPage() {
             const sub = (hdr?.por_modalidade ?? []).find((m: any) => m.variant === variant);
             const variantKey = `${root}|${variant}`;
             const variantCollapsed = collapsedVariants.has(variantKey);
+            const variantExposure = maximumDaily((periodPeaksQ.data?.exposure ?? []).filter((r: any) => r.raiz === root && r.variant === variant && r.cenario === "sem freio"), (r: any) => Number(r.pico_margem_com_folga_brl));
             return (
             <div key={variant} className="@container overflow-hidden rounded-lg border border-border/40 bg-background/30">
               <div className={assetBand(root)}>
@@ -1221,7 +1225,7 @@ function CockpitPage() {
                       {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})
                     </span>
                     <span className="font-normal opacity-80">
-                      {vivo ? `pico ${BRL0(sub?.pico_capital_brl ?? 0)}` : CLOSED_PERIOD}
+                      {vivo ? `pico ${BRL0(sub?.pico_capital_brl ?? 0)}` : variantExposure ? `pico ${BRL(Number((variantExposure as any).pico_margem_com_folga_brl))} · ${shortDate(variantExposure.trade_date)}` : "pico: sem registro"}
                     </span>
                   </>
                 )}
@@ -1574,6 +1578,7 @@ function CockpitPage() {
         </div>
         );
       })}
+      </Profiler>
 
     </div>
   );
@@ -1644,10 +1649,14 @@ function Scoreboard({ filterArgs, filterKey, evidence, periodData, periodPeaks }
   if (!d) return <section className="rounded-lg border border-border/60 bg-card p-4 text-sm text-muted-foreground">Carregando placar do dia...</section>;
 
   const blocked = periodData ? periodData.sem_freio.robots.reduce((n: number, r: any) => n + r.sombra_ops, 0) : groupBrake(evidence?.brake ?? [], d.session_date)?.blocked ?? (evidence ? 0 : null);
-  const exposures = (evidence?.exposure ?? []).filter((r) => r.trade_date === d.session_date && r.variant === "(ativo)");
-  const exposureText = (r: ExposureEvidence) => `${r.raiz}: ${r.pico_contratos} contratos · ${BRL(Number(r.pico_margem_com_folga_brl))} · ${r.hora_do_pico_brt?.slice(0, 5) ?? "sem registro"}`;
+  const exposures: ExposureEvidence[] = periodData ? (() => {
+    const rows = (periodPeaks?.exposure ?? []).filter((r: any) => r.variant === "(ativo)");
+    const keys: string[] = [...new Set<string>(rows.map((r: any) => `${r.raiz}|${r.cenario}`))];
+    return keys.flatMap((key) => { const max = maximumDaily(rows.filter((r: any) => `${r.raiz}|${r.cenario}` === key), (r: any) => Number(r.pico_margem_com_folga_brl)); return max ? [max as ExposureEvidence] : []; });
+  })() : (evidence?.exposure ?? []).filter((r) => r.trade_date === d.session_date && r.variant === "(ativo)");
+  const exposureText = (r: ExposureEvidence) => `${r.raiz}: ${r.pico_contratos} contratos · ${BRL(Number(r.pico_margem_com_folga_brl))} · ${r.hora_do_pico_brt?.slice(0, 5) ?? "sem registro"}${periodData ? ` · ${shortDate(r.trade_date)}` : ""}`;
   const fields = [["Saldo do dia", "saldo_dia"], ["Se fechasse agora", "se_fechasse_agora"], ["Exposição atual", "exposicao_atual"], ["Lucro bruto do dia", "lucro_bruto"], ["Prejuízo bruto do dia", "prejuizo_bruto"], ["Aberto positivo", "aberto_positivo"], ["Aberto negativo", "aberto_negativo"]];
-  const copyScoreboard = () => periodData ? copiarTexto(`Placar — ${periodData.period.label}\n` + fields.map(([label, key]) => `${label}: ${["exposicao_atual", "aberto_positivo", "aberto_negativo", "se_fechasse_agora"].includes(key) ? CLOSED_PERIOD : `Com freio ${BRL(d[`${key}_com_freio_brl`])} · Sem freio ${BRL(d[`${key}_brl`])}`}`).join("\n") + "\nPicos diários: " + JSON.stringify(periodPeaks ?? "sem registro")) : copiarTexto(`Testeira de resultado — ${d.session_date}\n` + fields.map(([label, key]) => `${label}\nCom freio: ${BRL(Math.round(Number(d[`${key}_com_freio_brl`])))}\nSem freio: ${brakeNotActivated(blocked) ? "não acionado" : BRL(Math.round(Number(d[`${key}_brl`])))}`).join("\n\n") + "\n\n" + [["Melhor robô do dia", d.melhor_robo_com_freio, d.melhor_robo], ["Pior robô do dia", d.pior_robo_com_freio, d.pior_robo]].map(([label, com, sem]) => `${label}\nCom freio: ${roboShort(com)}\nSem freio: ${sem && evidence?.brake.some((r) => r.trade_date === d.session_date && r.raiz === rootSymbol(sem.symbol) && r.variant === sem.variant && r.mode === sem.mode && r.ordens_barradas === 0) ? "não acionado" : roboShort(sem)}`).join("\n\n") + `\n\nPico de exposição (contratos abertos ao mesmo tempo)\n${exposures.length ? exposures.map((r) => `${r.cenario}: ${exposureText(r)}`).join("\n") : "sem registro"}\nMargem exigida com folga de 30%; capital comprometido, não lucro.${evidence?.exposure_modes_ignored ? " Pico cobre todos os modos." : ""}\n${groupBrake(evidence?.brake ?? [], d.session_date)?.frase ?? "sem registro"}\n${SHADOW_EXPLANATION}\nStops pendentes: ${d.stops_pendentes ?? "sem registro"}\nCotação: ${(d.quotes_health ?? []).map((r: any) => `${rootSymbol(r.symbol)} ${r.age_s ?? "sem registro"}s`).join(" · ") || "sem registro"}`);
+  const copyScoreboard = () => periodData ? copiarTexto(`Placar — ${periodData.period.label}\n` + fields.map(([label, key]) => `${label}: ${["exposicao_atual", "aberto_positivo", "aberto_negativo", "se_fechasse_agora"].includes(key) ? CLOSED_PERIOD : `Com freio ${BRL(d[`${key}_com_freio_brl`])} · Sem freio ${BRL(d[`${key}_brl`])}`}`).join("\n") + `\nMelhor robô: Com freio ${roboShort(d.melhor_robo_com_freio)} · Sem freio ${roboShort(d.melhor_robo)}\nPior robô: Com freio ${roboShort(d.pior_robo_com_freio)} · Sem freio ${roboShort(d.pior_robo)}\nPico de exposição: ${exposures.length ? exposures.map(exposureText).join("; ") : "sem registro"}`) : copiarTexto(`Testeira de resultado — ${d.session_date}\n` + fields.map(([label, key]) => `${label}\nCom freio: ${BRL(Math.round(Number(d[`${key}_com_freio_brl`])))}\nSem freio: ${brakeNotActivated(blocked) ? "não acionado" : BRL(Math.round(Number(d[`${key}_brl`])))}`).join("\n\n") + "\n\n" + [["Melhor robô do dia", d.melhor_robo_com_freio, d.melhor_robo], ["Pior robô do dia", d.pior_robo_com_freio, d.pior_robo]].map(([label, com, sem]) => `${label}\nCom freio: ${roboShort(com)}\nSem freio: ${sem && evidence?.brake.some((r) => r.trade_date === d.session_date && r.raiz === rootSymbol(sem.symbol) && r.variant === sem.variant && r.mode === sem.mode && r.ordens_barradas === 0) ? "não acionado" : roboShort(sem)}`).join("\n\n") + `\n\nPico de exposição (contratos abertos ao mesmo tempo)\n${exposures.length ? exposures.map((r) => `${r.cenario}: ${exposureText(r)}`).join("\n") : "sem registro"}\nMargem exigida com folga de 30%; capital comprometido, não lucro.${evidence?.exposure_modes_ignored ? " Pico cobre todos os modos." : ""}\n${groupBrake(evidence?.brake ?? [], d.session_date)?.frase ?? "sem registro"}\n${SHADOW_EXPLANATION}\nStops pendentes: ${d.stops_pendentes ?? "sem registro"}\nCotação: ${(d.quotes_health ?? []).map((r: any) => `${rootSymbol(r.symbol)} ${r.age_s ?? "sem registro"}s`).join(" · ") || "sem registro"}`);
   const stopsPendentes = Number(d.stops_pendentes ?? 0);
   const quotes: any[] = d.quotes_health ?? [];
   const guardLimit = Number(d.quote_guard_limit_s ?? 45);
@@ -1672,23 +1681,23 @@ function Scoreboard({ filterArgs, filterKey, evidence, periodData, periodPeaks }
 
       {/* Linha 1 — números em corpo muito grande */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <PairedMoney barrados={blocked} label="Saldo do dia" comFreio={Number(d.saldo_dia_com_freio_brl)} semFreio={Number(d.saldo_dia_brl)} large />
+        <PairedMoney barrados={blocked} label={periodData ? "Saldo do período" : "Saldo do dia"} comFreio={Number(d.saldo_dia_com_freio_brl)} semFreio={Number(d.saldo_dia_brl)} large />
         <PairedMoney encerrado={!!periodData} barrados={blocked} label="Se fechasse agora" comFreio={Number(d.se_fechasse_agora_com_freio_brl)} semFreio={Number(d.se_fechasse_agora_brl)} large />
         <PairedMoney encerrado={!!periodData} barrados={blocked} label="Exposição atual" comFreio={Number(d.exposicao_atual_com_freio_brl)} semFreio={Number(d.exposicao_atual_brl)} large />
       </div>
 
       {/* Linha 2 — corpo médio */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border/40 pt-3">
-        <PairedMoney barrados={blocked} label="Lucro bruto do dia" comFreio={Number(d.lucro_bruto_com_freio_brl)} semFreio={Number(d.lucro_bruto_brl)} />
-        <PairedMoney barrados={blocked} label="Prejuízo bruto do dia" comFreio={Number(d.prejuizo_bruto_com_freio_brl)} semFreio={Number(d.prejuizo_bruto_brl)} />
+        <PairedMoney barrados={blocked} label={periodData ? "Lucro bruto do período" : "Lucro bruto do dia"} comFreio={Number(d.lucro_bruto_com_freio_brl)} semFreio={Number(d.lucro_bruto_brl)} />
+        <PairedMoney barrados={blocked} label={periodData ? "Prejuízo bruto do período" : "Prejuízo bruto do dia"} comFreio={Number(d.prejuizo_bruto_com_freio_brl)} semFreio={Number(d.prejuizo_bruto_brl)} />
         <PairedMoney encerrado={!!periodData} barrados={blocked} label="Aberto positivo" comFreio={Number(d.aberto_positivo_com_freio_brl)} semFreio={Number(d.aberto_positivo_brl)} />
         <PairedMoney encerrado={!!periodData} barrados={blocked} label="Aberto negativo" comFreio={Number(d.aberto_negativo_com_freio_brl)} semFreio={Number(d.aberto_negativo_brl)} />
       </div>
 
       {/* Linha 3 — corpo pequeno */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-border/40 pt-3">
-        <RobotPair evidence={evidence?.brake} date={d.session_date} label="Melhor robô do dia" comFreio={d.melhor_robo_com_freio} semFreio={d.melhor_robo} />
-        <RobotPair evidence={evidence?.brake} date={d.session_date} label="Pior robô do dia" comFreio={d.pior_robo_com_freio} semFreio={d.pior_robo} />
+        <RobotPair evidence={evidence?.brake} date={d.session_date} label={periodData ? "Melhor robô do período" : "Melhor robô do dia"} comFreio={d.melhor_robo_com_freio} semFreio={d.melhor_robo} />
+        <RobotPair evidence={evidence?.brake} date={d.session_date} label={periodData ? "Pior robô do período" : "Pior robô do dia"} comFreio={d.pior_robo_com_freio} semFreio={d.pior_robo} />
         <div className="space-y-1 text-xs">
           <p className="text-[10px] uppercase text-muted-foreground">Pico de exposição (contratos abertos ao mesmo tempo)</p>
           {exposures.length ? exposures.map((r) => <p key={`${r.raiz}|${r.cenario}`}><span className="text-muted-foreground">{r.cenario}: </span>{exposureText(r)}</p>) : <p>sem registro</p>}
