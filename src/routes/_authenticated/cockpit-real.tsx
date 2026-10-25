@@ -252,8 +252,8 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
           </h2>
           <p className="text-[11px] leading-snug text-muted-foreground">
             {armed
-              ? `Armou ${peak.armed_at ? `às ${hhmm(peak.armed_at)}` : ""} com pico de ${BRL(peak.armed_peak_brl ?? peak.peak_brl)}. Novas ABERTURAS reais bloqueadas até o fim do pregão. Fechamento nunca é bloqueado e a simulação segue coletando.`
-              : `Camada acima do freio por robô: olha o total da conta (realizado + aberto a mercado). Só arma a partir de um pico de ${BRL(peak.peak_min_brl)} — ${(floorPctCfg * 100).toFixed(0)}% do stop global de ${BRL(globalStop)}, que acompanha sozinho quantos robôs estão ligados.`}
+              ? `Armou ${peak.armed_at ? `às ${hhmm(peak.armed_at)}` : ""} com pico de lucro no dia de ${BRL(peak.armed_peak_brl ?? peak.peak_brl)}. Novas ABERTURAS reais bloqueadas até o fim do pregão. Fechamento nunca é bloqueado e a simulação segue coletando.`
+              : `Camada acima do freio por robô: olha o total da conta (realizado + aberto a mercado). Só arma a partir de um pico de lucro no dia de ${BRL(peak.peak_min_brl)} — ${(floorPctCfg * 100).toFixed(0)}% do stop global de ${BRL(globalStop)}, que acompanha sozinho quantos robôs estão ligados.`}
           </p>
         </div>
         <div className="flex items-end gap-2">
@@ -267,7 +267,7 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
             />
           </label>
           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Pico mínimo (% do stop global)
+            Piso do pico de lucro no dia (% do stop global)
             <span className="mt-0.5 flex items-center gap-2">
               <Input
                 className="h-8 w-20"
@@ -286,14 +286,14 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
 
 
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-        <Tile label="Pico do dia" value={SIGNED_BRL(peak.peak_brl ?? 0)} sub={peak.peak_at ? `às ${hhmm(peak.peak_at)}` : "—"} cls="text-emerald-300" />
+        <Tile label="Pico de lucro no dia" value={SIGNED_BRL(peak.peak_brl ?? 0)} sub={peak.peak_at ? `às ${hhmm(peak.peak_at)}` : "—"} cls="text-emerald-300" />
         <Tile label="Resultado agora" value={SIGNED_BRL(peak.result_brl ?? 0)} cls={money(peak.result_brl)} />
         <Tile label="Já devolvido" value={BRL(peak.given_back_brl ?? 0)} sub={peak.given_back_pct == null ? "—" : `${(Number(peak.given_back_pct) * 100).toFixed(1)}% do pico`} cls="text-rose-300" />
-        <Tile label={`Tolerado (${(pctCfg * 100).toFixed(0)}%)`} value={BRL(peak.allowed_giveback_brl ?? 0)} sub={peak.trigger_at_brl == null ? "pico abaixo do piso" : `arma se cair de ${BRL(peak.trigger_at_brl)}`} />
+        <Tile label={`Tolerado (${(pctCfg * 100).toFixed(0)}%)`} value={BRL(peak.allowed_giveback_brl ?? 0)} sub={peak.trigger_at_brl == null ? "pico de lucro no dia abaixo do piso" : `arma se cair de ${BRL(peak.trigger_at_brl)}`} />
         <Tile
           label="Falta para armar"
           value={armed ? "ARMADO" : peak.remaining_brl == null ? "—" : BRL(peak.remaining_brl)}
-          sub={armed ? "aberturas reais bloqueadas" : peak.eligible ? "de devolução restante" : "pico ainda é ruído"}
+          sub={armed ? "aberturas reais bloqueadas" : peak.eligible ? "de devolução restante" : "pico de lucro no dia ainda é ruído"}
           cls={armed ? "text-rose-300" : "text-amber-200"}
         />
       </div>

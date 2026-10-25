@@ -244,7 +244,7 @@ export const getB3AssetDashboardOrders = createServerFn({ method: "POST" })
     }
 
 
-    // Pico de exposição (margem simultânea × 1,30) por linha do tempo de eventos.
+    // Pico de capital exposto: margem crua simultânea por linha do tempo de eventos.
     events.sort((a, b) => a.t - b.t || b.dq - a.dq);
     let accM = 0, accQ = 0, picoM = 0, picoQ = 0, picoT: number | null = null;
     for (const e of events) {
@@ -349,7 +349,7 @@ export const getB3AssetDashboardOrders = createServerFn({ method: "POST" })
       perdas_brl: perdas,
       ops_total: opsTotal,
       ops_lucro: opsLucro,
-      pico_exposicao_brl: picoM * 1.3,
+      pico_exposicao_brl: picoM,
       pico_exposicao_hora: horaPico,
       pico_exposicao_data: picoT == null ? null : brtDay(picoT),
       pico_contratos: picoQ,
