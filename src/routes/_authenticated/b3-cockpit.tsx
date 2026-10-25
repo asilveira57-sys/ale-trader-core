@@ -221,11 +221,12 @@ const shortDate = (date: string) => {
 // e o valor em verde/vermelho conforme positivo/negativo. Hoje é o primeiro
 // card (ainda em andamento) e o "Total" soma somente os últimos 5 pregões.
 function PregaoCard({
-  label, com, sem, highlight, peak, barrados, frase,
-}: { label: string; com: number; sem: number; highlight?: boolean; peak?: RealizedPeak | null; barrados?: number | null; frase?: string }) {
+  label, com, sem, highlight, peak, barrados, frase, empty = false,
+}: { empty?: boolean; label: string; com: number; sem: number; highlight?: boolean; peak?: RealizedPeak | null; barrados?: number | null; frase?: string }) {
   return (
     <div className="min-w-[126px] rounded bg-black/70 px-2 py-1.5 text-left">
       <p className={`mb-1 ${highlight ? "font-black" : "font-bold"} text-white`}>{label}</p>
+      {empty ? <p className="text-foreground">sem ordens no período</p> : <>
       <p className="whitespace-nowrap font-bold text-white">
         Com freio <span className={`ml-1 font-mono ${moneyColor(com)}`}>{BRL(com)}</span>
       </p>
@@ -237,6 +238,7 @@ function PregaoCard({
         {peak == null ? "pico: sem dados" : <>pico <span className="font-mono">{BRL(Number(peak.pico_realizado_brl))}</span>
           {peak.hora_do_pico_brt ? ` às ${peak.hora_do_pico_brt.slice(0, 5)}` : ""}<br />devolveu <span className="font-mono">{BRL(Number(peak.devolveu_brl ?? 0))}</span></>}
       </p>}
+      </>}
     </div>
   );
 }
@@ -271,6 +273,7 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], 
         {rows.map((day, index) => (
           <PregaoCard
             key={day.date}
+            empty={encerrado && day.ordens === 0}
             label={!encerrado && index === 0 ? `Hoje · ${shortDate(day.date)}` : shortDate(day.date)}
             com={Number(day.com_freio_brl ?? 0)}
             sem={Number(day.sem_freio_brl ?? 0)}
@@ -279,7 +282,7 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], 
             peak={peaks ? peaks[day.date] ?? null : undefined}
           />
         ))}
-        <PregaoCard label={encerrado ? "Total · período" : "Total · 5 pregões"} com={totalCom} sem={totalSem} barrados={totalBarrados} frase={aggregateBrakePhrase(totalCom, totalSem, totalBarrados)} highlight />
+        <PregaoCard empty={encerrado && totalRows.every((d) => d.ordens === 0)} label={encerrado ? "Total · período" : "Total · 5 pregões"} com={totalCom} sem={totalSem} barrados={totalBarrados} frase={aggregateBrakePhrase(totalCom, totalSem, totalBarrados)} highlight />
         <div className="min-w-[150px] rounded bg-background/90 px-2 py-1.5 text-left text-foreground">
           <p className="mb-1 font-black">Pico realizado · {encerrado ? "período" : "5 pregões"}</p>
           <p className="font-bold">Maior pico <span className="font-mono text-success">{summary.max == null ? "sem dados" : BRL(summary.max)}</span></p>
@@ -1026,6 +1029,7 @@ function CockpitPage() {
           <Scoreboard filterArgs={filterArgs} filterKey={filterKey} periodData={hd} periodPeaks={periodPeaksQ.data} />
           <FreioEfeitoQuadro encerrado data={historicalFive(hd) as any} pending={hq.isPending} error={hq.isError} evidence={labelEvidence} />
           {periodPeaksQ.isError && <p role="alert">Picos: sem registro — não foi possível ler.</p>}
+          {!!periodPeaksQ.data?.failures.length && <p role="alert">Leitura incompleta: {periodPeaksQ.data.failures.join(", ")} — sem registro.</p>}
           {periodPeaksQ.data?.possible_truncation && <p className="text-warning">Leitura de picos atingiu 1.000 linhas; dados podem estar incompletos.</p>}
         </>}
       </Profiler>}
@@ -1169,7 +1173,7 @@ function CockpitPage() {
                   </span>
                    <span className="font-normal opacity-80">{robotCount} robôs</span>
                    <span className="ml-auto font-mono text-xl font-black">
-                    {SIGNED_HDR(hdr?.resultado_brl ?? 0)}
+                    {!vivo && hdr?.ops === 0 ? "sem ordens no período" : SIGNED_HDR(hdr?.resultado_brl ?? 0)}
                   </span>
                 </div>
                  <p className="text-[11px] font-medium opacity-80">
@@ -1220,7 +1224,7 @@ function CockpitPage() {
                 {variantsSel.length > 1 && (
                   <>
                     <span className="font-mono font-black">
-                      {SIGNED_HDR(sub?.resultado_brl ?? 0)}
+                      {!vivo && sub?.ops === 0 ? "sem ordens no período" : SIGNED_HDR(sub?.resultado_brl ?? 0)}
                     </span>
                     <span className="font-normal opacity-80">
                       {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})

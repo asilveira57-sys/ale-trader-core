@@ -9,13 +9,14 @@ export const getPeriodPeakEvidence = createServerFn({ method: "GET" })
     const period = resolvePeriod(data);
     const args = { p_user_id: context.userId, p_dias: Math.max(1, Math.ceil(daysBetween(period.start, brtDate(new Date())) / 4) + 1), p_symbols: data.symbols ?? null, p_variants: data.variants ?? null };
     const timings: { chamada: string; ms: number; linhas: number }[] = [];
+    const failures: string[] = [];
     const read = async (name: string, extra = {}) => {
       const start = performance.now();
       const result = await (context.supabase as any).rpc(name, { ...args, ...extra });
       timings.push({ chamada: name, ms: Math.round(performance.now() - start), linhas: result.data?.length ?? 0 });
-      if (result.error) throw new Error("Não foi possível ler os picos do período");
+      if (result.error) { failures.push(name); console.info("[cockpit-dados]", JSON.stringify({ chamada: name, ms: Math.round(performance.now() - start), falhou: true })); return []; }
       return (result.data ?? []).filter((r: any) => String(r.trade_date).slice(0, 10) >= period.start && String(r.trade_date).slice(0, 10) <= period.end);
     };
     const [realized, exposure, brake] = await Promise.all([read("b3_pico_realizado_dia"), read("b3_pico_exposicao_dia", { p_folga: 1.30 }), read("b3_efeito_freio_dia")]);
-    return { realized, exposure, brake, timings, possible_truncation: timings.some((t) => t.linhas >= 1000) };
+    return { realized, exposure, brake, timings, failures, possible_truncation: timings.some((t) => t.linhas >= 1000) };
   });
