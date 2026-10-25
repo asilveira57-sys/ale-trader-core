@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CONFIRMACAO_PADRAO, avaliarConfirmacao, confirmacaoExigidaPts,
   confirmacaoNaAbertura, confirmacaoRegraTexto,
-  confirmacaoArmada, avaliarPendente, criarPendente, motivoNaoConfirmou, ladoDoPendente,
+  confirmacaoArmada, avaliarPendente, criarPendente, motivoNaoConfirmou, ladoDoPendente, acaoDoPendenteNaPassada,
 } from "./b3-confirmacao-entrada";
 
 const abertura = "2026-09-23T13:00:00.000Z";
@@ -164,3 +164,44 @@ describe("regra ligada", () => {
   });
 });
 
+
+// ── 25/10/2026: sinal tocado na janela entra na mesma passada ───────────────
+describe("pré-passada do sinal em espera", () => {
+  const cfg = { confirmacao_ativa_simulado: true, confirmacao_ativa_real: true, confirmacao_pct_stop: 25, confirmacao_janela_s: 180 };
+  const t0 = Date.parse("2026-10-23T13:00:00Z");
+  const pend = criarPendente({ side: "sell", precoSinal: 207_335, stopPtsFrozen: 240, gainPtsFrozen: 400, cfg, agoraMs: t0, aguardaSimulado: true, aguardaReal: true })!;
+
+  it("limiar de 25% sobre stop de 240 exige 60 pts", () => {
+    expect(pend.exigido_pts).toBe(60);
+  });
+
+  it("toque dentro da janela manda entrar, sem esperar o comitê reaprovar", () => {
+    const av = avaliarPendente(pend, 207_040, t0 + 90_000);
+    expect(acaoDoPendenteNaPassada(pend, av)).toMatchObject({ acao: "entrar_simulado", atrasada: false });
+  });
+
+  it("caso de 23/10: andou 295 na janela e foi avaliado 1889 s depois não vira 'confirmação não atingida'", () => {
+    const tocado = { ...pend, melhor_janela_pts: 295, melhor_pts: 395 };
+    const av = avaliarPendente(tocado, 207_200, t0 + 1_889_000);
+    const r = acaoDoPendenteNaPassada(tocado, av);
+    expect(r.acao).toBe("descartar_confirmou_sem_entrada");
+    expect(r.atrasada).toBe(true);
+    expect(r.atraso_s).toBe(1709);
+  });
+
+  it("sem toque, janela vencida descarta e marca a avaliação como atrasada", () => {
+    const av = avaliarPendente(pend, 207_320, t0 + 200_000);
+    expect(acaoDoPendenteNaPassada(pend, av)).toMatchObject({ acao: "descartar_expirou", atrasada: true, atraso_s: 20, janela_s: 180 });
+  });
+
+  it("dentro da janela sem toque só atualiza o melhor avanço", () => {
+    const av = avaliarPendente(pend, 207_300, t0 + 45_000);
+    expect(acaoDoPendenteNaPassada(pend, av).acao).toBe("atualizar_melhor");
+  });
+
+  it("só o real esperando: confirmou enfileira o real", () => {
+    const soReal = { ...pend, aguarda_simulado: false, aguarda_real: true, real_enviado: false };
+    const av = avaliarPendente(soReal, 207_200, t0 + 60_000);
+    expect(acaoDoPendenteNaPassada(soReal, av).acao).toBe("enfileirar_real");
+  });
+});
