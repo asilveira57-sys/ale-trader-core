@@ -173,7 +173,6 @@ export const getB3AssetDashboardOrders = createServerFn({ method: "POST" })
     };
 
     let realizado = 0, aberto = 0, ganhos = 0, perdas = 0, opsTotal = 0, opsLucro = 0;
-    const events: { t: number; dm: number; dq: number }[] = [];
     const closedTimeline: { t: number; net: number }[] = [];
     type DayAgg = { resultado: number; ops: number; wins: number };
     const perDay = new Map<string, DayAgg>();
@@ -195,13 +194,8 @@ export const getB3AssetDashboardOrders = createServerFn({ method: "POST" })
       const qty = Number(o.quantity ?? 0);
       const entry = Number(o.entry_price ?? 0);
 
-      const margem = String(asset.margin_model ?? "per_contract") === "per_contract"
-        ? Number(asset.margin_per_contract_brl ?? 0) * qty
-        : entry * qty * Number(asset.margin_percent_position ?? 0) / 100;
       const tIn = new Date(o.entry_time ?? o.created_at ?? nowMs).getTime();
       const tOut = o.exit_time ? new Date(o.exit_time).getTime() : nowMs;
-      events.push({ t: tIn, dm: margem, dq: qty });
-      events.push({ t: tOut, dm: -margem, dq: -qty });
       const dia = brtDay(tIn);
       const dayAgg = ensureDay(dia);
 

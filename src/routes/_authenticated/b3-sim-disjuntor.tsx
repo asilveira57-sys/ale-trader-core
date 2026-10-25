@@ -20,7 +20,7 @@ export const Route = createFileRoute("/_authenticated/b3-sim-disjuntor")({
     { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
   ] }), component: Page,
 });
-const variantsLabel: Record<string, string> = { indicador: "Indicador", price_action: "Price action", mean_reversion: "Reversão à média", range: "Faixa", rompimento: "Rompimento", pullback: "Repique", vwap: "VWAP" };
+const variantsLabel: Record<string, string> = { indicador: "Indicador", price_action: "Price action", price_action_sc: "Price action SC", mean_reversion: "Reversão à média", range: "Faixa", rompimento: "Rompimento", pullback: "Repique", vwap: "VWAP" };
 const value = (n: number | null | undefined) => n == null ? "sem registro" : BRL(Number(n));
 const headers = ["Pregão", "Perda", "Base usada", "Origem", "Limite de perda", "Meta de ganho", "Disparo", "Hora", "Com disjuntor", "Sem disjuntor", "Diferença", "Ordens antes", "Evitadas", "Ordens no dia", "Pior momento", "Melhor momento", "Frase"];
 const cells = (r: DisjuntorRow) => [r.dia, `${Math.round(Number(r.perda_pct) * 100)}%`, value(r.capital_base_brl), r.base_origem, value(r.limite_perda_brl), value(r.meta_ganho_brl), r.disparou, r.hora_disparo_brt?.slice(0, 5) ?? "sem registro", value(r.resultado_com_disjuntor_brl), value(r.resultado_sem_disjuntor_brl), value(r.diferenca_brl), r.ordens_antes, r.ordens_evitadas, r.ordens_no_dia, value(r.pior_momento_brl), value(r.melhor_momento_brl), r.frase];

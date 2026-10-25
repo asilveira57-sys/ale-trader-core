@@ -282,7 +282,7 @@ export async function syncPeakFloorFromGlobalStop(
 
   const row = (stateRes.data ?? null) as any;
   if (stateRes.error) throw new Error("Não foi possível ler o percentual do piso.");
-  const globalStop = globalStopFromSizing(sizing.filter((r) => r.symbol === "WIN")).total_brl;
+  const globalStop = globalStopFromSizing(sizing).total_brl;
 
   const stored = row?.peak_min_pct_of_global == null ? null : Number(row.peak_min_pct_of_global);
   const pct = opts?.pctOverride != null && Number.isFinite(opts.pctOverride)
