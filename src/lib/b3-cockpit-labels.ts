@@ -25,7 +25,7 @@ export function aggregateBrakePhrase(com: number, sem: number, blocked: number |
   if (blocked == null) return "sem registro";
   if (blocked === 0) return "não acionado";
   const value = Math.abs(com - sem).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  return com > sem ? `o freio reduziu o prejuízo em ${value}` : com < sem ? `o freio custou ${value}` : "acionado, sem efeito no resultado";
+  return com > sem ? `reduziu o prejuízo em ${value}` : com < sem ? `custou ${value}` : "sem efeito";
 }
 export function groupBrake(rows: BrakeEvidence[], date: string, root?: string, variant?: string) {
   const list = rows.filter((r) => r.trade_date === date && r.mode !== "(modalidade)" && (!root || r.raiz === root) && (!variant || r.variant === variant));

@@ -506,7 +506,7 @@ function loadFilters(): SavedFilters {
 export type FreioLib = "grupo" | "pico" | "pos_meta" | "stop_diario";
 const FREIOS_LIB: { v: FreioLib; label: string }[] = [
   { v: "grupo", label: "freio de grupo" },
-  { v: "pico", label: "freio de pico" },
+  { v: "pico", label: "devolução de pico de lucro no dia" },
   { v: "pos_meta", label: "proteção pós-meta" },
   { v: "stop_diario", label: "stop diário do robô" },
 ];
@@ -1029,9 +1029,9 @@ function CockpitPage() {
           {hd?.rows_truncated && <TruncatedNotice limit={hd.rows_limit} />}
           <Scoreboard filterArgs={filterArgs} filterKey={filterKey} periodData={hd} periodPeaks={periodPeaksQ.data} />
           <FreioEfeitoQuadro encerrado data={historicalFive(hd) as any} pending={hq.isPending} error={hq.isError} evidence={labelEvidence} />
-          {periodPeaksQ.isError && <p role="alert">Picos: sem registro — não foi possível ler.</p>}
+          {periodPeaksQ.isError && <p role="alert">Picos de lucro no dia e de capital exposto: sem registro — não foi possível ler.</p>}
           {!!periodPeaksQ.data?.failures.length && <p role="alert">Leitura incompleta: {periodPeaksQ.data.failures.join(", ")} — sem registro.</p>}
-          {periodPeaksQ.data?.possible_truncation && <p className="text-warning">Leitura de picos atingiu 1.000 linhas; dados podem estar incompletos.</p>}
+          {periodPeaksQ.data?.possible_truncation && <p className="text-warning">Leitura de picos de lucro no dia e de capital exposto atingiu 1.000 linhas; dados podem estar incompletos.</p>}
         </>}
       </Profiler>}
 
@@ -1671,7 +1671,7 @@ function Scoreboard({ filterArgs, filterKey, evidence, periodData, periodPeaks }
   return (
     <section className="rounded-xl border border-border/60 bg-card p-4 space-y-4">
       <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
-        <span className="w-full sm:w-auto">{periodData ? periodData.period.label : "Placar, faixas e picos recarregam ao abrir/fechar posição ou por aqui."}</span>
+        <span className="w-full sm:w-auto">{periodData ? periodData.period.label : "Placar, faixas, picos de lucro no dia e de capital exposto"}</span>
         <Button variant="outline" className="min-h-11" onClick={copyScoreboard} aria-label="Copiar testeira de resultado"><Copy className="size-4" />Copiar</Button>
         {!periodData && <Button size="sm" variant="outline" className="min-h-11" disabled={q.isFetching}
           onClick={() => qcSb.invalidateQueries({ queryKey: ["b3-cockpit-pesado"] })}>
