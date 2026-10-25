@@ -1,206 +1,69 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getSimDisjuntor, getSimDisjuntorOpcoes } from "@/lib/b3-sim-disjuntor.functions";
-import { CENARIOS, simularDisjuntor } from "@/lib/b3-sim-disjuntor";
+import { ChevronLeft, ChevronRight, Copy, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { getDisjuntorOptions, readDisjuntorScenarios } from "@/lib/b3-disjuntor-read.functions";
+import { LOSS_OPTIONS, shiftSession, disjuntorTotals, type DisjuntorRow } from "@/lib/b3-disjuntor-view";
 import { BRL } from "@/lib/b3-format";
-import { modeFullLabel } from "@/lib/mode-nick-registry";
 import { copiarTexto, tabular } from "@/lib/b3-copiar";
 
 export const Route = createFileRoute("/_authenticated/b3-sim-disjuntor")({
-  head: () => ({
-    meta: [
-      { title: "Simulação de disjuntor — AleTrader AI" },
-      { name: "description", content: "Curva do resultado histórico sob disjuntores de perda, por ativo e modalidade, só em pregões limpos." },
-      { property: "og:title", content: "Simulação de disjuntor — AleTrader AI" },
-      { property: "og:description", content: "Resultado, dia mediano e disparos por percentual de corte de perda." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
-  }),
-  component: Page,
-  errorComponent: ({ error }) => <div className="p-6 text-destructive">Erro: {String((error as any)?.message ?? error)}</div>,
+  head: () => ({ meta: [
+    { title: "Disjuntor simulado WIN por pregão — AleTrader" },
+    { name: "description", content: "Cenários diários WIN de perda, meta de ganho e devolução de pico de lucro, com capital exposto do próprio dia." },
+    { property: "og:title", content: "Disjuntor simulado WIN — AleTrader" },
+    { property: "og:description", content: "Compare cenários por pregão e limiar sem alterar operações reais." },
+    { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
+  ] }), component: Page,
 });
-
-const MIN_PREGOES = 10;
-const cor = (v: number | null) => (v == null ? "—" : <span className={v >= 0 ? "text-success" : "text-destructive"}>{BRL(v)}</span>);
-type Crit = "pausado" | "buraco" | "aberta" | "rolagem";
-const CRIT: { k: Crit; label: string }[] = [
-  { k: "pausado", label: "sistema pausado (sem tique / cobertura < 80%)" },
-  { k: "buraco", label: "buraco de cotação (> 10 min ou cotação parada)" },
-  { k: "aberta", label: "ordem aberta sem fechamento forçado (stop pendente / fantasma)" },
-  { k: "rolagem", label: "vencimento/rolagem do contrato" },
-];
-
+const variantsLabel: Record<string, string> = { indicador: "Indicador", price_action: "Price action", mean_reversion: "Reversão à média", range: "Faixa", rompimento: "Rompimento", pullback: "Repique", vwap: "VWAP" };
+const value = (n: number | null | undefined) => n == null ? "sem registro" : BRL(Number(n));
+const headers = ["Pregão", "Perda", "Base usada", "Origem", "Limite de perda", "Meta de ganho", "Disparo", "Hora", "Com disjuntor", "Sem disjuntor", "Diferença", "Ordens antes", "Evitadas", "Ordens no dia", "Pior momento", "Melhor momento", "Frase"];
+const cells = (r: DisjuntorRow) => [r.dia, `${Math.round(Number(r.perda_pct) * 100)}%`, value(r.capital_base_brl), r.base_origem, value(r.limite_perda_brl), value(r.meta_ganho_brl), r.disparou, r.hora_disparo_brt?.slice(0, 5) ?? "sem registro", value(r.resultado_com_disjuntor_brl), value(r.resultado_sem_disjuntor_brl), value(r.diferenca_brl), r.ordens_antes, r.ordens_evitadas, r.ordens_no_dia, value(r.pior_momento_brl), value(r.melhor_momento_brl), r.frase];
+const LIMITATION = "A curva é do resultado realizado, pela hora de saída. O disjuntor real lê o saldo com o flutuante da posição aberta; por isso a simulação dispara um pouco mais tarde que o real. É o cenário conservador.";
 function Page() {
-  const opcFn = useServerFn(getSimDisjuntorOpcoes);
-  const fn = useServerFn(getSimDisjuntor);
-  const opc = useQuery({ queryKey: ["simdj-opc"], queryFn: () => opcFn() });
-  const [ativo, setAtivo] = useState("");
-  const [variant, setVariant] = useState("");
-  const [mode, setMode] = useState("");
-  const [dias, setDias] = useState(30);
-  const [soLimpo, setSoLimpo] = useState(true);
-  const [crit, setCrit] = useState<Record<Crit, boolean>>({ pausado: true, buraco: true, aberta: true, rolagem: true });
-  const [baseTxt, setBaseTxt] = useState("");
-
+  const optionsFn = useServerFn(getDisjuntorOptions), read = useServerFn(readDisjuntorScenarios);
+  const options = useQuery({ queryKey: ["win-disjuntor-opcoes"], queryFn: () => optionsFn(), staleTime: Infinity });
+  const [range, setRange] = useState(false), [day, setDay] = useState(""), [end, setEnd] = useState("");
+  const [losses, setLosses] = useState<number[]>([25]), [variants, setVariants] = useState<string[]>([]), [base, setBase] = useState("");
+  const [selection, setSelection] = useState<{ start: string; end: string; losses: number[]; capital: number | null; variants: string[] | null } | null>(null);
   useEffect(() => {
-    if (!ativo && opc.data?.length) { const w = opc.data.find((o) => o.ativo === "WIN") ?? opc.data[0]!; setAtivo(w.ativo); setVariant(w.variants[0] ?? ""); }
-  }, [opc.data, ativo]);
-  const variants = opc.data?.find((o) => o.ativo === ativo)?.variants ?? [];
-
-  const q = useQuery({
-    queryKey: ["simdj", ativo, variant, mode, dias],
-    enabled: !!ativo && !!variant,
-    queryFn: () => fn({ data: { ativo, variant, mode: mode || null, dias } }),
-  });
-  useEffect(() => { setBaseTxt(""); }, [ativo, variant, mode]);
-
-  const calc = useMemo(() => {
-    const d = q.data;
-    if (!d) return null;
-    const todos = [...new Set(d.ordens.map((o) => o.dia))].sort();
-    const qual = new Map(d.qualidade.map((x) => [x.pregao, x]));
-    const saude = new Map(d.saude.map((x: any) => [x.trade_date, x]));
-    let prevContrato: string | null = null;
-    const status = todos.map((dia) => {
-      const cs = d.contratos_por_dia[dia] ?? [];
-      const rol = cs.length > 1 || (prevContrato != null && cs[0] != null && cs[0] !== prevContrato);
-      if (cs.length) prevContrato = cs[cs.length - 1]!;
-      const ql = qual.get(dia);
-      if (ql) return { dia, limpo: ql.classificacao === "LIMPO_APARENTE" && !(crit.rolagem && rol), motivo: ql.classificacao === "LIMPO_APARENTE" ? (rol && crit.rolagem ? "rolagem" : "") : `${ql.classificacao}: ${ql.motivo}`, fonte: "qualidade" };
-      const s: any = saude.get(dia);
-      if (!s) return { dia, limpo: false, motivo: "sem avaliação de saúde", fonte: "nenhuma" };
-      const m: string[] = [];
-      if (crit.pausado && (!s.primeiro_tick || Number(s.cobertura_pct ?? 0) < 80)) m.push("pausado");
-      if (crit.buraco && (Number(s.maior_buraco_min ?? 0) > 10 || Number(s.cotacao_parada ?? 0) > 0)) m.push("buraco de cotação");
-      if (crit.aberta && (Number(s.stops_pendentes ?? 0) > 0 || Number(s.ordens_fantasma ?? 0) > 0)) m.push("ordem aberta sem fechamento");
-      if (crit.rolagem && rol) m.push("rolagem");
-      return { dia, limpo: m.length === 0, motivo: m.join(", "), fonte: "saude" };
-    });
-    const usados = soLimpo ? status.filter((s) => s.limpo).map((s) => s.dia) : todos;
-    const base = baseTxt ? Number(baseTxt.replace(",", ".")) : (d.base_sugerida_brl ?? 0);
-    if (!(base > 0)) return null;
-    const cen = CENARIOS.map((p) => simularDisjuntor(d.ordens, usados, base, p));
-    const validos = cen.filter((c) => c.pregoes >= MIN_PREGOES);
-    const ord = [...validos].sort((a, b) => b.total - a.total);
-    const pior = cen[0]?.pior ?? null;
-    const indist = ord.length >= 2 && pior != null && Math.abs(ord[0]!.total - ord[1]!.total) < Math.abs(pior);
-    return { status, usados, todos, base, cen, melhor: ord[0] ?? null, indist };
-  }, [q.data, soLimpo, crit, baseTxt]);
-
-  const pctTxt = (p: number | null) => (p == null ? "sem disjuntor" : `${Math.round(p * 100)}%`);
-
-  return (
-    <main className="p-4 md:p-6 space-y-4 max-w-6xl">
-      <p className="text-sm text-warning">Sugestão automática de base suspensa: fonte anterior sob investigação. Informe a base para consultar, sem substituição automática.</p>
-      <div>
-        <h1 className="text-xl font-semibold">Simulação de disjuntor de perda</h1>
-        <p className="text-sm text-muted-foreground">Somente leitura. Simula sobre resultados já gravados; não altera nenhuma configuração. Um ativo e uma modalidade por vez — não há soma entre ativos.</p>
+    if (!options.data || day) return;
+    const d = options.data.lastDay;
+    setVariants(options.data.variants);
+    if (d) { setDay(d); setEnd(d); setSelection({ start: d, end: d, losses: [25], capital: null, variants: null }); }
+  }, [options.data, day]);
+  const query = useQuery({ queryKey: ["win-disjuntor-cenarios", selection], enabled: !!selection, queryFn: () => { if (!selection) throw new Error("Escolha o pregão."); return read({ data: selection }); }, staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false });
+  const capital = base.trim() ? Number(base.replace(",", ".")) : null;
+  const valid = !!day && (!range || !!end && end >= day) && losses.length > 0 && variants.length > 0 && (capital == null || Number.isFinite(capital) && capital > 0);
+  const apply = (nextDay = day) => { if (!valid) return; setSelection({ start: nextDay, end: range ? end : nextDay, losses: [...losses].sort((a,b) => a-b), capital, variants: variants.length === options.data?.variants.length ? null : variants }); };
+  const move = (delta: number) => { const d = shiftSession(day, delta); setDay(d); setEnd(d); if (!range) apply(d); };
+  const rows = query.data?.rows ?? [], totals = disjuntorTotals(rows);
+  const copy = () => copiarTexto(`Disjuntor simulado — WIN — ${selection?.start ?? "sem registro"} a ${selection?.end ?? "sem registro"}\nModalidades: ${selection?.variants?.join(", ") ?? "todas"} · Robôs: todos\n${LIMITATION}\nPiso: ${value(query.data?.floor.piso_brl)} · percentual: ${query.data?.floor.pct ?? "sem registro"} · stop global: ${value(query.data?.floor.stop_global_brl)}\n\n` + tabular(headers, rows.map(cells)) + "\n\n" + tabular(["Total por limiar", "Pregões", "Com disjuntor", "Sem disjuntor", "Diferença", "Antes", "Evitadas", "Ordens"], totals.map(t => [`${Math.round(t.pct*100)}%`, t.pregoes, value(t.com), value(t.sem), value(t.diferenca), t.antes, t.evitadas, t.ordens])));
+  return <main className="p-4 md:p-6 space-y-5">
+    <header className="flex flex-wrap items-center gap-3"><h1 className="text-xl font-semibold">Simulação do disjuntor · WIN</h1><span className="text-sm text-muted-foreground">Todos os robôs</span></header>
+    <section className="space-y-4 border-y border-border py-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex gap-1"><Button className="min-h-11" variant={!range ? "default" : "outline"} onClick={() => setRange(false)}>Um dia</Button><Button className="min-h-11" variant={range ? "default" : "outline"} onClick={() => setRange(true)}>Intervalo</Button></div>
+        <Button variant="outline" className="min-h-11 min-w-11" aria-label="Pregão anterior" disabled={!day || range} onClick={() => move(-1)}><ChevronLeft /></Button>
+        <label className="space-y-1 text-sm"><span>{range ? "Data inicial" : "Pregão"}</span><Input aria-label={range ? "Data inicial" : "Pregão"} className="h-11 w-44" type="date" value={day} onChange={e => setDay(e.target.value)} /></label>
+        <Button variant="outline" className="min-h-11 min-w-11" aria-label="Pregão seguinte" disabled={!day || range} onClick={() => move(1)}><ChevronRight /></Button>
+        {range && <label className="space-y-1 text-sm"><span>Data final</span><Input aria-label="Data final" className="h-11 w-44" type="date" value={end} onChange={e => setEnd(e.target.value)} /></label>}
+        <label className="space-y-1 text-sm"><span>Capital base (opcional)</span><Input aria-label="Capital base (opcional)" className="h-11 w-48" inputMode="decimal" value={base} onChange={e => setBase(e.target.value)} /><span className="block text-xs text-muted-foreground">vazio = usa o pico de capital exposto do dia</span></label>
       </div>
-
-      <div className="panel p-4 flex flex-wrap gap-4 items-end text-sm">
-        <label className="space-y-1"><div>Ativo</div>
-          <select className="h-9 rounded border border-border bg-background px-2" value={ativo} onChange={(e) => { setAtivo(e.target.value); setVariant(opc.data?.find((o) => o.ativo === e.target.value)?.variants[0] ?? ""); setMode(""); }}>
-            {opc.data?.map((o) => <option key={o.ativo} value={o.ativo}>{o.ativo}</option>)}
-          </select></label>
-        <label className="space-y-1"><div>Modalidade</div>
-          <select className="h-9 rounded border border-border bg-background px-2" value={variant} onChange={(e) => { setVariant(e.target.value); setMode(""); }}>
-            {variants.map((v) => <option key={v} value={v}>{v}</option>)}
-          </select></label>
-        <label className="space-y-1"><div>Robô (opcional)</div>
-          <select className="h-9 rounded border border-border bg-background px-2" value={mode} onChange={(e) => setMode(e.target.value)}>
-            <option value="">todos os robôs da modalidade</option>
-            {q.data?.modos.map((m) => <option key={m} value={m}>{modeFullLabel(m as any)}</option>)}
-          </select></label>
-        <label className="space-y-1"><div>Período (dias)</div>
-          <input className="h-9 w-20 rounded border border-border bg-background px-2" type="number" min={5} max={180} value={dias} onChange={(e) => setDias(Math.min(180, Math.max(5, Number(e.target.value) || 30)))} /></label>
-        <label className="space-y-1"><div>Base do % (R$)</div>
-          <input className="h-11 w-28 rounded border border-border bg-background px-2" inputMode="decimal" placeholder="Informe a base" value={baseTxt} onChange={(e) => setBaseTxt(e.target.value.replace(/[^\d,.]/g, ""))} /></label>
-        <label className="flex items-center gap-2 h-9"><input type="checkbox" checked={soLimpo} onChange={(e) => setSoLimpo(e.target.checked)} /> só pregão limpo</label>
-      </div>
-
-      {soLimpo && (
-        <div className="panel p-3 text-sm space-y-1">
-          <div className="text-muted-foreground">Critérios (valem onde não há classificação manual em b3_pregoes_qualidade; lá ela manda):</div>
-          {CRIT.map((c) => (
-            <label key={c.k} className="flex items-center gap-2"><input type="checkbox" checked={crit[c.k]} onChange={(e) => setCrit({ ...crit, [c.k]: e.target.checked })} /> {c.label}</label>
-          ))}
-          <div className="text-xs text-muted-foreground">Buraco de cotação vem da saúde do pregão (geral, não separada por ativo). Dia sem nenhuma avaliação conta como não limpo.</div>
-        </div>
-      )}
-
-      {q.isLoading && <div className="text-sm text-muted-foreground">Carregando…</div>}
-      {calc && q.data && (
-        <>
-          <div className="flex flex-wrap items-center gap-3 rounded-md border-2 border-primary/60 bg-primary/10 p-3 text-base font-semibold">
-            <span className="mr-auto">{calc.todos.length} pregões no período, {calc.status.filter((s) => s.limpo).length} limpos, usando {calc.usados.length}</span>
-            <button className="h-9 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-muted" onClick={() => {
-              const t = (v: number | null) => (v == null ? "—" : BRL(v));
-              const cab = [
-                "Simulação de disjuntor de perda",
-                `Ativo: ${ativo}`, `Modalidade: ${variant}`, `Robô: ${mode ? modeFullLabel(mode as any) : "todos os robôs da modalidade"}`,
-                `Período: últimos ${dias} dias${soLimpo ? " (só pregão limpo)" : " (todos os pregões)"}`,
-                `Base usada: ${BRL(calc.base)} ${baseTxt ? "(digitada)" : `(sugerida: mediana do pico de margem diário do grupo, ${q.data!.dias_com_pico} dias com medição)`}`,
-                `${calc.todos.length} pregões no período, ${calc.status.filter((s) => s.limpo).length} limpos, usando ${calc.usados.length}`,
-              ];
-              if (q.data!.sem_resultado > 0) cab.push(`${q.data!.sem_resultado} ordens sem resultado reconciliado, excluídas`);
-              if (q.data!.rows_truncated) cab.push("Leitura atingiu o teto de segurança — resultado incompleto");
-              const tab = tabular(["Cenário", "Corte (R$)", "Resultado total", "Dia mediano", "Pior dia", "Melhor dia", "Pregões", "Disparos", "Ops impedidas", "Observação"],
-                calc.cen.map((c) => [pctTxt(c.pct), c.pct == null ? "—" : BRL(c.pct * calc.base), t(c.total), t(c.mediana), t(c.pior), t(c.melhor), c.pregoes,
-                  c.pct == null ? "—" : c.disparos, c.pct == null ? "—" : c.impedidas,
-                  c.pregoes < MIN_PREGOES ? "amostra insuficiente" : calc.melhor === c ? "sugestão sobre histórico" : ""]));
-              copiarTexto(cab.join("\n") + "\n\n" + tab);
-            }}>Copiar tabela</button>
-          </div>
-          <div className="text-sm text-muted-foreground space-y-1">
-            <div>Base do percentual: {BRL(calc.base)} {baseTxt ? "(digitada)" : `(mediana do pico de margem diário do grupo, ${q.data.dias_com_pico} dias com medição)`}.</div>
-            {q.data.sem_resultado > 0 && <div className="text-warning font-medium">{q.data.sem_resultado} ordens sem resultado reconciliado, excluídas.</div>}
-            {q.data.rows_truncated && <div className="text-destructive font-medium">Leitura atingiu o teto de segurança — resultado incompleto.</div>}
-          </div>
-
-          <div className="panel overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-muted-foreground border-b border-border">
-                <th className="p-2">Cenário</th><th className="p-2">Resultado total</th><th className="p-2">Dia mediano</th><th className="p-2">Pior dia</th><th className="p-2">Melhor dia</th><th className="p-2">Pregões</th><th className="p-2">Disparos</th><th className="p-2">Ops impedidas</th><th className="p-2"></th>
-              </tr></thead>
-              <tbody>
-                {calc.cen.map((c) => {
-                  const insuf = c.pregoes < MIN_PREGOES;
-                  const top = !insuf && calc.melhor === c;
-                  return (
-                    <tr key={String(c.pct)} className={`border-b border-border/50 ${top ? "bg-success/10" : ""}`}>
-                      <td className="p-2 font-medium">{pctTxt(c.pct)}{c.pct != null && <span className="text-xs text-muted-foreground"> ({BRL(c.pct * calc.base)})</span>}</td>
-                      <td className="p-2 font-mono">{cor(c.total)}</td>
-                      <td className="p-2 font-mono font-semibold">{cor(c.mediana)}</td>
-                      <td className="p-2 font-mono">{cor(c.pior)}</td>
-                      <td className="p-2 font-mono">{cor(c.melhor)}</td>
-                      <td className="p-2">{c.pregoes}</td>
-                      <td className="p-2">{c.pct == null ? "—" : c.disparos}</td>
-                      <td className="p-2">{c.pct == null ? "—" : c.impedidas}</td>
-                      <td className="p-2 text-xs">{insuf ? <span className="text-warning font-medium">amostra insuficiente</span> : top ? <span className="text-success">sugestão sobre histórico</span> : ""}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="text-sm">
-            {!calc.melhor ? <span className="text-warning">Nenhum cenário com {MIN_PREGOES}+ pregões limpos: sem sugestão.</span>
-              : calc.indist ? <span className="text-warning">A diferença entre o melhor e o segundo melhor cenário é menor que o pior dia do período: a escolha não é distinguível pelos dados.</span>
-              : <span>Sugestão sobre histórico (não é recomendação): {pctTxt(calc.melhor.pct)}.</span>}
-          </div>
-
-          <details className="panel p-3 text-sm">
-            <summary className="cursor-pointer">Pregões e motivo de exclusão</summary>
-            <ul className="mt-2 space-y-0.5 font-mono text-xs">
-              {calc.status.map((s) => <li key={s.dia} className={s.limpo ? "" : "text-muted-foreground"}>{s.dia} — {s.limpo ? "limpo" : `excluído: ${s.motivo}`} <span className="opacity-60">({s.fonte})</span></li>)}
-            </ul>
-          </details>
-          <p className="text-xs text-muted-foreground">Fonte: {q.data.fonte_faltante} Disjuntor simulado por dia sobre o grupo escolhido: quando o acumulado pelas saídas chega a −% da base, toda operação que entra depois é impedida. Dia sem operação não existe na conta.</p>
-        </>
-      )}
-    </main>
-  );
+      <fieldset><legend className="text-sm font-medium">Modalidades</legend><div className="flex flex-wrap gap-x-4"><label className="flex min-h-11 items-center gap-2 text-sm"><Checkbox checked={!!options.data && variants.length === options.data.variants.length} onCheckedChange={v => setVariants(v ? options.data?.variants ?? [] : [])} />Todas</label>{options.data?.variants.map(v => <label key={v} className="flex min-h-11 items-center gap-2 text-sm"><Checkbox checked={variants.includes(v)} onCheckedChange={checked => setVariants(old => checked ? [...old, v] : old.filter(x => x !== v))} />{variantsLabel[v] ?? v}</label>)}</div></fieldset>
+      <fieldset><legend className="text-sm font-medium">Limiares de perda</legend><div className="flex flex-wrap gap-4">{LOSS_OPTIONS.map(p => <label key={p} className="flex min-h-11 items-center gap-2 text-sm"><Checkbox checked={losses.includes(p)} onCheckedChange={v => setLosses(old => v ? [...old,p] : old.filter(x => x !== p))} />{p}%{p === 25 ? " · valor real" : ""}</label>)}</div></fieldset>
+      <div className="flex flex-wrap gap-2"><Button className="min-h-11" disabled={!valid || query.isFetching} onClick={() => apply()}>Consultar</Button><Button variant="outline" className="min-h-11" disabled={!selection || query.isFetching} onClick={() => query.refetch()}><RefreshCw className="size-4" />Atualizar</Button><Button variant="outline" className="min-h-11" disabled={!query.data} onClick={copy}><Copy className="size-4" />Copiar tabela inteira</Button></div>
+    </section>
+    <p className="text-sm text-muted-foreground">{LIMITATION}</p>
+    {(options.isError || query.isError) && <p role="alert" className="text-destructive">{query.error?.message ?? options.error?.message}</p>}
+    {(options.isPending || query.isFetching) && <p role="status">Consultando pregões…</p>}
+    {query.data && <><h2 className="font-semibold">WIN · {selection?.start} {range ? `a ${selection?.end}` : ""}</h2><p className="text-sm text-muted-foreground">Piso da devolução de pico de lucro: {value(query.data.floor.piso_brl)} · {query.data.floor.pct * 100}% do stop global ({value(query.data.floor.stop_global_brl)})</p>
+    {!rows.some(r => r.ordens_no_dia > 0) && <p>sem ordens neste período</p>}
+    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-border text-left">{headers.map(h => <th key={h} className="p-3 whitespace-nowrap">{h}</th>)}</tr></thead><tbody>{rows.map(r => <tr key={`${r.dia}|${r.perda_pct}`} className="border-b border-border">{cells(r).map((v,i) => <td key={i} className={`p-3 ${i === 16 ? "min-w-72" : "whitespace-nowrap"} ${i === 8 || i === 9 ? Number(i === 8 ? r.resultado_com_disjuntor_brl : r.resultado_sem_disjuntor_brl) < 0 ? "text-destructive" : "text-success" : ""}`}>{!r.ordens_no_dia && i === 16 ? "sem ordens neste pregão" : v}</td>)}</tr>)}</tbody><tfoot>{totals.map(t => <tr key={t.pct} className="border-t-2 border-border font-semibold"><td className="p-3">TOTAL · {t.pregoes} pregões</td><td className="p-3">{Math.round(t.pct*100)}%</td><td colSpan={6} className="p-3">Base própria de cada pregão · não somada</td><td className="p-3 whitespace-nowrap">{value(t.com)}</td><td className="p-3 whitespace-nowrap">{value(t.sem)}</td><td className="p-3 whitespace-nowrap">{value(t.diferenca)}</td><td className="p-3">{t.antes}</td><td className="p-3">{t.evitadas}</td><td className="p-3">{t.ordens}</td><td colSpan={3} /></tr>)}</tfoot></table></div></>}
+  </main>;
 }
