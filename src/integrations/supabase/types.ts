@@ -8579,7 +8579,7 @@ export type Database = {
         }[]
       }
       b3_export_raiz: { Args: { p: string }; Returns: string }
-      b3_ficha_do_dia: {
+      b3_ficha_dia_ordens: {
         Args: {
           p_dia?: string
           p_symbols?: string[]
@@ -8611,7 +8611,7 @@ export type Database = {
           votos: number
         }[]
       }
-      b3_ficha_do_dia_resumo: {
+      b3_ficha_dia_resumo: {
         Args: {
           p_dia?: string
           p_symbols?: string[]
