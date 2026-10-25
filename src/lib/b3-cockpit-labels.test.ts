@@ -11,10 +11,11 @@ describe("presentation evidence rules", () => {
     expect(allConfirmed({ entradas: 3, confirmadas: 2 })).toBe(false);
     expect(allConfirmed({ entradas: 0, confirmadas: 0 })).toBe(false);
   });
-  it("WIN exposure uses the asset row with 34 contracts and 6851, never modality peaks", () => {
+  it("WIN exposure uses the asset row with 34 contracts and raw margin 5270, never modality peaks", () => {
     const base = { trade_date: "2026-10-20", raiz: "WIN", cenario: "sem freio", pico_margem_brl: 5270, pico_margem_com_folga_brl: 6851, pico_contratos: 34, hora_do_pico_brt: "11:05:24" };
     const result = exposureForAsset([{ ...base, variant: "(ativo)" }, { ...base, variant: "range", pico_contratos: 100 }], base.trade_date, "WIN", base.cenario);
     expect(result?.pico_contratos).toBe(34);
+    expect(result?.pico_margem_brl).toBe(5270);
     expect(result?.pico_margem_com_folga_brl).toBe(6851);
     expect(result?.hora_do_pico_brt).toBe("11:05:24");
   });

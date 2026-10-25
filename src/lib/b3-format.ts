@@ -108,7 +108,7 @@ export const sombraLinhas = (s: SombraDia) => {
 // Com quatro freios em sombra, saber que "o freio teria barrado" não basta:
 // é preciso saber QUAL, senão não dá para julgar um contra o outro.
 export const FREIO_LABEL: Record<string, string> = {
-  pico: "Freio de pico",
+  pico: "Devolução de pico de lucro no dia",
   pos_meta: "Pós-meta",
   stop_diario: "Stop diário",
   drawdown: "Drawdown máximo",

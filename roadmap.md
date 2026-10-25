@@ -1,15 +1,15 @@
 # Fila de trabalho
 
 ## Em andamento
-- [ ] Pedido 25/10 (2º): nomes dos picos/margem crua, simulação por dia/intervalo, selo WIN somente leitura, piso percentual atual e conferência 23/10; publicar com entregas anteriores autorizadas.
+- [x] Pedido 25/10 (2º): nomes dos picos/margem crua, simulação por dia/intervalo, selo WIN somente leitura e piso percentual atual; três referências 23/10 conferidas pela tela, cópia e intervalo/celular verificados, 45 testes passaram. Publicação solicitada em 25/10 às 12:34 UTC; conclusão depende do serviço.
 - [x] Cockpit 25/10: total completo, hierarquia por data, encerrado/max diário, cópias/recolhimento/celular e instrumentação conferidos; relatório docs/cockpit-25-10-medicao.md. Sem alteração SQL nem otimização; leitura de efeito atinge 1.000 e exposição ampla falha, sinalizadas.
-- [ ] Publicar cockpit 25/10 + rótulos 21/10 + emenda 20/10 — aguardando decisão do dono sobre os 13 alertas críticos preexistentes apresentados antes da publicação.
+- [ ] Confirmar publicação solicitada do cockpit 25/10 + rótulos 21/10 + emenda 20/10 + pedido 25/10 (2º) — depende da conclusão do serviço de publicação; dono autorizou, 13 alertas críticos preexistentes permanecem sem alteração de permissões.
 - [x] Ficha do Dia 23/10: tabela e resumo das duas funções do banco, geometria genérica, dois botões de copiar; não publicado (pregão aberto).
 - [x] Cards e rótulos 21/10: cópia completa, apelidos/SC, acionamento por ordens e frases, exposição da RPC, legenda sombra/confirmação; 15 testes e consulta autenticada/cópia/celular verificados; motor intacto, não publicado. BI e sugestão de base suspensos sem substitutos.
 - [x] Leitura indireta em b3_cores_dos_robos resolvida pelo dono no banco: rank_day agora vem de ordens fechadas.
 - [x] Emenda Testeira v2 20/10: freio da RPC cinco pregões, contagem paginada das ordens marcadas, “não acionado” nos dois níveis e total; placar diário removido desta tela, pico/motor preservados; 9 testes OK, compilação OK, consulta autenticada conferida em computador/celular (WIN Indicador e total sem acionamento; faixa 19/10 +1260); não publicado.
 - [x] Portões PA 19/10 noite: quatro colunas nullable/defaults conferidos em 776 configurações sem diferenças; fallback e chave só nos três portões; valores no details; 18 testes OK e 12.000 comparações do classificador anterior/novo idênticas exceto evidência nova; compilação OK, sem tique real.
-- [ ] Publicar portões PA 19/10 noite: publicação solicitada/agendada; conclusão depende do serviço de publicação. Permanecem 13 alertas críticos preexistentes, não bloqueantes neste workspace.
+- [ ] Confirmar publicação dos portões PA 19/10 noite incluídos na versão atual: depende da conclusão do serviço de publicação. Permanecem 13 alertas críticos preexistentes, não bloqueantes neste workspace.
 - [x] Evidência 19/10: entrada_geometria nullable sem default; details integral no insert instrumentado de abertura; 10 testes OK, coluna conferida, compilação OK; sem executar tique nem publicar. Retry legado sem instrumentação preservado para não alterar abertura.
 - [x] Testeiras 14/10: controles independentes, picos diários e preço intradiário; compilação OK, 5 testes e controles autenticados em celular/computador; não publicado.
 - [x] A2: duas leituras paginadas; faixa leu 8.165 ordens e WIN conferiu as cinco referências; 30 dias leu 13.180 ordens; demais limites apenas listados.

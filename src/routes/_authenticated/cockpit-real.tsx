@@ -21,6 +21,8 @@ import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval"
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { useRealAlerts } from "@/hooks/use-real-alerts";
 import { DisjuntorManualPanel } from "@/components/b3/DisjuntorManualPanel";
+import { Copy } from "lucide-react";
+import { copiarTexto } from "@/lib/b3-copiar";
 import { CarteiraRealPanel } from "@/components/b3/CarteiraRealPanel";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
@@ -209,7 +211,7 @@ function Tile({ label, value, sub, cls }: { label: string; value: string; sub?: 
   );
 }
 
-// ─────────── Freio de pico da CONTA, ao vivo ───────────
+// ─────────── Devolução de pico de lucro no dia da CONTA, ao vivo ───────────
 // Mostra ANTES de virar prejuízo: pico do dia, resultado agora, quanto já foi
 // devolvido (R$ e %) e quanto ainda falta para o freio armar. A configuração
 // aqui é SÓ da camada da conta — não toca em nenhum parâmetro de robô.
@@ -231,7 +233,7 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
         peak_giveback_pct: Math.min(95, Math.max(5, Number(pct || (peak?.peak_giveback_pct ?? 0.35) * 100))) / 100,
         peak_min_pct_of_global: floorPctNum / 100,
       } }),
-    onSuccess: () => { toast.success("Freio de pico da conta atualizado"); onSaved(); },
+    onSuccess: () => { toast.success("Devolução de pico de lucro no dia atualizada"); onSaved(); },
     onError: (e: any) => toast.error(e?.message ?? "falha ao salvar"),
   });
 
@@ -248,29 +250,29 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
         <div>
           <h2 className="flex items-center gap-2 text-sm font-black tracking-tight">
             <TrendingDown className="size-4" />
-            Freio de pico da CONTA {armed ? "— ARMADO" : "— vigiando"}
+            Devolução de pico de lucro no dia da CONTA {armed ? "— ARMADO" : "— vigiando"}
           </h2>
           <p className="text-[11px] leading-snug text-muted-foreground">
             {armed
-              ? `Armou ${peak.armed_at ? `às ${hhmm(peak.armed_at)}` : ""} com pico de ${BRL(peak.armed_peak_brl ?? peak.peak_brl)}. Novas ABERTURAS reais bloqueadas até o fim do pregão. Fechamento nunca é bloqueado e a simulação segue coletando.`
-              : `Camada acima do freio por robô: olha o total da conta (realizado + aberto a mercado). Só arma a partir de um pico de ${BRL(peak.peak_min_brl)} — ${(floorPctCfg * 100).toFixed(0)}% do stop global de ${BRL(globalStop)}, que acompanha sozinho quantos robôs estão ligados.`}
+              ? `Armou ${peak.armed_at ? `às ${hhmm(peak.armed_at)}` : ""} com pico de lucro no dia de ${BRL(peak.armed_peak_brl ?? peak.peak_brl)}. Novas ABERTURAS reais bloqueadas até o fim do pregão. Fechamento nunca é bloqueado e a simulação segue coletando.`
+              : `Camada acima do freio por robô: olha o total da conta (realizado + aberto a mercado). Só arma a partir de um pico de lucro no dia de ${BRL(peak.peak_min_brl)} — ${(floorPctCfg * 100).toFixed(0)}% do stop global de ${BRL(globalStop)}, que acompanha sozinho quantos robôs estão ligados.`}
           </p>
         </div>
         <div className="flex items-end gap-2">
           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Devolução máx. (%)
             <Input
-              className="mt-0.5 h-8 w-20"
+              className="mt-0.5 h-11 w-20"
               inputMode="decimal"
               value={pct === "" ? String(Math.round(pctCfg * 100)) : pct}
               onChange={(e) => setPct(e.target.value)}
             />
           </label>
           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Pico mínimo (% do stop global)
+            Piso do pico de lucro no dia (% do stop global)
             <span className="mt-0.5 flex items-center gap-2">
               <Input
-                className="h-8 w-20"
+                className="h-11 w-20"
                 inputMode="decimal"
                 value={floorPct === "" ? String(Math.round(floorPctCfg * 100)) : floorPct}
                 onChange={(e) => setFloorPct(e.target.value)}
@@ -280,20 +282,21 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
               </span>
             </span>
           </label>
-          <Button size="sm" variant="outline" disabled={mSave.isPending} onClick={() => mSave.mutate()}>Salvar</Button>
+          <Button size="sm" className="min-h-11" variant="outline" disabled={mSave.isPending} onClick={() => mSave.mutate()}>Salvar</Button>
+          <Button variant="outline" className="min-h-11 min-w-11" aria-label="Copiar piso e devolução de pico de lucro" onClick={() => copiarTexto(`WIN — Pico de lucro no dia\n${Object.entries(peak).map(([k,v]) => `${k}: ${v ?? "sem registro"}`).join("\n")}\nPiso recalculado: ${BRL(peak.peak_min_brl)} · ${floorPctCfg * 100}% do stop global ${BRL(globalStop)}`)}><Copy className="size-4" /></Button>
         </div>
       </div>
 
 
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-        <Tile label="Pico do dia" value={SIGNED_BRL(peak.peak_brl ?? 0)} sub={peak.peak_at ? `às ${hhmm(peak.peak_at)}` : "—"} cls="text-emerald-300" />
+        <Tile label="Pico de lucro no dia" value={SIGNED_BRL(peak.peak_brl ?? 0)} sub={peak.peak_at ? `às ${hhmm(peak.peak_at)}` : "—"} cls="text-emerald-300" />
         <Tile label="Resultado agora" value={SIGNED_BRL(peak.result_brl ?? 0)} cls={money(peak.result_brl)} />
-        <Tile label="Já devolvido" value={BRL(peak.given_back_brl ?? 0)} sub={peak.given_back_pct == null ? "—" : `${(Number(peak.given_back_pct) * 100).toFixed(1)}% do pico`} cls="text-rose-300" />
-        <Tile label={`Tolerado (${(pctCfg * 100).toFixed(0)}%)`} value={BRL(peak.allowed_giveback_brl ?? 0)} sub={peak.trigger_at_brl == null ? "pico abaixo do piso" : `arma se cair de ${BRL(peak.trigger_at_brl)}`} />
+        <Tile label="Já devolvido" value={BRL(peak.given_back_brl ?? 0)} sub={peak.given_back_pct == null ? "—" : `${(Number(peak.given_back_pct) * 100).toFixed(1)}% do pico de lucro no dia`} cls="text-rose-300" />
+        <Tile label={`Tolerado (${(pctCfg * 100).toFixed(0)}%)`} value={BRL(peak.allowed_giveback_brl ?? 0)} sub={peak.trigger_at_brl == null ? "pico de lucro no dia abaixo do piso" : `arma se cair de ${BRL(peak.trigger_at_brl)}`} />
         <Tile
           label="Falta para armar"
           value={armed ? "ARMADO" : peak.remaining_brl == null ? "—" : BRL(peak.remaining_brl)}
-          sub={armed ? "aberturas reais bloqueadas" : peak.eligible ? "de devolução restante" : "pico ainda é ruído"}
+          sub={armed ? "aberturas reais bloqueadas" : peak.eligible ? "de devolução restante" : "pico de lucro no dia ainda é ruído"}
           cls={armed ? "text-rose-300" : "text-amber-200"}
         />
       </div>
@@ -349,13 +352,13 @@ function DailyCircuitPanel({ circuit, onSaved }: { circuit: any | null; onSaved:
         <div className="flex items-end gap-2">
           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Meta de ganho (%)
-            <Input className="mt-0.5 h-8 w-20" inputMode="decimal"
+            <Input className="mt-0.5 h-11 w-20" inputMode="decimal"
               value={gain === "" ? String(Math.round(gainCfg * 100)) : gain}
               onChange={(e) => setGain(e.target.value)} />
           </label>
           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Teto de perda (%)
-            <Input className="mt-0.5 h-8 w-20" inputMode="decimal"
+            <Input className="mt-0.5 h-11 w-20" inputMode="decimal"
               value={loss === "" ? String(Math.round(lossCfg * 100)) : loss}
               onChange={(e) => setLoss(e.target.value)} />
           </label>
