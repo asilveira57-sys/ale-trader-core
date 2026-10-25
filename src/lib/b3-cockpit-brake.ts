@@ -7,6 +7,10 @@ export const brakeNotActivated = (barrados: number | null | undefined) => barrad
 export function totalBlocked(days: { barrados: number | null }[]) {
   return days.some((d) => d.barrados == null) ? null : days.reduce((s, d) => s + (d.barrados ?? 0), 0);
 }
+export function brakeTableTotal(days: { com: number | null; sem: number | null; ordens: number; barrados: number | null }[]) {
+  const com = days.reduce((n, d) => n + (d.com ?? 0), 0), sem = days.reduce((n, d) => n + (d.sem ?? 0), 0);
+  return { com, sem, efeito: com - sem, barrados: totalBlocked(days), ordens: days.reduce((n, d) => n + d.ordens, 0) };
+}
 export function cockpitBrakeEffect(assets: { symbol: string; days: BrakeDay[]; by_variant: { variant: string; days: BrakeDay[] }[] }[], dates: string[]) {
   const days = dates.map((date) => {
     const rows = assets.flatMap((a) => a.days.filter((d) => d.date === date));

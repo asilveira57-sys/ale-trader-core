@@ -41,6 +41,10 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       .select("id, symbol, variant")
       .eq("user_id", userId);
     timings.push({ chamada: "execucoes", ms: Math.round(performance.now() - clock), linhas: runs?.length ?? 0 });
+    clock = performance.now();
+    const { data: modesCatalog, error: catalogError } = await supabase.from("b3_simulation_modes").select("simulation_run_id,mode").eq("user_id", userId);
+    if (catalogError) throw new Error("Não foi possível ler o catálogo dos robôs");
+    timings.push({ chamada: "catalogo", ms: Math.round(performance.now() - clock), linhas: modesCatalog?.length ?? 0 });
     const runById = new Map<string, { root: string; variant: string }>();
     for (const r of (runs ?? []) as any[]) {
       runById.set(String(r.id), {
@@ -139,6 +143,11 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       rows_limit: limit,
       rows_read: rows.length,
       timings,
+      catalog: (modesCatalog ?? []).flatMap((c) => {
+        const run = runById.get(c.simulation_run_id);
+        if (!run || (symbols && !symbols.has(run.root)) || (variants && !variants.has(run.variant)) || (modes && !modes.has(c.mode))) return [];
+        return [{ run_id: c.simulation_run_id, symbol: run.root, variant: run.variant, mode: c.mode }];
+      }),
       rows_truncated: rowsTruncated,
       no_movement: sem.ops === 0,
       ...sem,

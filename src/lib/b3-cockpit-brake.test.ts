@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { brakeNotActivated, totalBlocked, cockpitBrakeEffect } from "./b3-cockpit-brake";
+import { brakeNotActivated, totalBlocked, cockpitBrakeEffect, brakeTableTotal } from "./b3-cockpit-brake";
+it("totals WIN five sessions with all five requested values", () => {
+  expect(brakeTableTotal([{ com: -3944, sem: -5344, barrados: 223, ordens: 545 }])).toEqual({ com: -3944, sem: -5344, efeito: 1400, barrados: 223, ordens: 545 });
+});
 
 describe("cockpit brake source and activation", () => {
   it("uses marked-order counts, not equal monetary pairs, to determine activation", () => {
