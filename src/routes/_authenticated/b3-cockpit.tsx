@@ -795,7 +795,7 @@ function CockpitPage() {
 
   const readLabels = useServerFn(getCockpitLabelEvidence);
   const labelsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "label-evidence", filterKey], queryFn: () => readLabels({ data: filterArgs }), enabled: vivo, staleTime: Infinity, gcTime: 60_000 });
-  const labelEvidence = labelsQ.data?.brake ?? [];
+  const labelEvidence: BrakeEvidence[] = vivo ? labelsQ.data?.brake ?? [] : (periodPeaksQ.data?.brake ?? []).filter((r: any) => !filterArgs.modes || filterArgs.modes.includes(r.mode));
   const currentDate = q.data?.session_date ?? peakDates[0];
   const filtroCliente = buildCockpitFilter(filterArgs);
   const all: any[] = (vivo ? ((q.data?.cards ?? []) as any[]) : periodCards(hd?.catalog ?? [], hd?.sem_freio?.robots ?? [])).filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode)).map((c) => ({ ...c, brake_evidence: labelEvidence.find((r) => r.trade_date === currentDate && r.raiz === rootSymbol(c.symbol) && r.variant === c.variant && r.mode === c.mode) }));
@@ -1024,7 +1024,7 @@ function CockpitPage() {
         {hq.isPending ? <p>Carregando o período…</p> : hq.isError ? <p role="alert">Não foi possível ler o período. Use Atualizar.</p> : hd?.no_movement ? <p className="py-6 text-center text-muted-foreground">sem ordens neste período</p> : <>
           {hd?.rows_truncated && <TruncatedNotice limit={hd.rows_limit} />}
           <Scoreboard filterArgs={filterArgs} filterKey={filterKey} periodData={hd} periodPeaks={periodPeaksQ.data} />
-          <FreioEfeitoQuadro encerrado data={historicalFive(hd) as any} pending={hq.isPending} error={hq.isError} />
+          <FreioEfeitoQuadro encerrado data={historicalFive(hd) as any} pending={hq.isPending} error={hq.isError} evidence={labelEvidence} />
           {periodPeaksQ.isError && <p role="alert">Picos: sem registro — não foi possível ler.</p>}
           {periodPeaksQ.data?.possible_truncation && <p className="text-warning">Leitura de picos atingiu 1.000 linhas; dados podem estar incompletos.</p>}
         </>}

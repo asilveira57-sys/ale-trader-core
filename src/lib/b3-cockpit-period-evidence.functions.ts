@@ -16,6 +16,6 @@ export const getPeriodPeakEvidence = createServerFn({ method: "GET" })
       if (result.error) throw new Error("Não foi possível ler os picos do período");
       return (result.data ?? []).filter((r: any) => String(r.trade_date).slice(0, 10) >= period.start && String(r.trade_date).slice(0, 10) <= period.end);
     };
-    const [realized, exposure] = await Promise.all([read("b3_pico_realizado_dia"), read("b3_pico_exposicao_dia", { p_folga: 1.30 })]);
-    return { realized, exposure, timings, possible_truncation: timings.some((t) => t.linhas >= 1000) };
+    const [realized, exposure, brake] = await Promise.all([read("b3_pico_realizado_dia"), read("b3_pico_exposicao_dia", { p_folga: 1.30 }), read("b3_efeito_freio_dia")]);
+    return { realized, exposure, brake, timings, possible_truncation: timings.some((t) => t.linhas >= 1000) };
   });
