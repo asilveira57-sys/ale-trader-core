@@ -99,14 +99,16 @@ export async function refreshAccountPeak(
   const sessionDate = saoPauloDate(now);
   const nowIso = now.toISOString();
 
-  const [{ data: stateRow }, { data: peakRow }] = await Promise.all([
+  const { syncPeakFloorFromGlobalStop } = await import("./b3-real-stop.server");
+  const [{ data: stateRow }, { data: peakRow }, floor] = await Promise.all([
     supabase.from("b3_real_execution_state")
-      .select("peak_giveback_pct, peak_min_brl").eq("user_id", userId).maybeSingle(),
+      .select("peak_giveback_pct").eq("user_id", userId).maybeSingle(),
     supabase.from("b3_real_account_peak")
       .select("*").eq("user_id", userId).eq("session_date", sessionDate).maybeSingle(),
+    syncPeakFloorFromGlobalStop(supabase, userId),
   ]);
 
-  const config = normalizeConfig(stateRow);
+  const config = normalizeConfig({ ...stateRow, peak_min_brl: floor.peak_min_brl });
   const prevPeak = Number((peakRow as any)?.peak_brl ?? 0);
   const alreadyArmed = (peakRow as any)?.armed === true;
 
@@ -192,13 +194,15 @@ export async function readAccountPeak(
   now = new Date(),
 ): Promise<AccountPeakStatus> {
   const sessionDate = saoPauloDate(now);
-  const [{ data: stateRow }, { data: peakRow }] = await Promise.all([
+  const { syncPeakFloorFromGlobalStop } = await import("./b3-real-stop.server");
+  const [{ data: stateRow }, { data: peakRow }, floor] = await Promise.all([
     supabase.from("b3_real_execution_state")
-      .select("peak_giveback_pct, peak_min_brl").eq("user_id", userId).maybeSingle(),
+      .select("peak_giveback_pct").eq("user_id", userId).maybeSingle(),
     supabase.from("b3_real_account_peak")
       .select("*").eq("user_id", userId).eq("session_date", sessionDate).maybeSingle(),
+    syncPeakFloorFromGlobalStop(supabase, userId),
   ]);
-  const config = normalizeConfig(stateRow);
+  const config = normalizeConfig({ ...stateRow, peak_min_brl: floor.peak_min_brl });
   const armed = (peakRow as any)?.armed === true;
   const ev = evaluateAccountPeak({
     peak_brl: Number((peakRow as any)?.peak_brl ?? 0),

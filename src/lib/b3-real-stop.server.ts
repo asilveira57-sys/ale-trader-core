@@ -5,6 +5,7 @@
 // gravado em b3_simulation_orders.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { rootSymbol } from "@/lib/b3-format";
+import { derivedPeakFloor } from "./b3-disjuntor-view";
 import { buildRealLedger, loadAssetProfiles, saoPauloDate, type RealCommandRow } from "@/lib/b3-real-cockpit.server";
 import {
   computeGlobalRealStop, convertSimBrlParamsToReal, effectiveRealDailyLossBrl,
@@ -43,7 +44,7 @@ const key = (s: string, v: string, m: string) => `${rootSymbol(String(s))}|${v}|
  * robô simulado (stop em pontos e contratos simulados) e o valor do ponto do
  * ativo. Daqui saem TODOS os números reais — nenhum fica preso em código.
  */
-export async function loadRealSizing(supabase: SupabaseClient, userId: string): Promise<RealRobotSizing[]> {
+export async function loadRealSizing(supabase: SupabaseClient, userId: string, readOnly = false): Promise<RealRobotSizing[]> {
   const [authRes, runsRes, profileFor] = await Promise.all([
     supabase
       .from("b3_prd_authorizations")
@@ -98,7 +99,7 @@ export async function loadRealSizing(supabase: SupabaseClient, userId: string): 
     .filter((a) => a.enabled === true)
     .filter((a) => !cfgByKey.has(key(String(a.symbol), String(a.variant ?? "indicador"), String(a.mode))))
     .map((a) => `${rootSymbol(String(a.symbol))}/${a.variant ?? "indicador"}/${a.mode}`);
-  if (orphans.length) {
+  if (orphans.length && !readOnly) {
     try {
       await (supabase as any).from("system_logs").insert({
         event_type: "b3_real_sizing_sem_execucao_vigente",
@@ -245,9 +246,8 @@ export async function loadRealDayResult(supabase: SupabaseClient, userId: string
 // O piso absoluto era muito para 1 robô e pouco para 7. O stop global já é a
 // soma do limite EFETIVO de cada robô ligado, então ele acompanha sozinho a
 // quantidade de robôs, de contratos e o tamanho do stop de cada um.
-// A coluna em R$ (peak_min_brl) continua sendo a fonte que o portão lê — aqui
-// só a mantemos em sincronia com o percentual. NÃO muda a devolução (35%), nem
-// a lógica do freio, nem o cálculo do stop global.
+// Piso calculado na leitura: o absoluto gravado não é fonte do portão.
+// NÃO muda devolução, percentual do piso ou cálculo do stop global.
 export const DEFAULT_PEAK_MIN_PCT_OF_GLOBAL = 0.5;
 
 export interface PeakFloorSync {
@@ -272,39 +272,35 @@ export async function syncPeakFloorFromGlobalStop(
   opts?: { pctOverride?: number },
 ): Promise<PeakFloorSync> {
   const [sizing, stateRes] = await Promise.all([
-    loadRealSizing(supabase, userId),
+    loadRealSizing(supabase, userId, true),
     supabase
       .from("b3_real_execution_state")
-      .select("peak_min_brl, peak_min_pct_of_global")
+      .select("peak_min_pct_of_global")
       .eq("user_id", userId)
       .maybeSingle(),
   ]);
 
   const row = (stateRes.data ?? null) as any;
-  const globalStop = globalStopFromSizing(sizing).total_brl;
+  if (stateRes.error) throw new Error("Não foi possível ler o percentual do piso.");
+  const globalStop = globalStopFromSizing(sizing.filter((r) => r.symbol === "WIN")).total_brl;
 
   const stored = row?.peak_min_pct_of_global == null ? null : Number(row.peak_min_pct_of_global);
-  // Linha antiga sem percentual: deriva dividindo os R$ gravados pelo stop
-  // global do momento — sem inventar número novo.
-  const derived = globalStop > 0 && row?.peak_min_brl != null ? Number(row.peak_min_brl) / globalStop : null;
   const pct = opts?.pctOverride != null && Number.isFinite(opts.pctOverride)
     ? Math.max(0, Math.min(3, Number(opts.pctOverride)))
-    : stored != null && Number.isFinite(stored) && stored > 0
+    : stored != null && Number.isFinite(stored) && stored >= 0
       ? stored
-      : derived != null && Number.isFinite(derived) && derived > 0
-        ? Math.round(derived * 1000) / 1000
-        : DEFAULT_PEAK_MIN_PCT_OF_GLOBAL;
+      : DEFAULT_PEAK_MIN_PCT_OF_GLOBAL;
 
-  const brl = Math.round(pct * globalStop * 100) / 100;
-  const prevBrl = row?.peak_min_brl == null ? null : Number(row.peak_min_brl);
-  const needs = prevBrl == null || Math.abs(prevBrl - brl) >= 0.01 || stored == null || stored !== pct;
+  const brl = derivedPeakFloor(pct, globalStop).peak_min_brl;
+  const needs = opts?.pctOverride != null && stored !== pct;
 
   if (needs) {
     try {
-      await (supabase as any).from("b3_real_execution_state").upsert(
-        { user_id: userId, peak_min_pct_of_global: pct, peak_min_brl: brl, updated_at: new Date().toISOString() },
+      const { error } = await (supabase as any).from("b3_real_execution_state").upsert(
+        { user_id: userId, peak_min_pct_of_global: pct, updated_at: new Date().toISOString() },
         { onConflict: "user_id" },
       );
+      if (error) throw new Error(error.message);
     } catch (e) {
       console.error("[piso-pico] falha ao sincronizar piso do pico:", (e as Error).message);
     }
