@@ -285,12 +285,12 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], 
         ))}
         <PregaoCard empty={encerrado && totalRows.every((d) => d.ordens === 0)} label={encerrado ? "Total · período" : "Total · 5 pregões"} com={totalCom} sem={totalSem} barrados={totalBarrados} frase={aggregateBrakePhrase(totalCom, totalSem, totalBarrados)} highlight />
         <div className="min-w-[150px] rounded bg-background/90 px-2 py-1.5 text-left text-foreground">
-          <p className="mb-1 font-black">Pico realizado · {encerrado ? "período" : "5 pregões"}</p>
-          <p className="font-bold">Maior pico <span className="font-mono text-success">{summary.max == null ? "sem dados" : BRL(summary.max)}</span></p>
+          <p className="mb-1 font-black">Pico de lucro no dia · {encerrado ? "período" : "5 pregões"}</p>
+          <p className="font-bold">Maior pico de lucro no dia <span className={`font-mono ${moneyColor(summary.max ?? 0)}`}>{summary.max == null ? "sem dados" : BRL(summary.max)}</span></p>
           {maxDay && <p className="text-muted-foreground">{shortDate(maxDay.trade_date)}{maxDay.hora_do_pico_brt ? ` às ${maxDay.hora_do_pico_brt.slice(0, 5)}` : ""} · devolveu {BRL(Number(maxDay.devolveu_brl ?? 0))}</p>}
-          <p className="font-bold">Média dos picos <span className="font-mono text-success">{summary.mean == null ? "sem dados" : BRL(summary.mean)}</span></p>
+          <p className="font-bold">Média dos picos de lucro no dia <span className={`font-mono ${moneyColor(summary.mean ?? 0)}`}>{summary.mean == null ? "sem dados" : BRL(summary.mean)}</span></p>
           {summary.count > 0 && summary.count < 5 && <p className="text-muted-foreground">média de {summary.count} pregões</p>}
-          <p className="mt-1 max-w-[200px] text-[9px] text-muted-foreground">Só ordens fechadas, sem lucro flutuante. Durante o pregão o pico ao vivo é maior.{modesIgnored ? " Cobre todos os modos." : ""}</p>
+          <p className="mt-1 max-w-[200px] text-[9px] text-muted-foreground">Só ordens fechadas, sem lucro flutuante; pode ser negativo.{modesIgnored ? " Cobre todos os modos." : ""}</p>
         </div>
       </div>
     </div>

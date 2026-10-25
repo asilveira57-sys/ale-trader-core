@@ -21,6 +21,8 @@ import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval"
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { useRealAlerts } from "@/hooks/use-real-alerts";
 import { DisjuntorManualPanel } from "@/components/b3/DisjuntorManualPanel";
+import { Copy } from "lucide-react";
+import { copiarTexto } from "@/lib/b3-copiar";
 import { CarteiraRealPanel } from "@/components/b3/CarteiraRealPanel";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
@@ -280,7 +282,8 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
               </span>
             </span>
           </label>
-          <Button size="sm" variant="outline" disabled={mSave.isPending} onClick={() => mSave.mutate()}>Salvar</Button>
+          <Button size="sm" className="min-h-11" variant="outline" disabled={mSave.isPending} onClick={() => mSave.mutate()}>Salvar</Button>
+          <Button variant="outline" className="min-h-11 min-w-11" aria-label="Copiar piso e devolução de pico de lucro" onClick={() => copiarTexto(`WIN — Pico de lucro no dia\n${Object.entries(peak).map(([k,v]) => `${k}: ${v ?? "sem registro"}`).join("\n")}\nPiso recalculado: ${BRL(peak.peak_min_brl)} · ${floorPctCfg * 100}% do stop global ${BRL(globalStop)}`)}><Copy className="size-4" /></Button>
         </div>
       </div>
 
@@ -288,7 +291,7 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         <Tile label="Pico de lucro no dia" value={SIGNED_BRL(peak.peak_brl ?? 0)} sub={peak.peak_at ? `às ${hhmm(peak.peak_at)}` : "—"} cls="text-emerald-300" />
         <Tile label="Resultado agora" value={SIGNED_BRL(peak.result_brl ?? 0)} cls={money(peak.result_brl)} />
-        <Tile label="Já devolvido" value={BRL(peak.given_back_brl ?? 0)} sub={peak.given_back_pct == null ? "—" : `${(Number(peak.given_back_pct) * 100).toFixed(1)}% do pico`} cls="text-rose-300" />
+        <Tile label="Já devolvido" value={BRL(peak.given_back_brl ?? 0)} sub={peak.given_back_pct == null ? "—" : `${(Number(peak.given_back_pct) * 100).toFixed(1)}% do pico de lucro no dia`} cls="text-rose-300" />
         <Tile label={`Tolerado (${(pctCfg * 100).toFixed(0)}%)`} value={BRL(peak.allowed_giveback_brl ?? 0)} sub={peak.trigger_at_brl == null ? "pico de lucro no dia abaixo do piso" : `arma se cair de ${BRL(peak.trigger_at_brl)}`} />
         <Tile
           label="Falta para armar"

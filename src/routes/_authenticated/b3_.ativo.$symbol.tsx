@@ -234,11 +234,11 @@ function AssetDashboardPage() {
           <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Reading label="Ganhos" value={SIGNED_BRL(Number(d.ganhos_brl ?? 0))} color="text-emerald-400" />
             <Reading label="Perdas" value={BRL(Number(d.perdas_brl ?? 0))} color="text-rose-400" />
-            <Reading
+            {root === "WIN" && <Reading
               label={multiDay ? "Maior pico de capital exposto" : "Pico de capital exposto"}
-              value={BRL(Number(d.pico_exposicao_brl ?? 0))}
+              value={d.pico_exposicao_brl == null ? "sem registro" : BRL(Number(d.pico_exposicao_brl))}
               sub={`${d.pico_exposicao_data && multiDay ? dmy(d.pico_exposicao_data) + " " : ""}${d.pico_exposicao_hora ?? "—"} · ${NUM(Number(d.pico_contratos ?? 0))} contratos`}
-            />
+            />}
             <Reading
               label="Operações"
               value={NUM(Number(d.ops_total ?? 0))}

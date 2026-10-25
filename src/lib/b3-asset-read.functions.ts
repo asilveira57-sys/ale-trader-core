@@ -99,7 +99,7 @@ export const getB3AssetDashboardOrders = createServerFn({ method: "POST" })
       perdas_brl: 0,
       ops_total: 0,
       ops_lucro: 0,
-      pico_exposicao_brl: 0,
+      pico_exposicao_brl: null as number | null,
       pico_exposicao_hora: null as string | null,
       pico_exposicao_data: null as string | null,
       pico_contratos: 0,
@@ -244,17 +244,18 @@ export const getB3AssetDashboardOrders = createServerFn({ method: "POST" })
     }
 
 
-    // Pico de capital exposto: margem crua simultânea por linha do tempo de eventos.
-    events.sort((a, b) => a.t - b.t || b.dq - a.dq);
-    let accM = 0, accQ = 0, picoM = 0, picoQ = 0, picoT: number | null = null;
-    for (const e of events) {
-      accM += e.dm; accQ += e.dq;
-      if (accM > picoM) { picoM = accM; picoT = e.t; picoQ = Math.max(picoQ, accQ); }
-      if (accQ > picoQ) picoQ = accQ;
+    // Fonte oficial: máximo diário WIN, margem crua. Não reconstruir capital
+    // com ordens potencialmente truncadas nem somar máximos de dias distintos.
+    let exposure: any = null;
+    if (root === "WIN") {
+      const { data: peaks, error } = await (supabase as any).rpc("b3_pico_exposicao_dia", {
+        p_user_id: userId, p_dias: Math.max(30, Math.ceil((Date.now() - new Date(`${de}T03:00:00Z`).getTime()) / 86400000 / 4) + 1),
+        p_symbols: ["WIN"], p_variants: variantFilter ? [variantFilter] : null, p_folga: 1.30,
+      });
+      if (error) throw new Error("Não foi possível ler o pico de capital exposto WIN.");
+      exposure = (peaks ?? []).filter((r: any) => r.trade_date >= de && r.trade_date <= ate && r.variant === "(ativo)" && r.cenario === "sem freio")
+        .sort((a: any, b: any) => Number(b.pico_margem_brl) - Number(a.pico_margem_brl))[0] ?? null;
     }
-    const horaPico = picoT == null ? null : new Intl.DateTimeFormat("pt-BR", {
-      timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit",
-    }).format(new Date(picoT));
 
     // Pior ponto do dia: mínimo do acumulado realizado ao longo do dia,
     // considerando também o resultado atual (realizado + aberto).
@@ -349,10 +350,10 @@ export const getB3AssetDashboardOrders = createServerFn({ method: "POST" })
       perdas_brl: perdas,
       ops_total: opsTotal,
       ops_lucro: opsLucro,
-      pico_exposicao_brl: picoM,
-      pico_exposicao_hora: horaPico,
-      pico_exposicao_data: picoT == null ? null : brtDay(picoT),
-      pico_contratos: picoQ,
+      pico_exposicao_brl: exposure == null ? null : Number(exposure.pico_margem_brl),
+      pico_exposicao_hora: exposure?.hora_do_pico_brt?.slice(0, 5) ?? null,
+      pico_exposicao_data: exposure?.trade_date ?? null,
+      pico_contratos: Number(exposure?.pico_contratos ?? 0),
       groups,
     };
 
