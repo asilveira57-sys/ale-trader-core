@@ -44,7 +44,7 @@ export const PA_POSICAO_MIN_VENDA = 0.35;   // venda abaixo disto na faixa = est
 export const VOTOS_AMOSTRA_1_EM = 20;
 import {
   avaliarConfirmacao, confirmacaoNaAbertura, confirmacaoArmada, avaliarPendente,
-  criarPendente, motivoNaoConfirmou, ladoDoPendente, type ConfirmacaoPendente,
+  criarPendente, motivoNaoConfirmou, ladoDoPendente, acaoDoPendenteNaPassada, type ConfirmacaoPendente,
 } from "./b3-confirmacao-entrada";
 import {
   decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
@@ -3389,6 +3389,9 @@ async function runB3SimulationTickInner(
     // robô — 250 robôs por minuto tornariam a gravação por avaliação (≈100 mil
     // linhas/pregão) mais caro que o próprio tique.
     const entryStageRows: any[] = [];
+    // Avaliações de sinal em espera feitas com a janela já fechada (25/10/2026).
+    // Gravadas num insert só, no fim da passada.
+    const confirmacaoAtrasadaRows: any[] = [];
 
     // Zeragem/fechamento de pregão em qualquer robô: a consolidação da sombra
     // do dia é forçada no fim da passada, para não perder o último trecho.
