@@ -6,7 +6,8 @@ import { getCockpitDailyPeaks } from "@/lib/b3-cockpit-measurements.functions";
 import { brakeNotActivated, totalBlocked, cockpitBrakeEffect } from "@/lib/b3-cockpit-brake";
 import { peakSummary, type RealizedPeak } from "@/lib/b3-cockpit-measurements";
 import { copiarTexto, tabular } from "@/lib/b3-copiar";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Profiler } from "react";
+import { timedCockpitRead, cockpitRenderTiming } from "@/lib/b3-cockpit-timing";
 import { formatBrDate } from "@/lib/b3-period";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -722,7 +723,7 @@ function CockpitPage() {
   const getCincoPregoes = useServerFn(getB3CockpitFiveSessions);
   const hq = useQuery({
     queryKey: ["b3-cockpit-periodo", period.preset, period.start, period.end, filterKey],
-    queryFn: () => getPeriodo({ data: { ...period, ...filterArgs } as never }),
+    queryFn: () => timedCockpitRead("resumo-periodo", () => getPeriodo({ data: { ...period, ...filterArgs } as never })),
     enabled: !vivo,
     gcTime: 0,
   });
@@ -972,7 +973,7 @@ function CockpitPage() {
 
       {/* ── Leitura histórica do período (modo histórico) ── */}
       {!vivo ? (
-        <section className="space-y-3 rounded-lg border border-border/60 bg-card p-3">
+        <Profiler id="cockpit-data" onRender={cockpitRenderTiming}><section className="space-y-3 rounded-lg border border-border/60 bg-card p-3">
           {hq.isLoading ? (
             <p className="text-sm text-muted-foreground">Carregando o período…</p>
           ) : hd?.no_movement ? (
@@ -1015,7 +1016,7 @@ function CockpitPage() {
               </div>
             </>
           )}
-        </section>
+        </section></Profiler>
       ) : null}
 
       {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
