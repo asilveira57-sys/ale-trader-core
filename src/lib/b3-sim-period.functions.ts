@@ -86,6 +86,7 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
     // do dia). "Sem freio" = todas as fechadas do período.
     const agregar = (soComFreio: boolean) => {
       const byRobot = new Map<string, Agg>();
+      const dailyRobots = new Map<string, Agg & { date: string }>();
       const byDay = new Map<string, { date: string; realized_brl: number; trades: number; wins: number; losses: number; sem_preco: number }>();
       let total = 0, ops = 0, lucro = 0, prejuizo = 0;
       for (const o of (rows ?? []) as any[]) {
@@ -115,6 +116,13 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
         }
         if (o.bloqueado_na_sombra === true) a.sombra_ops += 1;
         byRobot.set(key, a);
+        const dailyKey = `${day}|${key}`;
+        const daily = dailyRobots.get(dailyKey) ?? { key, date: day, symbol: run.root, variant: run.variant, mode, resultado_brl: 0, ops: 0, ganhos: 0, perdas: 0, sombra_brl: 0, sombra_ops: 0 };
+        daily.ops += 1; daily.resultado_brl += brl ?? 0;
+        if (brl != null && brl > 0) daily.ganhos += 1;
+        if (brl != null && brl < 0) daily.perdas += 1;
+        if (o.bloqueado_na_sombra === true) daily.sombra_ops += 1;
+        dailyRobots.set(dailyKey, daily);
         ops += 1;
       }
       const robots = Array.from(byRobot.values()).sort((a, b) => a.resultado_brl - b.resultado_brl);
@@ -128,6 +136,7 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
         pior_robo: toBest(robots[0]),
         by_day: Array.from(byDay.values()).sort((a, b) => (a.date < b.date ? 1 : -1)),
         robots,
+        daily_robots: [...dailyRobots.values()],
       };
     };
     const sem = agregar(false);

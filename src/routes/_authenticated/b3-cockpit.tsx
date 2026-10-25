@@ -60,6 +60,41 @@ export const Route = createFileRoute("/_authenticated/b3-cockpit")({
 
 const BRL = (v: number) => Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+function historicalScoreboard(hd: any) {
+  const com = hd.com_freio, sem = hd.sem_freio;
+  return { session_date: hd.period.label, saldo_dia_com_freio_brl: com.total_brl, saldo_dia_brl: sem.total_brl,
+    lucro_bruto_com_freio_brl: com.lucro_bruto_brl, lucro_bruto_brl: sem.lucro_bruto_brl,
+    prejuizo_bruto_com_freio_brl: com.prejuizo_bruto_brl, prejuizo_bruto_brl: sem.prejuizo_bruto_brl,
+    melhor_robo_com_freio: com.melhor_robo, melhor_robo: sem.melhor_robo,
+    pior_robo_com_freio: com.pior_robo, pior_robo: sem.pior_robo };
+}
+function historicalFive(hd: any) {
+  const dates = (hd?.sem_freio?.by_day ?? []).map((d: any) => d.date);
+  const cards = periodCards(hd?.catalog ?? [], hd?.sem_freio?.robots ?? []);
+  return { dates, counts_truncated: false, by_asset: [...new Set(cards.map((c) => c.symbol))].map((symbol) => {
+    const variants = [...new Set(cards.filter((c) => c.symbol === symbol).map((c) => c.variant))];
+    const days = (variant?: string) => dates.map((date: string) => {
+      const sem = (hd?.sem_freio?.daily_robots ?? []).filter((r: any) => r.date === date && r.symbol === symbol && (!variant || r.variant === variant));
+      const com = (hd?.com_freio?.daily_robots ?? []).filter((r: any) => r.date === date && r.symbol === symbol && (!variant || r.variant === variant));
+      return { date, sem_freio_brl: sem.reduce((n: number, r: any) => n + r.resultado_brl, 0), com_freio_brl: com.reduce((n: number, r: any) => n + r.resultado_brl, 0), ordens: sem.reduce((n: number, r: any) => n + r.ops, 0), barrados: sem.reduce((n: number, r: any) => n + r.sombra_ops, 0) };
+    });
+    return { symbol, days: days(), by_variant: variants.map((variant) => ({ variant, days: days(variant) })) };
+  }) };
+}
+function HistoricalRobot({ c, expanded, toggle, copy }: { c: any; expanded: boolean; toggle: () => void; copy: () => void }) {
+  return <div className="relative rounded-lg border border-border bg-card overflow-hidden">
+    <Button variant="ghost" aria-label="Copiar este robô" className="absolute right-1 top-1 min-h-11 min-w-11" onClick={copy}><Copy className="size-4" /></Button>
+    <Button variant="ghost" className="h-auto w-full flex-col items-stretch whitespace-normal px-3 py-3 pt-14 text-left" onClick={toggle} aria-expanded={expanded}>
+      <span className="flex flex-wrap gap-1"><Badge className={`text-[10px] ${MODE_COLOR[c.mode]}`}>{robotLabel(c.mode, c.variant)}</Badge><Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge></span>
+      <span className="my-2 text-xs text-muted-foreground">{c.ops ? CLOSED_PERIOD : "sem ordens no período"}</span>
+      <span className="flex justify-between border-t border-border pt-2 text-xs"><span>Realizado (sem freio)</span><span className={c.ops ? moneyColor(c.total_today) : "text-muted-foreground"}>{c.ops ? BRL(c.total_today) : "sem ordens"}</span></span>
+      <span className="text-xs text-muted-foreground">{c.ops} ordens · {c.ganhos} ganhos · {c.perdas} perdas</span>
+      {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+    </Button>
+    {expanded && <div className="border-t border-border p-3 text-xs space-y-2"><p>Exposição atual: {CLOSED_PERIOD}</p><p>Aberto positivo: {CLOSED_PERIOD}</p><p>Aberto negativo: {CLOSED_PERIOD}</p><p>Ordens barradas: {c.sombra_ops}</p><p className="text-muted-foreground">{SHADOW_EXPLANATION}</p></div>}
+  </div>;
+}
+
 // ── Indicador de pico e recuo ────────────────────────────────────────────────
 // Canal visual PRÓPRIO: a cor da linha do robô continua significando
 // constância (b3_cor_do_robo) e não é usada aqui.
