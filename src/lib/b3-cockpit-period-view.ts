@@ -9,7 +9,10 @@ export function maximumDaily<T extends { trade_date: string }>(rows: T[], value:
 }
 export function periodCards(catalog: any[], robots: any[]) {
   const byKey = new Map(robots.map((r) => [r.key, r]));
-  return catalog.map((c) => {
+  const unique = new Map(catalog.map((c) => [`${c.symbol}|${c.variant}|${c.mode}`, c]));
+  // Rolled contracts/reruns share one robot identity, while result aggregation
+  // already combines their orders. Do not multiply that result per run.
+  return [...unique.values()].map((c) => {
     const r = byKey.get(`${c.symbol}|${c.variant}|${c.mode}`);
     return { ...c, enabled: true, open: null, realized_today: r?.resultado_brl ?? 0, total_today: r?.resultado_brl ?? 0, ops: r?.ops ?? 0, ganhos: r?.ganhos ?? 0, perdas: r?.perdas ?? 0, sombra_ops: r?.sombra_ops ?? 0 };
   });
