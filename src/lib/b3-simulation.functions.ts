@@ -44,7 +44,7 @@ export const PA_POSICAO_MIN_VENDA = 0.35;   // venda abaixo disto na faixa = est
 export const VOTOS_AMOSTRA_1_EM = 20;
 import {
   avaliarConfirmacao, confirmacaoNaAbertura, confirmacaoArmada, avaliarPendente,
-  criarPendente, motivoNaoConfirmou, ladoDoPendente, type ConfirmacaoPendente,
+  criarPendente, motivoNaoConfirmou, ladoDoPendente, acaoDoPendenteNaPassada, type ConfirmacaoPendente,
 } from "./b3-confirmacao-entrada";
 import {
   decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
@@ -3389,6 +3389,9 @@ async function runB3SimulationTickInner(
     // robô — 250 robôs por minuto tornariam a gravação por avaliação (≈100 mil
     // linhas/pregão) mais caro que o próprio tique.
     const entryStageRows: any[] = [];
+    // Avaliações de sinal em espera feitas com a janela já fechada (25/10/2026).
+    // Gravadas num insert só, no fim da passada.
+    const confirmacaoAtrasadaRows: any[] = [];
 
     // Zeragem/fechamento de pregão em qualquer robô: a consolidação da sombra
     // do dia é forçada no fim da passada, para não perder o último trecho.
@@ -3528,6 +3531,10 @@ async function runB3SimulationTickInner(
           },
         });
       };
+      // Sinal simulado que confirmou NESTA passada, com a janela aberta: a
+      // entrada segue para a abertura sem depender de o comitê reaprovar o
+      // mesmo lado agora (25/10/2026). O comitê já aprovou no instante do sinal.
+      let pendSimPronto: any = null;
       if (!confArmada) {
         // Regra desligada com espera pendurada (foi desligada no meio): o
         // estado é limpo sem descartar nada — a entrada já seguiu o fluxo normal.
@@ -3536,7 +3543,25 @@ async function runB3SimulationTickInner(
         const pend = (m as any).confirmacao_pendente;
         const ordemVinculada = pend.simulation_order_id ?? null;
         const av = avaliarPendente(pend, Number(ctx.price), now.getTime());
-        if (av.estado === "invalido") {
+        const passo = acaoDoPendenteNaPassada(pend, av);
+        if (passo.atrasada) {
+          // Prova do conserto: avaliação com a janela já fechada.
+          confirmacaoAtrasadaRows.push({
+            event_type: "confirmacao_avaliada_atrasada",
+            source: "b3-simulation-tick",
+            severity: "info",
+            message: `[${asset.symbol}/${runVariant}/${mode}] sinal em espera avaliado ${Math.round(av.decorrido_s)} s depois do sinal; janela ${passo.janela_s} s.`,
+            technical_data: {
+              decorrido_s: Math.round(av.decorrido_s), janela_s: passo.janela_s, atraso_s: passo.atraso_s,
+              passo: "pre_passada_confirmacao", acao: passo.acao, estado: av.estado,
+              melhor_janela_pts: Math.floor(av.melhor_janela_pts), exigido_pts: Math.round(av.exigido_pts),
+              aguarda_simulado: pend.aguarda_simulado !== false, aguarda_real: pend.aguarda_real === true,
+              side: String(pend.side ?? ""), criado_em: pend.criado_em ?? null,
+              symbol: asset.symbol, variant: runVariant, mode, run_id: runId,
+            },
+          });
+        }
+        if (passo.acao === "limpar") {
           await gravarPendente(null);
         } else if (ordemVinculada && (!open || open.id !== ordemVinculada)) {
           // A ordem simulada que o comando real espelharia já não está aberta:
@@ -3549,19 +3574,42 @@ async function runB3SimulationTickInner(
             detalhe: { lado: "real", simulation_order_id: ordemVinculada, side: String(pend.side) },
           });
           await gravarPendente(null);
-        } else if (av.estado === "expirou") {
+        } else if (passo.acao === "descartar_expirou") {
           // Não confirmou na janela: a entrada é descartada NO LADO que
           // esperava, e o descarte fica contável e olhável um por um no log.
           registrarDescarte(pend, av);
           await gravarPendente(null);
-        } else if (av.estado === "confirmou" && pend.aguarda_real === true && pend.real_enviado !== true && pend.aguarda_simulado !== true) {
+        } else if (passo.acao === "enfileirar_real") {
           try { await enfileirarRealConfirmado(pend); } catch { /* espelho nunca derruba o tique */ }
           await gravarPendente(null);
-        } else if (av.melhor_pts > Number(pend.melhor_pts ?? 0) || av.melhor_janela_pts > Number(pend.melhor_janela_pts ?? 0)) {
+        } else if (passo.acao === "descartar_confirmou_sem_entrada") {
+          // Tocou o exigido dentro da janela, mas nenhuma passada conseguiu
+          // abrir antes de a janela fechar (horário, volatilidade, evento…).
+          // Não abre agora: o preço do toque não existe mais.
+          entryStageRows.push({
+            user_id: userId, simulation_run_id: runId, simulation_mode_id: m.id, mode,
+            symbol: asset.symbol, entry_style: String((cfg as any).entry_style ?? "indicador"),
+            estagio: "confirmacao_atingida_sem_entrada",
+            motivo: `Confirmação atingida dentro de ${passo.janela_s}s (andou ${Math.floor(av.melhor_janela_pts)} pts; exigido ${Math.round(av.exigido_pts)} pts), mas a entrada não ocorreu até a janela fechar; avaliado ${Math.round(av.decorrido_s)} s depois do sinal.`.slice(0, 500),
+            detalhe: {
+              lado: ladoDoPendente(pend), exigido_pts: Math.round(av.exigido_pts),
+              andou_pts_na_janela: Math.floor(av.melhor_janela_pts), andou_pts_total: Math.round(av.melhor_pts),
+              janela_s: passo.janela_s, decorrido_s: Math.round(av.decorrido_s),
+              preco_sinal: Number(pend?.preco_sinal) || null, side: String(pend?.side ?? ""),
+            },
+          });
+          await gravarPendente(null);
+        } else if (passo.acao === "entrar_simulado") {
+          // Grava o toque antes de seguir: se esta passada não conseguir abrir
+          // (portão de horário/volatilidade), a próxima ainda sabe que tocou.
+          if (av.melhor_pts > Number(pend.melhor_pts ?? 0) || av.melhor_janela_pts > Number(pend.melhor_janela_pts ?? 0)) {
+            await gravarPendente({ ...pend, melhor_pts: av.melhor_pts, melhor_janela_pts: av.melhor_janela_pts });
+          }
+          pendSimPronto = confSimArmada ? (m as any).confirmacao_pendente : null;
+        } else if (passo.acao === "atualizar_melhor") {
           // Melhor avanço a favor, dentro da janela e no total, para o registro
           // do descarte dizer as duas coisas. Só grava quando melhora.
           await gravarPendente({ ...pend, melhor_pts: av.melhor_pts, melhor_janela_pts: av.melhor_janela_pts });
-
         }
       }
 
@@ -4815,10 +4863,22 @@ async function runB3SimulationTickInner(
       // à tendência (mean_reversion, range) escolhem o próprio lado, e o comitê
       // precisa julgar o lado que será realmente operado — antes ele votava no
       // lado do cruzamento de médias e a ordem saía no lado oposto.
-      const setupInfo = classifySetupFor(cfg.entry_style, {
+      const setupInfoTique = classifySetupFor(cfg.entry_style, {
         ctxLocal: localCtx, derived, intendedSide, cfg, m1Candles,
       });
-      const effectiveSide: B3Side = setupInfo.side_override ?? intendedSide;
+      // Sinal confirmado nesta passada: lado, stop e alvo são os CONGELADOS no
+      // instante do sinal (o exigido foi calculado sobre esse stop). O
+      // classificador do tique só segue como evidência.
+      const setupInfo = pendSimPronto
+        ? {
+            ...setupInfoTique,
+            stop_pts_override: Number(pendSimPronto.stop_pts) > 0 ? Number(pendSimPronto.stop_pts) : setupInfoTique.stop_pts_override,
+            gain_pts_override: Number(pendSimPronto.gain_pts) > 0 ? Number(pendSimPronto.gain_pts) : setupInfoTique.gain_pts_override,
+          }
+        : setupInfoTique;
+      const effectiveSide: B3Side = pendSimPronto
+        ? (String(pendSimPronto.side) === "buy" ? "buy" : "sell")
+        : (setupInfo.side_override ?? intendedSide);
       if (setupInfo.side_override && setupInfo.side_override !== intendedSide) {
         snapshotExtra.side_overrides = {
           ...(snapshotExtra.side_overrides ?? {}),
@@ -4840,7 +4900,7 @@ async function runB3SimulationTickInner(
       // classificador ainda não conseguiu derivar um lado, o setup termina
       // aqui; o comitê nunca é consultado com o lado das médias.
       const classifierSideStyle = cfg.entry_style === "mean_reversion" || cfg.entry_style === "range" || cfg.entry_style === "rompimento" || cfg.entry_style === "pullback" || cfg.entry_style === "vwap";
-      if (classifierSideStyle && !setupInfo.side_override) {
+      if (classifierSideStyle && !setupInfo.side_override && !pendSimPronto) {
         const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "lado ainda não derivado pelo classificador"}`;
         log.push({ mode, action: "reject", reason: "no_classifier_side", setup: setupInfo.name });
         finalizeAudit(reason, {
@@ -4932,7 +4992,7 @@ async function runB3SimulationTickInner(
       }
 
 
-      if (decision.final === "approved" && !setupAllowed) {
+      if (decision.final === "approved" && !setupAllowed && !pendSimPronto) {
         // Comitê aprovou, mas o setup técnico não é operável (Fase 1: só trend_pullback).
         const reason = `Setup ${setupInfo.name} — ${setupInfo.reasons.join("; ") || "critérios de trend_pullback não atendidos"}`;
         if (sigChanged(`block:${mode}`, `no_valid_setup:${setupInfo.name}`)) {
@@ -4949,7 +5009,7 @@ async function runB3SimulationTickInner(
           committee: decision,
           setup: setupInfo,
         });
-      } else if (decision.final === "approved") {
+      } else if (decision.final === "approved" || pendSimPronto) {
         // ── CONFIRMAÇÃO DE ENTRADA, DOIS LADOS (23/09/2026, segunda emenda) ─
         // Chave do SIMULADO ligada: o sinal NÃO abre na hora — espera o preço
         // andar a favor o percentual configurado do stop dentro da janela; ao
@@ -5557,6 +5617,11 @@ async function runB3SimulationTickInner(
 
     // Um único INSERT por tique com os robôs cujo motivo de recusa MUDOU.
     // Falha em silêncio: diagnóstico nunca derruba nem atrasa o motor.
+    if (confirmacaoAtrasadaRows.length) {
+      try {
+        await (supabase as any).from("system_logs").insert(confirmacaoAtrasadaRows);
+      } catch { /* registro nunca derruba o motor */ }
+    }
     if (entryStageRows.length) {
       try {
         await supabase.from("b3_entry_decision_log").insert(entryStageRows);
