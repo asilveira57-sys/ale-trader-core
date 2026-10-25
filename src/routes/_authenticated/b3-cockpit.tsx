@@ -1,9 +1,11 @@
+import { getPeriodPeakEvidence } from "@/lib/b3-cockpit-period-evidence.functions";
+import { CLOSED_PERIOD, maximumDaily, periodCards, periodHeaders } from "@/lib/b3-cockpit-period-view";
 import { getCockpitLabelEvidence } from "@/lib/b3-cockpit-evidence.functions";
 import { robotLabel, groupBrake, aggregateBrakePhrase, exposureForAsset, allConfirmed, SHADOW_EXPLANATION, type BrakeEvidence, type ExposureEvidence } from "@/lib/b3-cockpit-labels";
 import { CalibracaoSugerida } from "@/components/b3/CalibracaoSugerida";
 import { AssetPricePath } from "@/components/b3/AssetPricePath";
 import { getCockpitDailyPeaks } from "@/lib/b3-cockpit-measurements.functions";
-import { brakeNotActivated, totalBlocked, cockpitBrakeEffect } from "@/lib/b3-cockpit-brake";
+import { brakeNotActivated, totalBlocked, cockpitBrakeEffect, brakeTableTotal } from "@/lib/b3-cockpit-brake";
 import { peakSummary, type RealizedPeak } from "@/lib/b3-cockpit-measurements";
 import { copiarTexto, tabular } from "@/lib/b3-copiar";
 import { useState, useEffect, Profiler } from "react";
@@ -205,10 +207,10 @@ function PregaoCard({
 const peakLine = (p?: RealizedPeak | null) => p == null ? "sem registro"
   : `${BRL(Number(p.pico_realizado_brl))}${p.hora_do_pico_brt ? ` às ${p.hora_do_pico_brt.slice(0, 5)}` : ""} · devolveu ${BRL(Number(p.devolveu_brl ?? 0))} · fechou ${BRL(Number(p.fechamento_brl ?? 0))}`;
 
-function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], root, variant }: { evidence?: BrakeEvidence[]; root?: string; variant?: string; days: any[] | null | undefined; peaks?: Record<string, RealizedPeak>; titulo: string; modesIgnored?: boolean }) {
+function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], root, variant, encerrado = false }: { encerrado?: boolean; evidence?: BrakeEvidence[]; root?: string; variant?: string; days: any[] | null | undefined; peaks?: Record<string, RealizedPeak>; titulo: string; modesIgnored?: boolean }) {
   const rows = (days ?? []).map((day) => ({ ...day, frase: groupBrake(evidence, day.date, root, variant)?.frase }));
   // Total soma somente os últimos 5 (hoje é o primeiro, em andamento).
-  const totalRows = rows.slice(1);
+  const totalRows = encerrado ? rows : rows.slice(1);
   const totalCom = totalRows.reduce((sum, day) => sum + Number(day.com_freio_brl ?? 0), 0);
   const totalBarrados = totalBlocked(totalRows);
   const totalSem = totalRows.reduce((sum, day) => sum + Number(day.sem_freio_brl ?? 0), 0);
@@ -223,7 +225,7 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], 
   return (
     <div className="border-t border-current/20 px-3 py-2">
       <div className="mb-2 flex items-center gap-2">
-        <p className="text-[10px] font-black uppercase">Efeito nos últimos pregões</p>
+        <p className="text-[10px] font-black uppercase">{encerrado ? "Efeito no período" : "Efeito nos últimos pregões"}</p>
         <Button variant="outline" className="ml-auto min-h-11 border-border bg-background text-foreground" onClick={copy} aria-label={`Copiar pregões e picos de ${titulo}`}>
           <Copy className="mr-1 size-4" />Copiar
         </Button>
@@ -232,7 +234,7 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], 
         {rows.map((day, index) => (
           <PregaoCard
             key={day.date}
-            label={index === 0 ? `Hoje · ${shortDate(day.date)}` : shortDate(day.date)}
+            label={!encerrado && index === 0 ? `Hoje · ${shortDate(day.date)}` : shortDate(day.date)}
             com={Number(day.com_freio_brl ?? 0)}
             sem={Number(day.sem_freio_brl ?? 0)}
             barrados={day.barrados}
@@ -240,9 +242,9 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], 
             peak={peaks ? peaks[day.date] ?? null : undefined}
           />
         ))}
-        <PregaoCard label="Total · 5 pregões" com={totalCom} sem={totalSem} barrados={totalBarrados} frase={aggregateBrakePhrase(totalCom, totalSem, totalBarrados)} highlight />
+        <PregaoCard label={encerrado ? "Total · período" : "Total · 5 pregões"} com={totalCom} sem={totalSem} barrados={totalBarrados} frase={aggregateBrakePhrase(totalCom, totalSem, totalBarrados)} highlight />
         <div className="min-w-[150px] rounded bg-background/90 px-2 py-1.5 text-left text-foreground">
-          <p className="mb-1 font-black">Pico realizado · 5 pregões</p>
+          <p className="mb-1 font-black">Pico realizado · {encerrado ? "período" : "5 pregões"}</p>
           <p className="font-bold">Maior pico <span className="font-mono text-success">{summary.max == null ? "sem dados" : BRL(summary.max)}</span></p>
           {maxDay && <p className="text-muted-foreground">{shortDate(maxDay.trade_date)}{maxDay.hora_do_pico_brt ? ` às ${maxDay.hora_do_pico_brt.slice(0, 5)}` : ""} · devolveu {BRL(Number(maxDay.devolveu_brl ?? 0))}</p>}
           <p className="font-bold">Média dos picos <span className="font-mono text-success">{summary.mean == null ? "sem dados" : BRL(summary.mean)}</span></p>
@@ -254,14 +256,15 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], 
   );
 }
 
-function FreioEfeitoQuadro({ data, pending, error, evidence = [] }: { evidence?: BrakeEvidence[]; data: Awaited<ReturnType<typeof getB3CockpitFiveSessions>> | undefined; pending: boolean; error: boolean }) {
-  const original = data ? cockpitBrakeEffect(data.by_asset, data.dates.slice(1)) : null;
+function FreioEfeitoQuadro({ data, pending, error, evidence = [], encerrado = false }: { encerrado?: boolean; evidence?: BrakeEvidence[]; data: Awaited<ReturnType<typeof getB3CockpitFiveSessions>> | undefined; pending: boolean; error: boolean }) {
+  const original = data ? cockpitBrakeEffect(data.by_asset, encerrado ? data.dates : data.dates.slice(1)) : null;
   const d = original ? { ...original, days: original.days.map((x) => ({ ...x, frase: groupBrake(evidence, x.date)?.frase ?? "sem registro" })),
     top: evidence.filter((r) => r.trade_date === original.top_date && r.mode !== "(modalidade)" && r.ordens_barradas > 0 && Number(r.efeito_brl) > 0).sort((a, b) => Number(b.efeito_brl) - Number(a.efeito_brl)).slice(0, 3) } : null;
+  const total = d ? brakeTableTotal(d.days) : null;
   const money = (v: number | null) => v == null ? "sem registro" : BRL(v);
   const copy = () => d && copiarTexto("Efeito do freio — frases de b3_efeito_freio_dia; resultados de b3_cockpit_cinco_pregoes\n" + tabular(
     ["dia", "com freio", "sem freio", "efeito", "ordens barradas", "ordens fechadas"],
-    d.days.map((x) => [shortDate(x.date), money(x.com), (brakeNotActivated(x.barrados) ? "não acionado" : money(x.sem)), x.frase, x.barrados ?? "sem registro", x.ordens]),
+    [...d.days.map((x) => [shortDate(x.date), money(x.com), money(x.sem), `${money(x.efeito)} — ${x.frase}`, x.barrados ?? "sem registro", x.ordens]), ...(total ? [["TOTAL", money(total.com), money(total.sem), `${money(total.efeito)} — ${aggregateBrakePhrase(total.com, total.sem, total.barrados)}`, total.barrados ?? "sem registro", total.ordens]] : [])],
   ) + `\nSaldo em ${d.dias_com_dado} pregões: ${money(d.saldo)} — ${aggregateBrakePhrase(d.days.reduce((s, x) => s + (x.com ?? 0), 0), d.days.reduce((s, x) => s + (x.sem ?? 0), 0), totalBlocked(d.days))}\nFreio que mais ajudou ${d.top_date ? shortDate(d.top_date) : "sem registro"}:\n` +
     (d.top.length ? d.top.map((t) => `${t.raiz} · ${variantLabel(t.variant)} · ${robotLabel(t.mode, t.variant, t.apelido)}: ${BRL(Number(t.com_freio_brl))} contra ${BRL(Number(t.sem_freio_brl))} — ${t.frase}, barrados ${t.ordens_barradas}`).join("\n") : "sem registro"));
   return (
@@ -274,15 +277,15 @@ function FreioEfeitoQuadro({ data, pending, error, evidence = [] }: { evidence?:
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-xs">
             <thead className="text-[10px] uppercase text-muted-foreground"><tr className="border-b border-border">
-              <th className="py-1 text-left">Dia</th><th className="py-1 text-right">Com freio</th><th className="py-1 text-right">Sem freio</th><th className="px-4 py-1 text-left">Efeito do freio (não é resultado)</th><th className="py-1 text-right">Barrados</th></tr></thead>
+              <th className="py-1 text-left">Dia</th><th className="py-1 text-right">Com freio</th><th className="py-1 text-right">Sem freio</th><th className="px-4 py-1 text-left">Efeito do freio (não é resultado)</th><th className="py-1 text-right">Barrados</th><th className="py-1 text-right">Fechadas</th></tr></thead>
             <tbody>{d.days.map((x) => <tr key={x.date} className="border-b border-border">
               <td className="py-1">{shortDate(x.date)}</td>
               <td className={`py-1 text-right font-mono ${x.com == null ? "" : moneyColor(x.com)}`}>{money(x.com)}</td>
-              <td className={`py-1 text-right font-mono ${brakeNotActivated(x.barrados) ? "text-foreground" : x.sem == null ? "" : moneyColor(x.sem)}`}>{brakeNotActivated(x.barrados) ? "não acionado" : money(x.sem)}</td>
-              <td className="px-4 py-2 text-left text-foreground">{x.frase}</td>
-              <td className="py-1 text-right font-mono">{x.barrados ?? "sem registro"}</td>
+              <td className={`py-1 text-right font-mono ${brakeNotActivated(x.barrados) ? "text-foreground" : x.sem == null ? "" : moneyColor(x.sem)}`}>{money(x.sem)}</td>
+              <td className="px-4 py-2 text-left text-foreground">{money(x.efeito)} · {x.frase}</td>
+              <td className="py-1 text-right font-mono">{x.barrados ?? "sem registro"}</td><td className="py-1 text-right font-mono">{x.ordens}</td>
             </tr>)}
-            <tr className="font-black"><td className="py-1">Saldo · {d.dias_com_dado} pregões</td><td /><td /><td className="px-4 py-2 text-left"><span className="font-mono">{money(d.saldo)}</span><br />{aggregateBrakePhrase(d.days.reduce((s, x) => s + (x.com ?? 0), 0), d.days.reduce((s, x) => s + (x.sem ?? 0), 0), totalBlocked(d.days))}</td><td /></tr></tbody>
+            {total && <tr className="font-black"><td className="py-2">TOTAL</td><td className={`text-right font-mono ${moneyColor(total.com)}`}>{money(total.com)}</td><td className={`text-right font-mono ${moneyColor(total.sem)}`}>{money(total.sem)}</td><td className="px-4 py-2 text-foreground">{money(total.efeito)} · {aggregateBrakePhrase(total.com, total.sem, total.barrados)}</td><td className="text-right">{total.barrados ?? "sem registro"}</td><td className="text-right">{total.ordens}</td></tr>}</tbody>
           </table>
         </div>
         <div className="text-xs">
@@ -580,6 +583,8 @@ function LiberacaoBloco({
 
 
 function CockpitPage() {
+  const [period, setPeriod] = useState<PeriodInput>(DEFAULT_PERIOD);
+  const vivo = (period.preset ?? "hoje") === "hoje";
   const apelidos = useModeApelidos();
   const qc = useQueryClient();
   const getOverview = useServerFn(getB3CockpitOverview);
@@ -594,6 +599,7 @@ function CockpitPage() {
   const liberarFn = useServerFn(liberarFreioReal);
   const travarFn = useServerFn(travarFreioReal);
   const lq = useQuery({
+    enabled: vivo,
     queryKey: ["b3-liberacoes-freio"],
     queryFn: () => listLibs(),
     refetchInterval: useVisibleRefetchInterval(30_000),
@@ -666,7 +672,6 @@ function CockpitPage() {
   const filtroAtivo = !allSymbols || !allVariants || !allModes || filter !== "all";
   const [motivo, setMotivo] = useState("");
   // Recorte de DATA. Nunca persistido: a tela sempre abre em "Hoje".
-  const [period, setPeriod] = useState<PeriodInput>(DEFAULT_PERIOD);
   // Faixas de ativo recolhidas — preferência só enquanto a página está aberta.
   const [collapsedAssets, setCollapsedAssets] = useState<Set<string>>(new Set());
   const [collapsedVariants, setCollapsedVariants] = useState<Set<string>>(new Set());
@@ -692,7 +697,6 @@ function CockpitPage() {
   };
   const filterKey = JSON.stringify(filterArgs);
 
-  const vivo = (period.preset ?? "hoje") === "hoje";
   // LEVE (18/10/2026): a leitura viva é UMA só, sem recorte — o filtro de
   // ativo/modalidade/robô é aplicado no navegador. Trocar filtro não refaz
   // leitura nem cria nova entrada de cache.
@@ -725,9 +729,14 @@ function CockpitPage() {
     queryKey: ["b3-cockpit-periodo", period.preset, period.start, period.end, filterKey],
     queryFn: () => timedCockpitRead("resumo-periodo", () => getPeriodo({ data: { ...period, ...filterArgs } as never })),
     enabled: !vivo,
+    staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false,
     gcTime: 0,
   });
   const hd = hq.data as any;
+  const readPeriodPeaks = useServerFn(getPeriodPeakEvidence);
+  const periodPeaksQ = useQuery({ queryKey: ["b3-cockpit-period-peaks", period, filterKey], queryFn: () => timedCockpitRead("picos-periodo", () => readPeriodPeaks({ data: { ...period, symbols: filterArgs.symbols, variants: filterArgs.variants } })), enabled: !vivo && !!hd && !hd.no_movement, staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false });
+  useEffect(() => { if (!vivo && hd?.timings) console.info("[cockpit-dados]", JSON.stringify(hd.timings)); }, [hd, vivo]);
+  useEffect(() => { if (!vivo && periodPeaksQ.data) console.info("[cockpit-dados]", JSON.stringify(periodPeaksQ.data.timings)); }, [periodPeaksQ.data, vivo]);
   const lado: any = ladoFreio === "com" ? (hd as any)?.com_freio : (hd as any)?.sem_freio;
   const fiveQ = useQuery({
     queryKey: ["b3-cockpit-pesado", "five-sessions", filterKey],
@@ -752,13 +761,13 @@ function CockpitPage() {
   const labelEvidence = labelsQ.data?.brake ?? [];
   const currentDate = q.data?.session_date ?? peakDates[0];
   const filtroCliente = buildCockpitFilter(filterArgs);
-  const all: any[] = ((q.data?.cards ?? []) as any[]).filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode)).map((c) => ({ ...c, brake_evidence: labelEvidence.find((r) => r.trade_date === currentDate && r.raiz === rootSymbol(c.symbol) && r.variant === c.variant && r.mode === c.mode) }));
-  const porAtivo: any[] = recorteServidor ? ((headersQ.data as any)?.por_ativo ?? []) : (q.data?.por_ativo ?? []);
+  const all: any[] = (vivo ? ((q.data?.cards ?? []) as any[]) : periodCards(hd?.catalog ?? [], hd?.sem_freio?.robots ?? [])).filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode)).map((c) => ({ ...c, brake_evidence: labelEvidence.find((r) => r.trade_date === currentDate && r.raiz === rootSymbol(c.symbol) && r.variant === c.variant && r.mode === c.mode) }));
+  const porAtivo: any[] = !vivo ? periodHeaders(all) : recorteServidor ? ((headersQ.data as any)?.por_ativo ?? []) : (q.data?.por_ativo ?? []);
   // Pesado recarrega quando uma posição abre ou fecha (ou pelo botão).
   const abertasSig = ((q.data?.cards ?? []) as any[]).filter((c) => !!c.open).map((c) => `${c.run_id}|${c.mode}`).sort().join(",");
   const [abertasPrev, setAbertasPrev] = useState<string | null>(null);
   useEffect(() => {
-    if (!q.data) return;
+    if (!vivo || !q.data) return;
     if (abertasPrev !== null && abertasPrev !== abertasSig) qc.invalidateQueries({ queryKey: ["b3-cockpit-pesado"] });
     setAbertasPrev(abertasSig);
   }, [abertasSig]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -802,6 +811,8 @@ function CockpitPage() {
   // ── Copiar estado dos robôs como texto puro (somente interface) ──
   const copyCards = async (cards: any[], scope: string, includeScoreboard = false) => {
     if (!cards.length) { toast.error("Nada para copiar"); return; }
+    if (!vivo) { await copiarTexto(`Cockpit — ${hd?.period?.label ?? "sem registro"}
+` + tabular(["Ativo", "Modalidade", "Robô", "Ordens", "Realizado sem freio", "Posição"], cards.map((c) => [c.symbol, variantLabel(c.variant), robotLabel(c.mode, c.variant), c.ops, c.ops ? BRL(c.total_today) : "sem ordens no período", CLOSED_PERIOD]))); return; }
     const text = buildCockpitCopyText(cards, {
       scope,
       scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-pesado", "scoreboard", filterKey]) : undefined,
@@ -829,7 +840,7 @@ function CockpitPage() {
   // Ativo/modalidade/modo já vêm recortados do servidor; aqui só ficam os
   // atalhos de pregão (posicionado / bloqueado) e a ordenação.
   const visible = all
-    .filter((c) => filter === "all" ? true : filter === "real" ? !!c.real_auth : filter === "open" ? !!c.open : isRiskBlocked(c));
+    .filter((c) => !vivo ? true : filter === "all" ? true : filter === "real" ? !!c.real_auth : filter === "open" ? !!c.open : isRiskBlocked(c));
 
   // Agrupa pela RAIZ do ativo (WIN, WDO, PETR4) — o contrato rola de vencimento —
   // e, dentro do ativo, por modalidade (variant).
@@ -857,7 +868,7 @@ function CockpitPage() {
   }
   // Modalidade com TODOS os robôs desligados e sem posição aberta sai da tela
   // (ex.: WIN VWAP desligado). Religar pelo cadastro traz o bloco de volta.
-  for (const group of bySymbol.values()) {
+  if (vivo) for (const group of bySymbol.values()) {
     for (const [vk, list] of Array.from(group.byVariant.entries())) {
       if (vk === REAL_GROUP) continue;
       if (list.length > 0 && list.every((c) => c.enabled === false && !c.open)) group.byVariant.delete(vk);
@@ -890,7 +901,7 @@ function CockpitPage() {
   // um ultrawide de mostrar os 8 modos em linha. Teto generoso aproveita a
   // largura real (e responde ao menu lateral retrátil).
   return (
-    <div className="mx-auto w-full max-w-[2400px] px-3 py-4 space-y-4 sm:px-4 sm:py-6">
+    <div className={`mx-auto w-full max-w-[2400px] px-3 py-4 space-y-4 sm:px-4 sm:py-6 ${vivo ? "" : "[&_button]:min-h-11"}`}>
       <header className="grid gap-2 sm:flex sm:items-center sm:justify-between sm:flex-wrap">
         <div className="min-w-0">
           <h1 className="text-xl font-bold sm:text-2xl">Cockpit — todos os robôs</h1>
@@ -909,7 +920,7 @@ function CockpitPage() {
 
 
 
-          <Button size="sm" variant="outline" onClick={() => q.refetch()}>
+          <Button size="sm" variant="outline" className="min-h-11" onClick={() => vivo ? q.refetch() : Promise.all([hq.refetch(), periodPeaksQ.refetch()])}>
             <RefreshCw className="w-4 h-4 mr-1" />Atualizar
           </Button>
           <Button size="sm" variant="outline"
@@ -921,7 +932,7 @@ function CockpitPage() {
             <Link to="/b3/bi">BI analítico</Link>
           </Button>
 
-          <Dialog>
+          {vivo && <Dialog>
             <DialogTrigger asChild>
               <Button size="sm" variant="destructive" className="bg-red-900 hover:bg-red-800">
                 <ShieldAlert className="w-4 h-4 mr-1" />Zerar posições
@@ -939,9 +950,9 @@ function CockpitPage() {
                 </Button>
               </DialogFooter>
             </DialogContent>
-          </Dialog>
+          </Dialog>}
 
-          <Dialog>
+          {vivo && <Dialog>
             <DialogTrigger asChild>
               <Button size="sm" variant="outline">
                 <PowerOff className="w-4 h-4 mr-1" />Desligar robôs
@@ -959,72 +970,34 @@ function CockpitPage() {
                 </Button>
               </DialogFooter>
             </DialogContent>
-          </Dialog>
+          </Dialog>}
         </div>
       </header>
 
       <PeriodBar value={period} onChange={setPeriod} resolved={hd?.period ?? { label: "Hoje", includes_today: true }} busy={q.isFetching || hq.isFetching} />
-      <HistoricalBanner resolved={hd?.period} />
+      <HistoricalBanner resolved={!vivo ? { ...hd?.period, includes_today: false } : null} />
+      {!vivo && hd && <h2 className="text-xl font-black">{hd.sem_freio.by_day.length} pregões: {hd.sem_freio.by_day.map((d: any) => shortDate(d.date)).join(", ")} · {hd.period.label}</h2>}
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
       {vivo ? <Scoreboard filterArgs={filterArgs} filterKey={filterKey} evidence={labelsQ.data} /> : null}
       {vivo && peakDates.length > 1 ? <FreioEfeitoQuadro data={fiveQ.data} pending={fiveQ.isPending} error={fiveQ.isError || labelsQ.isError} evidence={labelEvidence} /> : null}
       {vivo && fiveQ.data?.rows_truncated ? <TruncatedNotice limit={fiveQ.data.rows_limit} /> : null}
 
-      {/* ── Leitura histórica do período (modo histórico) ── */}
-      {!vivo ? (
-        <Profiler id="cockpit-data" onRender={cockpitRenderTiming}><section className="space-y-3 rounded-lg border border-border/60 bg-card p-3">
-          {hq.isLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando o período…</p>
-          ) : hd?.no_movement ? (
-            <NoMovementNotice label={hd?.period?.label} />
-          ) : (
-            <>
-              {hd?.rows_truncated ? <TruncatedNotice limit={hd?.rows_limit} /> : null}
-              <TesteiraPeriodo com={(hd as any)?.com_freio} sem={(hd as any)?.sem_freio} umDia={hd?.period?.single_day === true} />
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-muted-foreground">Lista:</span>
-                {(["com", "sem"] as const).map((k) => (
-                  <Button key={k} size="sm" variant={ladoFreio === k ? "default" : "outline"} className="h-8 px-3 text-[11px] font-bold" onClick={() => setLadoFreio(k)}>
-                    {k === "com" ? "Com freio" : "Sem freio"}
-                  </Button>
-                ))}
-              </div>
-              <div className="flex flex-wrap items-baseline gap-3">
-                <h2 className="text-lg font-bold">Resultado de {hd?.period?.label ?? "período"} — {ladoFreio === "com" ? "Com freio" : "Sem freio"}</h2>
-                <span className={`font-mono text-xl font-black ${Number(lado?.total_brl ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                  {BRL(Number(lado?.total_brl ?? 0))}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {lado?.ops ?? 0} operação(ões) · {lado?.ganhos ?? 0} ganho(s) · {lado?.perdas ?? 0} perda(s)
-                </span>
-              </div>
-
-              {hd?.period?.single_day === false ? (
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Por pregão</p>
-                  <PerDayTable rows={(lado?.by_day ?? []) as any[]} brl={(v) => BRL(Number(v ?? 0))} />
-                </div>
-              ) : null}
-
-              <div className="space-y-1">
-                <p className="text-xs font-semibold text-muted-foreground">Por robô</p>
-                <HistoricoAgrupado robots={(lado?.robots ?? []) as any[]} nick={(mode) => robotLabel(mode)} />
-              </div>
-              <div className="space-y-1">
-                <Comparativo com={(hd as any)?.com_freio} sem={(hd as any)?.sem_freio} />
-              </div>
-            </>
-          )}
-        </section></Profiler>
-      ) : null}
+      {!vivo && <Profiler id="cockpit-data" onRender={cockpitRenderTiming}>
+        {hq.isPending ? <p>Carregando o período…</p> : hq.isError ? <p role="alert">Não foi possível ler o período. Use Atualizar.</p> : hd?.no_movement ? <p className="py-6 text-center text-muted-foreground">sem ordens neste período</p> : <>
+          {hd?.rows_truncated && <TruncatedNotice limit={hd.rows_limit} />}
+          <Scoreboard filterArgs={filterArgs} filterKey={filterKey} periodData={hd} periodPeaks={periodPeaksQ.data} />
+          <FreioEfeitoQuadro encerrado data={historicalFive(hd) as any} pending={hq.isPending} error={hq.isError} />
+          {periodPeaksQ.isError && <p role="alert">Picos: sem registro — não foi possível ler.</p>}
+          {periodPeaksQ.data?.possible_truncation && <p className="text-warning">Leitura de picos atingiu 1.000 linhas; dados podem estar incompletos.</p>}
+        </>}
+      </Profiler>}
 
       {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm">
-            <strong>{totalRobots}</strong> robôs · <strong>{withOpen}</strong> com posição aberta ·{" "}
-            <strong>{waiting}</strong> aguardando · <strong>{blocked}</strong> bloqueados
+            <strong>{totalRobots}</strong> robôs · {vivo ? <><strong>{withOpen}</strong> com posição aberta · <strong>{waiting}</strong> aguardando · <strong>{blocked}</strong> bloqueados</> : CLOSED_PERIOD}
           </p>
           {filtroAtivo && (
             <>
@@ -1039,7 +1012,7 @@ function CockpitPage() {
           )}
         </div>
 
-        {q.data?.real_resumo && (() => {
+        {vivo && q.data?.real_resumo && (() => {
           const r: any = q.data.real_resumo;
           const hora = r.trava_em ? new Date(r.trava_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "";
           return (
@@ -1137,9 +1110,12 @@ function CockpitPage() {
         <p className="text-sm text-muted-foreground">Nenhum robô para o filtro selecionado.</p>
       )}
 
-      {vivo && orderedAssets.map(([root, group]) => {
+      {(vivo || (hd && !hd.no_movement)) && orderedAssets.map(([root, group]) => {
         const hdr = headerByAsset.get(root);
-        const history = fiveByAsset.get(root);
+        const history = vivo ? fiveByAsset.get(root) : historicalFive(hd).by_asset.find((a: any) => a.symbol === root);
+        const historicalPeaks = (periodPeaksQ.data?.realized ?? []).filter((r: any) => r.raiz === root);
+        const assetPeak = maximumDaily(historicalPeaks.filter((r: any) => r.variant === "(ativo)"), (r: any) => Number(r.pico_realizado_brl));
+        const exposurePeak = maximumDaily((periodPeaksQ.data?.exposure ?? []).filter((r: any) => r.raiz === root && r.variant === "(ativo)" && r.cenario === "sem freio"), (r: any) => Number(r.pico_margem_com_folga_brl));
         const isCollapsed = collapsedAssets.has(root);
         const robotCount = Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0);
         return (
@@ -1161,7 +1137,7 @@ function CockpitPage() {
                  <p className="text-[11px] font-medium opacity-80">
                   {hdr?.ops ?? 0} ops · {hdr?.ganhos ?? 0} no lucro ({PCT(hdr?.taxa_acerto)}){"   "}
                   <span className="mx-1">·</span>
-                  pico de capital {BRL0(hdr?.pico_capital_brl ?? 0)} · retorno {PCT_SIGNED(hdr?.retorno_sobre_capital)}
+                  {vivo ? <>pico de capital {BRL0(hdr?.pico_capital_brl ?? 0)} · retorno {PCT_SIGNED(hdr?.retorno_sobre_capital)}</> : <>Pico de exposição: {exposurePeak ? `${BRL(Number((exposurePeak as any).pico_margem_com_folga_brl))} · ${shortDate(exposurePeak.trade_date)}` : "sem registro"} · Pico realizado: {assetPeak ? `${BRL(Number((assetPeak as any).pico_realizado_brl))} · ${shortDate(assetPeak.trade_date)}` : "sem registro"}</>}
                 </p>
                  <p className="text-[11px] font-medium opacity-80">
                   melhor: {roboShort(hdr?.melhor_robo)}
@@ -1185,8 +1161,8 @@ function CockpitPage() {
                 {isCollapsed ? <ChevronDown /> : <ChevronUp />}
               </Button>
             </div>
-            <EfeitoCincoPregoes titulo={root} days={history?.days} evidence={labelEvidence} root={root} peaks={peaksQ.data ? peaksQ.data.assets[root] ?? {} : undefined} modesIgnored={peaksQ.data?.modes_ignored} />
-            {peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
+            <EfeitoCincoPregoes encerrado={!vivo} titulo={root} days={history?.days} evidence={labelEvidence} root={root} peaks={vivo ? (peaksQ.data ? peaksQ.data.assets[root] ?? {} : undefined) : Object.fromEntries(historicalPeaks.filter((r: any) => r.variant === "(ativo)").map((r: any) => [r.trade_date, r]))} modesIgnored={peaksQ.data?.modes_ignored} />
+            {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
           </div>
 
           {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
@@ -1210,13 +1186,13 @@ function CockpitPage() {
                       {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})
                     </span>
                     <span className="font-normal opacity-80">
-                      pico {BRL0(sub?.pico_capital_brl ?? 0)}
+                      {vivo ? `pico ${BRL0(sub?.pico_capital_brl ?? 0)}` : CLOSED_PERIOD}
                     </span>
                   </>
                 )}
                 {/* Um freio de GRUPO trava todos os robôs do grupo de uma vez:
                     desfazer de um em um seriam sete cliques para uma decisão só. */}
-                {variant !== REAL_GROUP && <LiberacaoBloco
+                {vivo && variant !== REAL_GROUP && <LiberacaoBloco
                   escopo="grupo" root={root} variant={variant} mode={null}
                   libs={liberacoes} liberarM={liberarM} travarM={travarM} defaultFreio="grupo"
                 />}
@@ -1231,8 +1207,8 @@ function CockpitPage() {
                   {variantCollapsed ? <ChevronDown /> : <ChevronUp />}
                 </Button>
                </h3>
-               <EfeitoCincoPregoes titulo={`${root} · ${variantLabel(variant)}`} days={history?.by_variant?.find((item: any) => item.variant === variant)?.days} evidence={labelEvidence} root={root} variant={variant}
-                 peaks={peaksQ.data ? peaksQ.data.variants[variantKey] ?? {} : undefined} modesIgnored={peaksQ.data?.modes_ignored} />
+               <EfeitoCincoPregoes encerrado={!vivo} titulo={`${root} · ${variantLabel(variant)}`} days={history?.by_variant?.find((item: any) => item.variant === variant)?.days} evidence={labelEvidence} root={root} variant={variant}
+                 peaks={vivo ? (peaksQ.data ? peaksQ.data.variants[variantKey] ?? {} : undefined) : Object.fromEntries(historicalPeaks.filter((r: any) => r.variant === variant).map((r: any) => [r.trade_date, r]))} modesIgnored={peaksQ.data?.modes_ignored} />
                </div>
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
@@ -1242,6 +1218,7 @@ function CockpitPage() {
                <div id={`robots-${variantKey}`} hidden={variantCollapsed} className={variantCollapsed ? "hidden" : "grid grid-cols-1 gap-3 p-3 @[380px]:grid-cols-2 @[780px]:grid-cols-4 @[1500px]:grid-cols-8"}>
                 {cards.map((c: any) => {
                   const key = `${c.run_id}:${c.mode}`;
+                  if (!vivo) return <HistoricalRobot key={key} c={c} expanded={expanded.has(key)} toggle={() => toggleExpand(key)} copy={() => copyCards([c], root)} />;
                   const isOpen = expanded.has(key);
                   const hasPosition = !!c.open;
                   const tick = Number(c.tick_size ?? 5);
@@ -1571,8 +1548,8 @@ function CockpitPage() {
 // Somente leitura; nada aqui altera o motor de simulação.
 const pnlColorOf = moneyColor;
 
-function PairedMoney({ label, comFreio, semFreio, large = false, barrados }: {
-  label: string; comFreio: number; semFreio: number; large?: boolean; barrados?: number | null;
+function PairedMoney({ label, comFreio, semFreio, large = false, barrados, encerrado = false }: {
+  label: string; comFreio: number; semFreio: number; large?: boolean; barrados?: number | null; encerrado?: boolean;
 }) {
   const comFreioExibido = Math.round(comFreio);
   const semFreioExibido = Math.round(semFreio);
@@ -1581,9 +1558,9 @@ function PairedMoney({ label, comFreio, semFreio, large = false, barrados }: {
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <div className={`grid grid-cols-[auto_1fr] gap-x-3 ${large ? "text-lg sm:text-xl" : "text-xs"}`}>
         <span className="text-muted-foreground">Com freio</span>
-        <span className={`text-right font-mono font-semibold ${pnlColorOf(comFreioExibido)}`}>{BRL(comFreioExibido)}</span>
+        <span className={`text-right font-mono font-semibold ${encerrado ? "text-foreground" : pnlColorOf(comFreioExibido)}`}>{encerrado ? CLOSED_PERIOD : BRL(comFreioExibido)}</span>
         <span className="text-muted-foreground">Sem freio</span>
-        <span className={`text-right font-mono font-semibold ${brakeNotActivated(barrados) ? "text-foreground" : pnlColorOf(semFreioExibido)}`}>{brakeNotActivated(barrados) ? "não acionado" : BRL(semFreioExibido)}</span>
+        <span className={`text-right font-mono font-semibold ${encerrado || brakeNotActivated(barrados) ? "text-foreground" : pnlColorOf(semFreioExibido)}`}>{encerrado ? CLOSED_PERIOD : brakeNotActivated(barrados) ? "não acionado" : BRL(semFreioExibido)}</span>
       </div>
     </div>
   );
@@ -1613,27 +1590,29 @@ function RobotPair({ label, comFreio, semFreio, evidence = [], date, inactive }:
   );
 }
 
-function Scoreboard({ filterArgs, filterKey, evidence }: {
+function Scoreboard({ filterArgs, filterKey, evidence, periodData, periodPeaks }: {
+  periodData?: any; periodPeaks?: any;
   evidence?: Awaited<ReturnType<typeof getCockpitLabelEvidence>>;
   filterArgs: { symbols: string[] | null; variants: string[] | null; modes: string[] | null };
   filterKey: string;
 }) {
   const getScoreboard = useServerFn(getB3CockpitScoreboard);
   const q = useQuery({
+    enabled: !periodData,
     queryKey: ["b3-cockpit-pesado", "scoreboard", filterKey],
     queryFn: () => getScoreboard({ data: filterArgs as any }),
     staleTime: Infinity,
     gcTime: 60_000,
   });
   const qcSb = useQueryClient();
-  const d: any = q.data;
+  const d: any = periodData ? historicalScoreboard(periodData) : q.data;
   if (!d) return <section className="rounded-lg border border-border/60 bg-card p-4 text-sm text-muted-foreground">Carregando placar do dia...</section>;
 
-  const blocked = groupBrake(evidence?.brake ?? [], d.session_date)?.blocked ?? (evidence ? 0 : null);
+  const blocked = periodData ? periodData.sem_freio.robots.reduce((n: number, r: any) => n + r.sombra_ops, 0) : groupBrake(evidence?.brake ?? [], d.session_date)?.blocked ?? (evidence ? 0 : null);
   const exposures = (evidence?.exposure ?? []).filter((r) => r.trade_date === d.session_date && r.variant === "(ativo)");
   const exposureText = (r: ExposureEvidence) => `${r.raiz}: ${r.pico_contratos} contratos · ${BRL(Number(r.pico_margem_com_folga_brl))} · ${r.hora_do_pico_brt?.slice(0, 5) ?? "sem registro"}`;
   const fields = [["Saldo do dia", "saldo_dia"], ["Se fechasse agora", "se_fechasse_agora"], ["Exposição atual", "exposicao_atual"], ["Lucro bruto do dia", "lucro_bruto"], ["Prejuízo bruto do dia", "prejuizo_bruto"], ["Aberto positivo", "aberto_positivo"], ["Aberto negativo", "aberto_negativo"]];
-  const copyScoreboard = () => copiarTexto(`Testeira de resultado — ${d.session_date}\n` + fields.map(([label, key]) => `${label}\nCom freio: ${BRL(Math.round(Number(d[`${key}_com_freio_brl`])))}\nSem freio: ${brakeNotActivated(blocked) ? "não acionado" : BRL(Math.round(Number(d[`${key}_brl`])))}`).join("\n\n") + "\n\n" + [["Melhor robô do dia", d.melhor_robo_com_freio, d.melhor_robo], ["Pior robô do dia", d.pior_robo_com_freio, d.pior_robo]].map(([label, com, sem]) => `${label}\nCom freio: ${roboShort(com)}\nSem freio: ${sem && evidence?.brake.some((r) => r.trade_date === d.session_date && r.raiz === rootSymbol(sem.symbol) && r.variant === sem.variant && r.mode === sem.mode && r.ordens_barradas === 0) ? "não acionado" : roboShort(sem)}`).join("\n\n") + `\n\nPico de exposição (contratos abertos ao mesmo tempo)\n${exposures.length ? exposures.map((r) => `${r.cenario}: ${exposureText(r)}`).join("\n") : "sem registro"}\nMargem exigida com folga de 30%; capital comprometido, não lucro.${evidence?.exposure_modes_ignored ? " Pico cobre todos os modos." : ""}\n${groupBrake(evidence?.brake ?? [], d.session_date)?.frase ?? "sem registro"}\n${SHADOW_EXPLANATION}\nStops pendentes: ${d.stops_pendentes ?? "sem registro"}\nCotação: ${(d.quotes_health ?? []).map((r: any) => `${rootSymbol(r.symbol)} ${r.age_s ?? "sem registro"}s`).join(" · ") || "sem registro"}`);
+  const copyScoreboard = () => periodData ? copiarTexto(`Placar — ${periodData.period.label}\n` + fields.map(([label, key]) => `${label}: ${["exposicao_atual", "aberto_positivo", "aberto_negativo", "se_fechasse_agora"].includes(key) ? CLOSED_PERIOD : `Com freio ${BRL(d[`${key}_com_freio_brl`])} · Sem freio ${BRL(d[`${key}_brl`])}`}`).join("\n") + "\nPicos diários: " + JSON.stringify(periodPeaks ?? "sem registro")) : copiarTexto(`Testeira de resultado — ${d.session_date}\n` + fields.map(([label, key]) => `${label}\nCom freio: ${BRL(Math.round(Number(d[`${key}_com_freio_brl`])))}\nSem freio: ${brakeNotActivated(blocked) ? "não acionado" : BRL(Math.round(Number(d[`${key}_brl`])))}`).join("\n\n") + "\n\n" + [["Melhor robô do dia", d.melhor_robo_com_freio, d.melhor_robo], ["Pior robô do dia", d.pior_robo_com_freio, d.pior_robo]].map(([label, com, sem]) => `${label}\nCom freio: ${roboShort(com)}\nSem freio: ${sem && evidence?.brake.some((r) => r.trade_date === d.session_date && r.raiz === rootSymbol(sem.symbol) && r.variant === sem.variant && r.mode === sem.mode && r.ordens_barradas === 0) ? "não acionado" : roboShort(sem)}`).join("\n\n") + `\n\nPico de exposição (contratos abertos ao mesmo tempo)\n${exposures.length ? exposures.map((r) => `${r.cenario}: ${exposureText(r)}`).join("\n") : "sem registro"}\nMargem exigida com folga de 30%; capital comprometido, não lucro.${evidence?.exposure_modes_ignored ? " Pico cobre todos os modos." : ""}\n${groupBrake(evidence?.brake ?? [], d.session_date)?.frase ?? "sem registro"}\n${SHADOW_EXPLANATION}\nStops pendentes: ${d.stops_pendentes ?? "sem registro"}\nCotação: ${(d.quotes_health ?? []).map((r: any) => `${rootSymbol(r.symbol)} ${r.age_s ?? "sem registro"}s`).join(" · ") || "sem registro"}`);
   const stopsPendentes = Number(d.stops_pendentes ?? 0);
   const quotes: any[] = d.quotes_health ?? [];
   const guardLimit = Number(d.quote_guard_limit_s ?? 45);
@@ -1641,12 +1620,12 @@ function Scoreboard({ filterArgs, filterKey, evidence }: {
   return (
     <section className="rounded-xl border border-border/60 bg-card p-4 space-y-4">
       <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
-        <span className="w-full sm:w-auto">Placar, faixas e picos recarregam ao abrir/fechar posição ou por aqui.</span>
+        <span className="w-full sm:w-auto">{periodData ? periodData.period.label : "Placar, faixas e picos recarregam ao abrir/fechar posição ou por aqui."}</span>
         <Button variant="outline" className="min-h-11" onClick={copyScoreboard} aria-label="Copiar testeira de resultado"><Copy className="size-4" />Copiar</Button>
-        <Button size="sm" variant="outline" className="min-h-11" disabled={q.isFetching}
+        {!periodData && <Button size="sm" variant="outline" className="min-h-11" disabled={q.isFetching}
           onClick={() => qcSb.invalidateQueries({ queryKey: ["b3-cockpit-pesado"] })}>
           <RefreshCw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} /> Atualizar placar e faixas
-        </Button>
+        </Button>}
       </div>
       {/* Faixa de alerta — stop pendente não executado */}
       {stopsPendentes > 0 && (
@@ -1659,16 +1638,16 @@ function Scoreboard({ filterArgs, filterKey, evidence }: {
       {/* Linha 1 — números em corpo muito grande */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <PairedMoney barrados={blocked} label="Saldo do dia" comFreio={Number(d.saldo_dia_com_freio_brl)} semFreio={Number(d.saldo_dia_brl)} large />
-        <PairedMoney barrados={blocked} label="Se fechasse agora" comFreio={Number(d.se_fechasse_agora_com_freio_brl)} semFreio={Number(d.se_fechasse_agora_brl)} large />
-        <PairedMoney barrados={blocked} label="Exposição atual" comFreio={Number(d.exposicao_atual_com_freio_brl)} semFreio={Number(d.exposicao_atual_brl)} large />
+        <PairedMoney encerrado={!!periodData} barrados={blocked} label="Se fechasse agora" comFreio={Number(d.se_fechasse_agora_com_freio_brl)} semFreio={Number(d.se_fechasse_agora_brl)} large />
+        <PairedMoney encerrado={!!periodData} barrados={blocked} label="Exposição atual" comFreio={Number(d.exposicao_atual_com_freio_brl)} semFreio={Number(d.exposicao_atual_brl)} large />
       </div>
 
       {/* Linha 2 — corpo médio */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border/40 pt-3">
         <PairedMoney barrados={blocked} label="Lucro bruto do dia" comFreio={Number(d.lucro_bruto_com_freio_brl)} semFreio={Number(d.lucro_bruto_brl)} />
         <PairedMoney barrados={blocked} label="Prejuízo bruto do dia" comFreio={Number(d.prejuizo_bruto_com_freio_brl)} semFreio={Number(d.prejuizo_bruto_brl)} />
-        <PairedMoney barrados={blocked} label="Aberto positivo" comFreio={Number(d.aberto_positivo_com_freio_brl)} semFreio={Number(d.aberto_positivo_brl)} />
-        <PairedMoney barrados={blocked} label="Aberto negativo" comFreio={Number(d.aberto_negativo_com_freio_brl)} semFreio={Number(d.aberto_negativo_brl)} />
+        <PairedMoney encerrado={!!periodData} barrados={blocked} label="Aberto positivo" comFreio={Number(d.aberto_positivo_com_freio_brl)} semFreio={Number(d.aberto_positivo_brl)} />
+        <PairedMoney encerrado={!!periodData} barrados={blocked} label="Aberto negativo" comFreio={Number(d.aberto_negativo_com_freio_brl)} semFreio={Number(d.aberto_negativo_brl)} />
       </div>
 
       {/* Linha 3 — corpo pequeno */}
