@@ -33,11 +33,14 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
     // e aviso na tela se ele for atingido — número truncado nunca pode parecer
     // completo.
     const limit = periodRowLimit(period.days, 3000, 4000, 60_000);
+    const timings: { chamada: string; ms: number; linhas: number }[] = [];
+    let clock = performance.now();
 
     const { data: runs } = await (supabase as any)
       .from("b3_simulation_runs")
       .select("id, symbol, variant")
       .eq("user_id", userId);
+    timings.push({ chamada: "execucoes", ms: Math.round(performance.now() - clock), linhas: runs?.length ?? 0 });
     const runById = new Map<string, { root: string; variant: string }>();
     for (const r of (runs ?? []) as any[]) {
       runById.set(String(r.id), {
@@ -50,6 +53,7 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
     let rowsTruncated = false;
     for (let from = 0; from < limit; from += 1000) {
       const pageSize = Math.min(1000, limit - from);
+      clock = performance.now();
       const { data: page, error } = await (supabase as any)
       .from("b3_simulation_orders")
       .select("simulation_run_id, mode, side, quantity, net_result_brl, entry_time, exit_time, close_reason, bloqueado_na_sombra, freios_na_sombra")
@@ -59,6 +63,7 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       .lt("exit_time", period.end_utc)
       .order("exit_time", { ascending: true })
       .range(from, from + pageSize - 1);
+      timings.push({ chamada: `ordens-${from}`, ms: Math.round(performance.now() - clock), linhas: page?.length ?? 0 });
       if (error) throw new Error(`Leitura do período: ${error.message}`);
       rows.push(...(page ?? []));
       if (rows.length >= limit) { rowsTruncated = true; break; }
@@ -133,6 +138,7 @@ export const getB3SimPeriodSummary = createServerFn({ method: "GET" })
       },
       rows_limit: limit,
       rows_read: rows.length,
+      timings,
       rows_truncated: rowsTruncated,
       no_movement: sem.ops === 0,
       ...sem,
