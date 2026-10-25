@@ -1201,6 +1201,7 @@ function CockpitPage() {
             </div>
             <EfeitoCincoPregoes encerrado={!vivo} titulo={root} days={history?.days} evidence={labelEvidence} root={root} peaks={vivo ? (peaksQ.data ? peaksQ.data.assets[root] ?? {} : undefined) : Object.fromEntries(historicalPeaks.filter((r: any) => r.variant === "(ativo)").map((r: any) => [r.trade_date, r]))} modesIgnored={peaksQ.data?.modes_ignored} />
             {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
+            {!vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}
           </div>
 
           {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
