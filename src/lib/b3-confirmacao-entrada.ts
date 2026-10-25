@@ -279,6 +279,47 @@ export function avaliarPendente(
   return { estado: "aguardando", ...base };
 }
 
+// ── O QUE A PRÉ-PASSADA FAZ COM O SINAL EM ESPERA (25/10/2026) ───────────────
+// Defeito corrigido: o lado simulado só abria quando o COMITÊ voltava a aprovar
+// o mesmo lado num tique seguinte. A pré-passada via o toque, gravava o melhor
+// avanço e não fazia mais nada; como `avaliarPendente` diz "confirmou" para
+// sempre depois de um toque, o sinal ficava pendurado por horas até o comitê
+// aprovar o lado oposto — e então era descartado com "andou 295; exigido 60".
+// Agora, em TODA passada com a janela aberta, toque suficiente = entra.
+export type AcaoPendente =
+  | "limpar"
+  | "descartar_expirou"
+  | "enfileirar_real"
+  | "entrar_simulado"
+  | "descartar_confirmou_sem_entrada"
+  | "atualizar_melhor"
+  | "nada";
+
+export function acaoDoPendenteNaPassada(pend: any, av: AvaliacaoPendente): {
+  acao: AcaoPendente; atrasada: boolean; atraso_s: number; janela_s: number;
+} {
+  const janela = Number(pend?.janela_s) > 0 ? Number(pend.janela_s) : CONFIRMACAO_PADRAO.janela_s;
+  const atrasada = av.estado !== "invalido" && av.decorrido_s > janela;
+  const atraso_s = atrasada ? Math.round(av.decorrido_s - janela) : 0;
+  const out = (acao: AcaoPendente) => ({ acao, atrasada, atraso_s, janela_s: janela });
+  if (av.estado === "invalido") return out("limpar");
+  if (av.estado === "expirou") return out("descartar_expirou");
+  if (av.estado === "confirmou") {
+    if (pend?.aguarda_real === true && pend?.real_enviado !== true && pend?.aguarda_simulado !== true) {
+      return out("enfileirar_real");
+    }
+    if (pend?.aguarda_simulado !== false) {
+      // O toque aconteceu dentro da janela, mas nenhuma passada conseguiu
+      // abrir até a janela fechar: não abre horas depois no preço de agora.
+      return out(atrasada ? "descartar_confirmou_sem_entrada" : "entrar_simulado");
+    }
+  }
+  const melhorou = av.melhor_pts > Number(pend?.melhor_pts ?? 0)
+    || av.melhor_janela_pts > Number(pend?.melhor_janela_pts ?? 0);
+  return out(melhorou ? "atualizar_melhor" : "nada");
+}
+
+
 /** Motivo curto do descarte, para o log de decisão — com o lado descartado.
  *  O número reportado é o MESMO que a regra usou para descartar: o melhor avanço
  *  dentro da janela (07/10/2026). Antes a decisão media um valor e o texto
