@@ -1,6 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
+- [x] Carteira por robô FASE 1 (26/10): tabela, semente R$ 300, gatilho no fechamento, escada, carteira insuficiente. Não publicado (pregão aberto). Fases 2 e 3 aguardam liberação.
 - [x] Pedido 25/10 (2º): nomes dos picos/margem crua, simulação por dia/intervalo, selo WIN somente leitura e piso percentual atual; três referências 23/10 conferidas pela tela, cópia e intervalo/celular verificados, 45 testes passaram. Publicação solicitada em 25/10 às 12:34 UTC; conclusão depende do serviço.
 - [x] Cockpit 25/10: total completo, hierarquia por data, encerrado/max diário, cópias/recolhimento/celular e instrumentação conferidos; relatório docs/cockpit-25-10-medicao.md. Sem alteração SQL nem otimização; leitura de efeito atinge 1.000 e exposição ampla falha, sinalizadas.
 - [x] Portão de confirmação 25/10 (3º): sinal tocado na janela entra na mesma passada sem reaprovação do comitê; evento `confirmacao_avaliada_atrasada`; 25%/180 s intactos. Pronto, NÃO publicado.

@@ -843,6 +843,54 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_carteira_robo: {
+        Row: {
+          atualizada_em: string
+          contratos_atuais: number
+          criada_em: string
+          estado: string
+          id: string
+          mode: string
+          recebido_de_transferencias_brl: number
+          resultado_proprio_brl: number
+          saldo_atual_brl: number
+          saldo_inicial_brl: number
+          symbol: string
+          user_id: string
+          variant: string
+        }
+        Insert: {
+          atualizada_em?: string
+          contratos_atuais?: number
+          criada_em?: string
+          estado?: string
+          id?: string
+          mode: string
+          recebido_de_transferencias_brl?: number
+          resultado_proprio_brl?: number
+          saldo_atual_brl?: number
+          saldo_inicial_brl?: number
+          symbol: string
+          user_id: string
+          variant: string
+        }
+        Update: {
+          atualizada_em?: string
+          contratos_atuais?: number
+          criada_em?: string
+          estado?: string
+          id?: string
+          mode?: string
+          recebido_de_transferencias_brl?: number
+          resultado_proprio_brl?: number
+          saldo_atual_brl?: number
+          saldo_inicial_brl?: number
+          symbol?: string
+          user_id?: string
+          variant?: string
+        }
+        Relationships: []
+      }
       b3_cenario_horario: {
         Row: {
           aberto_brl: number | null
@@ -8401,6 +8449,15 @@ export type Database = {
         Args: { p_dias?: number; p_semana?: string }
         Returns: number
       }
+      b3_carteira_aplicar: {
+        Args: { p_delta: number; p_id: string; p_max: number; p_origem: string }
+        Returns: undefined
+      }
+      b3_carteira_contratos: {
+        Args: { p_max: number; p_raiz: string; p_saldo: number }
+        Returns: number
+      }
+      b3_carteira_raiz: { Args: { s: string }; Returns: string }
       b3_cat_espelho: {
         Args: { p_fim: string; p_ini: string }
         Returns: {
