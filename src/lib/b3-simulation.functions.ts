@@ -5172,7 +5172,26 @@ async function runB3SimulationTickInner(
         // O multiplicador de proteção de risco (size_multiplier) continua
         // reduzindo o tamanho quando o motor de risco pede cautela — ele
         // agora reduz a partir da base certa, em vez de reduzir 1 contrato.
-        const baseQty = Number(cfg.max_contracts) || 1;
+        // CARTEIRA POR ROBÔ (26/10, fase 1): a carteira decide só o TAMANHO.
+        // contratos_atuais = piso(saldo/(margem×1,30)) com teto max_contracts,
+        // mantido pelo banco a cada ordem fechada. Zero = "carteira insuficiente"
+        // (estado distinto de desligado): o robô não abre. Sem linha = tamanho anterior.
+        const { data: carteiraRobo } = await (supabase as any).from("b3_carteira_robo")
+          .select("contratos_atuais, saldo_atual_brl, estado").eq("user_id", userId)
+          .eq("symbol", String(run.symbol ?? "").toUpperCase().replace(/[FGHJKMNQUVXZ]\d{2}$/, ""))
+          .eq("variant", String((run as any).variant ?? "indicador")).eq("mode", mode).maybeSingle();
+        if (carteiraRobo && Number(carteiraRobo.contratos_atuais) < 1) {
+          log.push({ mode, action: "skip", reason: "carteira_insuficiente", side: effectiveSide });
+          finalizeAudit(`Carteira insuficiente: saldo R$ ${Number(carteiraRobo.saldo_atual_brl).toFixed(2)} não cobre 1 contrato.`, {
+            last_analysis: decision.justification, last_score: decision.score, last_confidence: decision.avg_confidence,
+            last_setup: `Setup ${effectiveSide.toUpperCase()} aprovado, carteira insuficiente`,
+            signals: { evaluated_side: effectiveSide, buy: false, sell: false }, committee: decision, setup: setupInfo,
+          });
+          continue;
+        }
+        const baseQty = carteiraRobo
+          ? Math.min(Number(cfg.max_contracts) || 1, Number(carteiraRobo.contratos_atuais))
+          : (Number(cfg.max_contracts) || 1);
         // Entrada em sombra por freio de resultado sai no TAMANHO DO ROBÔ: o
         // multiplicador da proteção é zero quando ela bloqueia, e usar zero aqui
         // faria a amostra livre sair com 1 contrato — livre e sombra deixariam
