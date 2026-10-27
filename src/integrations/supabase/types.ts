@@ -8578,6 +8578,7 @@ export type Database = {
       b3_disjuntor_simulado: {
         Args: {
           p_capital_base?: number
+          p_com_freio?: boolean
           p_devolucao_pico_pct?: number
           p_dia: string
           p_ganho_pct?: number
@@ -8590,6 +8591,7 @@ export type Database = {
         Returns: {
           base_origem: string
           capital_base_brl: number
+          com_freio: boolean
           dia: string
           diferenca_brl: number
           disparou: string
@@ -8613,6 +8615,7 @@ export type Database = {
       b3_efeito_freio_dia: {
         Args: {
           p_dias?: number
+          p_nivel?: string
           p_symbols?: string[]
           p_user_id: string
           p_variants?: string[]
@@ -8671,6 +8674,8 @@ export type Database = {
       b3_ficha_dia_ordens: {
         Args: {
           p_dia?: string
+          p_limite?: number
+          p_offset?: number
           p_symbols?: string[]
           p_user_id: string
           p_variants?: string[]
@@ -8696,6 +8701,7 @@ export type Database = {
           score: number
           setup: string
           stop: number
+          total_no_recorte: number
           variant: string
           votos: number
         }[]
