@@ -1399,6 +1399,9 @@ async function runB3SimulationTickInner(
         resultado_grupo_brl: Number(dec.resultado_brl.toFixed(2)),
         teto_brl: grupoLimites.teto_brl, multiplicador: dec.multiplicador,
         robos_travados: dec.robos_travados, travados_novos: dec.travados_novos,
+        robos_liberados: dec.robos_liberados ?? [],
+        sentido: dec.nivel < dec.nivel_anterior ? "descida" : "subida",
+        histerese_pct: grupoLimites.histerese_pct, dwell_minutos: grupoLimites.dwell_minutos,
         resultado_por_modo: porModo, at: nowIso,
       };
       await supabase.from("b3_simulation_block_events").insert({
@@ -1412,7 +1415,7 @@ async function runB3SimulationTickInner(
       });
       await supabase.from("system_logs").insert({
         event_type: "b3_grupo_nivel",
-        severity: dec.nivel >= 2 ? "error" : "warning",
+        severity: dec.nivel < dec.nivel_anterior ? "info" : dec.nivel >= 2 ? "error" : "warning",
         source: "b3_grupo_freio",
         message: `[${run.symbol}/${runVariant}] nível ${dec.nivel_anterior} → ${dec.nivel}: ${dec.motivo}`,
         technical_data: detalhe,

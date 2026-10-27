@@ -57,6 +57,7 @@ export interface B3GrupoDecision {
   nivel_anterior: number;
   motivo: string | null;
   travados_novos: string[];
+  robos_liberados?: string[];
 }
 
 /** Nível que o resultado atual justifica, olhando só os degraus. */
@@ -153,31 +154,60 @@ export function decideB3Grupo(args: {
     };
   }
 
-  // Descida: SOMENTE do nível 1 para 0, com histerese e dwell. Do nível 2 para
-  // cima não há volta: dos 23 robô-dias que caíram mais de R$ 800 abaixo do
-  // topo desde 17/08, nenhum terminou positivo.
-  if (prevNivel === 1) {
-    const limiteVolta = -(Math.abs(Number(l.histerese_pct) || 0) / 100) * T;
+  // Descida (27/10/2026): vale em TODOS os níveis, não só do 1 para o 0.
+  // Antes, do nível 2 para cima não havia volta e o grupo terminava o dia
+  // a meio tamanho com robôs travados mesmo positivo (WIN rompimento 26/10:
+  // freio custou R$ 3.967). Regra: sai do nível N quando o resultado volta a
+  // ficar acima do limiar do nível N mais histerese_pct do teto, e só depois de
+  // dwell_minutos desde a última mudança. Desce direto ao nível que o resultado
+  // justifica com essa histerese (espelho da subida). Ambos os campos vêm de
+  // b3_grupo_limites — nenhum valor novo aqui.
+  if (prevNivel >= 1) {
+    const novo = nivelDescida(R, l, prevNivel);
     const dwellMs = Math.max(0, Number(l.dwell_minutos) || 0) * 60_000;
     const desde = estado.ultima_mudanca_ts ? new Date(estado.ultima_mudanca_ts).getTime() : 0;
     const passou = !desde || (new Date(nowIso).getTime() - desde) >= dwellMs;
-    if (R >= limiteVolta && passou) {
+    if (novo < prevNivel && passou) {
+      // Destrava o que o nível deixado travou: no 0/1 ninguém fica travado; no
+      // 2/3 ficam só os robôs ainda negativos (a regra desses níveis).
+      const travados = novo <= 1
+        ? []
+        : travadosAntes.filter((m) => Number(resultadoPorModo[m] ?? 0) < 0);
+      const liberados = travadosAntes.filter((m) => !travados.includes(m));
+      const pctVolta = (lim: number) => -(lim / 100) * T + (Math.abs(Number(l.histerese_pct) || 0) / 100) * T;
       return {
-        nivel: 0,
-        multiplicador: 1,
-        robos_travados: travadosAntes,
+        nivel: novo,
+        multiplicador: novo >= 1 ? clampFator(l.fator_contratos) : 1,
+        robos_travados: travados,
         resultado_brl: R,
         pior_do_dia_brl: pior,
         ultima_mudanca_ts: nowIso,
         changed: true,
         nivel_anterior: prevNivel,
-        motivo: `Resultado recuperou para ${R.toFixed(2)} BRL (acima de ${limiteVolta.toFixed(2)}) após ${l.dwell_minutos} min — nível 1 liberado.`,
+        motivo: `Resultado recuperou para ${R.toFixed(2)} BRL (acima de ${pctVolta(nivelPct(l, prevNivel)).toFixed(2)}, histerese ${l.histerese_pct}% do teto) após ${l.dwell_minutos} min — nível ${prevNivel} → ${novo}; destravados: ${liberados.length ? liberados.join(", ") : "nenhum"}.`,
         travados_novos: [],
+        robos_liberados: liberados,
       };
     }
   }
 
   return base;
+}
+
+function nivelPct(l: B3GrupoLimites, n: number): number {
+  const v = n === 1 ? l.nivel1_pct : n === 2 ? l.nivel2_pct : n === 3 ? l.nivel3_pct : l.nivel4_pct;
+  return Math.abs(Number(v) || 0);
+}
+
+/** Nível ao descer: o menor nível N' ≤ prev tal que, para todo nível acima de
+ *  N' até prev, o resultado já passou do limiar daquele nível + histerese. */
+export function nivelDescida(R: number, l: B3GrupoLimites, prevNivel: number): number {
+  const T = Math.abs(Number(l.teto_brl) || 0);
+  if (T <= 0) return 0;
+  const h = (Math.abs(Number(l.histerese_pct) || 0) / 100) * T;
+  let n = prevNivel;
+  while (n >= 1 && R >= -(nivelPct(l, n) / 100) * T + h) n--;
+  return n;
 }
 
 function clampFator(v: any): number {
