@@ -32,10 +32,10 @@ describe("freio de grupo desce de nível", () => {
     expect(d.nivel).toBe(3);
     expect(d.robos_travados).toEqual(["a"]);
   });
-  it("ao descer para 2/3 só ficam travados os robôs ainda negativos", () => {
+  it("ao descer para 3 (R −800 ainda abaixo de −775) só ficam travados os robôs ainda negativos", () => {
     const d = decideB3Grupo({ limites: L, estado: est(4, ["a", "b"]), resultadoPorModo: { a: -900, b: 100 },
       R: -800, nowIso: "2026-10-26T17:00:00.000Z" });
-    expect(d.nivel).toBe(2);
+    expect(d.nivel).toBe(3);
     expect(d.robos_travados).toEqual(["a"]);
   });
 });
