@@ -85,6 +85,20 @@
       "when": 1793019019694,
       "tag": "0011_carteira_por_robo_fase1",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793186874614,
+      "tag": "0012_disjuntor_capacidade_modalidade",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793186954020,
+      "tag": "0013_disjuntor_capacidade_leitura_auditoria",
+      "breakpoints": true
     }
   ]
 }

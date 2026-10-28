@@ -8575,6 +8575,16 @@ export type Database = {
         }[]
       }
       b3_diagnosticar_dia: { Args: { p_date: string }; Returns: number }
+      b3_disjuntor_capacidade: {
+        Args: { p_symbols?: string[]; p_user_id: string; p_variants?: string[] }
+        Returns: {
+          margin_per_contract_brl: number
+          max_contracts: number
+          mode: string
+          symbol: string
+          variant: string
+        }[]
+      }
       b3_disjuntor_simulado: {
         Args: {
           p_capital_base?: number
