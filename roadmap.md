@@ -1,6 +1,8 @@
 # Fila de trabalho
 
 ## Em andamento
+- [ ] 28/10 Parte 1: capacidade na RPC, cenários por modalidade, total −14 em 27/10 e selo por data; sem publicação antes das 18:00 Brasília.
+- [ ] 28/10 Parte 2: carteiras/insuficientes nas testeiras e cockpit, teto/degrau, exposição bruta/líquida, cópias; só leitura, sem fase 3.
 - [x] Carteira por robô FASE 1 (26/10): tabela, semente R$ 300, gatilho no fechamento, escada, carteira insuficiente. Não publicado (pregão aberto). Fases 2 e 3 aguardam liberação.
 - [x] Pedido 25/10 (2º): nomes dos picos/margem crua, simulação por dia/intervalo, selo WIN somente leitura e piso percentual atual; três referências 23/10 conferidas pela tela, cópia e intervalo/celular verificados, 45 testes passaram. Publicação solicitada em 25/10 às 12:34 UTC; conclusão depende do serviço.
 - [x] Cockpit 25/10: total completo, hierarquia por data, encerrado/max diário, cópias/recolhimento/celular e instrumentação conferidos; relatório docs/cockpit-25-10-medicao.md. Sem alteração SQL nem otimização; leitura de efeito atinge 1.000 e exposição ampla falha, sinalizadas.
