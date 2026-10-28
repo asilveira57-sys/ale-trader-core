@@ -1,14 +1,14 @@
 // Somente leitura. Nenhum comando real ou simulado é emitido aqui.
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { disjuntorInput, sessionDates, type DisjuntorRow } from "./b3-disjuntor-view";
+import { disjuntorInput, sessionDates, capacityBase, capacityFormula, type CapacityRobot, type DisjuntorRow } from "./b3-disjuntor-view";
 
 export const getDisjuntorOptions = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const sb = context.supabase as any;
     const [runs, last] = await Promise.all([
-      sb.from("b3_simulation_runs").select("variant").eq("user_id", context.userId).ilike("symbol", "WIN%"),
+      sb.rpc("b3_disjuntor_capacidade", { p_user_id: context.userId, p_symbols: ["WIN"], p_variants: null }),
       sb.from("b3_simulation_orders").select("exit_time").eq("user_id", context.userId).ilike("symbol", "WIN%").eq("status", "closed").not("exit_time", "is", null).order("exit_time", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (runs.error || last.error) throw new Error("Não foi possível carregar os pregões WIN.");
@@ -23,17 +23,23 @@ export const readDisjuntorScenarios = createServerFn({ method: "POST" })
     const dates = sessionDates(data.start, data.end);
     const { syncPeakFloorFromGlobalStop } = await import("./b3-real-stop.server");
     const floor = await syncPeakFloorFromGlobalStop(context.supabase, context.userId);
+    const { data: capacity, error: capacityError } = await (context.supabase as any).rpc("b3_disjuntor_capacidade", { p_user_id: context.userId, p_symbols: ["WIN"], p_variants: data.variants });
+    if (capacityError) throw new Error("Não foi possível ler a capacidade dos robôs.");
+    const robots = (capacity ?? []) as CapacityRobot[];
+    capacityBase(robots, data.capital);
+    const variants = data.variants ?? [...new Set(robots.map(r => r.variant))].sort();
+    const jobs = dates.flatMap(day => variants.map(variant => ({ day, variant })));
     const rows: DisjuntorRow[] = [];
     // Small batches avoid serial latency without flooding the data service.
-    for (let i = 0; i < dates.length; i += 3) {
-      const batches = await Promise.all(dates.slice(i, i + 3).map(async (day) => {
+    for (let i = 0; i < jobs.length; i += 3) {
+      const batches = await Promise.all(jobs.slice(i, i + 3).map(async ({ day, variant }) => {
         const { data: result, error } = await (context.supabase as any).rpc("b3_disjuntor_simulado", {
           p_user_id: context.userId, p_dia: day, p_perdas_pct: data.losses.map((n) => n / 100),
-          p_capital_base: data.capital, p_symbols: ["WIN"], p_variants: data.variants,
+          p_capital_base: data.capital, p_symbols: ["WIN"], p_variants: [variant], p_com_freio: true,
           p_piso_pico_brl: floor.peak_min_brl,
         });
         if (error) { console.error("[disjuntor-leitura]", day, error.message); throw new Error(`Não foi possível consultar o disjuntor em ${day}.`); }
-        return (result ?? []) as DisjuntorRow[];
+        return (result ?? []).map((r: DisjuntorRow) => ({ ...r, variant, conta_base: capacityFormula(robots.filter(c => c.variant === variant), data.capital) })) as DisjuntorRow[];
       }));
       rows.push(...batches.flat());
     }

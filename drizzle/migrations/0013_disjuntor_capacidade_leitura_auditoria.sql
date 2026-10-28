@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION public.b3_disjuntor_capacidade(uuid,text[],text[]) TO supabase_read_only_user;

@@ -9,12 +9,32 @@ export const disjuntorInput = z.object({
   variants: z.array(z.string().min(1).max(40)).nullable().default(null),
 });
 export interface DisjuntorRow {
+  variant?: string; conta_base?: string;
   dia: string; capital_base_brl: number; base_origem: string; perda_pct: number;
   limite_perda_brl: number; meta_ganho_brl: number; disparou: string;
   hora_disparo_brt: string | null; resultado_com_disjuntor_brl: number;
   resultado_sem_disjuntor_brl: number; diferenca_brl: number;
   ordens_antes: number; ordens_evitadas: number; ordens_no_dia: number;
   pior_momento_brl: number | null; melhor_momento_brl: number | null; frase: string;
+}
+export interface CapacityRobot { symbol: string; variant: string; mode: string; max_contracts: number; margin_per_contract_brl: number | null }
+export function capacityBase(robots: CapacityRobot[], override: number | null = null) {
+  if (override != null) return override;
+  return robots.reduce((sum, r) => {
+    if (r.margin_per_contract_brl == null || !(Number(r.margin_per_contract_brl) > 0)) throw new Error(`Margem sem registro: ${r.symbol}`);
+    return sum + Number(r.max_contracts) * Number(r.margin_per_contract_brl);
+  }, 0);
+}
+export function capacityFormula(robots: CapacityRobot[], override: number | null) {
+  const money = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  if (override != null) return `informado: ${money(override)}`;
+  const groups = new Map<string, { count: number; qty: number; margin: number }>();
+  for (const r of robots) {
+    const k = `${r.max_contracts}|${r.margin_per_contract_brl}`;
+    const g = groups.get(k) ?? { count: 0, qty: Number(r.max_contracts), margin: Number(r.margin_per_contract_brl) };
+    g.count++; groups.set(k, g);
+  }
+  return [...groups.values()].map(g => `${g.count} robôs × ${g.qty} ${g.qty === 1 ? "contrato" : "contratos"} × ${money(g.margin)}`).join(" + ") + ` = ${money(capacityBase(robots))}`;
 }
 export function sessionDates(start: string, end: string) {
   const first = new Date(`${start}T12:00:00Z`), last = new Date(`${end}T12:00:00Z`);
