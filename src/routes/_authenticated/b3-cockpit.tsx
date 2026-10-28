@@ -970,7 +970,7 @@ function CockpitPage() {
 
 
 
-          <Button size="sm" variant="outline" className={vivo ? undefined : "min-h-11"} onClick={() => vivo ? q.refetch() : Promise.all([hq.refetch(), periodPeaksQ.refetch()])}>
+          <Button size="sm" variant="outline" className="min-h-11" onClick={() => vivo ? Promise.all([q.refetch(), walletsQ.refetch(), qc.invalidateQueries({ queryKey: ["win-disjuntor-hipotese"] })]) : Promise.all([hq.refetch(), periodPeaksQ.refetch(), qc.invalidateQueries({ queryKey: ["win-disjuntor-hipotese"] })])}>
             <RefreshCw className="w-4 h-4 mr-1" />Atualizar
           </Button>
           <Button size="sm" variant="outline"
@@ -1027,6 +1027,8 @@ function CockpitPage() {
       <PeriodBar value={period} onChange={setPeriod} resolved={hd?.period ?? { label: "Hoje", includes_today: true }} busy={q.isFetching || hq.isFetching} />
       <HistoricalBanner resolved={!vivo ? { ...hd?.period, includes_today: false } : null} />
       {!vivo && hd && <h2 className="text-xl font-black">{hd.sem_freio.by_day.length} pregões: {hd.sem_freio.by_day.map((d: any) => shortDate(d.date)).join(", ")} · {hd.period.label}</h2>}
+
+      <WalletBand title="Cockpit simulado — todos os ativos" rows={walletRows} exposure={vivo ? currentExposure : undefined} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
       {vivo ? <Scoreboard filterArgs={filterArgs} filterKey={filterKey} evidence={labelsQ.data} /> : null}
@@ -1157,7 +1159,6 @@ function CockpitPage() {
 
 
       {vivo && q.isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
-      <WalletBand title="Cockpit simulado — todos os ativos" rows={walletRows} exposure={vivo ? currentExposure : undefined} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
       {vivo && !q.isLoading && !visible.length && (
         <p className="text-sm text-muted-foreground">Nenhum robô para o filtro selecionado.</p>
       )}
