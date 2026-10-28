@@ -1,4 +1,7 @@
 import { DisjuntorHypothesis } from "@/components/b3/DisjuntorHypothesis";
+import { WalletBand } from "@/components/b3/WalletBand";
+import { readRobotWallets } from "@/lib/b3-wallet-read.functions";
+import { walletExposure } from "@/lib/b3-wallet-view";
 import { getPeriodPeakEvidence } from "@/lib/b3-cockpit-period-evidence.functions";
 import { CLOSED_PERIOD, maximumDaily, periodCards, periodHeaders } from "@/lib/b3-cockpit-period-view";
 import { getCockpitLabelEvidence } from "@/lib/b3-cockpit-evidence.functions";
@@ -798,9 +801,15 @@ function CockpitPage() {
   });
 
   const readLabels = useServerFn(getCockpitLabelEvidence);
+  const readWallets = useServerFn(readRobotWallets);
+  const walletsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "carteiras"], queryFn: () => readWallets(), enabled: vivo, staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false });
+  const walletRows = vivo ? walletsQ.data?.rows ?? [] : [];
+  const walletsFor = (root: string, variant?: string, mode?: string) => walletRows.filter(w => w.symbol === root && (!variant || w.variant === variant) && (!mode || w.mode === mode));
+  const currentExposure = walletExposure((q.data?.cards ?? []) as any[], new Map(Object.entries(walletsQ.data?.margins ?? {})));
   const labelsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "label-evidence", filterKey], queryFn: () => readLabels({ data: filterArgs }), enabled: vivo, staleTime: Infinity, gcTime: 60_000 });
   const labelEvidence: BrakeEvidence[] = vivo ? labelsQ.data?.brake ?? [] : (periodPeaksQ.data?.brake ?? []).filter((r: any) => !filterArgs.modes || filterArgs.modes.includes(r.mode));
   const currentDate = q.data?.session_date ?? peakDates[0];
+  const hypothesisDay = vivo ? currentDate : hd?.period?.end ?? period.end ?? period.start;
   const filtroCliente = buildCockpitFilter(filterArgs);
   const all: any[] = (vivo ? ((q.data?.cards ?? []) as any[]) : periodCards(hd?.catalog ?? [], hd?.sem_freio?.robots ?? [])).filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode)).map((c) => ({ ...c, brake_evidence: labelEvidence.find((r) => r.trade_date === currentDate && r.raiz === rootSymbol(c.symbol) && r.variant === c.variant && r.mode === c.mode) }));
   const porAtivo: any[] = !vivo ? periodHeaders(all) : recorteServidor ? ((headersQ.data as any)?.por_ativo ?? []) : (q.data?.por_ativo ?? []);
@@ -1148,6 +1157,7 @@ function CockpitPage() {
 
 
       {vivo && q.isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
+      <WalletBand title="Cockpit simulado — todos os ativos" rows={walletRows} exposure={vivo ? currentExposure : undefined} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
       {vivo && !q.isLoading && !visible.length && (
         <p className="text-sm text-muted-foreground">Nenhum robô para o filtro selecionado.</p>
       )}
@@ -1204,7 +1214,8 @@ function CockpitPage() {
                 {isCollapsed ? <ChevronDown /> : <ChevronUp />}
               </Button>
             </div>
-            {vivo && root === "WIN" && currentDate && <DisjuntorHypothesis day={currentDate} />}
+            <WalletBand title={root} rows={walletsFor(root)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
+            {root === "WIN" && hypothesisDay && <DisjuntorHypothesis day={hypothesisDay} live={vivo} />}
             <EfeitoCincoPregoes encerrado={!vivo} titulo={root} days={history?.days} evidence={labelEvidence} root={root} peaks={vivo ? (peaksQ.data ? peaksQ.data.assets[root] ?? {} : undefined) : Object.fromEntries(historicalPeaks.filter((r: any) => r.variant === "(ativo)").map((r: any) => [r.trade_date, r]))} modesIgnored={peaksQ.data?.modes_ignored} />
             {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
             {!vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}
@@ -1253,6 +1264,8 @@ function CockpitPage() {
                   {variantCollapsed ? <ChevronDown /> : <ChevronUp />}
                 </Button>
                </h3>
+               <WalletBand title={`${root} · ${variantLabel(variant)}`} rows={walletsFor(root, variant)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
+               {root === "WIN" && variant !== REAL_GROUP && hypothesisDay && <DisjuntorHypothesis day={hypothesisDay} variant={variant} live={vivo} />}
                <EfeitoCincoPregoes encerrado={!vivo} titulo={`${root} · ${variantLabel(variant)}`} days={history?.by_variant?.find((item: any) => item.variant === variant)?.days} evidence={labelEvidence} root={root} variant={variant}
                  peaks={vivo ? (peaksQ.data ? peaksQ.data.variants[variantKey] ?? {} : undefined) : Object.fromEntries(historicalPeaks.filter((r: any) => r.variant === variant).map((r: any) => [r.trade_date, r]))} modesIgnored={peaksQ.data?.modes_ignored} />
                </div>
@@ -1314,10 +1327,11 @@ function CockpitPage() {
                       >
                         <Copy className="w-4 h-4" />
                       </Button>
+                      <div className="pt-14"><WalletBand title={`${root} · ${variantLabel(c.variant)} · ${robotLabel(c.mode,c.variant)}`} rows={walletsFor(root,c.variant,c.mode)} robot pending={walletsQ.isPending} error={walletsQ.isError} /></div>
                       {/* ── Cabeçalho compacto: sempre visível ── */}
                       <button className="w-full text-left p-3 space-y-2" onClick={() => toggleExpand(key)}>
 
-                        <div className="flex items-center justify-between gap-1 pt-10">
+                        <div className="flex items-center justify-between gap-1">
                           <div className="flex flex-wrap items-center gap-1">
                             <Badge className={`text-[10px] ${MODE_COLOR[c.mode]}`}>{robotLabel(c.mode, c.variant)}</Badge>
                             <Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge>

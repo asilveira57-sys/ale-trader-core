@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { derivedPeakFloor, disjuntorInput, disjuntorTotals, sessionDates, disjuntorBadgeText, type DisjuntorRow } from "./b3-disjuntor-view";
+import { capacityBase, derivedPeakFloor, disjuntorInput, disjuntorTotals, sessionDates, disjuntorBadgeText, type DisjuntorRow } from "./b3-disjuntor-view";
 describe("disjuntor WIN somente leitura", () => {
+  const capacity = Array.from({ length: 48 }, (_,i) => ({ symbol: "WIN", variant: `v${Math.floor(i/8)}`, mode: String(i%8), max_contracts: 1, margin_per_contract_brl: 155 }));
+  it("capacidade WIN 48 robôs = 7440 e teto 25% = 1860", () => { expect(capacityBase(capacity)).toBe(7440); expect(capacityBase(capacity)*.25).toBe(1860); });
+  it("modalidade 8 robôs = 1240 e teto 25% = 310", () => { expect(capacityBase(capacity.slice(0,8))).toBe(1240); expect(capacityBase(capacity.slice(0,8))*.25).toBe(310); });
+  it("capital informado vence a capacidade", () => { expect(capacityBase(capacity,4030)).toBe(4030); });
+  it("27/10 soma os seis resultados sem disjuntor exatamente -14", () => {
+    const rows = [-714,-833,-675,170,140,1898].map(n => ({ perda_pct:.25,ordens_no_dia:1,ordens_antes:1,ordens_evitadas:0,resultado_sem_disjuntor_brl:n,resultado_com_disjuntor_brl:n,diferenca_brl:0 } as DisjuntorRow));
+    expect(disjuntorTotals(rows)[0]?.sem).toBe(-14);
+  });
   it("capital vazio é nulo e perda padrão é 25%", () => {
     const input = disjuntorInput.parse({ start: "2026-10-23", end: "2026-10-23" });
     expect(input.capital).toBeNull(); expect(input.losses).toEqual([25]); expect(input.variants).toBeNull();
