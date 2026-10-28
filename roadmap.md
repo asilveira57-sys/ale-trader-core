@@ -1,8 +1,9 @@
 # Fila de trabalho
 
 ## Em andamento
-- [ ] 28/10 Parte 1: capacidade na RPC, cenários por modalidade, total −14 em 27/10 e selo por data; sem publicação antes das 18:00 Brasília.
-- [ ] 28/10 Parte 2: carteiras/insuficientes nas testeiras e cockpit, teto/degrau, exposição bruta/líquida, cópias; só leitura, sem fase 3.
+- [x] 28/10 Parte 1: capacidade na RPC aplicada no banco; 7440 global/1240 modalidade conferidos. Tela autenticada: seis resultados sem disjuntor somam −14 em 27/10, intervalo/cópia/celular e selo histórico conferidos; sem rede global, conta real intacta.
+- [x] 28/10 Parte 2: 144 carteiras, 49 insuficientes, R$ 36.991,80 e 146 contratos conferidos na tela; testeiras/degrau/teto e exposição bruta/líquida/cópias só leitura. Histórico não herda saldo atual. 15 testes passaram; sem fase 3.
+- [ ] Publicar pedido 28/10 — somente depois das 18:00 Brasília, em nova interação; nenhuma publicação automática agendada.
 - [x] Carteira por robô FASE 1 (26/10): tabela, semente R$ 300, gatilho no fechamento, escada, carteira insuficiente. Não publicado (pregão aberto). Fases 2 e 3 aguardam liberação.
 - [x] Pedido 25/10 (2º): nomes dos picos/margem crua, simulação por dia/intervalo, selo WIN somente leitura e piso percentual atual; três referências 23/10 conferidas pela tela, cópia e intervalo/celular verificados, 45 testes passaram. Publicação solicitada em 25/10 às 12:34 UTC; conclusão depende do serviço.
 - [x] Cockpit 25/10: total completo, hierarquia por data, encerrado/max diário, cópias/recolhimento/celular e instrumentação conferidos; relatório docs/cockpit-25-10-medicao.md. Sem alteração SQL nem otimização; leitura de efeito atinge 1.000 e exposição ampla falha, sinalizadas.
