@@ -99,6 +99,13 @@
       "when": 1793186954020,
       "tag": "0013_disjuntor_capacidade_leitura_auditoria",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793275832389,
+      "tag": "0014_livro_ocorrencias",
+      "breakpoints": true
     }
   ]
 }

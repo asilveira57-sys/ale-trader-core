@@ -2080,6 +2080,56 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_livro_ocorrencias: {
+        Row: {
+          atualizado_em: string
+          corpo: string
+          criado_em: string
+          data: string
+          id: string
+          referencias: Json | null
+          retrata_id: string | null
+          status: string
+          tipo: string
+          titulo: string
+          user_id: string
+        }
+        Insert: {
+          atualizado_em?: string
+          corpo: string
+          criado_em?: string
+          data: string
+          id?: string
+          referencias?: Json | null
+          retrata_id?: string | null
+          status?: string
+          tipo: string
+          titulo: string
+          user_id?: string
+        }
+        Update: {
+          atualizado_em?: string
+          corpo?: string
+          criado_em?: string
+          data?: string
+          id?: string
+          referencias?: Json | null
+          retrata_id?: string | null
+          status?: string
+          tipo?: string
+          titulo?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "b3_livro_ocorrencias_retrata_id_fkey"
+            columns: ["retrata_id"]
+            isOneToOne: false
+            referencedRelation: "b3_livro_ocorrencias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       b3_m1_candles_hist: {
         Row: {
           candle_close: number
