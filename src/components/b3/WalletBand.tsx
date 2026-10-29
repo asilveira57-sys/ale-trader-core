@@ -4,7 +4,8 @@ import { BRL } from "@/lib/b3-format";
 import { copiarTexto } from "@/lib/b3-copiar";
 import { walletSteps, walletSummary, type RobotWallet, type walletExposure } from "@/lib/b3-wallet-view";
 
-const LEGEND = "A exposição ao movimento do preço é a líquida, mas a margem exigida é a bruta — a corretora cobra as duas pontas.";
+const LEGEND = "Quando o mesmo ativo tem compra e venda abertas, a exposição ao movimento do preço é a líquida, mas a margem exigida é a bruta — a corretora cobra as duas pontas.";
+export const COM_FREIO_NOTE = "A carteira é COM FREIO: ordem barrada na sombra não debita. O 'realizado hoje' do card é SEM FREIO. Os dois números não fecham por desenho.";
 export function WalletBand({ rows, title, robot = false, exposure, historical = false, pending = false, error = false }: { rows: RobotWallet[]; title: string; robot?: boolean; exposure?: ReturnType<typeof walletExposure>; historical?: boolean; pending?: boolean; error?: boolean }) {
   const summary = walletSummary(rows), w = rows[0], steps = robot && w ? walletSteps(w) : null;
   const unavailable = historical ? "Carteira atual: período encerrado — sem retrato histórico" : pending ? "Consultando carteira…" : error ? "Carteira: leitura indisponível" : rows.length === 0 ? "Carteira: sem registro" : null;
