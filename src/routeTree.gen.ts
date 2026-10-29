@@ -27,6 +27,7 @@ import { Route as AuthenticatedB3DiagnosticoRouteImport } from './routes/_authen
 import { Route as AuthenticatedB3ExtratoRealRouteImport } from './routes/_authenticated/b3-extrato-real'
 import { Route as AuthenticatedB3FichaDiaRouteImport } from './routes/_authenticated/b3-ficha-dia'
 import { Route as AuthenticatedB3ListasRouteImport } from './routes/_authenticated/b3-listas'
+import { Route as AuthenticatedB3LivroRouteImport } from './routes/_authenticated/b3-livro'
 import { Route as AuthenticatedB3Mt5simRouteImport } from './routes/_authenticated/b3-mt5sim'
 import { Route as AuthenticatedB3Petr4RouteImport } from './routes/_authenticated/b3-petr4'
 import { Route as AuthenticatedB3ProporcionalRouteImport } from './routes/_authenticated/b3-proporcional'
@@ -190,6 +191,11 @@ const AuthenticatedB3FichaDiaRoute = AuthenticatedB3FichaDiaRouteImport.update({
 const AuthenticatedB3ListasRoute = AuthenticatedB3ListasRouteImport.update({
   id: '/b3-listas',
   path: '/b3-listas',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedB3LivroRoute = AuthenticatedB3LivroRouteImport.update({
+  id: '/b3-livro',
+  path: '/b3-livro',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedB3Mt5simRoute = AuthenticatedB3Mt5simRouteImport.update({
@@ -588,6 +594,7 @@ export interface FileRoutesByFullPath {
   '/b3-extrato-real': typeof AuthenticatedB3ExtratoRealRoute
   '/b3-ficha-dia': typeof AuthenticatedB3FichaDiaRoute
   '/b3-listas': typeof AuthenticatedB3ListasRoute
+  '/b3-livro': typeof AuthenticatedB3LivroRoute
   '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-petr4': typeof AuthenticatedB3Petr4Route
   '/b3-proporcional': typeof AuthenticatedB3ProporcionalRoute
@@ -675,6 +682,7 @@ export interface FileRoutesByTo {
   '/b3-extrato-real': typeof AuthenticatedB3ExtratoRealRoute
   '/b3-ficha-dia': typeof AuthenticatedB3FichaDiaRoute
   '/b3-listas': typeof AuthenticatedB3ListasRoute
+  '/b3-livro': typeof AuthenticatedB3LivroRoute
   '/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/b3-petr4': typeof AuthenticatedB3Petr4Route
   '/b3-proporcional': typeof AuthenticatedB3ProporcionalRoute
@@ -764,6 +772,7 @@ export interface FileRoutesById {
   '/_authenticated/b3-extrato-real': typeof AuthenticatedB3ExtratoRealRoute
   '/_authenticated/b3-ficha-dia': typeof AuthenticatedB3FichaDiaRoute
   '/_authenticated/b3-listas': typeof AuthenticatedB3ListasRoute
+  '/_authenticated/b3-livro': typeof AuthenticatedB3LivroRoute
   '/_authenticated/b3-mt5sim': typeof AuthenticatedB3Mt5simRoute
   '/_authenticated/b3-petr4': typeof AuthenticatedB3Petr4Route
   '/_authenticated/b3-proporcional': typeof AuthenticatedB3ProporcionalRoute
@@ -853,6 +862,7 @@ export interface FileRouteTypes {
     | '/b3-extrato-real'
     | '/b3-ficha-dia'
     | '/b3-listas'
+    | '/b3-livro'
     | '/b3-mt5sim'
     | '/b3-petr4'
     | '/b3-proporcional'
@@ -940,6 +950,7 @@ export interface FileRouteTypes {
     | '/b3-extrato-real'
     | '/b3-ficha-dia'
     | '/b3-listas'
+    | '/b3-livro'
     | '/b3-mt5sim'
     | '/b3-petr4'
     | '/b3-proporcional'
@@ -1028,6 +1039,7 @@ export interface FileRouteTypes {
     | '/_authenticated/b3-extrato-real'
     | '/_authenticated/b3-ficha-dia'
     | '/_authenticated/b3-listas'
+    | '/_authenticated/b3-livro'
     | '/_authenticated/b3-mt5sim'
     | '/_authenticated/b3-petr4'
     | '/_authenticated/b3-proporcional'
@@ -1244,6 +1256,13 @@ declare module '@tanstack/react-router' {
       path: '/b3-listas'
       fullPath: '/b3-listas'
       preLoaderRoute: typeof AuthenticatedB3ListasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-livro': {
+      id: '/_authenticated/b3-livro'
+      path: '/b3-livro'
+      fullPath: '/b3-livro'
+      preLoaderRoute: typeof AuthenticatedB3LivroRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/b3-mt5sim': {
@@ -1774,6 +1793,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedB3ExtratoRealRoute: typeof AuthenticatedB3ExtratoRealRoute
   AuthenticatedB3FichaDiaRoute: typeof AuthenticatedB3FichaDiaRoute
   AuthenticatedB3ListasRoute: typeof AuthenticatedB3ListasRoute
+  AuthenticatedB3LivroRoute: typeof AuthenticatedB3LivroRoute
   AuthenticatedB3Mt5simRoute: typeof AuthenticatedB3Mt5simRoute
   AuthenticatedB3Petr4Route: typeof AuthenticatedB3Petr4Route
   AuthenticatedB3ProporcionalRoute: typeof AuthenticatedB3ProporcionalRoute
@@ -1843,6 +1863,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedB3ExtratoRealRoute: AuthenticatedB3ExtratoRealRoute,
   AuthenticatedB3FichaDiaRoute: AuthenticatedB3FichaDiaRoute,
   AuthenticatedB3ListasRoute: AuthenticatedB3ListasRoute,
+  AuthenticatedB3LivroRoute: AuthenticatedB3LivroRoute,
   AuthenticatedB3Mt5simRoute: AuthenticatedB3Mt5simRoute,
   AuthenticatedB3Petr4Route: AuthenticatedB3Petr4Route,
   AuthenticatedB3ProporcionalRoute: AuthenticatedB3ProporcionalRoute,
