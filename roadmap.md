@@ -1,8 +1,8 @@
 # Fila de trabalho
 
 ## Em andamento
-- [ ] 30/10: trailing simulado + MFE/MAE por M1 fechada, evidência tique/vela e testes — bloqueado por decisão do dono: closeOrder espelha todo fechamento simulado ao real; separar saídas é necessário para manter conta real intacta.
-- [ ] Publicar 30/10 e verificar carteira fase 2/Livro no ar — só após 18:00 Brasília em nova interação.
+- [ ] 30/10: PAUSADO pelo dono; trailing/MFE/MAE atuais intactos. Aguarda nova liberação diante do espelhamento de closeOrder ao real.
+- [ ] Verificar carteira fase 2/Livro no ar — publicação dessas entregas só após 18:00 Brasília em nova interação; trailing 30/10 não autorizado.
 - [x] 28/10 Parte 1: capacidade na RPC aplicada no banco; 7440 global/1240 modalidade conferidos. Tela autenticada: seis resultados sem disjuntor somam −14 em 27/10, intervalo/cópia/celular e selo histórico conferidos; sem rede global, conta real intacta.
 - [x] 28/10 Parte 2: 144 carteiras, 49 insuficientes, R$ 36.991,80 e 146 contratos conferidos na tela; testeiras/degrau/teto e exposição bruta/líquida/cópias só leitura. Histórico não herda saldo atual. 15 testes passaram; sem fase 3.
 - [ ] Publicar pedido 28/10 — somente depois das 18:00 Brasília, em nova interação; nenhuma publicação automática agendada.
