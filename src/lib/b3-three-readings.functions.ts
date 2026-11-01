@@ -15,5 +15,7 @@ export const readThreeReadings = createServerFn({ method: "GET" })
     });
     if (error) throw new Error("Não foi possível ler as três leituras do cockpit.");
     const out = result as unknown as { rows: ThreeReading[]; daily: any[] };
-    return { ...out, period, ms: Math.round(performance.now() - clock) };
+    const { data: colors, error: colorError } = await (context.supabase as any).rpc("b3_cores_dos_robos");
+    if (colorError) throw new Error("Não foi possível ler as cores dos robôs.");
+    return { ...out, colors: (colors ?? []) as any[], period, ms: Math.round(performance.now() - clock) };
   });
