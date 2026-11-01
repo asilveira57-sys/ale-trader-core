@@ -1,6 +1,12 @@
 # Fila de trabalho
 
 ## Em andamento
+- [ ] 01/11 Parte 1: três resultados permanentes por robô/modalidade/ativo, números e evidências calculados exclusivamente no banco; validar hoje/histórico.
+- [ ] 01/11 Parte 2: marcos manuais, aviso de recorte e marcações em gráficos/tabelas; validar criar/editar/copiar.
+- [ ] 01/11 Parte 3: ocultação por estado do banco; após prioridades 1/2.
+- [ ] 01/11 Parte 4: BLOQUEADA: docs/mt5-connector-client.py é apenas envio de ticks, não contém executor/descoberta de magic; não alterar real sem executor verificável.
+- [ ] 01/11 Parte 5: transferências manuais soma zero; após prioridades 1/2.
+- [ ] 01/11: verificar segurança e solicitar publicação das entregas concluídas; trailing permanece pausado.
 - [ ] 30/10: PAUSADO pelo dono; trailing/MFE/MAE atuais intactos. Aguarda nova liberação diante do espelhamento de closeOrder ao real.
 - [ ] Verificar carteira fase 2/Livro no ar — publicação dessas entregas só após 18:00 Brasília em nova interação; trailing 30/10 não autorizado.
 - [x] 28/10 Parte 1: capacidade na RPC aplicada no banco; 7440 global/1240 modalidade conferidos. Tela autenticada: seis resultados sem disjuntor somam −14 em 27/10, intervalo/cópia/celular e selo histórico conferidos; sem rede global, conta real intacta.
