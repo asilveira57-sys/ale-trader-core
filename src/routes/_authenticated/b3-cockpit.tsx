@@ -966,7 +966,7 @@ function CockpitPage() {
               </Button>
             </div>
             <WalletBand title={root} rows={walletsFor(root)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
-            {root === "WIN" && hypothesisDay && <DisjuntorHypothesis day={hypothesisDay} live={vivo} />}
+            <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">Courbe réalisée par heure de sortie · scénario conservateur; le réel lit aussi le flottant.</p>
             <ThreePeriodRows rows={(vivo ? recentQ.data?.daily : threeQ.data?.daily) ?? []} total={vivo ? readingFor(recentQ.data?.rows ?? [], root) : threeFor(root)} symbol={root} />
             {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
             {!vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}
@@ -1014,7 +1014,7 @@ function CockpitPage() {
                 </Button>
                </h3>
                <WalletBand title={`${root} · ${variantLabel(variant)}`} rows={walletsFor(root, variant)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
-               {root === "WIN" && variant !== REAL_GROUP && hypothesisDay && <DisjuntorHypothesis day={hypothesisDay} variant={variant} live={vivo} />}
+               <ReadingDetails row={threeFor(root, variant)} />
                <ThreePeriodRows rows={(vivo ? recentQ.data?.daily : threeQ.data?.daily) ?? []} total={vivo ? readingFor(recentQ.data?.rows ?? [], root, variant) : threeFor(root, variant)} symbol={root} variant={variant} />
                </div>
 
