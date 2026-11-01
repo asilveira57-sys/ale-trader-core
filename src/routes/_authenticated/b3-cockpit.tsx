@@ -1,4 +1,7 @@
 import { DisjuntorHypothesis } from "@/components/b3/DisjuntorHypothesis";
+import { ThreeReadings, ReadingDetails } from "@/components/b3/ThreeReadings";
+import { readThreeReadings } from "@/lib/b3-three-readings.functions";
+import { readingFor, readingText, type ThreeReading } from "@/lib/b3-three-readings";
 import { WalletBand } from "@/components/b3/WalletBand";
 import { readRobotWallets } from "@/lib/b3-wallet-read.functions";
 import { walletExposure } from "@/lib/b3-wallet-view";
@@ -85,7 +88,7 @@ function historicalFive(hd: any) {
     return { symbol, days: days(), by_variant: variants.map((variant) => ({ variant, days: days(variant) })) };
   }) };
 }
-function HistoricalRobot({ c, expanded, toggle, copy }: { c: any; expanded: boolean; toggle: () => void; copy: () => void }) {
+function HistoricalRobot({ c, row, expanded, toggle, copy }: { c: any; row?: ThreeReading; expanded: boolean; toggle: () => void; copy: () => void }) {
   const cor = robotColor(c.cor);
   return <div className={`relative rounded-lg border bg-card overflow-hidden ${cor ? cor.border : "border-border"}`}>
     {cor && <span aria-hidden className={`absolute left-0 top-0 h-full w-1 ${cor.bar}`} />} 
@@ -93,11 +96,11 @@ function HistoricalRobot({ c, expanded, toggle, copy }: { c: any; expanded: bool
     <Button variant="ghost" className="h-auto w-full flex-col items-stretch whitespace-normal px-3 py-3 pt-14 text-left" onClick={toggle} aria-expanded={expanded}>
       <span className="flex flex-wrap gap-1"><Badge className={`text-[10px] ${MODE_COLOR[c.mode]}`}>{robotLabel(c.mode, c.variant)}</Badge><Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge></span>
       <span className="my-2 text-xs text-muted-foreground">{c.ops ? CLOSED_PERIOD : "sem ordens no período"}</span>
-      <span className="flex justify-between border-t border-border pt-2 text-xs"><span>Realizado (sem freio)</span><span className={c.ops ? moneyColor(c.total_today) : "text-muted-foreground"}>{c.ops ? BRL(c.total_today) : "sem ordens"}</span></span>
-      <span className="text-xs text-muted-foreground">{c.ops} ordens · {c.ganhos} ganhos · {c.perdas} perdas</span>
+      <ThreeReadings row={row} />
+      <ReadingDetails row={row} />
       {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
     </Button>
-    {expanded && <div className="border-t border-border p-3 text-xs space-y-2"><p>Exposição atual: {CLOSED_PERIOD}</p><p>Aberto positivo: {CLOSED_PERIOD}</p><p>Aberto negativo: {CLOSED_PERIOD}</p><p>Ordens barradas: {c.sombra_ops}</p><p className="text-muted-foreground">{SHADOW_EXPLANATION}</p></div>}
+    {expanded && <div className="border-t border-border p-3 text-xs space-y-2"><p>Exposição atual: {CLOSED_PERIOD}</p><p>Aberto positivo: {CLOSED_PERIOD}</p><p>Aberto negativo: {CLOSED_PERIOD}</p><p className="text-muted-foreground">{SHADOW_EXPLANATION}</p></div>}
   </div>;
 }
 
@@ -740,6 +743,10 @@ function CockpitPage() {
     modes: orNull(modesSel, allModes),
   };
   const filterKey = JSON.stringify(filterArgs);
+  const readThree = useServerFn(readThreeReadings);
+  const threeQ = useQuery({ queryKey: ["b3-cockpit-pesado", "tres-leituras", period, filterKey], queryFn: () => readThree({ data: { ...period, ...filterArgs } }), staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false });
+  const threeRows = threeQ.data?.rows ?? [];
+  const threeFor = (root: string, variant?: string, mode?: string) => readingFor(threeRows, root, variant, mode);
 
   // LEVE (18/10/2026): a leitura viva é UMA só, sem recorte — o filtro de
   // ativo/modalidade/robô é aplicado no navegador. Trocar filtro não refaz
@@ -861,6 +868,8 @@ function CockpitPage() {
   // ── Copiar estado dos robôs como texto puro (somente interface) ──
   const copyCards = async (cards: any[], scope: string, includeScoreboard = false) => {
     if (!cards.length) { toast.error("Nada para copiar"); return; }
+    await copiarTexto(`Cockpit — ${threeQ.data?.period.label ?? "sem registro"} · ${scope}\n` + cards.map(c => `${rootSymbol(c.symbol)} · ${variantLabel(c.variant)} · ${robotLabel(c.mode, c.variant)}\n${readingText(threeFor(rootSymbol(c.symbol), c.variant, c.mode))}\nPosição: ${vivo ? c.open ? "aberta" : "sem posição" : CLOSED_PERIOD}`).join("\n\n"));
+    return;
     if (!vivo) { await copiarTexto(`Cockpit — ${hd?.period?.label ?? "sem registro"}
 ` + tabular(["Ativo", "Modalidade", "Robô", "Ordens", "Realizado sem freio", "Posição"], cards.map((c) => [c.symbol, variantLabel(c.variant), robotLabel(c.mode, c.variant), c.ops, c.ops ? BRL(c.total_today) : "sem ordens no período", CLOSED_PERIOD]))); return; }
     const text = buildCockpitCopyText(cards, {
@@ -970,7 +979,7 @@ function CockpitPage() {
 
 
 
-          <Button size="sm" variant="outline" className="min-h-11" onClick={() => vivo ? Promise.all([q.refetch(), walletsQ.refetch(), qc.invalidateQueries({ queryKey: ["win-disjuntor-hipotese"] })]) : Promise.all([hq.refetch(), periodPeaksQ.refetch(), qc.invalidateQueries({ queryKey: ["win-disjuntor-hipotese"] })])}>
+          <Button size="sm" variant="outline" className="min-h-11" onClick={() => { threeQ.refetch(); return vivo ? Promise.all([q.refetch(), walletsQ.refetch(), qc.invalidateQueries({ queryKey: ["win-disjuntor-hipotese"] })]) : Promise.all([hq.refetch(), periodPeaksQ.refetch(), qc.invalidateQueries({ queryKey: ["win-disjuntor-hipotese"] })]); }}>
             <RefreshCw className="w-4 h-4 mr-1" />Atualizar
           </Button>
           <Button size="sm" variant="outline"
@@ -1026,6 +1035,7 @@ function CockpitPage() {
 
       <PeriodBar value={period} onChange={setPeriod} resolved={hd?.period ?? { label: "Hoje", includes_today: true }} busy={q.isFetching || hq.isFetching} />
       <HistoricalBanner resolved={!vivo ? { ...hd?.period, includes_today: false } : null} />
+      {threeQ.isError && <p role="alert" className="text-destructive">Trois leituras indisponíveis — sem registro. Use Atualizar.</p>}
       {!vivo && hd && <h2 className="text-xl font-black">{hd.sem_freio.by_day.length} pregões: {hd.sem_freio.by_day.map((d: any) => shortDate(d.date)).join(", ")} · {hd.period.label}</h2>}
 
       <WalletBand title="Cockpit simulado — todos os ativos" rows={walletRows} exposure={vivo ? currentExposure : undefined} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
@@ -1184,9 +1194,7 @@ function CockpitPage() {
                     {Array.from(group.contracts).join(" · ")}
                   </span>
                    <span className="font-normal opacity-80">{robotCount} robôs</span>
-                   <span className="ml-auto font-mono text-xl font-black">
-                    {!vivo && hdr?.ops === 0 ? "sem ordens no período" : SIGNED_HDR(hdr?.resultado_brl ?? 0)}
-                  </span>
+                   <ThreeReadings row={threeFor(root)} />
                 </div>
                  <p className="text-[11px] font-medium opacity-80">
                   {hdr?.ops ?? 0} ops · {hdr?.ganhos ?? 0} no lucro ({PCT(hdr?.taxa_acerto)}){"   "}
@@ -1235,11 +1243,9 @@ function CockpitPage() {
                 <span className="font-semibold opacity-80">{cards.length} robôs</span>
                 {/* Com uma única modalidade visível, a testeira do ativo já mostra
                     exatamente estes números — o subtotal viraria repetição. */}
-                {variantsSel.length > 1 && (
+                {(
                   <>
-                    <span className="font-mono font-black">
-                      {!vivo && sub?.ops === 0 ? "sem ordens no período" : SIGNED_HDR(sub?.resultado_brl ?? 0)}
-                    </span>
+                    <ThreeReadings row={threeFor(root, variant)} />
                     <span className="font-normal opacity-80">
                       {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})
                     </span>
@@ -1278,7 +1284,7 @@ function CockpitPage() {
                <div id={`robots-${variantKey}`} hidden={variantCollapsed} className={variantCollapsed ? "hidden" : "grid grid-cols-1 gap-3 p-3 @[380px]:grid-cols-2 @[780px]:grid-cols-4 @[1500px]:grid-cols-8"}>
                 {cards.map((c: any) => {
                   const key = `${c.run_id}:${c.mode}`;
-                  if (!vivo) return <HistoricalRobot key={key} c={c} expanded={expanded.has(key)} toggle={() => toggleExpand(key)} copy={() => copyCards([c], root)} />;
+                  if (!vivo) return <HistoricalRobot key={key} c={c} row={threeFor(root, c.variant, c.mode)} expanded={expanded.has(key)} toggle={() => toggleExpand(key)} copy={() => copyCards([c], root)} />;
                   const isOpen = expanded.has(key);
                   const hasPosition = !!c.open;
                   const tick = Number(c.tick_size ?? 5);
@@ -1399,12 +1405,8 @@ function CockpitPage() {
 
                         {/* ── Resultado do dia, separado do acumulado ── */}
                         <div className="text-[11px] space-y-0.5 pt-1 border-t border-border/40">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Realizado hoje (sem freio)</span>
-                            <span className={`font-mono ${Number(c.realized_today) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                              {BRL(c.realized_today)}
-                            </span>
-                          </div>
+                          <ThreeReadings row={threeFor(root, c.variant, c.mode)} />
+                          <ReadingDetails row={threeFor(root, c.variant, c.mode)} />
                           {hasPosition && (
                             <div className="flex justify-between opacity-60">
                               <span>Em aberto (não realizado)</span>
