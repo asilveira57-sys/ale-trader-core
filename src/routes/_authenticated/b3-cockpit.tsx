@@ -1,7 +1,7 @@
 import { DisjuntorHypothesis } from "@/components/b3/DisjuntorHypothesis";
-import { ThreeReadings, ReadingDetails } from "@/components/b3/ThreeReadings";
+import { ThreeReadings, ReadingDetails, ThreePeriodRows } from "@/components/b3/ThreeReadings";
 import { readThreeReadings } from "@/lib/b3-three-readings.functions";
-import { readingFor, readingText, type ThreeReading } from "@/lib/b3-three-readings";
+import { readingFor, readingText, threePeriodData, threeHeaders, type ThreeReading } from "@/lib/b3-three-readings";
 import { MilestoneContext, MilestoneMark, MilestoneWarning, useMilestones } from "@/components/b3/ConfigurationMilestones";
 import { WalletBand } from "@/components/b3/WalletBand";
 import { readRobotWallets } from "@/lib/b3-wallet-read.functions";
@@ -229,11 +229,11 @@ const shortDate = (date: string) => {
 // e o valor em verde/vermelho conforme positivo/negativo. Hoje é o primeiro
 // card (ainda em andamento) e o "Total" soma somente os últimos 5 pregões.
 function PregaoCard({
-  label, com, sem, highlight, peak, barrados, frase, empty = false,
-}: { empty?: boolean; label: string; com: number; sem: number; highlight?: boolean; peak?: RealizedPeak | null; barrados?: number | null; frase?: string }) {
+  label, com, sem, highlight, peak, barrados, frase, date, empty = false,
+}: { date?: string; empty?: boolean; label: string; com: number; sem: number; highlight?: boolean; peak?: RealizedPeak | null; barrados?: number | null; frase?: string }) {
   return (
     <div className="min-w-[126px] rounded bg-background/90 px-2 py-1.5 text-left">
-      <p className={`mb-1 ${highlight ? "font-black" : "font-bold"} text-foreground`}>{label}</p>
+      <p className={`mb-1 ${highlight ? "font-black" : "font-bold"} text-foreground`}>{label}{date && <MilestoneMark date={date} />}</p>
       {empty ? <p className="text-foreground">sem ordens no período</p> : <>
       <p className="whitespace-nowrap font-bold text-foreground">
         Com freio <span className={`ml-1 font-mono ${moneyColor(com)}`}>{BRL(com)}</span>
@@ -281,6 +281,7 @@ function EfeitoCincoPregoes({ days, peaks, titulo, modesIgnored, evidence = [], 
         {rows.map((day, index) => (
           <PregaoCard
             key={day.date}
+            date={day.date}
             empty={encerrado && day.ordens === 0}
             label={!encerrado && index === 0 ? `Hoje · ${shortDate(day.date)}` : shortDate(day.date)}
             com={Number(day.com_freio_brl ?? 0)}
@@ -781,11 +782,11 @@ function CockpitPage() {
   const hq = useQuery({
     queryKey: ["b3-cockpit-periodo", period.preset, period.start, period.end, filterKey],
     queryFn: () => timedCockpitRead("resumo-periodo", () => getPeriodo({ data: { ...period, ...filterArgs } as never })),
-    enabled: !vivo,
+    enabled: false,
     staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false,
     gcTime: 0,
   });
-  const hd = hq.data as any;
+  const hd = threePeriodData(threeQ.data) as any;
   const readPeriodPeaks = useServerFn(getPeriodPeakEvidence);
   const periodPeaksQ = useQuery({ queryKey: ["b3-cockpit-period-peaks", period, filterKey], queryFn: () => timedCockpitRead("picos-periodo", () => readPeriodPeaks({ data: { ...period, symbols: filterArgs.symbols, variants: filterArgs.variants } })), enabled: !vivo && !!hd && !hd.no_movement, staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false });
   useEffect(() => { if (!vivo && hd?.timings) console.info("[cockpit-dados]", JSON.stringify(hd.timings)); }, [hd, vivo]);
@@ -821,7 +822,7 @@ function CockpitPage() {
   const hypothesisDay = vivo ? currentDate : hd?.period?.end ?? period.end ?? period.start;
   const filtroCliente = buildCockpitFilter(filterArgs);
   const all: any[] = (vivo ? ((q.data?.cards ?? []) as any[]) : periodCards(hd?.catalog ?? [], hd?.sem_freio?.robots ?? [])).filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode)).map((c) => ({ ...c, brake_evidence: labelEvidence.find((r) => r.trade_date === currentDate && r.raiz === rootSymbol(c.symbol) && r.variant === c.variant && r.mode === c.mode) }));
-  const porAtivo: any[] = !vivo ? periodHeaders(all) : recorteServidor ? ((headersQ.data as any)?.por_ativo ?? []) : (q.data?.por_ativo ?? []);
+  const porAtivo: any[] = threeHeaders(threeRows);
   // Pesado recarrega quando uma posição abre ou fecha (ou pelo botão).
   const abertasSig = ((q.data?.cards ?? []) as any[]).filter((c) => !!c.open).map((c) => `${c.run_id}|${c.mode}`).sort().join(",");
   const [abertasPrev, setAbertasPrev] = useState<string | null>(null);
@@ -872,19 +873,7 @@ function CockpitPage() {
     if (!cards.length) { toast.error("Nada para copiar"); return; }
     await copiarTexto(`Cockpit — ${threeQ.data?.period.label ?? "sem registro"} · ${scope}\n` + cards.map(c => `${rootSymbol(c.symbol)} · ${variantLabel(c.variant)} · ${robotLabel(c.mode, c.variant)}\n${readingText(threeFor(rootSymbol(c.symbol), c.variant, c.mode))}\nPosição: ${vivo ? c.open ? "aberta" : "sem posição" : CLOSED_PERIOD}`).join("\n\n"));
     return;
-    if (!vivo) { await copiarTexto(`Cockpit — ${hd?.period?.label ?? "sem registro"}
-` + tabular(["Ativo", "Modalidade", "Robô", "Ordens", "Realizado sem freio", "Posição"], cards.map((c) => [c.symbol, variantLabel(c.variant), robotLabel(c.mode, c.variant), c.ops, c.ops ? BRL(c.total_today) : "sem ordens no período", CLOSED_PERIOD]))); return; }
-    const text = buildCockpitCopyText(cards, {
-      scope,
-      scoreboard: includeScoreboard ? qc.getQueryData(["b3-cockpit-pesado", "scoreboard", filterKey]) : undefined,
-      includeScoreboard,
-    });
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success(`${cards.length} ${cards.length === 1 ? "robô copiado" : "robôs copiados"}`);
-    } catch {
-      toast.error("Não foi possível copiar para a área de transferência");
-    }
+
   };
 
 
@@ -1049,16 +1038,7 @@ function CockpitPage() {
       {vivo && peakDates.length > 1 ? <FreioEfeitoQuadro data={fiveQ.data} pending={fiveQ.isPending} error={fiveQ.isError || labelsQ.isError} evidence={labelEvidence} /> : null}
       {vivo && fiveQ.data?.rows_truncated ? <TruncatedNotice limit={fiveQ.data.rows_limit} /> : null}
 
-      {!vivo && <Profiler id="cockpit-data" onRender={cockpitRenderTiming}>
-        {hq.isPending ? <p>Carregando o período…</p> : hq.isError ? <p role="alert">Não foi possível ler o período. Use Atualizar.</p> : hd?.no_movement ? <p className="py-6 text-center text-muted-foreground">sem ordens neste período</p> : <>
-          {hd?.rows_truncated && <TruncatedNotice limit={hd.rows_limit} />}
-          <Scoreboard filterArgs={filterArgs} filterKey={filterKey} periodData={hd} periodPeaks={periodPeaksQ.data} />
-          <FreioEfeitoQuadro encerrado data={historicalFive(hd) as any} pending={hq.isPending} error={hq.isError} evidence={labelEvidence} />
-          {periodPeaksQ.isError && <p role="alert">Picos de lucro no dia e de capital exposto: sem registro — não foi possível ler.</p>}
-          {!!periodPeaksQ.data?.failures.length && <p role="alert">Leitura incompleta: {periodPeaksQ.data.failures.join(", ")} — sem registro.</p>}
-          {periodPeaksQ.data?.possible_truncation && <p className="text-warning">Leitura de picos de lucro no dia e de capital exposto atingiu 1.000 linhas; dados podem estar incompletos.</p>}
-        </>}
-      </Profiler>}
+      {!vivo && (threeQ.isPending ? <p>Carregando o período…</p> : threeQ.isError ? <p role="alert">Não foi possível ler o período.</p> : hd?.no_movement ? <p>sem ordens neste período</p> : <ThreePeriodRows rows={threeQ.data?.daily ?? []} total={threeRows.find(r => r.nivel === "total")} />)}
 
       {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
@@ -1180,7 +1160,7 @@ function CockpitPage() {
       <Profiler id="cockpit-hierarquia" onRender={(...args) => { if (!vivo) cockpitRenderTiming(...args.slice(0, 4) as [string, string, number, number]); }}>
       {(vivo || (hd && !hd.no_movement)) && orderedAssets.map(([root, group]) => {
         const hdr = headerByAsset.get(root);
-        const history = vivo ? fiveByAsset.get(root) : historicalFive(hd).by_asset.find((a: any) => a.symbol === root);
+        const history = vivo ? fiveByAsset.get(root) : null;
         const historicalPeaks = (periodPeaksQ.data?.realized ?? []).filter((r: any) => r.raiz === root);
         const assetPeak = maximumDaily(historicalPeaks.filter((r: any) => r.variant === "(ativo)"), (r: any) => Number(r.pico_realizado_brl));
         const exposurePeak = maximumDaily((periodPeaksQ.data?.exposure ?? []).filter((r: any) => r.raiz === root && r.variant === "(ativo)" && r.cenario === "sem freio"), (r: any) => Number(r.pico_margem_brl));
@@ -1201,7 +1181,7 @@ function CockpitPage() {
                    <ThreeReadings row={threeFor(root)} />
                 </div>
                  <p className="text-[11px] font-medium opacity-80">
-                  {hdr?.ops ?? 0} ops · {hdr?.ganhos ?? 0} no lucro ({PCT(hdr?.taxa_acerto)}){"   "}
+                  {hdr?.ops ?? 0} ops · {hdr?.ganhos ?? 0} no lucro ({hdr?.acerto_pct == null ? "sem registro" : `${hdr.acerto_pct}%`}){"   "}
                   <span className="mx-1">·</span>
                   {vivo ? <>Pico de capital exposto: {exposureForAsset(labelsQ.data?.exposure ?? [], currentDate ?? "", root, "sem freio") ? (() => { const p = exposureForAsset(labelsQ.data?.exposure ?? [], currentDate ?? "", root, "sem freio"); return p ? `${p.pico_contratos} contratos · ${BRL(Number(p.pico_margem_brl))} · ${p.hora_do_pico_brt?.slice(0,5) ?? "sem registro"}` : "sem registro"; })() : "sem registro"}</> : <>Pico de capital exposto: {exposurePeak ? `${(exposurePeak as any).pico_contratos} contratos · ${BRL(Number((exposurePeak as any).pico_margem_brl))} · ${(exposurePeak as any).hora_do_pico_brt?.slice(0,5) ?? "sem registro"} · ${shortDate(exposurePeak.trade_date)}` : "sem registro"} · Pico de lucro no dia: {assetPeak ? `${BRL(Number((assetPeak as any).pico_realizado_brl))} · ${shortDate(assetPeak.trade_date)}` : "sem registro"}</>}
                 </p>
@@ -1229,7 +1209,7 @@ function CockpitPage() {
             </div>
             <WalletBand title={root} rows={walletsFor(root)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
             {root === "WIN" && hypothesisDay && <DisjuntorHypothesis day={hypothesisDay} live={vivo} />}
-            <EfeitoCincoPregoes encerrado={!vivo} titulo={root} days={history?.days} evidence={labelEvidence} root={root} peaks={vivo ? (peaksQ.data ? peaksQ.data.assets[root] ?? {} : undefined) : Object.fromEntries(historicalPeaks.filter((r: any) => r.variant === "(ativo)").map((r: any) => [r.trade_date, r]))} modesIgnored={peaksQ.data?.modes_ignored} />
+            {!vivo ? <ThreePeriodRows rows={threeQ.data?.daily ?? []} total={threeFor(root)} symbol={root} /> : <EfeitoCincoPregoes encerrado={!vivo} titulo={root} days={history?.days} evidence={labelEvidence} root={root} peaks={vivo ? (peaksQ.data ? peaksQ.data.assets[root] ?? {} : undefined) : Object.fromEntries(historicalPeaks.filter((r: any) => r.variant === "(ativo)").map((r: any) => [r.trade_date, r]))} modesIgnored={peaksQ.data?.modes_ignored} />}
             {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
             {!vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}
           </div>
@@ -1251,7 +1231,7 @@ function CockpitPage() {
                   <>
                     <ThreeReadings row={threeFor(root, variant)} />
                     <span className="font-normal opacity-80">
-                      {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({PCT(sub?.taxa_acerto)})
+                      {sub?.ops ?? 0} ops · {sub?.ganhos ?? 0} no lucro ({sub?.acerto_pct == null ? "sem registro" : `${sub.acerto_pct}%`})
                     </span>
                     <span className="font-normal opacity-80">
                       {(() => { const p: any = vivo ? (labelsQ.data?.exposure ?? []).find((r) => r.trade_date === currentDate && r.raiz === root && r.variant === variant && r.cenario === "sem freio") : variantExposure; return `Pico de capital exposto: ${p ? `${p.pico_contratos} contratos · ${BRL(Number(p.pico_margem_brl))} · ${p.hora_do_pico_brt?.slice(0,5) ?? "sem registro"}${!vivo ? ` · ${shortDate(p.trade_date)}` : ""}` : "sem registro"}`; })()}
@@ -1277,8 +1257,8 @@ function CockpitPage() {
                </h3>
                <WalletBand title={`${root} · ${variantLabel(variant)}`} rows={walletsFor(root, variant)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
                {root === "WIN" && variant !== REAL_GROUP && hypothesisDay && <DisjuntorHypothesis day={hypothesisDay} variant={variant} live={vivo} />}
-               <EfeitoCincoPregoes encerrado={!vivo} titulo={`${root} · ${variantLabel(variant)}`} days={history?.by_variant?.find((item: any) => item.variant === variant)?.days} evidence={labelEvidence} root={root} variant={variant}
-                 peaks={vivo ? (peaksQ.data ? peaksQ.data.variants[variantKey] ?? {} : undefined) : Object.fromEntries(historicalPeaks.filter((r: any) => r.variant === variant).map((r: any) => [r.trade_date, r]))} modesIgnored={peaksQ.data?.modes_ignored} />
+               {!vivo ? <ThreePeriodRows rows={threeQ.data?.daily ?? []} total={threeFor(root, variant)} symbol={root} variant={variant} /> : <EfeitoCincoPregoes encerrado={!vivo} titulo={`${root} · ${variantLabel(variant)}`} days={history?.by_variant?.find((item: any) => item.variant === variant)?.days} evidence={labelEvidence} root={root} variant={variant}
+                 peaks={vivo ? (peaksQ.data ? peaksQ.data.variants[variantKey] ?? {} : undefined) : Object.fromEntries(historicalPeaks.filter((r: any) => r.variant === variant).map((r: any) => [r.trade_date, r]))} modesIgnored={peaksQ.data?.modes_ignored} />}
                </div>
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
