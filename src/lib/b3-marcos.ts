@@ -1,5 +1,5 @@
 import { z } from "zod";
-export type Marco = { id: string; data: string; titulo: string; descricao: string; escopo: string; symbol: string | null; variant: string | null; criado_em?: string };
+export type Marco = { id: string; data: string; titulo: string; descricao: string; escopo: string; symbol: string | null; variant: string | null; criado_em?: string | null };
 export const marcoInput = z.object({ id: z.string().uuid().optional(), data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), titulo: z.string().trim().min(1).max(100), descricao: z.string().trim().min(1), escopo: z.enum(["global", "ativo", "modalidade"]), symbol: z.string().nullable(), variant: z.string().nullable() }).superRefine((v, ctx) => {
   if (v.escopo !== "global" && !v.symbol) ctx.addIssue({ code: "custom", message: "Escolha o ativo." });
   if (v.escopo === "modalidade" && !v.variant) ctx.addIssue({ code: "custom", message: "Escolha a modalidade." });
