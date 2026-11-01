@@ -630,7 +630,7 @@ function CockpitPage() {
   // ── Copiar estado dos robôs como texto puro (somente interface) ──
   const copyCards = async (cards: any[], scope: string, includeScoreboard = false) => {
     if (!cards.length) { toast.error("Nada para copiar"); return; }
-    await copiarTexto(`Cockpit — ${threeQ.data?.period.label ?? "sem registro"} · ${scope}\n` + cards.map(c => `${rootSymbol(c.symbol)} · ${variantLabel(c.variant)} · ${robotLabel(c.mode, c.variant)}\n${readingText(threeFor(rootSymbol(c.symbol), c.variant, c.mode))}\nPosição: ${vivo ? c.open ? "aberta" : "sem posição" : CLOSED_PERIOD}`).join("\n\n"));
+    await copiarTexto(`Cockpit — ${threeQ.data?.period.label ?? "sem registro"} · ${scope}\n` + cards.map(c => `${rootSymbol(c.symbol)} · ${variantLabel(c.variant)} · ${robotLabel(c.mode, c.variant)}\n${readingText(threeFor(rootSymbol(c.symbol), c.variant, c.mode))}\nPosição: ${vivo ? c.open ? "aberta" : "sem posição" : CLOSED_PERIOD}`).join("\n\n") + (vivo ? `\n\n${buildCockpitCopyText(cards, { scope, includeScoreboard: false })}` : "") + `\n\nAtivos e modalidades\n${threeRows.filter(r => r.nivel !== "robo").map(readingText).join("\n\n")}`);
     return;
 
   };
@@ -966,7 +966,7 @@ function CockpitPage() {
               </Button>
             </div>
             <WalletBand title={root} rows={walletsFor(root)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
-            <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">Courbe réalisée par heure de sortie · scénario conservateur; le réel lit aussi le flottant.</p>
+            <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">Curva realizada pela hora de saída; cenário conservador. O real também lê o flutuante da posição aberta.</p>
             <ThreePeriodRows rows={(vivo ? recentQ.data?.daily : threeQ.data?.daily) ?? []} total={vivo ? readingFor(recentQ.data?.rows ?? [], root) : threeFor(root)} symbol={root} />
             {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
             {!vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}

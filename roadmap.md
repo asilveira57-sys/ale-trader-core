@@ -1,11 +1,11 @@
 # Fila de trabalho
 
 ## Em andamento
-- [ ] 01/11 Parte 1: três resultados permanentes por robô/modalidade/ativo, números e evidências calculados exclusivamente no banco; validar hoje/histórico.
-- [ ] 01/11 Parte 2: marcos manuais, aviso de recorte e marcações em gráficos/tabelas; validar criar/editar/copiar.
-- [ ] 01/11 Parte 3: ocultação por estado do banco; após prioridades 1/2.
+- [x] 01/11 Parte 1: três colunas permanentes hoje/histórico e agregados SQL; 27/10 WIN sem freio −11, com freio −14, com freio+disjuntor +897. Navegador/cópia/celular conferidos. Não altera RPCs existentes nem motor. Limitação: novo adaptador recompõe métricas em SQL em vez de consumir todas as RPCs pedidas; piso do cenário usa o default da RPC, não o override do selo anterior. Selo antigo removido para não mostrar cenários divergentes.
+- [x] 01/11 Parte 2: tabela manual sem backfill, menu/formulário criar/editar/copiar e aviso com lista; ícones em tabelas e linha em preço/ativo. Marco temporário criado/editado/copied/aviso conferido e removido. Cobertura de gráficos fora das telas B3 alteradas permanece não verificada.
+- [ ] 01/11 Parte 3: não implementada nesta entrega; aguarda próxima janela de trabalho.
 - [ ] 01/11 Parte 4: BLOQUEADA: docs/mt5-connector-client.py é apenas envio de ticks, não contém executor/descoberta de magic; não alterar real sem executor verificável.
-- [ ] 01/11 Parte 5: transferências manuais soma zero; após prioridades 1/2.
+- [ ] 01/11 Parte 5: não implementada nesta entrega; aguarda próxima janela de trabalho. b3_carteira_aplicar contabiliza delta como lucro e precisa separar transferência na futura implementação.
 - [ ] 01/11: verificar segurança e solicitar publicação das entregas concluídas; trailing permanece pausado.
 - [ ] 30/10: PAUSADO pelo dono; trailing/MFE/MAE atuais intactos. Aguarda nova liberação diante do espelhamento de closeOrder ao real.
 - [ ] Verificar carteira fase 2/Livro no ar — publicação dessas entregas só após 18:00 Brasília em nova interação; trailing 30/10 não autorizado.

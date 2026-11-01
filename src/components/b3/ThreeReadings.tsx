@@ -21,8 +21,8 @@ export function ReadingDetails({ row }: { row?: ThreeReading }) {
     <p>{row.barradas === 0 ? "não acionado" : row.frase}</p>
     <p>{row.ganhos} ganhos / {row.perdas} perdas · acerto: {row.acerto_pct == null ? "sem registro" : `${row.acerto_pct}%`}</p>
     <p>Pico de lucro no dia: {row.pico_lucro == null ? "sem registro" : `${brl(row.pico_lucro)} · ${row.pico_hora?.slice(0, 5) ?? "sem registro"} · ${row.pico_data ?? "sem registro"}`}</p>
-    <p>Saiu no alvo: {row.saiu_no_alvo} / no stop: {row.saiu_no_stop} / no meio: {row.saiu_no_meio}</p>
-    {row.disparos?.length ? row.disparos.map(d => <p key={d.dia}>Disjuntor da modalidade · {d.dia}: {d.motivo} · {d.hora?.slice(0, 5) ?? "sem registro"} · {d.ordens_antes} de {d.ordens_no_dia} ordens antes do disparo</p>) : <p>Disjuntor: sem ordens no período</p>}
+    <p>Saiu no alvo: {row.saiu_no_alvo ?? "sem registro"} / no stop: {row.saiu_no_stop ?? "sem registro"} / no meio: {row.saiu_no_meio ?? "sem registro"}</p>
+    {row.disparos?.length ? row.disparos.map(d => <p key={d.dia}>Disjuntor da modalidade · {d.dia}: {d.motivo} · {d.hora?.slice(0, 5) ?? "sem registro"} · {d.ordens_antes} de {d.ordens_no_dia} ordens antes do disparo</p>) : row.nivel === "robo" ? <p>Disjuntor: sem ordens no período</p> : null}
   </div>;
 }
 export function ThreePeriodRows({ rows, total, symbol, variant }: { rows: any[]; total?: ThreeReading; symbol?: string; variant?: string }) {

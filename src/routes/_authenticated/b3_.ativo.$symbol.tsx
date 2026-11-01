@@ -324,8 +324,9 @@ function DayBars({ dias }: { dias: any[] }) {
           const h = (Math.abs(v) / max) * 78;
           const sujo = x.limpo === false;
           return (
-            <div key={x.trade_date} className={`flex-1 min-w-[26px] flex flex-col items-center ${sujo ? "opacity-40" : ""}`}
+            <div key={x.trade_date} className={`relative flex-1 min-w-[26px] flex flex-col items-center ${sujo ? "opacity-40" : ""}`}
               title={`${x.trade_date} · ${SIGNED_BRL(v)} · ${x.ops} ops${sujo ? ` · pregão sujo: ${x.motivo_sujo ?? "sem motivo"}` : ""}`}>
+              <div className="absolute inset-y-0 left-1/2 border-l border-warning empty:hidden"><MilestoneMark date={x.trade_date} /></div>
               <div className="flex-1 w-full flex flex-col justify-end items-center">
                 {v >= 0 && (
                   <>
