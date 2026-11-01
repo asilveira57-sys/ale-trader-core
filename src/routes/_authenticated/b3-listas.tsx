@@ -2,6 +2,8 @@
 // filtros de ativo/modalidade/modo e agrupamento.
 // Somente leitura. Filtro, soma, ordenação e placar vêm do servidor.
 import { createFileRoute } from "@tanstack/react-router";
+import { MilestoneContext, MilestoneMark, MilestoneWarning, useMilestones } from "@/components/b3/ConfigurationMilestones";
+import { copiarTexto } from "@/lib/b3-copiar";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -13,7 +15,7 @@ import {
 } from "@/lib/b3-listas-format";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { Button } from "@/components/ui/button";
-import { Table2, Download, Printer, ArrowUp, ArrowDown } from "lucide-react";
+import { Table2, Download, Printer, ArrowUp, ArrowDown, Copy } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/b3-listas")({
   head: () => ({
@@ -119,6 +121,7 @@ function MultiPick({
 }
 
 function ListasPage() {
+  const milestones = useMilestones();
   const fn = useServerFn(getB3ResultadoCombinacao);
   const apelidos = useModeApelidos();
   // Apelido em destaque, técnico entre parênteses. Chave nunca muda.
@@ -196,7 +199,7 @@ function ListasPage() {
     );
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
+    <MilestoneContext.Provider value={milestones.data ?? []}><div className="space-y-4 p-4 md:p-6 [&_button]:min-h-11">
       <style>{`@media print { .no-print { display: none !important } body { background: #fff } }`}</style>
 
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -214,6 +217,7 @@ function ListasPage() {
           )}
         </div>
         <div className="no-print flex gap-2">
+          <Button variant="outline" className="min-h-11" onClick={() => copiarTexto(`Resultado por combinação — ${de} a ${ate}\n` + rows.map(r => Object.entries(r).map(([k,v]) => `${k}: ${v ?? "sem registro"}`).join("\n")).join("\n\n"))}><Copy />Copiar tabela</Button>
           <Button variant="outline" size="sm" onClick={csv} disabled={!rows.length}>
             <Download className="mr-1 size-4" /> CSV
           </Button>
@@ -222,6 +226,7 @@ function ListasPage() {
           </Button>
         </div>
       </header>
+      <MilestoneWarning start={de} end={ate} />
 
       <div className="no-print space-y-3 rounded-lg border border-border p-3">
         <div className="flex flex-wrap items-end gap-3">
@@ -298,7 +303,7 @@ function ListasPage() {
             <tbody>
               {rows.map((r: any) => (
                 <tr key={r.chave} className="border-t border-border/60">
-                  <td className="whitespace-nowrap px-3 py-1.5">{nome(r)}</td>
+                  <td className="whitespace-nowrap px-3 py-1.5">{nome(r)}<MilestoneMark date={de} end={ate} symbol={r.symbol ?? undefined} variant={r.variant ?? undefined} /></td>
                   <td className={`px-3 py-1.5 text-right tabular-nums ${r.resultado_brl >= 0 ? "text-emerald-500" : "text-destructive"}`}>
                     {SIGNED_BRL(r.resultado_brl)}
                   </td>
@@ -323,6 +328,6 @@ function ListasPage() {
           </table>
         </div>
       )}
-    </div>
+    </div></MilestoneContext.Provider>
   );
 }
