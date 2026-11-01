@@ -96,7 +96,7 @@ function HistoricalRobot({ c, row, expanded, toggle, copy }: { c: any; row?: Thr
     <Button variant="ghost" aria-label="Copiar este robô" className="absolute right-1 top-1 min-h-11 min-w-11" onClick={copy}><Copy className="size-4" /></Button>
     <Button variant="ghost" className="h-auto w-full flex-col items-stretch whitespace-normal px-3 py-3 pt-14 text-left" onClick={toggle} aria-expanded={expanded}>
       <span className="flex flex-wrap gap-1"><Badge className={`text-[10px] ${MODE_COLOR[c.mode]}`}>{robotLabel(c.mode, c.variant)}</Badge><Badge className={`text-[10px] ${VARIANT_COLOR[c.variant] ?? ""}`}>{variantLabel(c.variant)}</Badge></span>
-      <span className="my-2 text-xs text-muted-foreground">{c.ops ? CLOSED_PERIOD : "sem ordens no período"}</span>
+      <span className="my-2 text-xs text-muted-foreground">{c.pending_live ? "Estado operacional: carregando" : c.ops ? CLOSED_PERIOD : "sem ordens no período"}</span>
       <ThreeReadings row={row} />
       <ReadingDetails row={row} />
       {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
@@ -769,7 +769,7 @@ function CockpitPage() {
   const headersQ = useQuery({
     queryKey: ["b3-cockpit-pesado", "testeiras", filterKey],
     queryFn: () => getOverview({ data: filterArgs as any }),
-    enabled: vivo && recorteServidor,
+    enabled: false,
     staleTime: Infinity,
     gcTime: 60_000,
   });
@@ -821,7 +821,7 @@ function CockpitPage() {
   const currentDate = q.data?.session_date ?? peakDates[0];
   const hypothesisDay = vivo ? currentDate : hd?.period?.end ?? period.end ?? period.start;
   const filtroCliente = buildCockpitFilter(filterArgs);
-  const all: any[] = (vivo ? ((q.data?.cards ?? []) as any[]) : periodCards(hd?.catalog ?? [], hd?.sem_freio?.robots ?? [])).filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode)).map((c) => ({ ...c, brake_evidence: labelEvidence.find((r) => r.trade_date === currentDate && r.raiz === rootSymbol(c.symbol) && r.variant === c.variant && r.mode === c.mode) }));
+  const all: any[] = (vivo && q.data?.cards?.length ? ((q.data?.cards ?? []) as any[]) : periodCards(hd?.catalog ?? [], hd?.sem_freio?.robots ?? [])).filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode)).map((c) => ({ ...c, operational_loaded: !vivo || !!q.data?.cards?.length, brake_evidence: labelEvidence.find((r) => r.trade_date === currentDate && r.raiz === rootSymbol(c.symbol) && r.variant === c.variant && r.mode === c.mode) }));
   const porAtivo: any[] = threeHeaders(threeRows);
   // Pesado recarrega quando uma posição abre ou fecha (ou pelo botão).
   const abertasSig = ((q.data?.cards ?? []) as any[]).filter((c) => !!c.open).map((c) => `${c.run_id}|${c.mode}`).sort().join(",");
@@ -1024,7 +1024,7 @@ function CockpitPage() {
         </div>
       </header>
 
-      <PeriodBar value={period} onChange={setPeriod} resolved={hd?.period ?? { label: "Hoje", includes_today: true }} busy={q.isFetching || hq.isFetching} />
+      <PeriodBar value={period} onChange={setPeriod} resolved={hd?.period ?? { label: "Hoje", includes_today: true }} busy={threeQ.isFetching} />
       <HistoricalBanner resolved={!vivo ? { ...hd?.period, includes_today: false } : null} />
       {threeQ.data && <MilestoneWarning start={threeQ.data.period.start} end={threeQ.data.period.end} />}
       {milestonesQ.isError && <p role="alert">Marcos de configuração: leitura indisponível.</p>}
@@ -1268,7 +1268,7 @@ function CockpitPage() {
                <div id={`robots-${variantKey}`} hidden={variantCollapsed} className={variantCollapsed ? "hidden" : "grid grid-cols-1 gap-3 p-3 @[380px]:grid-cols-2 @[780px]:grid-cols-4 @[1500px]:grid-cols-8"}>
                 {cards.map((c: any) => {
                   const key = `${c.run_id}:${c.mode}`;
-                  if (!vivo) return <HistoricalRobot key={key} c={c} row={threeFor(root, c.variant, c.mode)} expanded={expanded.has(key)} toggle={() => toggleExpand(key)} copy={() => copyCards([c], root)} />;
+                  if (!vivo || !c.operational_loaded) return <HistoricalRobot key={key} c={{ ...c, ops: threeFor(root, c.variant, c.mode)?.ordens, pending_live: vivo }} row={threeFor(root, c.variant, c.mode)} expanded={expanded.has(key)} toggle={() => toggleExpand(key)} copy={() => copyCards([c], root)} />;
                   const isOpen = expanded.has(key);
                   const hasPosition = !!c.open;
                   const tick = Number(c.tick_size ?? 5);
