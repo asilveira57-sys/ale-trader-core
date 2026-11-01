@@ -2,6 +2,7 @@ import { DisjuntorHypothesis } from "@/components/b3/DisjuntorHypothesis";
 import { ThreeReadings, ReadingDetails } from "@/components/b3/ThreeReadings";
 import { readThreeReadings } from "@/lib/b3-three-readings.functions";
 import { readingFor, readingText, type ThreeReading } from "@/lib/b3-three-readings";
+import { MilestoneContext, MilestoneMark, MilestoneWarning, useMilestones } from "@/components/b3/ConfigurationMilestones";
 import { WalletBand } from "@/components/b3/WalletBand";
 import { readRobotWallets } from "@/lib/b3-wallet-read.functions";
 import { walletExposure } from "@/lib/b3-wallet-view";
@@ -326,7 +327,7 @@ function FreioEfeitoQuadro({ data, pending, error, evidence = [], encerrado = fa
             <thead className="text-[10px] uppercase text-muted-foreground"><tr className="border-b border-border">
               <th className="py-1 text-left">Dia</th><th className="py-1 text-right">Com freio</th><th className="py-1 text-right">Sem freio</th><th className="px-4 py-1 text-left">Efeito do freio (não é resultado)</th><th className="py-1 text-right">Barrados</th><th className="py-1 text-right">Fechadas</th></tr></thead>
             <tbody>{d.days.map((x) => <tr key={x.date} className="border-b border-border">
-              <td className="py-1">{shortDate(x.date)}</td>
+              <td className="py-1">{shortDate(x.date)}<MilestoneMark date={x.date} /></td>
               <td className={`py-1 text-right font-mono ${x.com == null ? "" : moneyColor(x.com)}`}>{money(x.com)}</td>
               <td className={`py-1 text-right font-mono ${x.sem == null ? "" : moneyColor(x.sem)}`}>{money(x.sem)}</td>
               <td className="px-4 py-2 text-left text-foreground">{money(x.efeito)} · {x.frase}</td>
@@ -630,6 +631,7 @@ function LiberacaoBloco({
 
 
 function CockpitPage() {
+  const milestonesQ = useMilestones();
   const [period, setPeriod] = useState<PeriodInput>(DEFAULT_PERIOD);
   const vivo = (period.preset ?? "hoje") === "hoje";
   const apelidos = useModeApelidos();
@@ -960,7 +962,7 @@ function CockpitPage() {
   // um ultrawide de mostrar os 8 modos em linha. Teto generoso aproveita a
   // largura real (e responde ao menu lateral retrátil).
   return (
-    <div className={`mx-auto w-full max-w-[2400px] px-3 py-4 space-y-4 sm:px-4 sm:py-6 ${vivo ? "" : "[&_button]:min-h-11"}`}>
+    <MilestoneContext.Provider value={milestonesQ.data ?? []}><div className={`mx-auto w-full max-w-[2400px] px-3 py-4 space-y-4 sm:px-4 sm:py-6 [&_button]:min-h-11`}>
       <header className="grid gap-2 sm:flex sm:items-center sm:justify-between sm:flex-wrap">
         <div className="min-w-0">
           <h1 className="text-xl font-bold sm:text-2xl">Cockpit — todos os robôs</h1>
@@ -1035,7 +1037,9 @@ function CockpitPage() {
 
       <PeriodBar value={period} onChange={setPeriod} resolved={hd?.period ?? { label: "Hoje", includes_today: true }} busy={q.isFetching || hq.isFetching} />
       <HistoricalBanner resolved={!vivo ? { ...hd?.period, includes_today: false } : null} />
-      {threeQ.isError && <p role="alert" className="text-destructive">Trois leituras indisponíveis — sem registro. Use Atualizar.</p>}
+      {threeQ.data && <MilestoneWarning start={threeQ.data.period.start} end={threeQ.data.period.end} />}
+      {milestonesQ.isError && <p role="alert">Marcos de configuração: leitura indisponível.</p>}
+      {threeQ.isError && <p role="alert" className="text-destructive">Três leituras indisponíveis — sem registro. Use Atualizar.</p>}
       {!vivo && hd && <h2 className="text-xl font-black">{hd.sem_freio.by_day.length} pregões: {hd.sem_freio.by_day.map((d: any) => shortDate(d.date)).join(", ")} · {hd.period.label}</h2>}
 
       <WalletBand title="Cockpit simulado — todos os ativos" rows={walletRows} exposure={vivo ? currentExposure : undefined} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
@@ -1604,7 +1608,7 @@ function CockpitPage() {
       })}
       </Profiler>
 
-    </div>
+    </div></MilestoneContext.Provider>
   );
 }
 
