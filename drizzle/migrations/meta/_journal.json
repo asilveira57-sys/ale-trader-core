@@ -120,6 +120,13 @@
       "when": 1793537074396,
       "tag": "0016_cockpit_tres_leituras_marcos",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793537468692,
+      "tag": "0017_cockpit_corte_disjuntor_consistente",
+      "breakpoints": true
     }
   ]
 }
