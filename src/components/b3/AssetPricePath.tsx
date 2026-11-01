@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useContext } from "react";
+import { MilestoneContext } from "./ConfigurationMilestones";
+import { marcosNoRecorte } from "@/lib/b3-marcos";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { ChevronDown, ChevronUp, Copy } from "lucide-react";
@@ -14,6 +16,7 @@ const hour = (time: number) => new Intl.DateTimeFormat("pt-BR", { timeZone: "Ame
 const W = 760, H = 240, L = 64, R = 12, T = 14, B = 26;
 
 export function AssetPricePath({ symbol, today, historical = false }: { symbol: string; today: string; historical?: boolean }) {
+  const milestones = useContext(MilestoneContext);
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(today);
   const [step, setStep] = useState<5 | 10 | 15 | 30 | 60>(30);
@@ -96,6 +99,7 @@ export function AssetPricePath({ symbol, today, historical = false }: { symbol: 
           <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 h-60 w-full touch-none select-none text-primary" role="img" aria-label={`Preço de ${symbol} em ${date}`}
             onPointerMove={(e) => pick(e.clientX, e.currentTarget)} onPointerDown={(e) => pick(e.clientX, e.currentTarget)}
             onPointerLeave={(e) => { if (e.pointerType === "mouse") setHover(null); }}>
+            {marcosNoRecorte(milestones, date, date, symbol).map(r => <g key={r.id} className="text-warning"><title>{r.titulo}</title><line x1={L} x2={L} y1={T} y2={H-B} stroke="currentColor" strokeWidth="3" strokeDasharray="5 4" /><text x={L+5} y={T+12} className="fill-warning" fontSize="11">{r.titulo}</text></g>)}
             {yTicks.map((v, i) => <g key={`y${i}`}>
               <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="currentColor" className="text-border" strokeWidth="1" />
               <text x={L - 6} y={y(v) + 4} textAnchor="end" fontSize="11" className="fill-muted-foreground">{number(v)}</text>

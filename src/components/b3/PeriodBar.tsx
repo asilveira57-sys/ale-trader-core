@@ -2,6 +2,7 @@
 // Só apresentação: não decide entrada, freio, espelhamento nem execução.
 // O padrão é sempre "Hoje" — a escolha NÃO é guardada entre visitas.
 import { AlertTriangle, CalendarDays } from "lucide-react";
+import { MilestoneMark } from "./ConfigurationMilestones";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PERIOD_PRESETS, formatBrDate, type PeriodInput, type PeriodPreset } from "@/lib/b3-period";
@@ -34,7 +35,7 @@ export function PeriodBar({
             key={p.key}
             size="sm"
             variant={preset === p.key ? "default" : "outline"}
-            className="h-8 px-2 text-[11px] font-bold"
+            className="min-h-11 px-2 text-[11px] font-bold"
             onClick={() => onChange({ preset: p.key, start: value.start ?? null, end: value.end ?? null })}
             disabled={busy}
           >
@@ -127,7 +128,7 @@ export function PerDayTable({ rows, brl }: { rows: any[]; brl: (v: number | null
         <tbody>
           {rows.map((r: any) => (
             <tr key={r.date} className="border-b border-border/50">
-              <td className="py-1 font-mono">{formatBrDate(r.date)}</td>
+              <td className="py-1 font-mono">{formatBrDate(r.date)}<MilestoneMark date={r.date} /></td>
               <td className="py-1 text-right">{r.trades}</td>
               <td className="py-1 text-right">{r.wins}</td>
               <td className="py-1 text-right">{r.losses}</td>

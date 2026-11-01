@@ -2244,6 +2244,42 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_marco_mudanca: {
+        Row: {
+          criado_em: string | null
+          data: string
+          descricao: string
+          escopo: string
+          id: string
+          symbol: string | null
+          titulo: string
+          user_id: string
+          variant: string | null
+        }
+        Insert: {
+          criado_em?: string | null
+          data: string
+          descricao: string
+          escopo: string
+          id?: string
+          symbol?: string | null
+          titulo: string
+          user_id?: string
+          variant?: string | null
+        }
+        Update: {
+          criado_em?: string | null
+          data?: string
+          descricao?: string
+          escopo?: string
+          id?: string
+          symbol?: string | null
+          titulo?: string
+          user_id?: string
+          variant?: string | null
+        }
+        Relationships: []
+      }
       b3_mode_apelidos: {
         Row: {
           apelido: string
@@ -8575,6 +8611,17 @@ export type Database = {
           trade_date: string
           variant: string
         }[]
+      }
+      b3_cockpit_tres_leituras: {
+        Args: {
+          p_fim: string
+          p_inicio: string
+          p_modes?: string[]
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: Json
       }
       b3_conferir_resumo: {
         Args: { p_date: string; p_log?: boolean }

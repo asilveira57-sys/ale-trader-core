@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { MilestoneContext, MilestoneMark, MilestoneWarning, useMilestones } from "@/components/b3/ConfigurationMilestones";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -72,6 +73,7 @@ const copyText = (text: string, msg: string) => {
 };
 
 function AssetDashboardPage() {
+  const milestones = useMilestones();
   // Carrega os apelidos (public.b3_mode_apelidos) e alimenta o registro usado
   // pelos textos de cópia/exportação desta tela.
   useModeApelidos();
@@ -120,7 +122,7 @@ function AssetDashboardPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 space-y-5 tabular-nums">
+    <MilestoneContext.Provider value={milestones.data ?? []}><div className="container mx-auto py-6 space-y-5 tabular-nums">
       <header className="flex items-start justify-between flex-wrap gap-2">
         <div>
           <div className="flex items-center gap-2">
@@ -184,6 +186,7 @@ function AssetDashboardPage() {
       </section>
 
       {/* ── Chips de navegação ── */}
+      <MilestoneWarning start={de} end={ate} />
       <section className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           {assetsPresent.map((a) => (
@@ -273,7 +276,7 @@ function AssetDashboardPage() {
           ))}
         </>
       )}
-    </div>
+    </div></MilestoneContext.Provider>
   );
 }
 
@@ -321,8 +324,9 @@ function DayBars({ dias }: { dias: any[] }) {
           const h = (Math.abs(v) / max) * 78;
           const sujo = x.limpo === false;
           return (
-            <div key={x.trade_date} className={`flex-1 min-w-[26px] flex flex-col items-center ${sujo ? "opacity-40" : ""}`}
+            <div key={x.trade_date} className={`relative flex-1 min-w-[26px] flex flex-col items-center ${sujo ? "opacity-40" : ""}`}
               title={`${x.trade_date} · ${SIGNED_BRL(v)} · ${x.ops} ops${sujo ? ` · pregão sujo: ${x.motivo_sujo ?? "sem motivo"}` : ""}`}>
+              <div className="absolute inset-y-0 left-1/2 border-l border-warning empty:hidden"><MilestoneMark date={x.trade_date} /></div>
               <div className="flex-1 w-full flex flex-col justify-end items-center">
                 {v >= 0 && (
                   <>
