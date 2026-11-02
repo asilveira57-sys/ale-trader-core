@@ -1,10 +1,13 @@
 # Fila de trabalho
 
 ## Em andamento
+- [x] 02/11 runtime: cockpit autenticado hoje/ontem conferido, três respostas readThreeReadings HTTP 200, sem erro de página. 500 anterior aconteceu no registro de função durante recarga da versão (action undefined no handler TanStack); não reproduziu em sessão nova, definição GET correta. Nenhuma alteração de motor ou leitura financeira necessária; não publicado.
+- [x] 02/11: magic SC 2701–2708, 2001/2504 preservados; oito linhas WIN SC desligadas/max_qty=1/limite default sem preencher. Tela /b3-autorizacoes-reais e redirecionamento antigo; lista dinâmica, WIN 48 por padrão/64 com desligadas, VWAP stop R$120 conferido, Ligar desabilitado nas modalidades desligadas, duas colunas perda/origem, estados reais e cópia completa. 30 testes; navegador autenticado e celular sem overflow; nenhum robô ligado (0 antes/depois), motor/trailing/disjuntor/carteira/executor intactos.
+- [ ] Publicar pedido 02/11 somente após 18:00 Brasília em nova interação; não há publicação automática agendada.
 - [x] 01/11 Parte 1: três colunas permanentes hoje/histórico e agregados SQL; 27/10 WIN sem freio −11, com freio −14, com freio+disjuntor +897. Navegador/cópia/celular conferidos. Não altera RPCs existentes nem motor. Limitação: novo adaptador recompõe métricas em SQL em vez de consumir todas as RPCs pedidas; piso do cenário usa o default da RPC, não o override do selo anterior. Selo antigo removido para não mostrar cenários divergentes.
 - [x] 01/11 Parte 2: tabela manual sem backfill, menu/formulário criar/editar/copiar e aviso com lista; ícones em tabelas e linha em preço/ativo. Marco temporário criado/editado/copied/aviso conferido e removido. Cobertura de gráficos fora das telas B3 alteradas permanece não verificada.
 - [ ] 01/11 Parte 3: não implementada nesta entrega; aguarda próxima janela de trabalho.
-- [ ] 01/11 Parte 4: BLOQUEADA: docs/mt5-connector-client.py é apenas envio de ticks, não contém executor/descoberta de magic; não alterar real sem executor verificável.
+- [x] 01/11 Parte 4: substituída e concluída pelo item 1 de 02/11; dono confirmou executor sem mapa próprio, consome autorizações por magic; executor não investigado nem alterado.
 - [ ] 01/11 Parte 5: não implementada nesta entrega; aguarda próxima janela de trabalho. b3_carteira_aplicar contabiliza delta como lucro e precisa separar transferência na futura implementação.
 - [ ] 01/11: verificar segurança e solicitar publicação das entregas concluídas; trailing permanece pausado.
 - [ ] 30/10: PAUSADO pelo dono; trailing/MFE/MAE atuais intactos. Aguarda nova liberação diante do espelhamento de closeOrder ao real.

@@ -8939,6 +8939,7 @@ export type Database = {
           variant: string
         }[]
       }
+      b3_prd_tela_insumos: { Args: never; Returns: Json }
       b3_raiz: { Args: { simbolo: string }; Returns: string }
       b3_ranking_medalhados: {
         Args: { p_criterio?: string }

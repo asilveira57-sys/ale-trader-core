@@ -21,6 +21,7 @@ import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedAutoDashboardRouteImport } from './routes/_authenticated/auto-dashboard'
 import { Route as AuthenticatedB3RouteImport } from './routes/_authenticated/b3'
 import { Route as AuthenticatedB3AuditoriaRouteImport } from './routes/_authenticated/b3-auditoria'
+import { Route as AuthenticatedB3AutorizacoesReaisRouteImport } from './routes/_authenticated/b3-autorizacoes-reais'
 import { Route as AuthenticatedB3CalibracaoRouteImport } from './routes/_authenticated/b3-calibracao'
 import { Route as AuthenticatedB3CockpitRouteImport } from './routes/_authenticated/b3-cockpit'
 import { Route as AuthenticatedB3DiagnosticoRouteImport } from './routes/_authenticated/b3-diagnostico'
@@ -159,6 +160,12 @@ const AuthenticatedB3AuditoriaRoute =
   AuthenticatedB3AuditoriaRouteImport.update({
     id: '/b3-auditoria',
     path: '/b3-auditoria',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedB3AutorizacoesReaisRoute =
+  AuthenticatedB3AutorizacoesReaisRouteImport.update({
+    id: '/b3-autorizacoes-reais',
+    path: '/b3-autorizacoes-reais',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedB3CalibracaoRoute =
@@ -594,6 +601,7 @@ export interface FileRoutesByFullPath {
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
   '/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
+  '/b3-autorizacoes-reais': typeof AuthenticatedB3AutorizacoesReaisRoute
   '/b3-calibracao': typeof AuthenticatedB3CalibracaoRoute
   '/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
@@ -683,6 +691,7 @@ export interface FileRoutesByTo {
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
   '/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
+  '/b3-autorizacoes-reais': typeof AuthenticatedB3AutorizacoesReaisRoute
   '/b3-calibracao': typeof AuthenticatedB3CalibracaoRoute
   '/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
@@ -774,6 +783,7 @@ export interface FileRoutesById {
   '/_authenticated/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/_authenticated/b3': typeof AuthenticatedB3Route
   '/_authenticated/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
+  '/_authenticated/b3-autorizacoes-reais': typeof AuthenticatedB3AutorizacoesReaisRoute
   '/_authenticated/b3-calibracao': typeof AuthenticatedB3CalibracaoRoute
   '/_authenticated/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/_authenticated/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
@@ -865,6 +875,7 @@ export interface FileRouteTypes {
     | '/auto-dashboard'
     | '/b3'
     | '/b3-auditoria'
+    | '/b3-autorizacoes-reais'
     | '/b3-calibracao'
     | '/b3-cockpit'
     | '/b3-diagnostico'
@@ -954,6 +965,7 @@ export interface FileRouteTypes {
     | '/auto-dashboard'
     | '/b3'
     | '/b3-auditoria'
+    | '/b3-autorizacoes-reais'
     | '/b3-calibracao'
     | '/b3-cockpit'
     | '/b3-diagnostico'
@@ -1044,6 +1056,7 @@ export interface FileRouteTypes {
     | '/_authenticated/auto-dashboard'
     | '/_authenticated/b3'
     | '/_authenticated/b3-auditoria'
+    | '/_authenticated/b3-autorizacoes-reais'
     | '/_authenticated/b3-calibracao'
     | '/_authenticated/b3-cockpit'
     | '/_authenticated/b3-diagnostico'
@@ -1226,6 +1239,13 @@ declare module '@tanstack/react-router' {
       path: '/b3-auditoria'
       fullPath: '/b3-auditoria'
       preLoaderRoute: typeof AuthenticatedB3AuditoriaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-autorizacoes-reais': {
+      id: '/_authenticated/b3-autorizacoes-reais'
+      path: '/b3-autorizacoes-reais'
+      fullPath: '/b3-autorizacoes-reais'
+      preLoaderRoute: typeof AuthenticatedB3AutorizacoesReaisRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/b3-calibracao': {
@@ -1806,6 +1826,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAutoDashboardRoute: typeof AuthenticatedAutoDashboardRoute
   AuthenticatedB3Route: typeof AuthenticatedB3Route
   AuthenticatedB3AuditoriaRoute: typeof AuthenticatedB3AuditoriaRoute
+  AuthenticatedB3AutorizacoesReaisRoute: typeof AuthenticatedB3AutorizacoesReaisRoute
   AuthenticatedB3CalibracaoRoute: typeof AuthenticatedB3CalibracaoRoute
   AuthenticatedB3CockpitRoute: typeof AuthenticatedB3CockpitRoute
   AuthenticatedB3DiagnosticoRoute: typeof AuthenticatedB3DiagnosticoRoute
@@ -1877,6 +1898,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAutoDashboardRoute: AuthenticatedAutoDashboardRoute,
   AuthenticatedB3Route: AuthenticatedB3Route,
   AuthenticatedB3AuditoriaRoute: AuthenticatedB3AuditoriaRoute,
+  AuthenticatedB3AutorizacoesReaisRoute: AuthenticatedB3AutorizacoesReaisRoute,
   AuthenticatedB3CalibracaoRoute: AuthenticatedB3CalibracaoRoute,
   AuthenticatedB3CockpitRoute: AuthenticatedB3CockpitRoute,
   AuthenticatedB3DiagnosticoRoute: AuthenticatedB3DiagnosticoRoute,
