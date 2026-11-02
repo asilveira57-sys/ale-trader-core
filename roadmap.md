@@ -1,10 +1,11 @@
 # Fila de trabalho
 
 ## Em andamento
+- [ ] 02/11: ampliar magic/modos SC, criar oito autorizações WIN desligadas; corrigir somente tela de autorizações (lista dinâmica, visibilidade, perda/origem, stop, estados, cópia), testar sem mudar autorizações; NÃO publicar antes das 18:00 Brasília e exigir nova interação para publicar.
 - [x] 01/11 Parte 1: três colunas permanentes hoje/histórico e agregados SQL; 27/10 WIN sem freio −11, com freio −14, com freio+disjuntor +897. Navegador/cópia/celular conferidos. Não altera RPCs existentes nem motor. Limitação: novo adaptador recompõe métricas em SQL em vez de consumir todas as RPCs pedidas; piso do cenário usa o default da RPC, não o override do selo anterior. Selo antigo removido para não mostrar cenários divergentes.
 - [x] 01/11 Parte 2: tabela manual sem backfill, menu/formulário criar/editar/copiar e aviso com lista; ícones em tabelas e linha em preço/ativo. Marco temporário criado/editado/copied/aviso conferido e removido. Cobertura de gráficos fora das telas B3 alteradas permanece não verificada.
 - [ ] 01/11 Parte 3: não implementada nesta entrega; aguarda próxima janela de trabalho.
-- [ ] 01/11 Parte 4: BLOQUEADA: docs/mt5-connector-client.py é apenas envio de ticks, não contém executor/descoberta de magic; não alterar real sem executor verificável.
+- [ ] 01/11 Parte 4: substituída pelo item 1 de 02/11; dono confirmou executor sem mapa próprio, consome autorizações por magic; não investigar nem alterar executor.
 - [ ] 01/11 Parte 5: não implementada nesta entrega; aguarda próxima janela de trabalho. b3_carteira_aplicar contabiliza delta como lucro e precisa separar transferência na futura implementação.
 - [ ] 01/11: verificar segurança e solicitar publicação das entregas concluídas; trailing permanece pausado.
 - [ ] 30/10: PAUSADO pelo dono; trailing/MFE/MAE atuais intactos. Aguarda nova liberação diante do espelhamento de closeOrder ao real.
