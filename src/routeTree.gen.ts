@@ -57,6 +57,7 @@ import { Route as AuthenticatedOperationsRouteImport } from './routes/_authentic
 import { Route as AuthenticatedOrdersRouteImport } from './routes/_authenticated/orders'
 import { Route as AuthenticatedPipelineDiagnosticsRouteImport } from './routes/_authenticated/pipeline-diagnostics'
 import { Route as AuthenticatedPostTradeRouteImport } from './routes/_authenticated/post-trade'
+import { Route as AuthenticatedPrdAutorizacoesRouteImport } from './routes/_authenticated/prd-autorizacoes'
 import { Route as AuthenticatedRadarRouteImport } from './routes/_authenticated/radar'
 import { Route as AuthenticatedRankingRouteImport } from './routes/_authenticated/ranking'
 import { Route as AuthenticatedRealDashboardRouteImport } from './routes/_authenticated/real-dashboard'
@@ -355,6 +356,12 @@ const AuthenticatedPostTradeRoute = AuthenticatedPostTradeRouteImport.update({
   path: '/post-trade',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedPrdAutorizacoesRoute =
+  AuthenticatedPrdAutorizacoesRouteImport.update({
+    id: '/prd-autorizacoes',
+    path: '/prd-autorizacoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedRadarRoute = AuthenticatedRadarRouteImport.update({
   id: '/radar',
   path: '/radar',
@@ -630,6 +637,7 @@ export interface FileRoutesByFullPath {
   '/orders': typeof AuthenticatedOrdersRoute
   '/pipeline-diagnostics': typeof AuthenticatedPipelineDiagnosticsRoute
   '/post-trade': typeof AuthenticatedPostTradeRoute
+  '/prd-autorizacoes': typeof AuthenticatedPrdAutorizacoesRoute
   '/radar': typeof AuthenticatedRadarRoute
   '/ranking': typeof AuthenticatedRankingRoute
   '/real-dashboard': typeof AuthenticatedRealDashboardRoute
@@ -719,6 +727,7 @@ export interface FileRoutesByTo {
   '/orders': typeof AuthenticatedOrdersRoute
   '/pipeline-diagnostics': typeof AuthenticatedPipelineDiagnosticsRoute
   '/post-trade': typeof AuthenticatedPostTradeRoute
+  '/prd-autorizacoes': typeof AuthenticatedPrdAutorizacoesRoute
   '/radar': typeof AuthenticatedRadarRoute
   '/ranking': typeof AuthenticatedRankingRoute
   '/real-dashboard': typeof AuthenticatedRealDashboardRoute
@@ -810,6 +819,7 @@ export interface FileRoutesById {
   '/_authenticated/orders': typeof AuthenticatedOrdersRoute
   '/_authenticated/pipeline-diagnostics': typeof AuthenticatedPipelineDiagnosticsRoute
   '/_authenticated/post-trade': typeof AuthenticatedPostTradeRoute
+  '/_authenticated/prd-autorizacoes': typeof AuthenticatedPrdAutorizacoesRoute
   '/_authenticated/radar': typeof AuthenticatedRadarRoute
   '/_authenticated/ranking': typeof AuthenticatedRankingRoute
   '/_authenticated/real-dashboard': typeof AuthenticatedRealDashboardRoute
@@ -901,6 +911,7 @@ export interface FileRouteTypes {
     | '/orders'
     | '/pipeline-diagnostics'
     | '/post-trade'
+    | '/prd-autorizacoes'
     | '/radar'
     | '/ranking'
     | '/real-dashboard'
@@ -990,6 +1001,7 @@ export interface FileRouteTypes {
     | '/orders'
     | '/pipeline-diagnostics'
     | '/post-trade'
+    | '/prd-autorizacoes'
     | '/radar'
     | '/ranking'
     | '/real-dashboard'
@@ -1080,6 +1092,7 @@ export interface FileRouteTypes {
     | '/_authenticated/orders'
     | '/_authenticated/pipeline-diagnostics'
     | '/_authenticated/post-trade'
+    | '/_authenticated/prd-autorizacoes'
     | '/_authenticated/radar'
     | '/_authenticated/ranking'
     | '/_authenticated/real-dashboard'
@@ -1480,6 +1493,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPostTradeRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/prd-autorizacoes': {
+      id: '/_authenticated/prd-autorizacoes'
+      path: '/prd-autorizacoes'
+      fullPath: '/prd-autorizacoes'
+      preLoaderRoute: typeof AuthenticatedPrdAutorizacoesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/radar': {
       id: '/_authenticated/radar'
       path: '/radar'
@@ -1842,6 +1862,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedOrdersRoute: typeof AuthenticatedOrdersRoute
   AuthenticatedPipelineDiagnosticsRoute: typeof AuthenticatedPipelineDiagnosticsRoute
   AuthenticatedPostTradeRoute: typeof AuthenticatedPostTradeRoute
+  AuthenticatedPrdAutorizacoesRoute: typeof AuthenticatedPrdAutorizacoesRoute
   AuthenticatedRadarRoute: typeof AuthenticatedRadarRoute
   AuthenticatedRankingRoute: typeof AuthenticatedRankingRoute
   AuthenticatedRealDashboardRoute: typeof AuthenticatedRealDashboardRoute
@@ -1913,6 +1934,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedOrdersRoute: AuthenticatedOrdersRoute,
   AuthenticatedPipelineDiagnosticsRoute: AuthenticatedPipelineDiagnosticsRoute,
   AuthenticatedPostTradeRoute: AuthenticatedPostTradeRoute,
+  AuthenticatedPrdAutorizacoesRoute: AuthenticatedPrdAutorizacoesRoute,
   AuthenticatedRadarRoute: AuthenticatedRadarRoute,
   AuthenticatedRankingRoute: AuthenticatedRankingRoute,
   AuthenticatedRealDashboardRoute: AuthenticatedRealDashboardRoute,
