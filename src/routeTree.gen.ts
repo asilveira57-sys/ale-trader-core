@@ -21,6 +21,7 @@ import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedAutoDashboardRouteImport } from './routes/_authenticated/auto-dashboard'
 import { Route as AuthenticatedB3RouteImport } from './routes/_authenticated/b3'
 import { Route as AuthenticatedB3AuditoriaRouteImport } from './routes/_authenticated/b3-auditoria'
+import { Route as AuthenticatedB3AutorizacoesReaisRouteImport } from './routes/_authenticated/b3-autorizacoes-reais'
 import { Route as AuthenticatedB3CalibracaoRouteImport } from './routes/_authenticated/b3-calibracao'
 import { Route as AuthenticatedB3CockpitRouteImport } from './routes/_authenticated/b3-cockpit'
 import { Route as AuthenticatedB3DiagnosticoRouteImport } from './routes/_authenticated/b3-diagnostico'
@@ -56,7 +57,6 @@ import { Route as AuthenticatedOperationsRouteImport } from './routes/_authentic
 import { Route as AuthenticatedOrdersRouteImport } from './routes/_authenticated/orders'
 import { Route as AuthenticatedPipelineDiagnosticsRouteImport } from './routes/_authenticated/pipeline-diagnostics'
 import { Route as AuthenticatedPostTradeRouteImport } from './routes/_authenticated/post-trade'
-import { Route as AuthenticatedPrdAutorizacoesRouteImport } from './routes/_authenticated/prd-autorizacoes'
 import { Route as AuthenticatedRadarRouteImport } from './routes/_authenticated/radar'
 import { Route as AuthenticatedRankingRouteImport } from './routes/_authenticated/ranking'
 import { Route as AuthenticatedRealDashboardRouteImport } from './routes/_authenticated/real-dashboard'
@@ -159,6 +159,12 @@ const AuthenticatedB3AuditoriaRoute =
   AuthenticatedB3AuditoriaRouteImport.update({
     id: '/b3-auditoria',
     path: '/b3-auditoria',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedB3AutorizacoesReaisRoute =
+  AuthenticatedB3AutorizacoesReaisRouteImport.update({
+    id: '/b3-autorizacoes-reais',
+    path: '/b3-autorizacoes-reais',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedB3CalibracaoRoute =
@@ -349,12 +355,6 @@ const AuthenticatedPostTradeRoute = AuthenticatedPostTradeRouteImport.update({
   path: '/post-trade',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedPrdAutorizacoesRoute =
-  AuthenticatedPrdAutorizacoesRouteImport.update({
-    id: '/prd-autorizacoes',
-    path: '/prd-autorizacoes',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
 const AuthenticatedRadarRoute = AuthenticatedRadarRouteImport.update({
   id: '/radar',
   path: '/radar',
@@ -594,6 +594,7 @@ export interface FileRoutesByFullPath {
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
   '/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
+  '/b3-autorizacoes-reais': typeof AuthenticatedB3AutorizacoesReaisRoute
   '/b3-calibracao': typeof AuthenticatedB3CalibracaoRoute
   '/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
@@ -629,7 +630,6 @@ export interface FileRoutesByFullPath {
   '/orders': typeof AuthenticatedOrdersRoute
   '/pipeline-diagnostics': typeof AuthenticatedPipelineDiagnosticsRoute
   '/post-trade': typeof AuthenticatedPostTradeRoute
-  '/prd-autorizacoes': typeof AuthenticatedPrdAutorizacoesRoute
   '/radar': typeof AuthenticatedRadarRoute
   '/ranking': typeof AuthenticatedRankingRoute
   '/real-dashboard': typeof AuthenticatedRealDashboardRoute
@@ -683,6 +683,7 @@ export interface FileRoutesByTo {
   '/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/b3': typeof AuthenticatedB3Route
   '/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
+  '/b3-autorizacoes-reais': typeof AuthenticatedB3AutorizacoesReaisRoute
   '/b3-calibracao': typeof AuthenticatedB3CalibracaoRoute
   '/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
@@ -718,7 +719,6 @@ export interface FileRoutesByTo {
   '/orders': typeof AuthenticatedOrdersRoute
   '/pipeline-diagnostics': typeof AuthenticatedPipelineDiagnosticsRoute
   '/post-trade': typeof AuthenticatedPostTradeRoute
-  '/prd-autorizacoes': typeof AuthenticatedPrdAutorizacoesRoute
   '/radar': typeof AuthenticatedRadarRoute
   '/ranking': typeof AuthenticatedRankingRoute
   '/real-dashboard': typeof AuthenticatedRealDashboardRoute
@@ -774,6 +774,7 @@ export interface FileRoutesById {
   '/_authenticated/auto-dashboard': typeof AuthenticatedAutoDashboardRoute
   '/_authenticated/b3': typeof AuthenticatedB3Route
   '/_authenticated/b3-auditoria': typeof AuthenticatedB3AuditoriaRoute
+  '/_authenticated/b3-autorizacoes-reais': typeof AuthenticatedB3AutorizacoesReaisRoute
   '/_authenticated/b3-calibracao': typeof AuthenticatedB3CalibracaoRoute
   '/_authenticated/b3-cockpit': typeof AuthenticatedB3CockpitRoute
   '/_authenticated/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
@@ -809,7 +810,6 @@ export interface FileRoutesById {
   '/_authenticated/orders': typeof AuthenticatedOrdersRoute
   '/_authenticated/pipeline-diagnostics': typeof AuthenticatedPipelineDiagnosticsRoute
   '/_authenticated/post-trade': typeof AuthenticatedPostTradeRoute
-  '/_authenticated/prd-autorizacoes': typeof AuthenticatedPrdAutorizacoesRoute
   '/_authenticated/radar': typeof AuthenticatedRadarRoute
   '/_authenticated/ranking': typeof AuthenticatedRankingRoute
   '/_authenticated/real-dashboard': typeof AuthenticatedRealDashboardRoute
@@ -865,6 +865,7 @@ export interface FileRouteTypes {
     | '/auto-dashboard'
     | '/b3'
     | '/b3-auditoria'
+    | '/b3-autorizacoes-reais'
     | '/b3-calibracao'
     | '/b3-cockpit'
     | '/b3-diagnostico'
@@ -900,7 +901,6 @@ export interface FileRouteTypes {
     | '/orders'
     | '/pipeline-diagnostics'
     | '/post-trade'
-    | '/prd-autorizacoes'
     | '/radar'
     | '/ranking'
     | '/real-dashboard'
@@ -954,6 +954,7 @@ export interface FileRouteTypes {
     | '/auto-dashboard'
     | '/b3'
     | '/b3-auditoria'
+    | '/b3-autorizacoes-reais'
     | '/b3-calibracao'
     | '/b3-cockpit'
     | '/b3-diagnostico'
@@ -989,7 +990,6 @@ export interface FileRouteTypes {
     | '/orders'
     | '/pipeline-diagnostics'
     | '/post-trade'
-    | '/prd-autorizacoes'
     | '/radar'
     | '/ranking'
     | '/real-dashboard'
@@ -1044,6 +1044,7 @@ export interface FileRouteTypes {
     | '/_authenticated/auto-dashboard'
     | '/_authenticated/b3'
     | '/_authenticated/b3-auditoria'
+    | '/_authenticated/b3-autorizacoes-reais'
     | '/_authenticated/b3-calibracao'
     | '/_authenticated/b3-cockpit'
     | '/_authenticated/b3-diagnostico'
@@ -1079,7 +1080,6 @@ export interface FileRouteTypes {
     | '/_authenticated/orders'
     | '/_authenticated/pipeline-diagnostics'
     | '/_authenticated/post-trade'
-    | '/_authenticated/prd-autorizacoes'
     | '/_authenticated/radar'
     | '/_authenticated/ranking'
     | '/_authenticated/real-dashboard'
@@ -1226,6 +1226,13 @@ declare module '@tanstack/react-router' {
       path: '/b3-auditoria'
       fullPath: '/b3-auditoria'
       preLoaderRoute: typeof AuthenticatedB3AuditoriaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-autorizacoes-reais': {
+      id: '/_authenticated/b3-autorizacoes-reais'
+      path: '/b3-autorizacoes-reais'
+      fullPath: '/b3-autorizacoes-reais'
+      preLoaderRoute: typeof AuthenticatedB3AutorizacoesReaisRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/b3-calibracao': {
@@ -1471,13 +1478,6 @@ declare module '@tanstack/react-router' {
       path: '/post-trade'
       fullPath: '/post-trade'
       preLoaderRoute: typeof AuthenticatedPostTradeRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/prd-autorizacoes': {
-      id: '/_authenticated/prd-autorizacoes'
-      path: '/prd-autorizacoes'
-      fullPath: '/prd-autorizacoes'
-      preLoaderRoute: typeof AuthenticatedPrdAutorizacoesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/radar': {
@@ -1806,6 +1806,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAutoDashboardRoute: typeof AuthenticatedAutoDashboardRoute
   AuthenticatedB3Route: typeof AuthenticatedB3Route
   AuthenticatedB3AuditoriaRoute: typeof AuthenticatedB3AuditoriaRoute
+  AuthenticatedB3AutorizacoesReaisRoute: typeof AuthenticatedB3AutorizacoesReaisRoute
   AuthenticatedB3CalibracaoRoute: typeof AuthenticatedB3CalibracaoRoute
   AuthenticatedB3CockpitRoute: typeof AuthenticatedB3CockpitRoute
   AuthenticatedB3DiagnosticoRoute: typeof AuthenticatedB3DiagnosticoRoute
@@ -1841,7 +1842,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedOrdersRoute: typeof AuthenticatedOrdersRoute
   AuthenticatedPipelineDiagnosticsRoute: typeof AuthenticatedPipelineDiagnosticsRoute
   AuthenticatedPostTradeRoute: typeof AuthenticatedPostTradeRoute
-  AuthenticatedPrdAutorizacoesRoute: typeof AuthenticatedPrdAutorizacoesRoute
   AuthenticatedRadarRoute: typeof AuthenticatedRadarRoute
   AuthenticatedRankingRoute: typeof AuthenticatedRankingRoute
   AuthenticatedRealDashboardRoute: typeof AuthenticatedRealDashboardRoute
@@ -1877,6 +1877,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAutoDashboardRoute: AuthenticatedAutoDashboardRoute,
   AuthenticatedB3Route: AuthenticatedB3Route,
   AuthenticatedB3AuditoriaRoute: AuthenticatedB3AuditoriaRoute,
+  AuthenticatedB3AutorizacoesReaisRoute: AuthenticatedB3AutorizacoesReaisRoute,
   AuthenticatedB3CalibracaoRoute: AuthenticatedB3CalibracaoRoute,
   AuthenticatedB3CockpitRoute: AuthenticatedB3CockpitRoute,
   AuthenticatedB3DiagnosticoRoute: AuthenticatedB3DiagnosticoRoute,
@@ -1912,7 +1913,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedOrdersRoute: AuthenticatedOrdersRoute,
   AuthenticatedPipelineDiagnosticsRoute: AuthenticatedPipelineDiagnosticsRoute,
   AuthenticatedPostTradeRoute: AuthenticatedPostTradeRoute,
-  AuthenticatedPrdAutorizacoesRoute: AuthenticatedPrdAutorizacoesRoute,
   AuthenticatedRadarRoute: AuthenticatedRadarRoute,
   AuthenticatedRankingRoute: AuthenticatedRankingRoute,
   AuthenticatedRealDashboardRoute: AuthenticatedRealDashboardRoute,
