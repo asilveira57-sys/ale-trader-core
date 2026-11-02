@@ -127,6 +127,13 @@
       "when": 1793537468692,
       "tag": "0017_cockpit_corte_disjuntor_consistente",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793619728189,
+      "tag": "0018_prd_sc_magic_and_readonly_authorization_inputs",
+      "breakpoints": true
     }
   ]
 }
