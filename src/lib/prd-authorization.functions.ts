@@ -3,9 +3,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { B3_ASSETS } from "@/lib/b3-format";
 
-const MODES = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo", "enoir"] as const;
+const MODES = ["conservador", "cauteloso", "moderado", "equilibrado", "semi_agressivo", "arrojado", "agressivo", "enoir", "conservador_sc", "cauteloso_sc", "moderado_sc", "equilibrado_sc", "semi_agressivo_sc", "arrojado_sc", "agressivo_sc", "enoir_sc"] as const;
 const SYMBOLS = B3_ASSETS;
-const VARIANTS = ["indicador", "price_action", "mean_reversion", "range", "rompimento", "pullback", "vwap"] as const;
 
 // Valida a senha mestra contra o hash guardado em B3_PRD_MASTER_PASSWORD_HASH.
 // Formato: scrypt$<salt_hex>$<derivado_hex>. Falha FECHADA: sem env var, erro.
@@ -51,7 +50,10 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    const { loadRealSizing, globalStopFromSizing } = await import("@/lib/b3-real-stop.server");
+    const { globalStopFromSizing, loadRealDayResult } = await import("@/lib/b3-real-stop.server");
+    const { dailyLossPresentation } = await import('./prd-authorization-view');
+    const { brlFromMult, multFromBrl, convertSimBrlParamsToReal } = await import('./b3-real-sizing');
+    const { saoPauloDate } = await import('./b3-real-cockpit.server');
     // CAPITAL OFICIAL = CARTEIRA, nunca o saldo do MetaTrader (13/10/2026).
     // O MT5 reporta um saldo que nao acompanha a XP; o unico numero que o
     // portao de abertura real usa e capital_operacional_brl de lerCarteira()
@@ -60,7 +62,7 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
     // razao "Global / saldo" saia quatro vezes menor que a verdadeira.
     const { lerCarteira } = await import("@/lib/b3-carteira.server");
 
-    const [rows, logs, sizing, estado, cmds] = await Promise.all([
+    const [rows, logs, inputs, estado, cmds, execution, peak] = await Promise.all([
       supabase
         .from("b3_prd_authorizations")
         .select("id, symbol, variant, mode, enabled, max_qty, max_daily_loss_brl, max_daily_loss_mult, magic_number, authorized_at, authorized_by, revoked_at, notes, updated_at")
@@ -74,7 +76,7 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
         .eq("user_id", userId)
         .order("ts", { ascending: false })
         .limit(20),
-      loadRealSizing(supabase, userId),
+      supabase.rpc('b3_prd_tela_insumos'),
       supabase
         .from("b3_mt5_account_state")
         .select("saldo, capital_liquido, reportado_em")
@@ -87,10 +89,38 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
         .select("action, quantity, magic_number")
         .eq("user_id", userId).eq("env", "real").eq("status", "filled")
         .gte("created_at", new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()),
+      supabase.from('b3_real_execution_state').select('real_enabled, stopped_reason').eq('user_id', userId).maybeSingle(),
+      supabase.from('b3_real_account_peak').select('armed,armed_at,circuit_armed,circuit_kind,circuit_armed_at').eq('user_id',userId).eq('session_date',saoPauloDate(new Date())).maybeSingle(),
     ]);
 
     if (rows.error) throw rows.error;
     if (logs.error) throw logs.error;
+    if (inputs.error) throw inputs.error;
+    if (execution.error) throw execution.error;
+    if (peak.error) throw peak.error;
+    const telaInputs = (inputs.data ?? []) as unknown as import('./prd-authorization-view').AuthorizationInput[];
+    const sizing = (rows.data ?? []).map(a => {
+      const i = telaInputs.find(i => i.symbol === a.symbol && i.variant === a.variant && i.mode === a.mode);
+      const stop = Number(i?.stop_pts ?? 0), point = Number(i?.point_value_brl ?? 0), qty = Number(a.max_qty);
+      const effective = dailyLossPresentation(a.enabled, a.max_daily_loss_brl, stop, point, qty);
+      const mult = a.max_daily_loss_mult ?? multFromBrl(a.max_daily_loss_brl,stop,point,qty);
+      return { symbol: a.symbol,variant:a.variant,mode:a.mode,enabled:a.enabled,max_qty:qty,stop_pts:stop,point_value_brl:point,sim_max_contracts:Number(i?.sim_max_contracts ?? 1),manual_daily_loss_brl:a.enabled ? a.max_daily_loss_brl : null,manual_daily_loss_mult:mult,one_stop_brl:brlFromMult(1,stop,point,qty),max_mult:3,three_stops_brl:brlFromMult(3,stop,point,qty),effective_daily_loss_brl:effective.amount ?? 0,limite_origem:effective.origin ?? 'tres_stops',real_brl:convertSimBrlParamsToReal({},Number(i?.sim_max_contracts ?? 1),qty) };
+    });
+    const blockReasons: Record<string,string> = {};
+    if ((rows.data ?? []).some(a => a.enabled)) {
+      const day = await loadRealDayResult(supabase,userId);
+      const global = globalStopFromSizing(sizing).total_brl;
+      for (const a of rows.data ?? []) {
+        if (!a.enabled) continue;
+        const s = sizing.find(s => s.symbol===a.symbol && s.variant===a.variant && s.mode===a.mode);
+        const reason = execution.data?.real_enabled === false ? execution.data.stopped_reason || 'Novas entradas reais paradas'
+          : peak.data?.circuit_armed ? `Disjuntor diário real: ${peak.data.circuit_kind ?? 'sem registro'} · ${peak.data.circuit_armed_at ?? 'sem registro'}`
+          : peak.data?.armed ? `Freio de pico da conta real · ${peak.data.armed_at ?? 'sem registro'}`
+          : global > 0 && day.total_brl <= -global ? 'Stop global real alcançado'
+          : s && s.effective_daily_loss_brl > 0 && (day.by_magic.get(Number(a.magic_number)) ?? 0) <= -s.effective_daily_loss_brl ? 'Stop diário real do robô alcançado' : null;
+        if(reason) blockReasons[`${a.symbol}|${a.variant}|${a.mode}`]=reason;
+      }
+    }
 
     const abertoPorMagic: Record<string, number> = {};
     for (const c of ((cmds as any)?.data ?? []) as any[]) {
@@ -99,7 +129,7 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
       abertoPorMagic[m] = (abertoPorMagic[m] ?? 0) + (c.action === "open" ? q : -q);
     }
     for (const k of Object.keys(abertoPorMagic)) {
-      if (!(abertoPorMagic[k]! > 0)) delete abertoPorMagic[k];
+      if (!((abertoPorMagic[k] ?? 0) > 0)) delete abertoPorMagic[k];
     }
 
     const list = rows.data ?? [];
@@ -116,6 +146,8 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
 
     return {
       authorizations: list,
+      inputs: telaInputs,
+      block_reasons: blockReasons,
       log: logs.data ?? [],
       enabled_count: list.filter((r: any) => r.enabled).length,
       posicao_aberta_por_magic: abertoPorMagic,
@@ -191,7 +223,7 @@ export const updatePrdAuthorizationParams = createServerFn({ method: "POST" })
     z
       .object({
         symbol: z.enum(SYMBOLS),
-        variant: z.enum(VARIANTS),
+        variant: z.string().min(1).max(100),
         mode: z.enum(MODES),
         max_qty: z.number().int().min(1).max(100),
         max_daily_loss_mult: z.number().min(0).max(50),
@@ -250,7 +282,7 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
     z
       .object({
         symbol: z.enum(SYMBOLS),
-        variant: z.enum(VARIANTS),
+        variant: z.string().min(1).max(100),
         mode: z.enum(MODES),
         enabled: z.boolean(),
         max_qty: z.number().int().min(1).max(100),
