@@ -110,6 +110,23 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
     if ((rows.data ?? []).some(a => a.enabled)) {
       const day = await loadRealDayResult(supabase,userId);
       const global = globalStopFromSizing(sizing).total_brl;
+      const { decideB3Grupo } = await import('./b3-grupo.server');
+      const { listLiberacoesAbertas, separarLiberacoes, freioLiberado } = await import('./b3-liberacao-freio.server');
+      const [limits, releases] = await Promise.all([
+        supabase.from('b3_grupo_limites').select('*').eq('user_id',userId),
+        listLiberacoesAbertas(supabase,userId),
+      ]);
+      if (limits.error) throw limits.error;
+      const activeReleases = separarLiberacoes(releases).ativas;
+      const groupReasons = new Map<string,string>();
+      for (const limit of limits.data ?? []) {
+        const group = (rows.data ?? []).filter(a => a.symbol===limit.symbol && a.variant===limit.variant);
+        if (!group.some(a => day.active_magics.has(Number(a.magic_number)))) continue;
+        const resultByMode = Object.fromEntries(group.map(a => [a.mode,day.by_magic.get(Number(a.magic_number)) ?? 0]));
+        const decision = decideB3Grupo({ limites: { teto_brl:Number(limit.teto_brl),nivel1_pct:Number(limit.nivel1_pct),nivel2_pct:Number(limit.nivel2_pct),nivel3_pct:Number(limit.nivel3_pct),nivel4_pct:Number(limit.nivel4_pct),fator_contratos:Number(limit.fator_contratos),histerese_pct:Number(limit.histerese_pct),dwell_minutos:Number(limit.dwell_minutos),ativo:limit.ativo }, estado:{resultado_brl:0,pior_do_dia_brl:0,nivel_atual:0,multiplicador:1,ultima_mudanca_ts:null,robos_travados:[]},resultadoPorModo:resultByMode,R:Object.values(resultByMode).reduce((s,v)=>s+v,0),nowIso:new Date().toISOString() });
+        if(decision.nivel<2) continue;
+        for(const a of group) if(decision.robos_travados.includes(a.mode) && !freioLiberado(activeReleases,a.symbol,a.variant,a.mode,'grupo')) groupReasons.set(`${a.symbol}|${a.variant}|${a.mode}`,`Freio do grupo real: nível ${decision.nivel}`);
+      }
       for (const a of rows.data ?? []) {
         if (!a.enabled) continue;
         const s = sizing.find(s => s.symbol===a.symbol && s.variant===a.variant && s.mode===a.mode);
@@ -117,7 +134,8 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
           : peak.data?.circuit_armed ? `Disjuntor diário real: ${peak.data.circuit_kind ?? 'sem registro'} · ${peak.data.circuit_armed_at ?? 'sem registro'}`
           : peak.data?.armed ? `Freio de pico da conta real · ${peak.data.armed_at ?? 'sem registro'}`
           : global > 0 && day.total_brl <= -global ? 'Stop global real alcançado'
-          : s && s.effective_daily_loss_brl > 0 && (day.by_magic.get(Number(a.magic_number)) ?? 0) <= -s.effective_daily_loss_brl ? 'Stop diário real do robô alcançado' : null;
+          : s && s.effective_daily_loss_brl > 0 && (day.by_magic.get(Number(a.magic_number)) ?? 0) <= -s.effective_daily_loss_brl ? 'Stop diário real do robô alcançado'
+          : groupReasons.get(`${a.symbol}|${a.variant}|${a.mode}`) ?? null;
         if(reason) blockReasons[`${a.symbol}|${a.variant}|${a.mode}`]=reason;
       }
     }
