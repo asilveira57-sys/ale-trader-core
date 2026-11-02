@@ -1,6 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
+- [ ] 02/11 runtime: reproduzir 500 de readThreeReadings no cockpit, diagnosticar e corrigir causa sem alterar motor nem publicar.
 - [x] 02/11: magic SC 2701–2708, 2001/2504 preservados; oito linhas WIN SC desligadas/max_qty=1/limite default sem preencher. Tela /b3-autorizacoes-reais e redirecionamento antigo; lista dinâmica, WIN 48 por padrão/64 com desligadas, VWAP stop R$120 conferido, Ligar desabilitado nas modalidades desligadas, duas colunas perda/origem, estados reais e cópia completa. 30 testes; navegador autenticado e celular sem overflow; nenhum robô ligado (0 antes/depois), motor/trailing/disjuntor/carteira/executor intactos.
 - [ ] Publicar pedido 02/11 somente após 18:00 Brasília em nova interação; não há publicação automática agendada.
 - [x] 01/11 Parte 1: três colunas permanentes hoje/histórico e agregados SQL; 27/10 WIN sem freio −11, com freio −14, com freio+disjuntor +897. Navegador/cópia/celular conferidos. Não altera RPCs existentes nem motor. Limitação: novo adaptador recompõe métricas em SQL em vez de consumir todas as RPCs pedidas; piso do cenário usa o default da RPC, não o override do selo anterior. Selo antigo removido para não mostrar cenários divergentes.
