@@ -6,6 +6,8 @@ import {
   listPrdAuthorizations, setPrdAuthorization, revokeAllPrdAuthorizations,
   openPrdEditSession, updatePrdAuthorizationParams,
 } from "@/lib/prd-authorization.functions";
+import { Checkbox } from "@/components/ui/checkbox";
+import { authorizationState, canEnableAuthorization, dailyLossPresentation, visibleAuthorizations, type AuthorizationInput } from "@/lib/prd-authorization-view";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -16,7 +18,7 @@ import { rootSymbol } from "@/lib/b3-format";
 import { computeGlobalRealStop, brlFromMult, STOPS_POR_DIA } from "@/lib/b3-real-sizing";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { ModeName } from "@/components/b3/ModeName";
-import { ShieldAlert, AlertTriangle, Lock, Unlock, Save, PencilLine, Search, X, ChevronDown, ChevronRight } from "lucide-react";
+import { ShieldAlert, AlertTriangle, Lock, Unlock, Save, PencilLine, Search, X, ChevronDown, ChevronRight, Copy } from "lucide-react";
 
 // Ordem de ativos definida pelo usuário (08/09/2026). Ativo fora da lista
 // vai para o fim, em ordem alfabética. Só apresentação.
@@ -51,7 +53,7 @@ const brl = (v: number | null | undefined) =>
   v == null ? "—" : `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 
-export const Route = createFileRoute("/_authenticated/prd-autorizacoes")({
+export const Route = createFileRoute("/_authenticated/b3-autorizacoes-reais")({
   head: () => ({
     meta: [
       { title: "Autorizações de Conta Real — AleTrader AI" },
@@ -87,7 +89,7 @@ type Row = {
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "Indicador", price_action: "Price Action",
   mean_reversion: "Reversão à média", range: "Range", rompimento: "Rompimento",
-  pullback: "Repique", vwap: "VWAP",
+  pullback: "Repique", vwap: "VWAP", price_action_sc: "Price Action SC",
 };
 
 function PrdAuthorizationsPage() {
@@ -121,7 +123,8 @@ function PrdAuthorizationsPage() {
 
   // Busca e filtro rápido — só apresentação (08/09/2026).
   const [search, setSearch] = useState("");
-  const [quick, setQuick] = useState<"ligados" | "todos" | "desligados">("ligados");
+  const [showDisabled, setShowDisabled] = useState(false);
+  const [quick, setQuick] = useState<"ligados" | "todos" | "desligados">("todos");
   // Símbolos que o usuário abriu/fechou manualmente (sobrepõe o padrão).
   const [toggleManual, setToggleManual] = useState<Record<string, boolean>>({});
 
@@ -137,7 +140,7 @@ function PrdAuthorizationsPage() {
     }
   }, [session, now]);
   const sessionActive = !!session && now < session.expiresAt;
-  const restante = sessionActive ? Math.max(0, session!.expiresAt - now) : 0;
+  const restante = sessionActive ? Math.max(0, (session?.expiresAt ?? now) - now) : 0;
   const restanteLabel = `${String(Math.floor(restante / 60000)).padStart(2, "0")}:${String(Math.floor((restante % 60000) / 1000)).padStart(2, "0")}`;
 
   const mUnlock = useMutation({
@@ -232,7 +235,13 @@ function PrdAuthorizationsPage() {
     sizing.find((s) => s.symbol === rootSymbol(r.symbol) && s.variant === (r.variant ?? "indicador") && s.mode === r.mode);
   const focused = !!(focus.symbol || focus.variant || focus.mode);
   const q = norm(search.trim());
-  const rows = allRows.filter((r) => {
+  const inputs = (data.inputs ?? []) as AuthorizationInput[];
+  const inputFor = (r: Row) => inputs.find(i => i.symbol === r.symbol && i.variant === r.variant && i.mode === r.mode);
+  const reasonFor = (r: Row) => data.block_reasons[`${r.symbol}|${r.variant}|${r.mode}`];
+  const lossFor = (r: Row) => dailyLossPresentation(r.enabled, r.max_daily_loss_brl, inputFor(r)?.stop_pts ?? null, inputFor(r)?.point_value_brl ?? null, r.max_qty);
+  const lossText = (r: Row) => { const l = lossFor(r); return !l.available ? "sem stop configurado — não é possível ligar" : l.forecast ? `será calculado ao ligar: 3 stops = ${brl(l.amount)}` : brl(l.amount); };
+  const originText = (r: Row) => !lossFor(r).available ? "sem registro" : lossFor(r).origin === "manual" ? "limite digitado" : "3 stops";
+  const rows = visibleAuthorizations(allRows, inputs, showDisabled).filter((r) => {
     if (focus.symbol && r.symbol !== focus.symbol) return false;
     if (focus.variant && (r.variant ?? "indicador") !== focus.variant) return false;
     if (focus.mode && r.mode !== focus.mode) return false;
@@ -267,12 +276,19 @@ function PrdAuthorizationsPage() {
     else acc.push([sym, [r]]);
     return acc;
   }, []);
-  const enabledCount = data.enabled_count ?? 0;
+  const enabledCount = rows.filter(r => r.enabled).length;
   const disabledCount = allRows.length - enabledCount;
   const searching = q.length > 0;
 
 
+  async function copyPage() {
+    const cells = sortedRows.map(r => [r.symbol, VARIANT_LABEL[r.variant] ?? r.variant, `${apelidos.nick(r.mode)} (${apelidos.tech(r.mode) || r.mode})`,r.magic_number ?? "sem registro",authorizationState(r.enabled,reasonFor(r)),reasonFor(r) ?? "sem registro",r.max_qty,lossText(r),originText(r),inputFor(r)?.simulado_ativo ? "ativa" : "modalidade desligada no simulado",r.authorized_at ?? "sem registro",r.authorized_by ?? "sem registro",JSON.stringify(r)] .join("\t"));
+    const text = [`Automações Reais — ${enabledCount} de ${rows.length} ligados`, `Busca: ${search || "sem registro"}; filtro: ${quick}; mostrar modalidades desligadas: ${showDisabled ? "sim" : "não"}`, `Stop global: ${brl(stopGlobal)}; capital da carteira: ${brl(capital)}; global/capital: ${pctSaldo == null ? "sem registro" : pctSaldo.toFixed(1)+"%"}; MT5 (conferência): ${brl(saldoMt5)}; todos a 2 contratos: ${brl(stopGlobal2)}`, "Ativo\tModalidade\tRobô\tMagic\tEstado\tMotivo\tQtd. máx.\tPerda diária\tOrigem\tSimulado\tAutorizado em\tAutorizado por\tRegistro completo", ...cells, "Histórico de mudanças", ...(data.log ?? []).map(l => JSON.stringify(l))].join("\n");
+    try { await navigator.clipboard.writeText(text); toast.success("Tela copiada"); } catch { toast.error("Não foi possível copiar"); }
+  }
+
   function openDialog(row: Row, enabling: boolean) {
+    if (enabling && !canEnableAuthorization(inputFor(row))) return;
     setTarget({ ...row, enabled: enabling });
     setQty(Number(row.max_qty ?? 1));
     // Multiplicador guardado; linha antiga cai no derivado do sizing.
@@ -282,23 +298,24 @@ function PrdAuthorizationsPage() {
   }
 
   return (
-    <div className="p-8 space-y-6 max-w-6xl">
+    <div className="p-4 sm:p-8 space-y-6 max-w-7xl [&_button]:min-h-11 [&_input]:min-h-11">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <ShieldAlert className="size-6 text-orange-500" /> Autorizações de Conta Real
+            <ShieldAlert className="size-6 text-warning" /> Automações Reais
           </h1>
           <p className="text-sm text-muted-foreground">
             Nega por padrão: nenhum comando real é enfileirado sem autorização explícita por ativo e modo.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className={`panel px-4 py-2 text-sm ${enabledCount > 0 ? "border-orange-500/50 bg-orange-500/10 text-orange-300" : "text-muted-foreground"}`}>
-            <span className="font-mono text-lg font-semibold">{enabledCount}</span> / {allRows.length} pares ligados
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" onClick={copyPage}><Copy className="size-4 mr-2" />Copiar tela</Button>
+          <div className={`panel px-4 py-2 text-sm ${enabledCount > 0 ? "border-warning/50 bg-warning/10 text-warning" : "text-muted-foreground"}`}>
+            <span className="font-mono text-lg font-semibold">{enabledCount}</span> de {rows.length} ligados
           </div>
           {sessionActive ? (
             <div className="flex items-center gap-2">
-              <div className="panel px-3 py-2 text-sm border-emerald-500/50 bg-emerald-500/10 text-emerald-300">
+              <div className="panel px-3 py-2 text-sm border-success/50 bg-success/10 text-success">
                 <PencilLine className="size-4 inline mr-1" /> Edição liberada · <span className="font-mono">{restanteLabel}</span>
               </div>
               <Button variant="outline" onClick={() => { setSession(null); setDraft({}); toast.success("Edição travada"); }}>
@@ -324,15 +341,15 @@ function PrdAuthorizationsPage() {
             {[focus.symbol, focus.variant && (VARIANT_LABEL[focus.variant] ?? focus.variant), focus.mode && apelidos.nick(focus.mode)]
               .filter(Boolean).join(" · ")}
           </Badge>
-          <Button size="sm" variant="ghost" onClick={() => navigate({ to: "/prd-autorizacoes", search: {} })}>
+          <Button size="sm" variant="ghost" onClick={() => navigate({ to: "/b3-autorizacoes-reais", search: {} })}>
             Ver todos os pares
           </Button>
         </div>
       )}
 
-      <div className="panel p-4 border-orange-500/40 bg-orange-500/10 text-sm text-orange-200 space-y-1">
+      <div className="panel p-4 border-warning/40 bg-warning/10 text-sm text-warning space-y-1">
         <p className="font-medium flex items-center gap-2"><AlertTriangle className="size-4" /> Isto controla envio de ordem com DINHEIRO REAL.</p>
-        <p className="text-orange-200/80">
+        <p className="text-warning/80">
           Ao ligar um par ativo+modo, o motor passa a enfileirar comandos reais para aquele robô. As flags{" "}
           <code className="font-mono">DRY_RUN</code> e <code className="font-mono">REAL_TRADING_CONFIRMED</code> do executor
           Python continuam sendo a barreira final — enquanto elas estiverem em modo seguro, nenhum comando vira ordem executada.
@@ -347,7 +364,7 @@ function PrdAuthorizationsPage() {
         <div className="grid gap-4 sm:grid-cols-4">
           <div>
             <div className="text-xs uppercase text-muted-foreground">Stop global</div>
-            <div className="font-mono text-2xl font-semibold text-orange-300">{brl(stopGlobal)}</div>
+            <div className="font-mono text-2xl font-semibold text-warning">{brl(stopGlobal)}</div>
             <div className="text-xs text-muted-foreground">soma do limite que de fato trava cada robô ligado</div>
           </div>
           <div>
@@ -379,7 +396,7 @@ function PrdAuthorizationsPage() {
           </div>
         </div>
         {divergencia != null && Math.abs(divergencia) >= 1 && (
-          <p className="text-xs text-amber-300">
+          <p className="text-xs text-warning">
             Conferência: o MetaTrader reporta {brl(saldoMt5)} e a carteira tem {brl(capital)} —
             diferença de {brl(divergencia)}. Quem manda é a carteira: é o único número que o portão
             de abertura real consulta. O saldo do MT5 não acompanha a XP e serve só de conferência.
@@ -388,7 +405,7 @@ function PrdAuthorizationsPage() {
         <p className="text-xs text-muted-foreground">
           Ao alcançar o global, nenhum robô real abre nova posição — o simulado continua rodando normalmente.
           Por robô vale o MENOR entre o limite digitado e {STOPS_POR_DIA} stops no tamanho real — e o global é
-          exatamente a soma da coluna “Trava em”.
+          exatamente a soma da coluna “Perda diária”.
         </p>
       </section>
 
@@ -408,14 +425,14 @@ function PrdAuthorizationsPage() {
               className="pl-9 pr-9"
             />
             {search && (
-              <button
+              <Button variant="ghost" size="icon"
                 type="button"
                 aria-label="Limpar busca"
                 onClick={() => setSearch("")}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 <X className="size-4" />
-              </button>
+              </Button>
             )}
           </div>
           <div className="flex items-center gap-1">
@@ -431,6 +448,7 @@ function PrdAuthorizationsPage() {
             ))}
           </div>
         </div>
+        <label className="flex items-center gap-3 min-h-11 text-sm"><Checkbox checked={showDisabled} onCheckedChange={v => setShowDisabled(v === true)} aria-label="mostrar modalidades desligadas" className="size-6" />mostrar modalidades desligadas</label>
         <p className="text-xs text-muted-foreground font-mono">
           {enabledCount} robôs ligados · {disabledCount} desligados · mostrando {rows.length}
         </p>
@@ -440,30 +458,29 @@ function PrdAuthorizationsPage() {
         const ligados = group.filter((r) => r.enabled).length;
         // Busca ativa: grupo com resultado sempre aberto. Sem busca: aberto se
         // tem ligado, recolhido se zero — a menos que o usuário tenha clicado.
-        const open = searching ? true : (toggleManual[symbol] ?? ligados > 0);
+        const open = searching ? true : (toggleManual[symbol] ?? true);
         return (
         <section key={symbol} className="panel p-5 space-y-3">
-          <button
+          <Button variant="ghost"
             type="button"
             className="w-full flex items-center gap-2 font-medium text-left"
-            onClick={() => setToggleManual((prev) => ({ ...prev, [symbol]: !(prev[symbol] ?? ligados > 0) }))}
+            onClick={() => setToggleManual((prev) => ({ ...prev, [symbol]: !(prev[symbol] ?? true) }))}
             aria-expanded={open}
           >
             {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
             {symbol}
             <span className="text-sm text-muted-foreground font-normal">— {ligados} de {group.length} ligados</span>
-          </button>
+          </Button>
           {open && (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-sm">
             <thead className="text-xs uppercase text-muted-foreground border-b border-border">
               <tr>
                 <th className="text-left py-2">Modo</th>
                 <th className="text-left">Modalidade</th>
                 <th className="text-left">Status</th>
                 <th className="text-right">Qtd. máx.</th>
-                <th className="text-right">Perda diária máx. (x stop)</th>
-                <th className="text-right">3 stops (real)</th>
-                <th className="text-right">Trava em</th>
+                <th className="text-right">Perda diária</th>
+                <th className="text-left pl-4">Origem</th>
                 <th className="text-left pl-4">Autorizado em</th>
                 <th></th>
               </tr>
@@ -482,11 +499,10 @@ function PrdAuthorizationsPage() {
                 return (
                 <tr key={r.id} className="border-b border-border/40">
                   <td className="py-2"><ModeName mode={r.mode} api={apelidos} stacked /></td>
-                  <td className="text-muted-foreground">{VARIANT_LABEL[r.variant] ?? r.variant}</td>
+                  <td className="text-muted-foreground">{VARIANT_LABEL[r.variant] ?? r.variant}{!inputFor(r)?.simulado_ativo && <div className="text-xs text-warning">modalidade desligada no simulado</div>}<div className="text-xs font-mono">Magic {r.magic_number ?? "sem registro"}</div></td>
                   <td>
-                    {r.enabled
-                      ? <Badge className="bg-orange-500 text-white">LIBERADO</Badge>
-                      : <Badge variant="secondary">bloqueado</Badge>}
+                    <Badge variant="outline" className={authorizationState(r.enabled,reasonFor(r)) === "travado" ? "text-destructive border-destructive" : r.enabled ? "text-success border-success" : "text-muted-foreground"}>{authorizationState(r.enabled,reasonFor(r))}</Badge>
+                    {r.enabled && reasonFor(r) && <div className="text-xs text-destructive mt-1">{reasonFor(r)}</div>}
                   </td>
                   <td className="text-right font-mono">
                     {sessionActive ? (
@@ -495,31 +511,15 @@ function PrdAuthorizationsPage() {
                         onChange={(e) => setD({ qty: Number(e.target.value) })} />
                     ) : r.max_qty}
                     {sessionActive && abertoReal > 0 ? (
-                      <div className="text-[10px] text-amber-300 whitespace-nowrap">
+                      <div className="text-[10px] text-warning whitespace-nowrap">
                         {abertoReal} aberto(s) agora — fecha nesse tamanho
                       </div>
                     ) : null}
                   </td>
-                  <td className="text-right font-mono">
-                    {sessionActive ? (
-                      <Input type="number" min={0} step={0.05} value={curMult} aria-label={`Perda diária ${r.symbol} ${r.mode}`}
-                        className="h-8 w-24 ml-auto text-right font-mono"
-                        onChange={(e) => setD({ mult: Number(e.target.value) })} />
-                    ) : (
-                      <>
-                        {mult(r.max_daily_loss_mult ?? s?.manual_daily_loss_mult ?? null)}
-                        <span className="ml-1 text-[10px] text-muted-foreground">{brl(r.max_daily_loss_brl)}</span>
-                      </>
-                    )}
+                  <td className="text-right max-w-64"><div className="font-mono text-xs">{lossText(r)}</div>
+                    {sessionActive && <Input type="number" min={0} step={0.05} value={curMult} aria-label={`Limite digitado em stops ${r.symbol} ${r.mode}`} className="w-24 ml-auto mt-2 text-right font-mono" onChange={e => setD({ mult: Number(e.target.value) })} />}
                   </td>
-                  <td className="text-right font-mono text-muted-foreground">
-                    {s ? brl(s.three_stops_brl) : "—"}
-                    {s ? <span className="ml-1 text-[10px]">({s.stop_pts} pts × {s.max_qty})</span> : null}
-                  </td>
-                  <td className="text-right font-mono">
-                    {s ? brl(s.effective_daily_loss_brl) : "—"}
-                    {s ? <span className="ml-1 text-[10px] text-muted-foreground">{s.limite_origem === "manual" ? "manual" : "3 stops"}</span> : null}
-                  </td>
+                  <td className="pl-4 text-muted-foreground">{originText(r)}</td>
                   <td className="pl-4 text-muted-foreground">
                     {r.authorized_at ? new Date(r.authorized_at).toLocaleString("pt-BR") : "—"}
                   </td>
@@ -530,7 +530,7 @@ function PrdAuthorizationsPage() {
                         <Save className="size-3.5 mr-1" /> Salvar
                       </Button>
                     ) : null}
-                    <Button size="sm" variant={r.enabled ? "outline" : "default"} onClick={() => openDialog(r, !r.enabled)}>
+                    <Button size="sm" disabled={!r.enabled && !canEnableAuthorization(inputFor(r))} variant={r.enabled ? "outline" : "default"} onClick={() => openDialog(r, !r.enabled)}>
                       {r.enabled ? <><Lock className="size-3.5 mr-1" /> Desligar</> : <><Unlock className="size-3.5 mr-1" /> Ligar</>}
                     </Button>
                   </td>
@@ -540,7 +540,7 @@ function PrdAuthorizationsPage() {
 
             </tbody>
 
-          </table>
+          </table></div>
           )}
         </section>
         );
@@ -555,7 +555,7 @@ function PrdAuthorizationsPage() {
             {(data.log as any[]).map((l) => (
               <li key={l.id} className="text-muted-foreground">
                 {new Date(l.ts).toLocaleString("pt-BR")} · {l.symbol} · {VARIANT_LABEL[l.variant] ?? l.variant ?? "indicador"} · {apelidos.nick(l.mode)} ·{" "}
-                <span className={l.para_enabled ? "text-orange-400" : "text-emerald-400"}>
+                <span className={l.para_enabled ? "text-warning" : "text-success"}>
                   {String(l.de_enabled)} → {String(l.para_enabled)}
                 </span>{" "}
                 · qty {l.de_max_qty} → {l.para_max_qty} · origem {l.origem ?? "—"}
@@ -570,11 +570,11 @@ function PrdAuthorizationsPage() {
       <Dialog open={!!target} onOpenChange={(o) => { if (!o) { setTarget(null); setPassword(""); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{target?.enabled ? "Liberar execução real" : "Bloquear execução real"}</DialogTitle>
+            <DialogTitle>{target?.enabled ? "Liberar execução real" : "Desligar execução real"}</DialogTitle>
             <DialogDescription>
               {target?.enabled
                 ? "Confirme com a senha mestra. O robô abaixo passará a enfileirar ordens reais."
-                : "Confirme com a senha mestra para bloquear este par."}
+                : "Confirme com a senha mestra para desligar este par."}
             </DialogDescription>
           </DialogHeader>
           {target && (
@@ -598,7 +598,7 @@ function PrdAuthorizationsPage() {
                     {(() => {
                       const s0 = sizingFor(target);
                       if (!s0 || !(s0.stop_pts > 0)) {
-                        return <p className="mt-1 text-xs text-amber-300">Sem stop em pontos para este robô — o valor em reais não pode ser derivado.</p>;
+                        return <p className="mt-1 text-xs text-warning">Sem stop em pontos para este robô — o valor em reais não pode ser derivado.</p>;
                       }
                       const valor = brlFromMult(lossMult, s0.stop_pts, s0.point_value_brl, qty);
                       const teto = brlFromMult(STOPS_POR_DIA, s0.stop_pts, s0.point_value_brl, qty);
@@ -609,7 +609,7 @@ function PrdAuthorizationsPage() {
                             {brl(s0.point_value_brl)}/pt × {qty} contrato(s)
                           </p>
                           {lossMult > STOPS_POR_DIA ? (
-                            <p className="mt-1 text-xs text-amber-300">
+                            <p className="mt-1 text-xs text-warning">
                               Acima de {STOPS_POR_DIA}× não tem efeito: o teto de {STOPS_POR_DIA} stops prevalece e o robô
                               vai travar em {brl(teto)}.
                             </p>
@@ -630,10 +630,10 @@ function PrdAuthorizationsPage() {
             <Button variant="outline" onClick={() => setTarget(null)}>Cancelar</Button>
             <Button
               variant={target?.enabled ? "destructive" : "default"}
-              disabled={!password || mSet.isPending}
+              disabled={!password || mSet.isPending || (!!target?.enabled && !canEnableAuthorization(inputFor(target)))}
               onClick={() => target && mSet.mutate({ row: target, enabled: target.enabled, password, max_qty: qty, max_daily_loss_mult: lossMult })}
             >
-              {target?.enabled ? "Liberar conta real" : "Bloquear"}
+              {target?.enabled ? "Liberar conta real" : "Desligar"}
             </Button>
           </DialogFooter>
         </DialogContent>
