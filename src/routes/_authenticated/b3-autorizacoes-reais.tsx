@@ -293,7 +293,7 @@ function PrdAuthorizationsPage() {
     setQty(Number(row.max_qty ?? 1));
     // Multiplicador guardado; linha antiga cai no derivado do sizing.
     const s0 = sizingFor(row);
-    setLossMult(Number(row.max_daily_loss_mult ?? s0?.manual_daily_loss_mult ?? 2.5));
+    setLossMult(enabling ? STOPS_POR_DIA : Number(row.max_daily_loss_mult ?? s0?.manual_daily_loss_mult ?? STOPS_POR_DIA));
     setPassword("");
   }
 
@@ -592,7 +592,7 @@ function PrdAuthorizationsPage() {
                     <Input type="number" min={1} max={100} value={qty} onChange={(e) => setQty(Number(e.target.value))} />
                   </div>
                   <div>
-                    <Label>Perda diária máx. (x stop)</Label>
+                    <Label>Limite digitado (× stop)</Label>
                     <Input type="number" min={0} step={0.05} value={lossMult}
                       onChange={(e) => setLossMult(Number(e.target.value))} />
                     {(() => {
@@ -605,9 +605,10 @@ function PrdAuthorizationsPage() {
                       return (
                         <>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            = <span className="font-mono text-foreground">{brl(valor)}</span> · {s0.stop_pts} pts ×{" "}
+                            será calculado ao ligar: 3 stops = <span className="font-mono text-foreground">{brl(teto)}</span> · {s0.stop_pts} pts ×{" "}
                             {brl(s0.point_value_brl)}/pt × {qty} contrato(s)
                           </p>
+                          <p className="mt-1 text-xs text-muted-foreground">Limite digitado: {brl(valor)}; efetivo será o menor entre ele e 3 stops.</p>
                           {lossMult > STOPS_POR_DIA ? (
                             <p className="mt-1 text-xs text-warning">
                               Acima de {STOPS_POR_DIA}× não tem efeito: o teto de {STOPS_POR_DIA} stops prevalece e o robô
