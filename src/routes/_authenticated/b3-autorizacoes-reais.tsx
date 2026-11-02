@@ -277,13 +277,13 @@ function PrdAuthorizationsPage() {
     return acc;
   }, []);
   const enabledCount = rows.filter(r => r.enabled).length;
-  const disabledCount = allRows.length - enabledCount;
+  const disabledCount = rows.length - enabledCount;
   const searching = q.length > 0;
 
 
   async function copyPage() {
     const cells = sortedRows.map(r => [r.symbol, VARIANT_LABEL[r.variant] ?? r.variant, `${apelidos.nick(r.mode)} (${apelidos.tech(r.mode) || r.mode})`,r.magic_number ?? "sem registro",authorizationState(r.enabled,reasonFor(r)),reasonFor(r) ?? "sem registro",r.max_qty,lossText(r),originText(r),inputFor(r)?.simulado_ativo ? "ativa" : "modalidade desligada no simulado",r.authorized_at ?? "sem registro",r.authorized_by ?? "sem registro",JSON.stringify(r)] .join("\t"));
-    const text = [`Automações Reais — ${enabledCount} de ${rows.length} ligados`, `Busca: ${search || "sem registro"}; filtro: ${quick}; mostrar modalidades desligadas: ${showDisabled ? "sim" : "não"}`, `Stop global: ${brl(stopGlobal)}; capital da carteira: ${brl(capital)}; global/capital: ${pctSaldo == null ? "sem registro" : pctSaldo.toFixed(1)+"%"}; MT5 (conferência): ${brl(saldoMt5)}; todos a 2 contratos: ${brl(stopGlobal2)}`, "Ativo\tModalidade\tRobô\tMagic\tEstado\tMotivo\tQtd. máx.\tPerda diária\tOrigem\tSimulado\tAutorizado em\tAutorizado por\tRegistro completo", ...cells, "Histórico de mudanças", ...(data.log ?? []).map(l => JSON.stringify(l))].join("\n");
+    const text = [`Automações Reais — ${enabledCount} de ${rows.length} ligados`, `Busca: ${search || "sem registro"}; filtro: ${quick}; mostrar modalidades desligadas: ${showDisabled ? "sim" : "não"}`, `Stop global: ${brl(stopGlobal)}; capital da carteira: ${brl(capital)}; global/capital: ${pctSaldo == null ? "sem registro" : pctSaldo.toFixed(1)+"%"}; MT5 (conferência): ${brl(saldoMt5)}; todos a 2 contratos: ${brl(stopGlobal2)}`, "Ativo\tModalidade\tRobô\tMagic\tEstado\tMotivo\tQtd. máx.\tPerda diária\tOrigem\tSimulado\tAutorizado em\tAutorizado por\tRegistro completo", ...cells, "Histórico de mudanças", ...(data?.log ?? []).map(l => JSON.stringify(l))].join("\n");
     try { await navigator.clipboard.writeText(text); toast.success("Tela copiada"); } catch { toast.error("Não foi possível copiar"); }
   }
 
