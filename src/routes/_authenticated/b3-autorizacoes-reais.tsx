@@ -568,7 +568,7 @@ function PrdAuthorizationsPage() {
       </section>
 
       <Dialog open={!!target} onOpenChange={(o) => { if (!o) { setTarget(null); setPassword(""); } }}>
-        <DialogContent>
+        <DialogContent className="[&_button]:min-h-11 [&_input]:min-h-11">
           <DialogHeader>
             <DialogTitle>{target?.enabled ? "Liberar execução real" : "Desligar execução real"}</DialogTitle>
             <DialogDescription>
@@ -640,12 +640,12 @@ function PrdAuthorizationsPage() {
       </Dialog>
 
       <Dialog open={killStep > 0} onOpenChange={(o) => { if (!o) { setKillStep(0); setKillPassword(""); } }}>
-        <DialogContent>
+        <DialogContent className="[&_button]:min-h-11 [&_input]:min-h-11">
           <DialogHeader>
             <DialogTitle>Desligar todas as autorizações reais</DialogTitle>
             <DialogDescription>
               {killStep === 1
-                ? `Isto bloqueia imediatamente os ${enabledCount} par(es) liberados. Confirme para prosseguir.`
+                ? `Isto desliga imediatamente os ${data.enabled_count} robôs reais ligados, inclusive fora do filtro. Confirme para prosseguir.`
                 : "Confirmação final: digite a senha mestra."}
             </DialogDescription>
           </DialogHeader>
@@ -665,7 +665,7 @@ function PrdAuthorizationsPage() {
       </Dialog>
 
       <Dialog open={unlockOpen} onOpenChange={(o) => { if (!o) { setUnlockOpen(false); setUnlockPassword(""); } }}>
-        <DialogContent>
+        <DialogContent className="[&_button]:min-h-11 [&_input]:min-h-11">
           <DialogHeader>
             <DialogTitle>Destravar edição por 15 minutos</DialogTitle>
             <DialogDescription>
