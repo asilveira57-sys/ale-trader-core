@@ -16,7 +16,7 @@ export function ThreeReadings({ row }: { row?: ThreeReading }) {
 }
 export function ReadingDetails({ row }: { row?: ThreeReading }) {
   if (!row) return <p className="text-xs text-muted-foreground">sem registro</p>;
-  return <div className="space-y-1 text-xs text-foreground">
+  return <div className="space-y-1 text-xs text-foreground" data-reading-details>
     <p>Ordens: {row.ordens} · barradas: {row.barradas}</p>
     <p>{row.barradas === 0 ? "não acionado" : row.frase}</p>
     <p>{row.ganhos} ganhos / {row.perdas} perdas · acerto: {row.acerto_pct == null ? "sem registro" : `${row.acerto_pct}%`}</p>
@@ -27,11 +27,11 @@ export function ReadingDetails({ row }: { row?: ThreeReading }) {
 }
 export function ThreePeriodRows({ rows, total, symbol, variant }: { rows: any[]; total?: ThreeReading; symbol?: string; variant?: string }) {
   const daily = rows.filter(r => symbol ? r.symbol === symbol && (variant ? r.variant === variant && r.gid === 0 : r.gid === 1) : r.gid === 3);
-  return <section className="border-y border-border p-3 text-foreground">
+  return <section className="border-y border-border p-3 text-foreground" data-three-period>
     <div className="flex items-center justify-between"><h2 className="text-sm font-bold">Resultados por pregão</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(daily.map(r => `${r.dia}\n${readingText(r)}`).join("\n\n") + `\nTOTAL\n${readingText(total)}`)}><Copy />Copiar pregões</Button></div>
     <div className="overflow-x-auto"><table className="w-full min-w-[480px] text-xs"><thead><tr className="border-b border-border"><th className="text-left">Pregão</th><th>Sem freio</th><th>Com freio</th><th>Com freio + disjuntor</th></tr></thead><tbody>
       {daily.map(r => <tr key={r.dia} className="border-b border-border"><td>{r.dia}<MilestoneMark date={r.dia} symbol={symbol} variant={variant} /></td>{(['sem_freio', 'com_freio', 'com_freio_disjuntor'] as const).map(key => <td key={key} className={`py-2 text-right font-mono ${color(r[key])}`}>{brl(r[key])}</td>)}</tr>)}
-      {total && <tr className="font-bold"><td>TOTAL</td>{(['sem_freio', 'com_freio', 'com_freio_disjuntor'] as const).map(key => <td key={key} className={`py-2 text-right font-mono ${color(total[key])}`}>{brl(total[key])}</td>)}</tr>}
+      {total && <tr className="font-bold" data-period-total><td>TOTAL</td>{(['sem_freio', 'com_freio', 'com_freio_disjuntor'] as const).map(key => <td key={key} className={`py-2 text-right font-mono ${color(total[key])}`}>{brl(total[key])}</td>)}</tr>}
     </tbody></table></div>
   </section>;
 }
