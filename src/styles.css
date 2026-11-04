@@ -177,5 +177,9 @@
   background: transparent;
 }
 @media (max-width: 480px) {
-  .cockpit-legibility .cockpit-top-result [data-three-readings] strong { font-size: 16px; }
+  .cockpit-legibility .cockpit-top-result [data-three-readings] > div { padding-inline: 4px; }
+  .cockpit-legibility .cockpit-top-result [data-three-readings] strong {
+    font-size: 12px;
+    white-space: nowrap;
+  }
 }
