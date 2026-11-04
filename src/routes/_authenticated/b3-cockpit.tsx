@@ -190,14 +190,13 @@ const VARIANT_SHORT: Record<string, string> = {
 const roboShort = (r: any) =>
   !r ? "—" : `${VARIANT_SHORT[r.variant] ?? r.variant} ${robotLabel(r.mode, r.variant)} ${SIGNED_HDR(r.brl)}`;
 
-// Testeiras de ativo/modalidade com 30% de transparência (70% de opacidade):
-// os tons cheios estavam poluindo o visual ao rolar a página.
+// Asset identity stays in labels; result surfaces use the cockpit's dark tokens.
 const ASSET_BAND: Record<string, string> = {
-  WIN: "bg-asset-win/70 text-asset-win-foreground",
-  WDO: "bg-asset-wdo/70 text-asset-wdo-foreground",
-  BIT: "bg-asset-bit/70 text-asset-bit-foreground",
+  WIN: "cockpit-result-band",
+  WDO: "cockpit-result-band",
+  BIT: "cockpit-result-band",
 };
-const assetBand = (root: string) => ASSET_BAND[root] ?? "bg-asset-other/70 text-asset-other-foreground";
+const assetBand = (root: string) => ASSET_BAND[root] ?? "cockpit-result-band";
 const shortDate = (date: string) => {
   const [, month, day] = date.split("-");
   return `${day}/${month}`;
@@ -710,7 +709,7 @@ function CockpitPage() {
   // um ultrawide de mostrar os 8 modos em linha. Teto generoso aproveita a
   // largura real (e responde ao menu lateral retrátil).
   return (
-    <MilestoneContext.Provider value={milestonesQ.data ?? []}><div className={`mx-auto w-full max-w-[2400px] px-3 py-4 space-y-4 sm:px-4 sm:py-6 [&_button]:min-h-11`}>
+    <MilestoneContext.Provider value={milestonesQ.data ?? []}><div className={`cockpit-legibility mx-auto w-full max-w-[2400px] px-3 py-4 space-y-4 sm:px-4 sm:py-6 [&_button]:min-h-11`}>
       <header className="grid gap-2 sm:flex sm:items-center sm:justify-between sm:flex-wrap">
         <div className="min-w-0">
           <h1 className="text-xl font-bold sm:text-2xl">Cockpit — todos os robôs</h1>
@@ -793,7 +792,7 @@ function CockpitPage() {
       <WalletBand title="Cockpit simulado — todos os ativos" rows={walletRows} exposure={vivo ? currentExposure : undefined} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
-      <section className="border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(threeRows.find(r => r.nivel === "total")))}><Copy />Copiar resultado</Button></div><ThreeReadings row={threeRows.find(r => r.nivel === "total")} /></section>
+      <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(threeRows.find(r => r.nivel === "total")))}><Copy />Copiar resultado</Button></div><ThreeReadings row={threeRows.find(r => r.nivel === "total")} /></section>
       {vivo && recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={recentQ.data.rows.find(r => r.nivel === "total")} />}
 
       {!vivo && (threeQ.isPending ? <p>Carregando o período…</p> : threeQ.isError ? <p role="alert">Não foi possível ler o período.</p> : hd?.no_movement ? <p>sem ordens neste período</p> : <ThreePeriodRows rows={threeQ.data?.daily ?? []} total={threeRows.find(r => r.nivel === "total")} />)}

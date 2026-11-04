@@ -102,3 +102,80 @@
 
 @utility stat-up { color: var(--color-success); }
 @utility stat-down { color: var(--color-destructive); }
+
+/* Cockpit-only presentation: no shared financial sources or global palette changes. */
+.cockpit-legibility {
+  --background: #06080d;
+  --card: #06080d;
+  --foreground: #e5e7eb;
+  --card-foreground: #e5e7eb;
+  --muted-foreground: #d1d5db;
+  --success: #4ade80;
+  --destructive: #f87171;
+  --border: #2563eb;
+  --cockpit-row: #080b11;
+  --cockpit-total: #090c12;
+  --cockpit-number-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  background: var(--background);
+}
+.cockpit-legibility .cockpit-result-band {
+  background: var(--background);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.cockpit-legibility :is([data-three-readings], [data-reading-details], [data-three-period], [data-wallet-band]) {
+  background: var(--background);
+  color: var(--foreground);
+}
+.cockpit-legibility [data-three-readings] {
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.cockpit-legibility [data-three-readings] > div {
+  padding-inline: 8px;
+}
+.cockpit-legibility [data-three-readings] > div + div {
+  border-left: 1px solid var(--border);
+}
+.cockpit-legibility .cockpit-top-result [data-three-readings] strong {
+  font-size: 24px;
+  line-height: 1.3;
+}
+.cockpit-legibility [data-three-period] thead {
+  background: var(--background);
+  color: var(--muted-foreground);
+}
+.cockpit-legibility [data-three-period] th:not(:first-child) { text-align: right; }
+.cockpit-legibility [data-three-period] tbody tr:nth-child(even) { background: var(--cockpit-row); }
+.cockpit-legibility [data-three-period] tbody tr[data-period-total] {
+  background: var(--cockpit-total);
+  border-top: 1px solid var(--border);
+  font-weight: 700;
+}
+.cockpit-legibility [data-wallet-insufficient="true"] {
+  background: var(--background);
+  color: var(--destructive);
+  border-left: 3px solid var(--destructive);
+  text-shadow: var(--cockpit-number-shadow);
+}
+.cockpit-legibility [data-wallet-insufficient="true"] .font-bold { font-size: 14px; }
+.cockpit-legibility :is(.font-mono, [data-reading-details]) {
+  text-shadow: var(--cockpit-number-shadow);
+}
+.cockpit-legibility :is(.text-success, .text-emerald-300, .text-emerald-400) {
+  color: var(--success);
+  background-color: var(--background);
+  text-shadow: var(--cockpit-number-shadow);
+}
+.cockpit-legibility :is(.text-destructive, .text-rose-300, .text-rose-400, .text-red-400) {
+  color: var(--destructive);
+  background-color: var(--background);
+  text-shadow: var(--cockpit-number-shadow);
+}
+.cockpit-legibility [data-three-period] td:is(.text-success, .text-destructive, .text-foreground) {
+  background: transparent;
+}
+@media (max-width: 480px) {
+  .cockpit-legibility .cockpit-top-result [data-three-readings] strong { font-size: 16px; }
+}

@@ -21,3 +21,4 @@
 - Configuration milestones are manually maintained in b3_marco_mudanca with owner-scoped read/create/update only and shared contextual date markers. Why: configuration history must be explicit, editable, and never generated from trading activity.
 - Real authorization presentation uses the authenticated read-only b3_prd_tela_insumos RPC with the trigger's exact stop lookup; it must never reuse operational sizing or trigger writes while reading. Why: stopped runs still contain valid stops and display must not alter trading.
 - The authorization screen is /b3-autorizacoes-reais; /prd-autorizacoes only redirects and preserves filters. Why: existing cockpit links must keep reaching the same single screen.
+- Cockpit presentation overrides are scoped to its page wrapper and semantic data attributes on shared readouts; why: readability changes must not alter other screens or financial logic.
