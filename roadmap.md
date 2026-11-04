@@ -1,7 +1,8 @@
 # Fila de trabalho
 
 ## Em andamento
-- [ ] 04/11: apenas paleta e moldura das três leituras do cockpit; conferir contraste 7:1, capital insuficiente, tabela, computador/celular e solicitar publicação autorizada com mercado fechado.
+- [x] 04/11: somente paleta/atributos visuais e moldura das três leituras; 687 números coloridos conferidos, pior contraste 7,0757:1; faixa insuficiente escura/borda vermelha, tabela alternada/TOTAL e celular sem overflow. Valores do topo e tabela intactos; 11 testes passaram e aplicação sem erro. Nenhuma consulta, SQL, cálculo ou motor alterado.
+- [ ] 04/11 publicação: aguarda decisão sobre os mesmos 13 alertas críticos preexistentes de acesso aos dados, reconfirmados na verificação atual.
 - [x] 02/11 runtime: cockpit autenticado hoje/ontem conferido, três respostas readThreeReadings HTTP 200, sem erro de página. 500 anterior aconteceu no registro de função durante recarga da versão (action undefined no handler TanStack); não reproduziu em sessão nova, definição GET correta. Nenhuma alteração de motor ou leitura financeira necessária; não publicado.
 - [x] 02/11: magic SC 2701–2708, 2001/2504 preservados; oito linhas WIN SC desligadas/max_qty=1/limite default sem preencher. Tela /b3-autorizacoes-reais e redirecionamento antigo; lista dinâmica, WIN 48 por padrão/64 com desligadas, VWAP stop R$120 conferido, Ligar desabilitado nas modalidades desligadas, duas colunas perda/origem, estados reais e cópia completa. 30 testes; navegador autenticado e celular sem overflow; nenhum robô ligado (0 antes/depois), motor/trailing/disjuntor/carteira/executor intactos.
 - [ ] Publicar pedido 02/11 somente após 18:00 Brasília em nova interação; não há publicação automática agendada.
