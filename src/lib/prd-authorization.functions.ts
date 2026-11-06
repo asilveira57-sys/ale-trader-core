@@ -98,6 +98,12 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
     if (inputs.error) throw inputs.error;
     if (execution.error) throw execution.error;
     if (peak.error) throw peak.error;
+    const [wallets, medals] = await Promise.all([
+      supabase.from('b3_carteira_robo').select('symbol,variant,mode,saldo_atual_brl,contratos_atuais,estado').eq('user_id',userId),
+      supabase.rpc('b3_cores_dos_robos'),
+    ]);
+    if(wallets.error) throw wallets.error;
+    if(medals.error) throw medals.error;
     const telaInputs = (inputs.data ?? []) as unknown as import('./prd-authorization-view').AuthorizationInput[];
     const sizing = (rows.data ?? []).map(a => {
       const i = telaInputs.find(i => i.symbol === a.symbol && i.variant === a.variant && i.mode === a.mode);
@@ -164,6 +170,8 @@ export const listPrdAuthorizations = createServerFn({ method: "GET" })
 
     return {
       authorizations: list,
+      wallets: wallets.data ?? [],
+      medals: medals.data ?? [],
       inputs: telaInputs,
       block_reasons: blockReasons,
       log: logs.data ?? [],
@@ -322,6 +330,17 @@ export const setPrdAuthorization = createServerFn({ method: "POST" })
     const { loadRealSizing } = await import("@/lib/b3-real-stop.server");
     const { brlFromMult } = await import("@/lib/b3-real-sizing");
     const { rootSymbol } = await import("@/lib/b3-format");
+    if(data.enabled) {
+      const [insumos,wallet] = await Promise.all([
+        supabase.rpc('b3_prd_tela_insumos'),
+        supabase.from('b3_carteira_robo').select('estado').eq('user_id',userId).eq('symbol',data.symbol).eq('variant',data.variant).eq('mode',data.mode).maybeSingle(),
+      ]);
+      if(insumos.error) throw insumos.error;
+      if(wallet.error) throw wallet.error;
+      const {canEnableAuthorization} = await import('./prd-authorization-view');
+      const input = (insumos.data as unknown as import('./prd-authorization-view').AuthorizationInput[]).find(i=>i.symbol===data.symbol && i.variant===data.variant && i.mode===data.mode);
+      if(!canEnableAuthorization(input,wallet.data?.estado)) throw new Error('Robô sem condições de operar no simulado. Nenhuma autorização foi alterada.');
+    }
     const sizing = await loadRealSizing(supabase, userId);
     const robot = sizing.find(
       (s) => s.symbol === rootSymbol(data.symbol) && s.variant === data.variant && s.mode === data.mode,
@@ -399,4 +418,42 @@ export const revokeAllPrdAuthorizations = createServerFn({ method: "POST" })
     await syncPeakFloorFromGlobalStop(supabase, userId);
 
     return { ok: true as const, revoked: (rows ?? []).length };
+  });
+
+export const previewPrdBatch = createServerFn({method:'GET'})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input:unknown)=>z.object({symbol:z.enum(SYMBOLS),variant:z.string().min(1).max(100)}).parse(input))
+  .handler(async({data,context})=>{
+    const {batchPreview} = await import('./prd-batch.server');
+    return batchPreview(context.supabase,context.userId,data.symbol,data.variant);
+  });
+
+export const setPrdBatch = createServerFn({method:'POST'})
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input:unknown)=>z.object({symbol:z.enum(SYMBOLS),variant:z.string().min(1).max(100),enabled:z.boolean(),password:z.string().optional(),snapshot:z.string().max(100000).optional()}).parse(input))
+  .handler(async({data,context})=>{
+    const {supabase,userId} = context;
+    const owner = await supabase.rpc('is_owner');
+    if(owner.error || !owner.data) throw new Error('Somente o dono pode alterar autorizações reais.');
+    let ids:string[]|null = null;
+    if(data.enabled) {
+      await assertMasterPassword(data.password ?? '');
+      const {batchPreview} = await import('./prd-batch.server');
+      const fresh = await batchPreview(supabase,userId,data.symbol,data.variant);
+      if(fresh.snapshot !== data.snapshot) return {ok:false as const,changed:0,preview:fresh};
+      ids = fresh.robots.map(r=>r.id);
+      if(!ids.length) throw new Error('Nenhum robô elegível para ligar.');
+    }
+    // Desligar não consulta stop, margem, carteira, senha ou freios.
+    const {supabaseAdmin} = await import('@/integrations/supabase/client.server');
+    await setOrigem(supabaseAdmin,data.enabled ? 'painel_lote_ligar' : 'painel_lote_desligar');
+    const now = new Date().toISOString();
+    // O gatilho existente preenche exatamente os 3 stops confirmados,
+    // sem reutilizar um limite histórico de quando o robô estava desligado.
+    const patch = data.enabled ? {enabled:true,max_daily_loss_brl:0,max_daily_loss_mult:3,authorized_at:now,authorized_by:userId,revoked_at:null,updated_at:now} : {enabled:false,revoked_at:now,updated_at:now};
+    let query = supabaseAdmin.from('b3_prd_authorizations').update(patch).eq('user_id',userId).eq('symbol',data.symbol).eq('variant',data.variant).eq('enabled',!data.enabled);
+    if(ids) query=query.in('id',ids);
+    const result = await query.select('id');
+    if(result.error) throw result.error;
+    return {ok:true as const,changed:result.data?.length ?? 0,preview:null};
   });

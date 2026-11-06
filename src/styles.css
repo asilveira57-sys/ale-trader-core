@@ -32,6 +32,9 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-medal-gold: var(--medal-gold);
+  --color-medal-silver: var(--medal-silver);
+  --color-medal-bronze: var(--medal-bronze);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
@@ -48,6 +51,9 @@
 }
 
 :root {
+  --medal-gold: #facc15;
+  --medal-silver: #d4d4d8;
+  --medal-bronze: #d97706;
   --radius: 0.625rem;
   /* Minimal slate dark — owner-only trading panel */
   --background: oklch(0.18 0.02 257);

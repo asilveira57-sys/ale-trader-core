@@ -4,8 +4,10 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import {
   listPrdAuthorizations, setPrdAuthorization, revokeAllPrdAuthorizations,
-  openPrdEditSession, updatePrdAuthorizationParams,
+  openPrdEditSession, updatePrdAuthorizationParams, previewPrdBatch, setPrdBatch,
 } from "@/lib/prd-authorization.functions";
+import { PrdBatchDialog, type PrdBatchPreview } from '@/components/b3/PrdBatchDialog';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu';
 import { Checkbox } from "@/components/ui/checkbox";
 import { authorizationState, canEnableAuthorization, dailyLossPresentation, visibleAuthorizations, type AuthorizationInput } from "@/lib/prd-authorization-view";
 import { Button } from "@/components/ui/button";
@@ -102,6 +104,12 @@ function PrdAuthorizationsPage() {
   const revokeAll = useServerFn(revokeAllPrdAuthorizations);
   const openSession = useServerFn(openPrdEditSession);
   const updateParams = useServerFn(updatePrdAuthorizationParams);
+  const previewBatch = useServerFn(previewPrdBatch);
+  const setBatch = useServerFn(setPrdBatch);
+  const [selectedVariants,setSelectedVariants] = useState<string[]>([]);
+  const [batchGroup,setBatchGroup] = useState<{symbol:string;variant:string}|null>(null);
+  const [batchPreview,setBatchPreview] = useState<PrdBatchPreview|null>(null);
+  const [batchPassword,setBatchPassword] = useState('');
 
   const { data, isLoading } = useQuery({ queryKey: ["prd-auth"], queryFn: () => list({}) });
 
@@ -205,6 +213,20 @@ function PrdAuthorizationsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const mBatchPreview = useMutation({
+    mutationFn:(group:{symbol:string;variant:string})=>previewBatch({data:{symbol:group.symbol as never,variant:group.variant}}),
+    onSuccess:r=>setBatchPreview(r),
+    onError:(e:Error)=>{toast.error(e.message);setBatchGroup(null);},
+  });
+  const mBatch = useMutation({
+    mutationFn:(p:{symbol:string;variant:string;enabled:boolean})=>setBatch({data:{...p,symbol:p.symbol as never,password:p.enabled?batchPassword:undefined,snapshot:p.enabled?batchPreview?.snapshot:undefined}}),
+    onSuccess:r=>{
+      if(!r.ok && r.preview){setBatchPreview(r.preview);toast.warning('Os valores mudaram. Confira os números atualizados e confirme novamente.');return;}
+      toast.success(`${r.changed} robô(s) atualizado(s)`);setBatchGroup(null);setBatchPreview(null);setBatchPassword('');qc.invalidateQueries({queryKey:['prd-auth']});
+    },
+    onError:(e:Error)=>toast.error(e.message),
+  });
+
   if (isLoading || !data) return <div className="p-8 text-muted-foreground">Carregando autorizações…</div>;
 
   const allRows = (data.authorizations ?? []) as Row[];
@@ -237,6 +259,11 @@ function PrdAuthorizationsPage() {
   const q = norm(search.trim());
   const inputs = (data.inputs ?? []) as AuthorizationInput[];
   const inputFor = (r: Row) => inputs.find(i => i.symbol === r.symbol && i.variant === r.variant && i.mode === r.mode);
+  const walletFor = (r:Row)=>data.wallets.find(w=>w.symbol===r.symbol && w.variant===r.variant && w.mode===r.mode);
+  const medalFor = (r:Row)=>data.medals.find(m=>m.symbol===rootSymbol(r.symbol) && m.variant===r.variant && m.mode===r.mode);
+  const canEnable = (r:Row)=>canEnableAuthorization(inputFor(r),walletFor(r)?.estado);
+  const medalText = (r:Row)=>{const m=medalFor(r);return m && ['ouro','prata','bronze'].includes(m.cor) ? `${m.cor} · ${m.rank_day ?? 'sem registro'}º` : 'sem medalha hoje';};
+  const variantOptions = [...new Set(allRows.filter(r=>!focus.symbol || r.symbol===focus.symbol).map(r=>r.variant))].sort();
   const reasonFor = (r: Row) => data.block_reasons[`${r.symbol}|${r.variant}|${r.mode}`];
   const lossFor = (r: Row) => dailyLossPresentation(r.enabled, r.max_daily_loss_brl, inputFor(r)?.stop_pts ?? null, inputFor(r)?.point_value_brl ?? null, r.max_qty);
   const lossText = (r: Row) => { const l = lossFor(r); return !l.available ? "sem stop configurado — não é possível ligar" : l.forecast ? `será calculado ao ligar: 3 stops = ${brl(l.amount)}` : brl(l.amount); };
@@ -245,6 +272,7 @@ function PrdAuthorizationsPage() {
     if (focus.symbol && r.symbol !== focus.symbol) return false;
     if (focus.variant && (r.variant ?? "indicador") !== focus.variant) return false;
     if (focus.mode && r.mode !== focus.mode) return false;
+    if(selectedVariants.length && !selectedVariants.includes(r.variant)) return false;
     if (quick === "ligados" && !r.enabled) return false;
     if (quick === "desligados" && r.enabled) return false;
     if (q) {
@@ -270,10 +298,10 @@ function PrdAuthorizationsPage() {
   });
   // Grupo = ativo. Cabeçalho mostra "WIN — 7 de 56 ligados".
   const grouped = sortedRows.reduce<[string, Row[]][]>((acc, r) => {
-    const sym = String(r.symbol);
-    const last = acc[acc.length - 1];
-    if (last && last[0] === sym) last[1].push(r);
-    else acc.push([sym, [r]]);
+    const key = `${r.symbol}|${r.variant}`;
+    const existing = acc.find(g=>g[0]===key);
+    if(existing) existing[1].push(r);
+    else acc.push([key,[r]]);
     return acc;
   }, []);
   const enabledCount = rows.filter(r => r.enabled).length;
@@ -282,13 +310,13 @@ function PrdAuthorizationsPage() {
 
 
   async function copyPage() {
-    const cells = sortedRows.map(r => [r.symbol, VARIANT_LABEL[r.variant] ?? r.variant, `${apelidos.nick(r.mode)} (${apelidos.tech(r.mode) || r.mode})`,r.magic_number ?? "sem registro",authorizationState(r.enabled,reasonFor(r)),reasonFor(r) ?? "sem registro",r.max_qty,lossText(r),originText(r),inputFor(r)?.simulado_ativo ? "ativa" : "modalidade desligada no simulado",r.authorized_at ?? "sem registro",r.authorized_by ?? "sem registro",JSON.stringify(r)] .join("\t"));
-    const text = [`Automações Reais — ${enabledCount} de ${rows.length} ligados`, `Busca: ${search || "sem registro"}; filtro: ${quick}; mostrar modalidades desligadas: ${showDisabled ? "sim" : "não"}`, `Stop global: ${brl(stopGlobal)}; capital da carteira: ${brl(capital)}; global/capital: ${pctSaldo == null ? "sem registro" : pctSaldo.toFixed(1)+"%"}; MT5 (conferência): ${brl(saldoMt5)}; todos a 2 contratos: ${brl(stopGlobal2)}`, "Ativo\tModalidade\tRobô\tMagic\tEstado\tMotivo\tQtd. máx.\tPerda diária\tOrigem\tSimulado\tAutorizado em\tAutorizado por\tRegistro completo", ...cells, "Histórico de mudanças", ...(data?.log ?? []).map(l => JSON.stringify(l))].join("\n");
+    const cells = sortedRows.map(r => [r.symbol, VARIANT_LABEL[r.variant] ?? r.variant, `${apelidos.nick(r.mode)} (${apelidos.tech(r.mode) || r.mode})`,r.magic_number ?? "sem registro",authorizationState(r.enabled,reasonFor(r)),reasonFor(r) ?? "sem registro",r.max_qty,lossText(r),originText(r),inputFor(r)?.simulado_ativo ? "ativa" : "modalidade desligada no simulado",walletFor(r)?.saldo_atual_brl ?? "sem registro",walletFor(r)?.contratos_atuais ?? "sem registro",walletFor(r)?.estado ?? "sem registro",medalText(r),r.authorized_at ?? "sem registro",r.authorized_by ?? "sem registro",JSON.stringify(r)] .join("\t"));
+    const text = [`Automações Reais — ${enabledCount} ligados · ${disabledCount} desligados · mostrando ${rows.length}`, `Busca: ${search || "sem registro"}; filtro: ${quick}; modalidades: ${selectedVariants.join(", ") || "todas"}; mostrar modalidades desligadas: ${showDisabled ? "sim" : "não"}`, `Stop global: ${brl(stopGlobal)}; capital da carteira: ${brl(capital)}; global/capital: ${pctSaldo == null ? "sem registro" : pctSaldo.toFixed(1)+"%"}; MT5 (conferência): ${brl(saldoMt5)}; todos a 2 contratos: ${brl(stopGlobal2)}`, "Ativo\tModalidade\tRobô\tMagic\tEstado\tMotivo\tQtd. máx.\tPerda diária\tOrigem\tSimulado\tSaldo simulado\tContratos simulados\tEstado carteira\tMedalha\tAutorizado em\tAutorizado por\tRegistro completo", ...cells, "Histórico de mudanças", ...(data?.log ?? []).map(l => JSON.stringify(l))].join("\n");
     try { await navigator.clipboard.writeText(text); toast.success("Tela copiada"); } catch { toast.error("Não foi possível copiar"); }
   }
 
   function openDialog(row: Row, enabling: boolean) {
-    if (enabling && !canEnableAuthorization(inputFor(row))) return;
+    if (enabling && !canEnable(row)) return;
     setTarget({ ...row, enabled: enabling });
     setQty(Number(row.max_qty ?? 1));
     // Multiplicador guardado; linha antiga cai no derivado do sizing.
@@ -311,7 +339,7 @@ function PrdAuthorizationsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" onClick={copyPage}><Copy className="size-4 mr-2" />Copiar tela</Button>
           <div className={`panel px-4 py-2 text-sm ${enabledCount > 0 ? "border-warning/50 bg-warning/10 text-warning" : "text-muted-foreground"}`}>
-            <span className="font-mono text-lg font-semibold">{enabledCount}</span> de {rows.length} ligados
+            {enabledCount} ligados · {disabledCount} desligados · mostrando {rows.length}
           </div>
           {sessionActive ? (
             <div className="flex items-center gap-2">
@@ -448,29 +476,40 @@ function PrdAuthorizationsPage() {
             ))}
           </div>
         </div>
+        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" aria-label="Filtrar modalidades">Modalidades {selectedVariants.length ? `(${selectedVariants.length})` : '· todas'}<ChevronDown className="size-4 ml-2"/></Button></DropdownMenuTrigger><DropdownMenuContent>
+          <DropdownMenuCheckboxItem className="min-h-11" checked={!selectedVariants.length} onCheckedChange={()=>setSelectedVariants([])} onSelect={e=>e.preventDefault()}>Todas as modalidades</DropdownMenuCheckboxItem>
+          {variantOptions.map(v=><DropdownMenuCheckboxItem className="min-h-11" key={v} checked={selectedVariants.includes(v)} onSelect={e=>e.preventDefault()} onCheckedChange={checked=>setSelectedVariants(prev=>checked?[...prev,v]:prev.filter(i=>i!==v))}>{VARIANT_LABEL[v] ?? v}</DropdownMenuCheckboxItem>)}
+        </DropdownMenuContent></DropdownMenu>
         <label className="flex items-center gap-3 min-h-11 text-sm"><Checkbox checked={showDisabled} onCheckedChange={v => setShowDisabled(v === true)} aria-label="mostrar modalidades desligadas" className="size-6" />mostrar modalidades desligadas</label>
         <p className="text-xs text-muted-foreground font-mono">
           {enabledCount} robôs ligados · {disabledCount} desligados · mostrando {rows.length}
         </p>
       </div>
 
-      {grouped.map(([symbol, group]) => {
+      {grouped.map(([groupKey, group]) => {
+        const symbol=group[0]?.symbol ?? '';
+        const variant=group[0]?.variant ?? '';
+        const modalityRows=allRows.filter(r=>r.symbol===symbol && r.variant===variant);
         const ligados = group.filter((r) => r.enabled).length;
         // Busca ativa: grupo com resultado sempre aberto. Sem busca: aberto se
         // tem ligado, recolhido se zero — a menos que o usuário tenha clicado.
-        const open = searching ? true : (toggleManual[symbol] ?? true);
+        const open = searching ? true : (toggleManual[groupKey] ?? true);
         return (
-        <section key={symbol} className="panel p-5 space-y-3">
+        <section key={groupKey} className="panel p-5 space-y-3">
           <Button variant="ghost"
             type="button"
             className="w-full flex items-center gap-2 font-medium text-left"
-            onClick={() => setToggleManual((prev) => ({ ...prev, [symbol]: !(prev[symbol] ?? true) }))}
+            onClick={() => setToggleManual((prev) => ({ ...prev, [groupKey]: !(prev[groupKey] ?? true) }))}
             aria-expanded={open}
           >
             {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
-            {symbol}
+            {symbol} · {VARIANT_LABEL[variant] ?? variant}
             <span className="text-sm text-muted-foreground font-normal">— {ligados} de {group.length} ligados</span>
           </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={mBatch.isPending || mBatchPreview.isPending || !modalityRows.some(r=>!r.enabled && canEnable(r))} onClick={()=>{const g={symbol,variant};setBatchGroup(g);setBatchPreview(null);setBatchPassword('');mBatchPreview.mutate(g);}}>Ligar os {modalityRows.length}</Button>
+            <Button variant="outline" disabled={mBatch.isPending || !modalityRows.some(r=>r.enabled)} onClick={()=>mBatch.mutate({symbol,variant,enabled:false})}>Desligar os {modalityRows.length}</Button>
+          </div>
           {open && (
           <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-sm">
             <thead className="text-xs uppercase text-muted-foreground border-b border-border">
@@ -481,6 +520,8 @@ function PrdAuthorizationsPage() {
                 <th className="text-right">Qtd. máx.</th>
                 <th className="text-right">Perda diária</th>
                 <th className="text-left pl-4">Origem</th>
+                <th className="text-left pl-4">Saldo no simulado</th>
+                <th className="text-left pl-4">Medalha</th>
                 <th className="text-left pl-4">Autorizado em</th>
                 <th></th>
               </tr>
@@ -520,6 +561,8 @@ function PrdAuthorizationsPage() {
                     {sessionActive && <Input type="number" min={0} step={0.05} value={curMult} aria-label={`Limite digitado em stops ${r.symbol} ${r.mode}`} className="w-24 ml-auto mt-2 text-right font-mono" onChange={e => setD({ mult: Number(e.target.value) })} />}
                   </td>
                   <td className="pl-4 text-muted-foreground">{originText(r)}</td>
+                  <td className="pl-4"><div className="font-mono">{walletFor(r) ? brl(walletFor(r)?.saldo_atual_brl) : 'sem registro'}</div><div className="text-xs text-muted-foreground">{walletFor(r)?.contratos_atuais ?? 'sem registro'} contrato(s)</div>{walletFor(r)?.estado==='carteira_insuficiente' && <div className="text-xs text-destructive font-semibold">carteira insuficiente — parado no simulado</div>}</td>
+                  <td className="pl-4"><span className={medalFor(r)?.cor==='ouro'?'text-medal-gold':medalFor(r)?.cor==='prata'?'text-medal-silver':medalFor(r)?.cor==='bronze'?'text-medal-bronze':'text-muted-foreground'}>{medalText(r)}</span></td>
                   <td className="pl-4 text-muted-foreground">
                     {r.authorized_at ? new Date(r.authorized_at).toLocaleString("pt-BR") : "—"}
                   </td>
@@ -530,7 +573,7 @@ function PrdAuthorizationsPage() {
                         <Save className="size-3.5 mr-1" /> Salvar
                       </Button>
                     ) : null}
-                    <Button size="sm" disabled={!r.enabled && !canEnableAuthorization(inputFor(r))} variant={r.enabled ? "outline" : "default"} onClick={() => openDialog(r, !r.enabled)}>
+                    <Button size="sm" disabled={!r.enabled && !canEnable(r)} variant={r.enabled ? "outline" : "default"} onClick={() => openDialog(r, !r.enabled)}>
                       {r.enabled ? <><Lock className="size-3.5 mr-1" /> Desligar</> : <><Unlock className="size-3.5 mr-1" /> Ligar</>}
                     </Button>
                   </td>
@@ -631,7 +674,7 @@ function PrdAuthorizationsPage() {
             <Button variant="outline" onClick={() => setTarget(null)}>Cancelar</Button>
             <Button
               variant={target?.enabled ? "destructive" : "default"}
-              disabled={!password || mSet.isPending || (!!target?.enabled && !canEnableAuthorization(inputFor(target)))}
+              disabled={!password || mSet.isPending || (!!target?.enabled && !canEnable(target))}
               onClick={() => target && mSet.mutate({ row: target, enabled: target.enabled, password, max_qty: qty, max_daily_loss_mult: lossMult })}
             >
               {target?.enabled ? "Liberar conta real" : "Desligar"}
@@ -640,6 +683,7 @@ function PrdAuthorizationsPage() {
         </DialogContent>
       </Dialog>
 
+      <PrdBatchDialog open={!!batchGroup} preview={batchPreview} password={batchPassword} busy={mBatch.isPending || mBatchPreview.isPending} onPassword={setBatchPassword} onClose={()=>{setBatchGroup(null);setBatchPreview(null);setBatchPassword('');}} onConfirm={()=>batchGroup && mBatch.mutate({...batchGroup,enabled:true})} robotName={mode=>`${apelidos.nick(mode)} (${apelidos.tech(mode) || mode})`} variantName={VARIANT_LABEL[batchGroup?.variant ?? ''] ?? batchGroup?.variant ?? ''}/>
       <Dialog open={killStep > 0} onOpenChange={(o) => { if (!o) { setKillStep(0); setKillPassword(""); } }}>
         <DialogContent className="[&_button]:min-h-11 [&_input]:min-h-11">
           <DialogHeader>

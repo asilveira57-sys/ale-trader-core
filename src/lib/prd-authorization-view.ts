@@ -9,8 +9,8 @@ export function dailyLossPresentation(enabled: boolean, stored: number | null, s
 export function authorizationState(enabled: boolean, reason?: string | null) {
   return !enabled ? 'desligado' : reason ? 'travado' : 'ligado';
 }
-export function canEnableAuthorization(input?: AuthorizationInput) {
-  return !!input?.simulado_ativo && Number(input.stop_pts) > 0 && Number(input.point_value_brl) > 0;
+export function canEnableAuthorization(input?: AuthorizationInput, walletState?: string | null) {
+  return walletState !== 'carteira_insuficiente' && !!input?.simulado_ativo && Number(input.stop_pts) > 0 && Number(input.point_value_brl) > 0;
 }
 export function visibleAuthorizations<T extends { symbol: string; variant: string; mode: string }>(rows: T[], inputs: AuthorizationInput[], showDisabled: boolean) {
   return rows.filter(row => showDisabled || inputs.some(i => i.symbol === row.symbol && i.variant === row.variant && i.mode === row.mode && i.simulado_ativo));
