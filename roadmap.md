@@ -1,6 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
+- [ ] 08/11 carteira fase A: transferência manual entre modos da mesma modalidade, delta separado do lucro, gatilho preservado, prévia e testes transacionais sem persistir transferência; publicar após conferência.
 - [x] 08/11 cockpit: datas da RPC somente leitura b3_ultimos_pregoes; função financeira intacta recebe início/fim exatos. Navegador autenticado trouxe 04/11, 03/11, 30/10, 29/10, 28/10; TOTAL SQL/UI −12.312/−7.488/−5.416 conferido. Dez pregões até 21/10 e volta a cinco; tabela única e testeira de ativo ausente com WIN; Price action 8 robôs/4 no real e 20 selos magic; barra azul com resultados fora; celular sem overflow. 9 testes/aplicação OK. Nenhuma escrita operacional. Publicação solicitada em 08/11; serviço aceitou, conclusão ainda não confirmada, 13 alertas antigos permanecem.
 - [x] 06/11: filtro múltiplo de modalidade da tabela, contador filtrado, lote desligar direto/ligar com confirmação atualizada e três avisos; carteira/contratos/medalha das fontes aprovadas. 16 testes; navegador autenticado, confirmação SC (4 elegíveis, 4 insuficientes), cópias e celular sem erro/overflow. 20 ligados e 660 desligados antes/depois, nenhum robô alterado. Nenhuma SQL, motor, executor, disjuntor ou carteira alterada.
 - [ ] 06/11 publicação: ainda 17h Brasília; publicar só após 18h em nova interação, sem agendamento automático.
