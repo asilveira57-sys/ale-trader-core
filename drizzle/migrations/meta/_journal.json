@@ -134,6 +134,13 @@
       "when": 1793619728189,
       "tag": "0018_prd_sc_magic_and_readonly_authorization_inputs",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794141133645,
+      "tag": "0019_cockpit_ultimos_pregoes_somente_datas",
+      "breakpoints": true
     }
   ]
 }

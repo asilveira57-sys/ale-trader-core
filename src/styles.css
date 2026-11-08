@@ -122,12 +122,19 @@
   --cockpit-row: #080b11;
   --cockpit-total: #090c12;
   --cockpit-number-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  --cockpit-modality-bar: #2563eb;
+  --cockpit-modality-foreground: #ffffff;
   background: var(--background);
 }
 .cockpit-legibility .cockpit-result-band {
   background: var(--background);
   color: var(--foreground);
   border-color: var(--border);
+}
+.cockpit-legibility .cockpit-modality-bar {
+  background: var(--cockpit-modality-bar);
+  color: var(--cockpit-modality-foreground);
+  width: 100%;
 }
 .cockpit-legibility :is([data-three-readings], [data-reading-details], [data-three-period], [data-wallet-band]) {
   background: var(--background);

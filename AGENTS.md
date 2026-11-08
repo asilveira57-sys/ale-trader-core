@@ -23,3 +23,4 @@
 - The authorization screen is /b3-autorizacoes-reais; /prd-autorizacoes only redirects and preserves filters. Why: existing cockpit links must keep reaching the same single screen.
 - Authorization batches use a fresh read-only server preview and compare it before one owner-scoped update; disabling bypasses financial gates, while enabling checks simulated eligibility. Why: the owner must confirm current numbers without risk-reduction gates or partial client loops.
 - Cockpit presentation overrides are scoped to its page wrapper and semantic data attributes on shared readouts; why: readability changes must not alter other screens or financial logic.
+- Cockpit recent-session dates come from a read-only date-only RPC, then the unchanged result RPC receives the exact endpoints; why: calendar windows omit trading sessions and client totals must never replace SQL totals.

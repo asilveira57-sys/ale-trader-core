@@ -9086,6 +9086,19 @@ export type Database = {
           trav_pico: number
         }[]
       }
+      b3_ultimos_pregoes: {
+        Args: {
+          p_fim?: string
+          p_modes?: string[]
+          p_n?: number
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: {
+          dia: string
+        }[]
+      }
       b3_vigiar_autorizacoes_reais: { Args: never; Returns: number }
       b3_vigiar_tique: { Args: never; Returns: string }
       has_role: {

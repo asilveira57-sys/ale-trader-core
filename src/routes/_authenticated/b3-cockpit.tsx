@@ -1,6 +1,6 @@
 import { DisjuntorHypothesis } from "@/components/b3/DisjuntorHypothesis";
 import { ThreeReadings, ReadingDetails, ThreePeriodRows } from "@/components/b3/ThreeReadings";
-import { readThreeReadings } from "@/lib/b3-three-readings.functions";
+import { readThreeReadings, readCockpitRealLabels } from "@/lib/b3-three-readings.functions";
 import { readingFor, readingText, threePeriodData, threeHeaders, type ThreeReading } from "@/lib/b3-three-readings";
 import { MilestoneContext, MilestoneMark, MilestoneWarning, useMilestones } from "@/components/b3/ConfigurationMilestones";
 import { WalletBand } from "@/components/b3/WalletBand";
@@ -154,8 +154,7 @@ const VARIANT_COLOR: Record<string, string> = {
   pullback: "bg-teal-500/15 text-teal-300 border-teal-500/30",
   vwap: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30",
 };
-const REAL_GROUP = "__real";
-const variantLabel = (v: string) => v === REAL_GROUP ? "Dinheiro real" : VARIANT_LABEL[v] ?? v;
+const variantLabel = (v: string) => VARIANT_LABEL[v] ?? v;
 const isRiskBlocked = (c: any) => c.current_status === "blocked_stop" || !!c.protection_block_reason;
 
 // Cor da curadoria — quem calcula é o banco (b3_cor_do_robo); aqui só pintamos.
@@ -410,6 +409,7 @@ function LiberacaoBloco({
 function CockpitPage() {
   const milestonesQ = useMilestones();
   const [period, setPeriod] = useState<PeriodInput>(DEFAULT_PERIOD);
+  const [sessions, setSessions] = useState<5 | 10>(5);
   const vivo = (period.preset ?? "hoje") === "hoje";
   const apelidos = useModeApelidos();
   const qc = useQueryClient();
@@ -557,7 +557,9 @@ function CockpitPage() {
   const periodPeaksQ = useQuery({ queryKey: ["b3-cockpit-period-peaks", period, filterKey], queryFn: () => timedCockpitRead("picos-periodo", () => readPeriodPeaks({ data: { ...period, symbols: filterArgs.symbols, variants: filterArgs.variants } })), enabled: !vivo && !!hd && !hd.no_movement, staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false });
   useEffect(() => { if (!vivo && hd?.timings) console.info("[cockpit-dados]", JSON.stringify(hd.timings)); }, [hd, vivo]);
   useEffect(() => { if (!vivo && periodPeaksQ.data) console.info("[cockpit-dados]", JSON.stringify(periodPeaksQ.data.timings)); }, [periodPeaksQ.data, vivo]);
-  const recentQ = useQuery({ queryKey: ["b3-cockpit-pesado", "tres-recentes", filterKey], queryFn: () => readThree({ data: { preset: "7d", ...filterArgs } }), enabled: vivo, staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false });
+  const recentQ = useQuery({ queryKey: ["b3-cockpit-pesado", "tres-recentes", period, sessions, filterKey], queryFn: () => readThree({ data: { ...period, sessions, ...filterArgs } }), staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false });
+  const readRealLabels = useServerFn(readCockpitRealLabels);
+  const realLabelsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "selos-reais"], queryFn: () => readRealLabels(), enabled: vivo, staleTime: Infinity, refetchOnWindowFocus: false });
   const readPeaks = useServerFn(getCockpitDailyPeaks);
   const peakDates: string[] = [...new Set<string>((recentQ.data?.daily ?? []).map(r => r.dia))].sort().reverse();
   const peaksQ = useQuery({
@@ -653,32 +655,20 @@ function CockpitPage() {
   // Agrupa pela RAIZ do ativo (WIN, WDO, PETR4) — o contrato rola de vencimento —
   // e, dentro do ativo, por modalidade (variant).
   const bySymbol = new Map<string, { contracts: Set<string>; byVariant: Map<string, any[]> }>();
-  // Robôs com dinheiro real sobem ao topo do ativo, atravessando modalidades:
-  // primeiro os com posição real aberta, depois os só autorizados.
-  const realFirst = [...visible.filter((c) => c.real_auth && c.real_open), ...visible.filter((c) => c.real_auth && !c.real_open)];
-  for (const c of realFirst) {
-    const root = rootSymbol(c.symbol);
-    if (!bySymbol.has(root)) bySymbol.set(root, { contracts: new Set(), byVariant: new Map() });
-    const group = bySymbol.get(root)!;
-    group.contracts.add(c.symbol);
-    if (!group.byVariant.has(REAL_GROUP)) group.byVariant.set(REAL_GROUP, []);
-    group.byVariant.get(REAL_GROUP)!.push(c);
-  }
   for (const c of visible) {
-    if (c.real_auth) continue;
     const root = rootSymbol(c.symbol);
     if (!bySymbol.has(root)) bySymbol.set(root, { contracts: new Set(), byVariant: new Map() });
-    const group = bySymbol.get(root)!;
+    const group = bySymbol.get(root);
+    if (!group) continue;
     group.contracts.add(c.symbol);
     const v = c.variant ?? "indicador";
     if (!group.byVariant.has(v)) group.byVariant.set(v, []);
-    group.byVariant.get(v)!.push(c);
+    group.byVariant.get(v)?.push(c);
   }
   // Modalidade com TODOS os robôs desligados e sem posição aberta sai da tela
   // (ex.: WIN VWAP desligado). Religar pelo cadastro traz o bloco de volta.
   if (vivo) for (const group of bySymbol.values()) {
     for (const [vk, list] of Array.from(group.byVariant.entries())) {
-      if (vk === REAL_GROUP) continue;
       if (list.length > 0 && list.every((c) => c.enabled === false && !c.open)) group.byVariant.delete(vk);
     }
   }
@@ -689,7 +679,7 @@ function CockpitPage() {
   if (sort !== "none") {
     const dir = sort === "desc" ? -1 : 1;
     for (const group of bySymbol.values()) {
-      for (const [vk, list] of group.byVariant.entries()) if (vk !== REAL_GROUP) list.sort((a, b) => dir * (cardResult(a) - cardResult(b)));
+      for (const list of group.byVariant.values()) list.sort((a, b) => dir * (cardResult(a) - cardResult(b)));
     }
   }
 
@@ -793,9 +783,7 @@ function CockpitPage() {
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
       <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(threeRows.find(r => r.nivel === "total")))}><Copy />Copiar resultado</Button></div><ThreeReadings row={threeRows.find(r => r.nivel === "total")} /></section>
-      {vivo && recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={recentQ.data.rows.find(r => r.nivel === "total")} />}
-
-      {!vivo && (threeQ.isPending ? <p>Carregando o período…</p> : threeQ.isError ? <p role="alert">Não foi possível ler o período.</p> : hd?.no_movement ? <p>sem ordens neste período</p> : <ThreePeriodRows rows={threeQ.data?.daily ?? []} total={threeRows.find(r => r.nivel === "total")} />)}
+      {recentQ.isPending ? <p>Carregando os pregões…</p> : recentQ.isError ? <p role="alert">Não foi possível ler os pregões.</p> : recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={recentQ.data.rows.find(r => r.nivel === "total")} sessions={sessions} onToggleSessions={() => setSessions(sessions === 5 ? 10 : 5)} busy={recentQ.isFetching} />}
 
       {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
@@ -926,7 +914,7 @@ function CockpitPage() {
         return (
         <div key={root} className="space-y-3">
           {/* ── Testeira do ativo: sempre visível, mesmo recolhida ── */}
-          <div className={`overflow-hidden rounded-lg border border-current/30 shadow-sm ${assetBand(root)}`}>
+          {orderedAssets.length > 1 && <div className={`overflow-hidden rounded-lg border border-current/30 shadow-sm ${assetBand(root)}`} data-asset-header>
             <div className="flex items-start gap-2 flex-wrap px-3 py-2">
               <div className="min-w-0 flex-1 space-y-0.5">
                 <div className="flex items-center gap-2 flex-wrap text-sm font-semibold">
@@ -966,10 +954,9 @@ function CockpitPage() {
             </div>
             <WalletBand title={root} rows={walletsFor(root)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
             <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">Curva realizada pela hora de saída; cenário conservador. O real também lê o flutuante da posição aberta.</p>
-            <ThreePeriodRows rows={(vivo ? recentQ.data?.daily : threeQ.data?.daily) ?? []} total={vivo ? readingFor(recentQ.data?.rows ?? [], root) : threeFor(root)} symbol={root} />
             {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
             {!vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}
-          </div>
+          </div>}
 
           {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
             const sub = (hdr?.por_modalidade ?? []).find((m: any) => m.variant === variant);
@@ -979,9 +966,12 @@ function CockpitPage() {
             return (
             <div key={variant} className="@container overflow-hidden rounded-lg border border-border/40 bg-background/30">
               <div className={assetBand(root)}>
-              <h3 className="flex min-h-11 flex-wrap items-center gap-2 px-3 py-2 text-sm font-black">
+              <h3 className="cockpit-modality-bar flex min-h-11 flex-wrap items-center gap-2 px-3 py-2 text-sm font-black" data-modality-header>
                 <span className="text-base font-black">{root} · {variantLabel(variant)}</span>
                 <span className="font-semibold opacity-80">{cards.length} robôs</span>
+                <span className="font-semibold">· {vivo ? realLabelsQ.isError || realLabelsQ.isPending ? "sem registro" : realLabelsQ.data?.counts.find(r => r.symbol === root && r.variant === variant)?.count ?? 0 : "período encerrado"} no real</span>
+              </h3>
+              <div className="flex flex-wrap items-center gap-2 px-3 py-2">
                 {/* Com uma única modalidade visível, a testeira do ativo já mostra
                     exatamente estes números — o subtotal viraria repetição. */}
                 {(
@@ -997,7 +987,7 @@ function CockpitPage() {
                 )}
                 {/* Um freio de GRUPO trava todos os robôs do grupo de uma vez:
                     desfazer de um em um seriam sete cliques para uma decisão só. */}
-                {vivo && variant !== REAL_GROUP && <LiberacaoBloco
+                {vivo && <LiberacaoBloco
                   escopo="grupo" root={root} variant={variant} mode={null}
                   libs={liberacoes} liberarM={liberarM} travarM={travarM} defaultFreio="grupo"
                 />}
@@ -1011,10 +1001,9 @@ function CockpitPage() {
                   {variantCollapsed ? "Expandir robôs" : "Recolher robôs"}
                   {variantCollapsed ? <ChevronDown /> : <ChevronUp />}
                 </Button>
-               </h3>
+               </div>
                <WalletBand title={`${root} · ${variantLabel(variant)}`} rows={walletsFor(root, variant)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
                <ReadingDetails row={threeFor(root, variant)} />
-               <ThreePeriodRows rows={(vivo ? recentQ.data?.daily : threeQ.data?.daily) ?? []} total={vivo ? readingFor(recentQ.data?.rows ?? [], root, variant) : threeFor(root, variant)} symbol={root} variant={variant} />
                </div>
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
@@ -1090,7 +1079,7 @@ function CockpitPage() {
                                 className="inline-flex items-center gap-1 rounded border border-orange-400/60 bg-orange-500/15 px-1 py-[1px] text-[10px] font-semibold text-orange-200"
                                 title={`Robô autorizado no real — até ${c.real_auth.max_qty} contrato(s) por operação`}
                               >
-                                REAL · {c.real_auth.max_qty} {c.real_auth.max_qty === 1 ? "contrato" : "contratos"}{c.real_open ? " · aberta" : ""}
+                                REAL · magic {realLabelsQ.data?.rows.find(r => r.symbol === root && r.variant === c.variant && r.mode === c.mode)?.magic_number ?? "sem registro"} · {c.real_auth.max_qty} {c.real_auth.max_qty === 1 ? "contrato" : "contratos"}{c.real_open ? " · aberta" : ""}
                               </span>
                             )}
 
