@@ -1,6 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
+- [ ] 08/11 cockpit: PAUSADO antes de alterar a tela. A tabela recente recebe preset `7d` (dias corridos); em 04/11 começa em 29/10 e exclui 28/10. `readThreeReadings`/`b3_cockpit_tres_leituras` recebem início/fim, não `p_dias`; selecionar 5/10 pregões e obter TOTAL SQL do mesmo recorte exige alterar a consulta, proibido neste pedido. Aguarda autorização do dono para esse ajuste de leitura; demais itens e publicação não executados.
 - [x] 06/11: filtro múltiplo de modalidade da tabela, contador filtrado, lote desligar direto/ligar com confirmação atualizada e três avisos; carteira/contratos/medalha das fontes aprovadas. 16 testes; navegador autenticado, confirmação SC (4 elegíveis, 4 insuficientes), cópias e celular sem erro/overflow. 20 ligados e 660 desligados antes/depois, nenhum robô alterado. Nenhuma SQL, motor, executor, disjuntor ou carteira alterada.
 - [ ] 06/11 publicação: ainda 17h Brasília; publicar só após 18h em nova interação, sem agendamento automático.
 - [x] 04/11: somente paleta/atributos visuais e moldura das três leituras; 687 números coloridos conferidos, pior contraste 7,0757:1; faixa insuficiente escura/borda vermelha, tabela alternada/TOTAL e celular sem overflow. Valores do topo e tabela intactos; 11 testes passaram e aplicação sem erro. Nenhuma consulta, SQL, cálculo ou motor alterado.
