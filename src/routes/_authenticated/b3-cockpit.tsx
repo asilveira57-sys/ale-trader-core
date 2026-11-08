@@ -4,6 +4,7 @@ import { readThreeReadings, readCockpitRealLabels } from "@/lib/b3-three-reading
 import { readingFor, readingText, threePeriodData, threeHeaders, type ThreeReading } from "@/lib/b3-three-readings";
 import { MilestoneContext, MilestoneMark, MilestoneWarning, useMilestones } from "@/components/b3/ConfigurationMilestones";
 import { WalletBand } from "@/components/b3/WalletBand";
+import { WalletTransferPanel } from "@/components/b3/WalletTransferPanel";
 import { readRobotWallets } from "@/lib/b3-wallet-read.functions";
 import { walletExposure } from "@/lib/b3-wallet-view";
 import { getPeriodPeakEvidence } from "@/lib/b3-cockpit-period-evidence.functions";
@@ -1005,6 +1006,8 @@ function CockpitPage() {
                <WalletBand title={`${root} · ${variantLabel(variant)}`} rows={walletsFor(root, variant)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
                <ReadingDetails row={threeFor(root, variant)} />
                </div>
+
+               {vivo && <WalletTransferPanel symbol={root} variant={variant} title={`${root} · ${variantLabel(variant)}`} />}
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
                   mede a largura real disponível — inclusive após recolher o menu

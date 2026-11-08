@@ -141,6 +141,20 @@
       "when": 1794141133645,
       "tag": "0019_cockpit_ultimos_pregoes_somente_datas",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794142829485,
+      "tag": "0020_carteira_transferencia_mesma_modalidade",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794142968724,
+      "tag": "0021_carteira_assinatura_compativel_sem_ambiguidade",
+      "breakpoints": true
     }
   ]
 }

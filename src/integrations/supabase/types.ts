@@ -891,6 +891,69 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_carteira_transferencia: {
+        Row: {
+          criada_em: string | null
+          criada_por: string
+          de_contratos_antes: number
+          de_contratos_depois: number
+          de_mode: string
+          de_saldo_antes: number
+          de_saldo_depois: number
+          id: string
+          motivo: string
+          para_contratos_antes: number
+          para_contratos_depois: number
+          para_mode: string
+          para_saldo_antes: number
+          para_saldo_depois: number
+          symbol: string
+          user_id: string
+          valor_brl: number
+          variant: string
+        }
+        Insert: {
+          criada_em?: string | null
+          criada_por: string
+          de_contratos_antes: number
+          de_contratos_depois: number
+          de_mode: string
+          de_saldo_antes: number
+          de_saldo_depois: number
+          id?: string
+          motivo: string
+          para_contratos_antes: number
+          para_contratos_depois: number
+          para_mode: string
+          para_saldo_antes: number
+          para_saldo_depois: number
+          symbol: string
+          user_id: string
+          valor_brl: number
+          variant: string
+        }
+        Update: {
+          criada_em?: string | null
+          criada_por?: string
+          de_contratos_antes?: number
+          de_contratos_depois?: number
+          de_mode?: string
+          de_saldo_antes?: number
+          de_saldo_depois?: number
+          id?: string
+          motivo?: string
+          para_contratos_antes?: number
+          para_contratos_depois?: number
+          para_mode?: string
+          para_saldo_antes?: number
+          para_saldo_depois?: number
+          symbol?: string
+          user_id?: string
+          valor_brl?: number
+          variant?: string
+        }
+        Relationships: []
+      }
       b3_cenario_horario: {
         Row: {
           aberto_brl: number | null
@@ -8536,7 +8599,13 @@ export type Database = {
         Returns: number
       }
       b3_carteira_aplicar: {
-        Args: { p_delta: number; p_id: string; p_max: number; p_origem: string }
+        Args: {
+          p_delta: number
+          p_id: string
+          p_max: number
+          p_origem: string
+          p_tipo?: string
+        }
         Returns: undefined
       }
       b3_carteira_contratos: {
@@ -8544,6 +8613,20 @@ export type Database = {
         Returns: number
       }
       b3_carteira_raiz: { Args: { s: string }; Returns: string }
+      b3_carteira_transferir: {
+        Args: {
+          p_de_mode?: string
+          p_motivo?: string
+          p_para_mode?: string
+          p_previa?: boolean
+          p_snapshot?: Json
+          p_symbol: string
+          p_user_id: string
+          p_valor?: number
+          p_variant: string
+        }
+        Returns: Json
+      }
       b3_cat_espelho: {
         Args: { p_fim: string; p_ini: string }
         Returns: {
