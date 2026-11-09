@@ -334,6 +334,18 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       })),
     ].sort((a, b) => new Date(b.entry_time ?? 0).getTime() - new Date(a.entry_time ?? 0).getTime());
 
+    // Quem fechou: leitura do livro real pelo ticket de entrada. Só exibição.
+    {
+      const tks = dayTrades.filter((t) => !t.open && t.broker_ticket).map((t) => String(t.broker_ticket));
+      const quem = new Map<string, "executor" | "corretora">();
+      for (let i = 0; i < tks.length; i += 200) {
+        const { data: lo } = await (supabase as any).from("b3_live_orders")
+          .select("broker_ticket_entry, broker_ticket_exit").eq("user_id", userId).in("broker_ticket_entry", tks.slice(i, i + 200));
+        for (const r of (lo ?? []) as any[]) quem.set(String(r.broker_ticket_entry), r.broker_ticket_exit ? "executor" : "corretora");
+      }
+      for (const t of dayTrades as any[]) t.closed_by = t.open || !t.broker_ticket ? null : quem.get(String(t.broker_ticket)) ?? null;
+    }
+
     const filledToday = dayOrders.filter((o) => o.status === "filled").length;
     const rejectedToday = dayOrders.filter((o) => o.status === "rejected" || o.status === "error").length;
 

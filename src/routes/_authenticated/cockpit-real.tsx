@@ -1296,6 +1296,7 @@ function CockpitRealPage() {
                         <th className="py-1 text-right">Preço saída</th>
                         <th className="py-1 text-right">Pontos</th>
                         <th className="py-1 text-right">Resultado</th>
+                        <th className="py-1 text-left">Quem fechou</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1315,6 +1316,11 @@ function CockpitRealPage() {
                           <td className="py-1 text-right font-mono">{PTS(t.result_pts)}</td>
                           <td className={`py-1 text-right font-mono font-black ${t.result_brl == null ? "text-muted-foreground" : money(t.result_brl)}`}>
                             {t.result_brl == null ? "—" : SIGNED_BRL(t.result_brl)}
+                          </td>
+                          <td className="py-1">
+                            {t.open ? "—" : t.closed_by === "executor" ? "executor" : t.closed_by === "corretora"
+                              ? <span className="font-semibold text-amber-200">corretora<span className="block text-[10px]">resultado inferido — confira no extrato</span></span>
+                              : <span className="text-muted-foreground">sem registro</span>}
                           </td>
                         </tr>
                       ))}

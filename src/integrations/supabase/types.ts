@@ -3969,6 +3969,45 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_real_extrato_corretora: {
+        Row: {
+          ajuste_day_trade_brl: number | null
+          custos_brl: number | null
+          deposito_brl: number | null
+          id: string
+          irrf_brl: number | null
+          lancado_em: string | null
+          origem: string
+          pregao: string
+          saldo_apos_brl: number | null
+          user_id: string
+        }
+        Insert: {
+          ajuste_day_trade_brl?: number | null
+          custos_brl?: number | null
+          deposito_brl?: number | null
+          id?: string
+          irrf_brl?: number | null
+          lancado_em?: string | null
+          origem: string
+          pregao: string
+          saldo_apos_brl?: number | null
+          user_id: string
+        }
+        Update: {
+          ajuste_day_trade_brl?: number | null
+          custos_brl?: number | null
+          deposito_brl?: number | null
+          id?: string
+          irrf_brl?: number | null
+          lancado_em?: string | null
+          origem?: string
+          pregao?: string
+          saldo_apos_brl?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_regime_dia: {
         Row: {
           amplitude: number
@@ -9074,6 +9113,22 @@ export type Database = {
           retorno_pct: number
           symbol: string
           variant: string
+        }[]
+      }
+      b3_real_divergencia: {
+        Args: never
+        Returns: {
+          corretora_brl: number
+          custos_corretora_brl: number
+          custos_sistema_brl: number
+          diferenca_brl: number
+          extrato_lancado: boolean
+          fechadas_corretora: number
+          fechadas_executor: number
+          ordens: number
+          pregao: string
+          sem_resultado: number
+          sistema_brl: number
         }[]
       }
       b3_resultado_combinacao: {

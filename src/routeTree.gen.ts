@@ -24,6 +24,7 @@ import { Route as AuthenticatedB3AuditoriaRouteImport } from './routes/_authenti
 import { Route as AuthenticatedB3AutorizacoesReaisRouteImport } from './routes/_authenticated/b3-autorizacoes-reais'
 import { Route as AuthenticatedB3CalibracaoRouteImport } from './routes/_authenticated/b3-calibracao'
 import { Route as AuthenticatedB3CockpitRouteImport } from './routes/_authenticated/b3-cockpit'
+import { Route as AuthenticatedB3ConferenciaRealRouteImport } from './routes/_authenticated/b3-conferencia-real'
 import { Route as AuthenticatedB3DiagnosticoRouteImport } from './routes/_authenticated/b3-diagnostico'
 import { Route as AuthenticatedB3ExtratoRealRouteImport } from './routes/_authenticated/b3-extrato-real'
 import { Route as AuthenticatedB3FichaDiaRouteImport } from './routes/_authenticated/b3-ficha-dia'
@@ -179,6 +180,12 @@ const AuthenticatedB3CockpitRoute = AuthenticatedB3CockpitRouteImport.update({
   path: '/b3-cockpit',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedB3ConferenciaRealRoute =
+  AuthenticatedB3ConferenciaRealRouteImport.update({
+    id: '/b3-conferencia-real',
+    path: '/b3-conferencia-real',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedB3DiagnosticoRoute =
   AuthenticatedB3DiagnosticoRouteImport.update({
     id: '/b3-diagnostico',
@@ -604,6 +611,7 @@ export interface FileRoutesByFullPath {
   '/b3-autorizacoes-reais': typeof AuthenticatedB3AutorizacoesReaisRoute
   '/b3-calibracao': typeof AuthenticatedB3CalibracaoRoute
   '/b3-cockpit': typeof AuthenticatedB3CockpitRoute
+  '/b3-conferencia-real': typeof AuthenticatedB3ConferenciaRealRoute
   '/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
   '/b3-extrato-real': typeof AuthenticatedB3ExtratoRealRoute
   '/b3-ficha-dia': typeof AuthenticatedB3FichaDiaRoute
@@ -694,6 +702,7 @@ export interface FileRoutesByTo {
   '/b3-autorizacoes-reais': typeof AuthenticatedB3AutorizacoesReaisRoute
   '/b3-calibracao': typeof AuthenticatedB3CalibracaoRoute
   '/b3-cockpit': typeof AuthenticatedB3CockpitRoute
+  '/b3-conferencia-real': typeof AuthenticatedB3ConferenciaRealRoute
   '/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
   '/b3-extrato-real': typeof AuthenticatedB3ExtratoRealRoute
   '/b3-ficha-dia': typeof AuthenticatedB3FichaDiaRoute
@@ -786,6 +795,7 @@ export interface FileRoutesById {
   '/_authenticated/b3-autorizacoes-reais': typeof AuthenticatedB3AutorizacoesReaisRoute
   '/_authenticated/b3-calibracao': typeof AuthenticatedB3CalibracaoRoute
   '/_authenticated/b3-cockpit': typeof AuthenticatedB3CockpitRoute
+  '/_authenticated/b3-conferencia-real': typeof AuthenticatedB3ConferenciaRealRoute
   '/_authenticated/b3-diagnostico': typeof AuthenticatedB3DiagnosticoRoute
   '/_authenticated/b3-extrato-real': typeof AuthenticatedB3ExtratoRealRoute
   '/_authenticated/b3-ficha-dia': typeof AuthenticatedB3FichaDiaRoute
@@ -878,6 +888,7 @@ export interface FileRouteTypes {
     | '/b3-autorizacoes-reais'
     | '/b3-calibracao'
     | '/b3-cockpit'
+    | '/b3-conferencia-real'
     | '/b3-diagnostico'
     | '/b3-extrato-real'
     | '/b3-ficha-dia'
@@ -968,6 +979,7 @@ export interface FileRouteTypes {
     | '/b3-autorizacoes-reais'
     | '/b3-calibracao'
     | '/b3-cockpit'
+    | '/b3-conferencia-real'
     | '/b3-diagnostico'
     | '/b3-extrato-real'
     | '/b3-ficha-dia'
@@ -1059,6 +1071,7 @@ export interface FileRouteTypes {
     | '/_authenticated/b3-autorizacoes-reais'
     | '/_authenticated/b3-calibracao'
     | '/_authenticated/b3-cockpit'
+    | '/_authenticated/b3-conferencia-real'
     | '/_authenticated/b3-diagnostico'
     | '/_authenticated/b3-extrato-real'
     | '/_authenticated/b3-ficha-dia'
@@ -1260,6 +1273,13 @@ declare module '@tanstack/react-router' {
       path: '/b3-cockpit'
       fullPath: '/b3-cockpit'
       preLoaderRoute: typeof AuthenticatedB3CockpitRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/b3-conferencia-real': {
+      id: '/_authenticated/b3-conferencia-real'
+      path: '/b3-conferencia-real'
+      fullPath: '/b3-conferencia-real'
+      preLoaderRoute: typeof AuthenticatedB3ConferenciaRealRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/b3-diagnostico': {
@@ -1829,6 +1849,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedB3AutorizacoesReaisRoute: typeof AuthenticatedB3AutorizacoesReaisRoute
   AuthenticatedB3CalibracaoRoute: typeof AuthenticatedB3CalibracaoRoute
   AuthenticatedB3CockpitRoute: typeof AuthenticatedB3CockpitRoute
+  AuthenticatedB3ConferenciaRealRoute: typeof AuthenticatedB3ConferenciaRealRoute
   AuthenticatedB3DiagnosticoRoute: typeof AuthenticatedB3DiagnosticoRoute
   AuthenticatedB3ExtratoRealRoute: typeof AuthenticatedB3ExtratoRealRoute
   AuthenticatedB3FichaDiaRoute: typeof AuthenticatedB3FichaDiaRoute
@@ -1901,6 +1922,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedB3AutorizacoesReaisRoute: AuthenticatedB3AutorizacoesReaisRoute,
   AuthenticatedB3CalibracaoRoute: AuthenticatedB3CalibracaoRoute,
   AuthenticatedB3CockpitRoute: AuthenticatedB3CockpitRoute,
+  AuthenticatedB3ConferenciaRealRoute: AuthenticatedB3ConferenciaRealRoute,
   AuthenticatedB3DiagnosticoRoute: AuthenticatedB3DiagnosticoRoute,
   AuthenticatedB3ExtratoRealRoute: AuthenticatedB3ExtratoRealRoute,
   AuthenticatedB3FichaDiaRoute: AuthenticatedB3FichaDiaRoute,

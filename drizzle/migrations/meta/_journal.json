@@ -162,6 +162,20 @@
       "when": 1794237128799,
       "tag": "0022_carteira_igualar_modalidade_atomica",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794265755730,
+      "tag": "0023_real_extrato_corretora_conferencia",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794265781603,
+      "tag": "0024_real_divergencia_quatro_status",
+      "breakpoints": true
     }
   ]
 }
