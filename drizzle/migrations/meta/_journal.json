@@ -155,6 +155,13 @@
       "when": 1794142968724,
       "tag": "0021_carteira_assinatura_compativel_sem_ambiguidade",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794237128799,
+      "tag": "0022_carteira_igualar_modalidade_atomica",
+      "breakpoints": true
     }
   ]
 }

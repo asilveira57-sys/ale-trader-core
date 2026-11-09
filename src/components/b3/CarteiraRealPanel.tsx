@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { getCarteiraReal, lancarCarteiraReal } from "@/lib/b3-carteira.functions";
 import { BRL } from "@/lib/b3-format";
+import { realCalendarDate } from '@/lib/b3-safe-date';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -83,7 +84,7 @@ export function CarteiraRealPanel() {
           {c.lancamentos.length === 0 && <tr><td colSpan={4} className="py-2 text-muted-foreground">Nenhum lançamento ainda.</td></tr>}
           {c.lancamentos.map((l: any) => (
             <tr key={l.id} className="border-t border-border">
-              <td>{new Date(l.data + "T12:00:00").toLocaleDateString("pt-BR")}</td><td>{l.tipo}</td>
+              <td>{realCalendarDate(l.data)}</td><td>{l.tipo}</td>
               <td className={`font-mono ${cor(Number(l.valor_brl))}`}>{BRL(Number(l.valor_brl))}</td><td>{l.observacao ?? ""}</td>
             </tr>
           ))}

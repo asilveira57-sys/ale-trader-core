@@ -1,0 +1,15 @@
+# Conferência 09/11/2026 — carteira e Cockpit Real
+
+- Carteira atual lê uma vez no cache pesado, independente de data. Resultados, ordens e exposição continuam subordinados ao período/`vivo`.
+- Navegador autenticado: Hoje e Ontem (domingo sem ordens) mantêm saldo e controles. O portão de hierarquia vazia também escondia a transferência; foi removido para mostrar o catálogo e as carteiras atuais, sem buscar estado operacional histórico.
+- Price action SC: oito carteiras com capital R$1.368, contratos atuais zero; prévia SQL mostra n=6, seis saldos R$228/1 contrato e dois zero, contratos totais 0→6 e capital R$1.368→R$1.368.
+- Seleção determinística: maiores saldos, desempate por modo. Centavos residuais ficam no primeiro selecionado, mantendo o total exatamente.
+- Prévia mostra por robô saldo/contratos antes/depois, resultado próprio inalterado e transferências líquidas antes/depois; cópia conferida. Celular 390×844: diálogo largura358, sem transbordar, tabela com rolagem horizontal e confirmação/cancelamento acessíveis.
+- Confirmação não foi executada, nem em rollback. A aplicação atômica foi revisada no SQL: bloqueio de carteiras, margem e tetos; snapshot obrigatório; todos os pares no núcleo privado da transferência; erro gera exceção e desfaz toda a transação; invariante, total e lucro próprio conferidos novamente ao final. Caminho avulso permanece com piso do doador e assinatura original. Núcleo privado sem EXECUTE para authenticated/service_role.
+- Testes somente leitura: 18 passaram, incluindo R$1.368→n6, R$200 recusados, n máximo8, resíduo em centavos, soma zero de transferências, lucro próprio e datas ausentes/inválidas. Testes usam sessão do dono para ler planos; conexão sandbox não ganhou privilégios.
+- Cockpit Real: erro reproduzido em `hhmm` na lista `alerts[].at`. Não era campo nulo de ordem: `getB3RealCockpitLive` grava a identidade da condição em `at`, como `2026-11-09:WIN` para `carteira_insuficiente`; o comentário da fonte confirma que não é horário. A identidade ficou intacta para não modificar deduplicação/avisos. Todas as formatações locais de hora/duração agora validam datas e mostram travessão; datas de lançamentos usam a mesma proteção.
+- Rota usa RouteErrorFallback e painéis possuem AppErrorBoundary. Dia sem ordens abriu em desktop e celular com “Nenhuma ordem real no período”, demais painéis funcionando, sem erro de página. Cópia completa disponível.
+- Total de transferências no banco: 9 antes e 9 depois; equalizações: zero. Nenhuma transferência executada pelo pedido. Motor, trailing, gatilho de fechamento, conta real e autorizações não alterados.
+- Compilação automática: OK. Não publicado; aguarda nova interação após18:30 Brasília.
+
+Limite da verificação: confirmação financeira não exercitada por proibição expressa do dono. Sua atomicidade foi revisada, mas execução real do botão não foi testada.

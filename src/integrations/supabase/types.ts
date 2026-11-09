@@ -8623,10 +8623,39 @@ export type Database = {
         Args: { p_max: number; p_raiz: string; p_saldo: number }
         Returns: number
       }
+      b3_carteira_igualar: {
+        Args: {
+          p_previa?: boolean
+          p_snapshot?: Json
+          p_symbol: string
+          p_user_id: string
+          p_variant: string
+        }
+        Returns: Json
+      }
+      b3_carteira_igualar_plano: {
+        Args: { p_rows: Json; p_symbol: string }
+        Returns: Json
+      }
       b3_carteira_raiz: { Args: { s: string }; Returns: string }
       b3_carteira_transferir: {
         Args: {
           p_de_mode?: string
+          p_motivo?: string
+          p_para_mode?: string
+          p_previa?: boolean
+          p_snapshot?: Json
+          p_symbol: string
+          p_user_id: string
+          p_valor?: number
+          p_variant: string
+        }
+        Returns: Json
+      }
+      b3_carteira_transferir_interno: {
+        Args: {
+          p_de_mode?: string
+          p_igualar?: boolean
           p_motivo?: string
           p_para_mode?: string
           p_previa?: boolean

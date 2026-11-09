@@ -140,6 +140,7 @@ const MODE_COLOR: Record<string, string> = {
 const VARIANT_LABEL: Record<string, string> = {
   indicador: "Indicador",
   price_action: "Price action",
+  price_action_sc: "Price action SC",
   mean_reversion: "Reversão à média",
   range: "Faixa",
   rompimento: "Rompimento",
@@ -573,8 +574,8 @@ function CockpitPage() {
 
   const readLabels = useServerFn(getCockpitLabelEvidence);
   const readWallets = useServerFn(readRobotWallets);
-  const walletsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "carteiras"], queryFn: () => readWallets(), enabled: vivo, staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false });
-  const walletRows = vivo ? walletsQ.data?.rows ?? [] : [];
+  const walletsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "carteiras"], queryFn: () => readWallets(), staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false });
+  const walletRows = walletsQ.data?.rows ?? [];
   const walletsFor = (root: string, variant?: string, mode?: string) => walletRows.filter(w => w.symbol === root && (!variant || w.variant === variant) && (!mode || w.mode === mode));
   const currentExposure = walletExposure((q.data?.cards ?? []) as any[], new Map(Object.entries(walletsQ.data?.margins ?? {})));
   const labelsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "label-evidence", filterKey], queryFn: () => readLabels({ data: filterArgs }), enabled: vivo, staleTime: Infinity, gcTime: 60_000 });
@@ -719,7 +720,7 @@ function CockpitPage() {
 
 
 
-          <Button size="sm" variant="outline" className="min-h-11" onClick={() => { threeQ.refetch(); return vivo ? Promise.all([q.refetch(), walletsQ.refetch(), qc.invalidateQueries({ queryKey: ["win-disjuntor-hipotese"] })]) : Promise.all([periodPeaksQ.refetch(), qc.invalidateQueries({ queryKey: ["win-disjuntor-hipotese"] })]); }}>
+          <Button size="sm" variant="outline" className="min-h-11" onClick={() => { threeQ.refetch(); walletsQ.refetch(); return vivo ? Promise.all([q.refetch(), qc.invalidateQueries({ queryKey: ["win-disjuntor-hipotese"] })]) : Promise.all([periodPeaksQ.refetch(), qc.invalidateQueries({ queryKey: ["win-disjuntor-hipotese"] })]); }}>
             <RefreshCw className="w-4 h-4 mr-1" />Atualizar
           </Button>
           <Button size="sm" variant="outline"
@@ -780,7 +781,7 @@ function CockpitPage() {
       {threeQ.isError && <p role="alert" className="text-destructive">Três leituras indisponíveis — sem registro. Use Atualizar.</p>}
       {!vivo && hd && <h2 className="text-xl font-black">{hd.sem_freio.by_day.length} pregões: {hd.sem_freio.by_day.map((d: any) => shortDate(d.date)).join(", ")} · {hd.period.label}</h2>}
 
-      <WalletBand title="Cockpit simulado — todos os ativos" rows={walletRows} exposure={vivo ? currentExposure : undefined} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
+      <WalletBand title="Cockpit simulado — todos os ativos · carteira atual" rows={walletRows} exposure={vivo ? currentExposure : undefined} pending={walletsQ.isPending} error={walletsQ.isError} />
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
       <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(threeRows.find(r => r.nivel === "total")))}><Copy />Copiar resultado</Button></div><ThreeReadings row={threeRows.find(r => r.nivel === "total")} /></section>
@@ -904,7 +905,7 @@ function CockpitPage() {
       )}
 
       <Profiler id="cockpit-hierarquia" onRender={(...args) => { if (!vivo) cockpitRenderTiming(...args.slice(0, 4) as [string, string, number, number]); }}>
-      {(vivo || (hd && !hd.no_movement)) && orderedAssets.map(([root, group]) => {
+      {orderedAssets.map(([root, group]) => {
         const hdr = headerByAsset.get(root);
         const history = null;
         const historicalPeaks = (periodPeaksQ.data?.realized ?? []).filter((r: any) => r.raiz === root);
@@ -953,7 +954,7 @@ function CockpitPage() {
                 {isCollapsed ? <ChevronDown /> : <ChevronUp />}
               </Button>
             </div>
-            <WalletBand title={root} rows={walletsFor(root)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
+            <WalletBand title={`${root} · carteira atual`} rows={walletsFor(root)} pending={walletsQ.isPending} error={walletsQ.isError} />
             <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">Curva realizada pela hora de saída; cenário conservador. O real também lê o flutuante da posição aberta.</p>
             {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
             {!vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}
@@ -1003,11 +1004,11 @@ function CockpitPage() {
                   {variantCollapsed ? <ChevronDown /> : <ChevronUp />}
                 </Button>
                </div>
-               <WalletBand title={`${root} · ${variantLabel(variant)}`} rows={walletsFor(root, variant)} historical={!vivo} pending={walletsQ.isPending} error={walletsQ.isError} />
+               <WalletBand title={`${root} · ${variantLabel(variant)} · carteira atual`} rows={walletsFor(root, variant)} pending={walletsQ.isPending} error={walletsQ.isError} />
                <ReadingDetails row={threeFor(root, variant)} />
                </div>
 
-               {vivo && <WalletTransferPanel symbol={root} variant={variant} title={`${root} · ${variantLabel(variant)}`} />}
+               <WalletTransferPanel symbol={root} variant={variant} title={`${root} · ${variantLabel(variant)}`} />
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
                   mede a largura real disponível — inclusive após recolher o menu
@@ -1016,7 +1017,7 @@ function CockpitPage() {
                <div id={`robots-${variantKey}`} hidden={variantCollapsed} className={variantCollapsed ? "hidden" : "grid grid-cols-1 gap-3 p-3 @[380px]:grid-cols-2 @[780px]:grid-cols-4 @[1500px]:grid-cols-8"}>
                 {cards.map((c: any) => {
                   const key = `${c.run_id}:${c.mode}`;
-                  if (!vivo || !c.operational_loaded) return <HistoricalRobot key={key} c={{ ...c, ops: threeFor(root, c.variant, c.mode)?.ordens, pending_live: vivo }} row={threeFor(root, c.variant, c.mode)} expanded={expanded.has(key)} toggle={() => toggleExpand(key)} copy={() => copyCards([c], root)} />;
+                  if (!vivo || !c.operational_loaded) return <div key={key}><HistoricalRobot c={{ ...c, ops: threeFor(root, c.variant, c.mode)?.ordens, pending_live: vivo }} row={threeFor(root, c.variant, c.mode)} expanded={expanded.has(key)} toggle={() => toggleExpand(key)} copy={() => copyCards([c], root)} /><WalletBand title={`${root} · ${variantLabel(c.variant)} · ${robotLabel(c.mode,c.variant)} · carteira atual`} rows={walletsFor(root,c.variant,c.mode)} robot pending={walletsQ.isPending} error={walletsQ.isError} /></div>;
                   const isOpen = expanded.has(key);
                   const hasPosition = !!c.open;
                   const tick = Number(c.tick_size ?? 5);

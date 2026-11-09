@@ -13,6 +13,7 @@ import { readTransferWallets,previewWalletTransfer,confirmWalletTransfer } from 
 import { transferMoney,transferPreviewText,type WalletTransferPreview } from '@/lib/b3-wallet-transfer';
 import { copiarTexto,tabular } from '@/lib/b3-copiar';
 import { useModeApelidos } from '@/hooks/use-mode-apelidos';
+import { WalletEqualizeButton } from './WalletEqualizeButton';
 
 export function WalletTransferPanel({symbol,variant,title}:{symbol:string;variant:string;title:string}) {
   const [expanded,setExpanded]=useState(false);
@@ -42,6 +43,7 @@ export function WalletTransferPanel({symbol,variant,title}:{symbol:string;varian
   }
   function copyList(){if(!q.data)return;copiarTexto([`${title} — carteiras atuais`,tabular(['Robô','Saldo','Contratos','Estado','Pode doar até','Resultado próprio','Transferência líquida','Atualizada em'],rows.map(w=>[label(w.mode),transferMoney(w.saldo),w.contratos,w.estado,transferMoney(w.maximo_doavel),transferMoney(w.resultado_proprio),transferMoney(w.transferencias_liquidas),w.atualizada_em??'sem registro'])),`Capital da modalidade: ${transferMoney(q.data.capital_antes)}`,`Contratos da modalidade: ${q.data.contratos_antes}`].join('\n'));}
   return <section className="border-t border-border bg-card px-3 py-2 text-foreground" aria-label={`Mover saldo · ${title}`}>
+    <WalletEqualizeButton symbol={symbol} variant={variant} title={title} />
     <Button variant="ghost" className="min-h-11 h-auto w-full justify-between whitespace-normal text-left" aria-expanded={expanded} onClick={()=>setExpanded(v=>!v)}><span className="flex items-center gap-2"><ArrowRightLeft className="size-4 shrink-0"/>Mover saldo entre os robôs desta modalidade</span>{expanded?<ChevronUp className="size-4 shrink-0"/>:<ChevronDown className="size-4 shrink-0"/>}</Button>
     {expanded&&<div className="space-y-4 pb-3">
       {q.isPending?<p role="status">Consultando carteiras atuais…</p>:q.isError?<p role="alert">Não foi possível ler as carteiras.</p>:!q.data?.ok?<p role="alert">{q.data?.error??'sem registro'}</p>:<>

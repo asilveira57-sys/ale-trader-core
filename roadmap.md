@@ -1,9 +1,9 @@
 # Fila de trabalho
 
 ## Em andamento
-- [ ] 09/11 Parte 1: carteira atual e transferência em qualquer data; preservar portões temporais de resultados/ordens.
-- [ ] 09/11 Parte 2: equalização manual mesma modalidade, n canônico SQL, prévia/snapshot e pares atômicos com soma zero; nenhuma execução de transferência neste pedido.
-- [ ] 09/11 Parte 3: reproduzir campo inválido do Cockpit Real, datas tolerantes/estado vazio e isolamento de painéis.
+- [x] 09/11 Parte 1: carteira atual/transferência sem portão temporal ou hierarquia vazia; Hoje e Ontem sem ordens conferidos; vivo preservado para resultado/ordens/exposição.
+- [x] 09/11 Parte 2: RPC canônica n, prévia/snapshot owner, núcleo privado auditado/transação; SC1368→n6/228/contratos0→6; cópias/celular conferidos, 18 testes leitura OK. Transferências9→9, zero equalizações; confirmação não exercitada por proibição do dono.
+- [x] 09/11 Parte 3: causa alerts[].at=identidade não temporal (carteira_insuficiente 2026-11-09:WIN); horas/duração/datas tolerantes e fallback/isolamento; real vazio desktop/celular abre e cópia completa conferida. Compilação OK; docs/tests/carteira-cockpit-09-11.md.
 - [ ] 09/11 publicação: proibida neste turno; aguarda nova interação após 18:30 Brasília.
 - [x] 08/11 carteira fase A: RPC owner/mesma modalidade, transferência líquida separada do lucro, assinatura única p_tipo default resultado e gatilho intacto. R$300 recusado/max285,50; R$285 aceito em rollback:202/1,482/2,total1722/3, lucro/invariante/registro conferidos. Queda de contratos, motivo/identidade/snapshot e quatro argumentos testados em rollback. 7 testes locais passaram; 7 privilegiados preservados/suspensos no sandbox. UI autenticada e celular conferidas; saldos originais e zero transferências persistidas. Solicitar publicação.
 - [x] 08/11 cockpit: datas da RPC somente leitura b3_ultimos_pregoes; função financeira intacta recebe início/fim exatos. Navegador autenticado trouxe 04/11, 03/11, 30/10, 29/10, 28/10; TOTAL SQL/UI −12.312/−7.488/−5.416 conferido. Dez pregões até 21/10 e volta a cinco; tabela única e testeira de ativo ausente com WIN; Price action 8 robôs/4 no real e 20 selos magic; barra azul com resultados fora; celular sem overflow. 9 testes/aplicação OK. Nenhuma escrita operacional. Publicação solicitada em 08/11; serviço aceitou, conclusão ainda não confirmada, 13 alertas antigos permanecem.

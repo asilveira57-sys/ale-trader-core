@@ -23,6 +23,9 @@ import { useRealAlerts } from "@/hooks/use-real-alerts";
 import { DisjuntorManualPanel } from "@/components/b3/DisjuntorManualPanel";
 import { Copy } from "lucide-react";
 import { copiarTexto } from "@/lib/b3-copiar";
+import { RouteErrorFallback } from "@/components/RouteErrorFallback";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { realTime, realDuration } from "@/lib/b3-safe-date";
 import { CarteiraRealPanel } from "@/components/b3/CarteiraRealPanel";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
@@ -54,16 +57,15 @@ export const Route = createFileRoute("/_authenticated/cockpit-real")({
     ],
   }),
   component: CockpitRealPage,
+  errorComponent: ({ error, reset }) => <RouteErrorFallback error={error} reset={reset} />,
 });
 
 const PCT = (v: number | null | undefined) =>
   v == null ? "—" : `${Number(v) > 0 ? "+" : ""}${(Number(v) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 const money = (v: number | null | undefined) => (Number(v ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300");
 const sideLabel = (s: string | null | undefined) => (s === "buy" ? "COMPRA" : s === "sell" ? "VENDA" : "—");
-const hhmm = (iso: string | null | undefined) =>
-  !iso ? "—" : new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
-const hhmmss = (iso: string | null | undefined) =>
-  !iso ? "—" : new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(iso));
+const hhmm = (iso: string | null | undefined) => realTime(iso);
+const hhmmss = (iso: string | null | undefined) => realTime(iso, true);
 // Rótulo do modo vem de public.b3_mode_apelidos (useModeApelidos).
 const ageText = (s: number | null | undefined) => {
   const sec = Math.max(0, Math.round(Number(s ?? 0)));
@@ -90,15 +92,7 @@ const SideTag = ({ side }: { side: string | null | undefined }) => {
 const PTS = (v: number | null | undefined) =>
   v == null ? "—" : `${Number(v) > 0 ? "+" : ""}${Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}`;
 
-const durationText = (a: string | null | undefined, b: string | null | undefined) => {
-  if (!a) return "—";
-  const end = b ? new Date(b).getTime() : Date.now();
-  const sec = Math.max(0, Math.round((end - new Date(a).getTime()) / 1000));
-  if (sec < 60) return `${sec}s`;
-  const m = Math.floor(sec / 60);
-  if (m < 60) return `${m}min${String(sec % 60).padStart(2, "0")}`;
-  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
-};
+const durationText = realDuration;
 
 // Rodapé das duas visões. Operação sem preço executado gravado (result_brl
 // null) NÃO entra no acumulado — foi essa regra que revelou o defeito do
@@ -196,7 +190,7 @@ function Panel({
         <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
         {hint ? <p className="text-[11px] leading-snug text-muted-foreground">{hint}</p> : null}
       </div>
-      {children}
+      <AppErrorBoundary>{children}</AppErrorBoundary>
     </section>
   );
 }
@@ -828,7 +822,7 @@ function CockpitRealPage() {
     );
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] px-3 pb-16 pt-3 sm:px-6 sm:pt-4">
+    <div className="mx-auto w-full max-w-[1500px] px-3 pb-16 pt-3 sm:px-6 sm:pt-4 [&_button]:min-h-11">
       <DivergenceAlarm />
       <EscrituracaoAlarm />
 
@@ -970,8 +964,9 @@ function CockpitRealPage() {
         <AudioBanner />
       </div>
 
-      <div className="mt-2"><DisjuntorManualPanel /></div>
-      <div className="mt-2"><CarteiraRealPanel /></div>
+      <div className="mt-2"><AppErrorBoundary><DisjuntorManualPanel /></AppErrorBoundary></div>
+      <div className="mt-2"><AppErrorBoundary><CarteiraRealPanel /></AppErrorBoundary></div>
+      <Button variant="outline" className="mt-3 min-h-11" disabled={!d} onClick={() => copiarTexto(`Cockpit Real · ${per?.label ?? 'sem registro'}\n${JSON.stringify(d, (_key, value) => value == null ? 'sem registro' : value, 2)}`)}><Copy className="mr-2 size-4" />Copiar leitura completa</Button>
 
       <header className="mt-3 hidden flex-wrap items-start justify-between gap-3 md:flex">
         <div className="min-w-0">
@@ -1001,6 +996,7 @@ function CockpitRealPage() {
         </div>
       </header>
 
+      {q.isSuccess && trades.length === 0 && <p role="status" className="mt-3 border-l-2 border-border px-3 py-2 text-sm text-muted-foreground">Nenhuma ordem real no período.</p>}
       <div className="mt-3 hidden md:block">
         <PeriodBar value={period} onChange={setPeriod} resolved={per} busy={q.isFetching} />
         <HistoricalBanner resolved={per} />
@@ -1109,8 +1105,8 @@ function CockpitRealPage() {
         </Panel>
       ) : null}
 
-      <DailyCircuitPanel circuit={(d as any)?.daily_circuit ?? null} onSaved={() => q.refetch()} />
-      <PeakBrakePanel peak={d?.account_peak ?? null} onSaved={() => q.refetch()} />
+      <AppErrorBoundary><DailyCircuitPanel circuit={(d as any)?.daily_circuit ?? null} onSaved={() => q.refetch()} /></AppErrorBoundary>
+      <AppErrorBoundary><PeakBrakePanel peak={d?.account_peak ?? null} onSaved={() => q.refetch()} /></AppErrorBoundary>
 
 
 
@@ -1283,7 +1279,7 @@ function CockpitRealPage() {
 
             {ordersView === "trades" ? (
               !trades.length ? (
-                <p className="text-xs text-muted-foreground">Nenhuma operação real hoje.</p>
+                <p className="text-xs text-muted-foreground">Nenhuma ordem real no período.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[880px] text-xs">
