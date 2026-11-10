@@ -6,7 +6,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
-  buildRealLedger, loadAssetProfiles, saoPauloDate, type RealCommandRow,
+  loadAssetProfiles, saoPauloDate,
 } from "@/lib/b3-real-cockpit.server";
 import { rootSymbol } from "@/lib/b3-format";
 
@@ -294,18 +294,18 @@ export const getB3ExtratoReal = createServerFn({ method: "POST" })
     const ate = String(data.ate ?? hoje).slice(0, 10);
     const de = String(data.de ?? shiftDay(ate, -29)).slice(0, 10);
 
-    // O livro FIFO precisa de TODOS os comandos anteriores para casar abertura
-    // com fechamento; o corte por data é aplicado na saída, não na consulta.
-    const { data: cmds, error } = await (supabase as any).from("b3_mt5_commands")
-      .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, requested_by, broker_position_ticket")
-      .eq("user_id", userId).eq("env", "real")
-      .order("created_at", { ascending: true }).limit(5000);
-    if (error) throw error;
-
-    const commands = (cmds ?? []) as unknown as RealCommandRow[];
+    const { readRealApuracao } = await import("./b3-real-apuracao.server");
+    const start = `${de}T03:00:00.000Z`;
+    const end = new Date(new Date(`${ate}T03:00:00.000Z`).getTime() + 86400000).toISOString();
+    const apuracao = await readRealApuracao(supabase, userId, start, end);
     const profileFor = await loadAssetProfiles(supabase);
-    const { trades } = buildRealLedger(commands, profileFor);
-
+    const trades = apuracao.rows.filter((o: any) => o.status !== "open").map((o: any) => ({
+      root: rootSymbol(o.symbol), symbol: o.symbol, variant: o.variant, mode: o.mode,
+      magic_number: Number(o.magic_number), side: o.side, quantity: Number(o.quantity),
+      entry_price: o.entry_price, exit_price: o.exit_price, entry_time: o.entry_time,
+      exit_time: o.exit_time, result_brl: o.net_result_brl, broker_ticket: o.broker_ticket_entry,
+      closed_by: o.fechamento_corretora ? "corretora" : o.broker_ticket_exit ? "sistema" : "desconhecido",
+    }));
     // Apelidos e ordem dos modos: a ordenação por modo segue a coluna `ordem`.
     const { data: apelidos } = await (supabase as any)
       .from("b3_mode_apelidos").select("mode, apelido, ordem");
@@ -320,9 +320,9 @@ export const getB3ExtratoReal = createServerFn({ method: "POST" })
     };
 
     const todas: ExtratoRealRow[] = trades
-      .filter((t) => inRange(t.exit_time))
+      .filter((t) => inRange(t.exit_time ?? t.entry_time))
       .map((t) => ({
-        data: t.exit_time ? saoPauloDate(new Date(t.exit_time)) : null,
+        data: t.exit_time || t.entry_time ? saoPauloDate(new Date(t.exit_time ?? t.entry_time)) : null,
         root: t.root,
         symbol: t.symbol,
         variant: t.variant,
@@ -360,6 +360,9 @@ export const getB3ExtratoReal = createServerFn({ method: "POST" })
       (!fMode || fMode.has(r.mode)));
 
     const stats = statsOf(rows);
+    const { loadRealizedAndOpen } = await import("./b3-real-daily-circuit.server");
+    const broker = await loadRealizedAndOpen(supabase, userId);
+
 
     const porDia = groupBy(rows, (r) => (r.data ? { chave: r.data, rotulo: r.data } : null))
       .sort((a, b) => (a.chave < b.chave ? 1 : -1));
@@ -385,7 +388,8 @@ export const getB3ExtratoReal = createServerFn({ method: "POST" })
       .sort((a, b) => (a.chave < b.chave ? 1 : -1));
 
     return {
-      de, ate, rows,
+      de, ate, rows, broker,
+      result_unknown: apuracao.result_unknown, unappraised_count: apuracao.unappraised_count, rows_truncated: apuracao.rows_truncated,
       custos_disponiveis: COSTS_AVAILABLE,
       stats,
       // Compatibilidade com os cartões antigos da tela.

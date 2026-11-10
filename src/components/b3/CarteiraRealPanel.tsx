@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 const hojeSP = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const cor = (v: number) => (v >= 0 ? "text-emerald-400" : "text-rose-400");
 
-export function CarteiraRealPanel() {
+export function CarteiraRealPanel({ apuracao }: { apuracao?: any }) {
   const qc = useQueryClient();
   const get = useServerFn(getCarteiraReal);
   const lancar = useServerFn(lancarCarteiraReal);
@@ -27,6 +27,7 @@ export function CarteiraRealPanel() {
   });
   const c = q.data;
   if (!c) return <div className="rounded border border-border p-4 text-sm text-muted-foreground">Carteira: carregando…</div>;
+  const unknown = apuracao?.result_unknown || Number(c.ordens_sem_resultado) > 0;
   const insuf = c.capacidade.filter((a) => a.insuficiente);
 
   return (
@@ -44,8 +45,8 @@ export function CarteiraRealPanel() {
           <div className="font-mono text-lg">{BRL(c.declarado_brl)}</div>
           {c.data_corte && <div className="text-xs text-muted-foreground">declarado em {String(c.data_corte).slice(8, 10)}/{String(c.data_corte).slice(5, 7)}</div>}
         </div>
-        <div><div className="text-xs text-muted-foreground">Resultado desde a declaração ({c.ordens_fechadas} ordens)</div><div className={`font-mono text-lg ${cor(c.realizado_brl)}`}>{BRL(c.realizado_brl)}</div></div>
-        <div><div className="text-xs text-muted-foreground">Capital operacional</div><div className={`font-mono text-2xl font-bold ${cor(c.capital_operacional_brl)}`}>{BRL(c.capital_operacional_brl)}</div></div>
+        <div><div className="text-xs text-muted-foreground">Resultado desde a declaração ({c.ordens_fechadas} ordens)</div><div className={`font-mono text-lg ${unknown ? "text-warning" : cor(c.realizado_brl)}`}>{unknown ? `${BRL(c.realizado_brl)} apurado · RESULTADO DESCONHECIDO` : BRL(c.realizado_brl)}</div></div>
+        <div><div className="text-xs text-muted-foreground">Capital operacional</div><div className={`font-mono text-2xl font-bold ${unknown ? "text-warning" : cor(c.capital_operacional_brl)}`}>{unknown ? "DESCONHECIDO" : BRL(c.capital_operacional_brl)}</div></div>
       </div>
       {(c as any).ordens_sem_resultado > 0 && (
         <div className="text-sm font-semibold text-destructive">
@@ -53,19 +54,19 @@ export function CarteiraRealPanel() {
         </div>
       )}
       <div className="text-xs text-muted-foreground">
-        Histórico anterior à declaração (não entra na conta do capital): {BRL(c.realizado_historico_brl)} em {c.ordens_fechadas_historico} ordens.
+        Histórico anterior à declaração (não entra na conta do capital): {BRL(c.realizado_historico_brl)} apurado (resultado histórico pode estar incompleto) em {c.ordens_fechadas_historico} ordens.
       </div>
       <div className="text-sm">
         <div className="font-semibold">Contratos que o capital sustenta</div>
         <ul>{c.capacidade.map((a) => (
           <li key={a.ativo} className={a.insuficiente ? "text-destructive font-semibold" : ""}>
-            {a.ativo}: {a.contratos == null ? "margem não cadastrada" : `${a.contratos} contrato${a.contratos === 1 ? "" : "s"}`}
+            {a.ativo}: {unknown ? "capacidade desconhecida — resultado incompleto" : a.contratos == null ? "margem não cadastrada" : `${a.contratos} contrato${a.contratos === 1 ? "" : "s"}`}
             {a.minimo_brl != null && <span className="text-muted-foreground"> · mínimo {BRL(a.minimo_brl)} (margem {BRL(a.margem_brl)} × 1,30)</span>}
           </li>
         ))}</ul>
       </div>
       <div className="rounded bg-muted/40 p-2 text-sm">
-        <div>Conferência MT5: patrimônio {c.mt5.patrimonio_brl == null ? "—" : BRL(c.mt5.patrimonio_brl)} · capital operacional {BRL(c.capital_operacional_brl)} · diferença {c.diferenca_brl == null ? "—" : BRL(c.diferenca_brl)}</div>
+        <div>Conferência MT5: patrimônio {c.mt5.patrimonio_brl == null ? "—" : BRL(c.mt5.patrimonio_brl)} · capital operacional {unknown ? "DESCONHECIDO" : BRL(c.capital_operacional_brl)} · diferença {unknown ? "DESCONHECIDA" : c.diferenca_brl == null ? "—" : BRL(c.diferenca_brl)}</div>
         <div className="text-xs text-muted-foreground">O MT5 mostra o patrimônio da conta; a diferença esperada é garantia e valor não liberado. Observe se ela mudar de forma inesperada.</div>
       </div>
       <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); m.mutate(); }}>

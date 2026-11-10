@@ -1,6 +1,7 @@
 // Barra de navegação por DATA dos cockpits (real e simulado).
 // Só apresentação: não decide entrada, freio, espelhamento nem execução.
 // O padrão é sempre "Hoje" — a escolha NÃO é guardada entre visitas.
+import { realResultText } from "@/lib/b3-real-apuracao";
 import { AlertTriangle, CalendarDays } from "lucide-react";
 import { MilestoneMark } from "./ConfigurationMilestones";
 import { Button } from "@/components/ui/button";
@@ -132,8 +133,8 @@ export function PerDayTable({ rows, brl }: { rows: any[]; brl: (v: number | null
               <td className="py-1 text-right">{r.trades}</td>
               <td className="py-1 text-right">{r.wins}</td>
               <td className="py-1 text-right">{r.losses}</td>
-              <td className={`py-1 text-right font-black ${Number(r.realized_brl) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                {brl(r.realized_brl)}
+              <td className={`py-1 text-right font-black ${r.sem_preco > 0 ? "text-warning" : Number(r.realized_brl) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                {r.sem_preco > 0 ? realResultText(r.realized_brl, r.sem_preco) : brl(r.realized_brl)}
               </td>
             </tr>
           ))}

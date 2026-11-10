@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Copy } from "lucide-react";
 import { readConferencia, saveExtrato } from "@/lib/b3-conferencia-real.functions";
+import { realResultText } from "@/lib/b3-real-apuracao";
 import { SIGNED_BRL, BRL } from "@/lib/b3-format";
 import { Button } from "@/components/ui/button";
 
@@ -46,8 +47,8 @@ function Page() {
   };
   const textoForm = `Lançamento extrato · pregão ${form.pregao || "sem registro"} · origem ${form.origem}\n` + FIELDS.map(([k, l]) => `${l}: ${form[k]?.trim() ? form[k] : "sem registro"}`).join("\n");
   const textoTabela = ["pregão\tcorretora\tsistema\tdiferença\tordens\tfechadas executor\tfechadas corretora\tsem resultado\tcustos corretora\tcustos sistema",
-    ...rows.map((r) => [r.pregao, r.extrato_lancado ? v(r.corretora_brl) : "extrato não lançado", v(r.sistema_brl),
-      r.diferenca_brl == null ? "extrato não lançado" : v(r.diferenca_brl), r.ordens, r.fechadas_executor, r.fechadas_corretora, r.sem_resultado,
+    ...rows.map((r) => [r.pregao, r.extrato_lancado ? v(r.corretora_brl) : "extrato não lançado", realResultText(Number(r.sistema_brl ?? 0), Number(r.sem_resultado ?? 0)),
+      r.sem_resultado ? "DESCONHECIDO" : r.diferenca_brl == null ? "extrato não lançado" : v(r.diferenca_brl), r.ordens, r.fechadas_executor, r.fechadas_corretora, r.sem_resultado,
       r.extrato_lancado ? v(r.custos_corretora_brl) : "extrato não lançado", v(r.custos_sistema_brl)].join("\t"))].join("\n");
 
   return (
@@ -96,8 +97,8 @@ function Page() {
                   <tr key={r.pregao} className="border-b border-border/50 font-mono">
                     <td className="py-1">{r.pregao}</td>
                     <td className="py-1 text-right">{r.extrato_lancado ? v(r.corretora_brl) : <span className="text-amber-200">extrato não lançado</span>}</td>
-                    <td className="py-1 text-right">{v(r.sistema_brl)}</td>
-                    <td className="py-1 text-right font-bold">{r.diferenca_brl == null ? <span className="text-amber-200">extrato não lançado</span> : v(r.diferenca_brl)}</td>
+                    <td className={`py-1 text-right ${r.sem_resultado ? "text-warning font-bold" : ""}`}>{realResultText(Number(r.sistema_brl ?? 0), Number(r.sem_resultado ?? 0))}</td>
+                    <td className="py-1 text-right font-bold">{r.sem_resultado ? <span className="text-warning">DESCONHECIDO</span> : r.diferenca_brl == null ? <span className="text-amber-200">extrato não lançado</span> : v(r.diferenca_brl)}</td>
                     <td className="py-1 text-right">{r.ordens}</td>
                     <td className="py-1 text-right">{r.fechadas_executor}</td>
                     <td className="py-1 text-right">{r.fechadas_corretora}</td>

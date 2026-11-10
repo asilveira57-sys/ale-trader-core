@@ -1,3 +1,5 @@
+import { brokerExit } from "./b3-real-apuracao";
+
 // Reconciliação de b3_live_orders com a verdade da corretora.
 //
 // POR QUE EXISTE (04/09/2026)
@@ -16,11 +18,9 @@
 // Compara as ordens 'open' do banco com `b3_mt5_account_state.posicoes` (o que
 // o executor leu do MT5). Quem está aberta no banco e NÃO existe na corretora é
 // órfã e é resolvida:
-//   • existe comando de fechamento 'filled' compatível ⇒ fecha com o preço, o
-//     ticket e o horário daquele comando (resultado calculado, status 'closed');
-//   • não existe ⇒ status 'unknown_state' com `exit_time` no horário do
-//     relatório. Sabemos que não está aberta; não sabemos como terminou —
-//     inventar resultado seria pior do que admitir o desconhecido.
+//   • negócio integral reportado com ticket exato ⇒ encerra com evidência;
+//   • sem negócio correspondente ⇒ sem apuração, sem preço/horário inventado.
+// Ordens anteriores ao primeiro pregão desta entrega permanecem intocadas.
 //
 // O QUE ESTE MÓDULO NÃO FAZ
 // Não manda ordem, não fecha posição na corretora, não decide entrada nem
@@ -42,22 +42,8 @@ export interface ReconcileResultado {
 const rootOf = (s: string | null | undefined) => {
   const v = String(s ?? "").toUpperCase();
   const m = v.match(/^([A-Z]{3})[FGHJKMNQUVXZ]\d{2}$/);
-  return m ? m[1]! : v;
+  return m?.[1] ?? v;
 };
-
-async function pointValues(supabase: any): Promise<Map<string, number>> {
-  const map = new Map<string, number>();
-  try {
-    const { data } = await supabase.from("b3_asset_profiles").select("symbol, quote_symbol, tick_value_brl");
-    for (const r of (data ?? []) as any[]) {
-      const v = Number(r.tick_value_brl);
-      if (!Number.isFinite(v) || v <= 0) continue;
-      map.set(rootOf(r.symbol), v);
-      map.set(rootOf(r.quote_symbol), v);
-    }
-  } catch { /* sem perfil, resultado fica nulo em vez de errado */ }
-  return map;
-}
 
 export async function reconcileB3LiveOrders(supabase: any): Promise<ReconcileResultado> {
   const t0 = Date.now();
@@ -67,14 +53,14 @@ export async function reconcileB3LiveOrders(supabase: any): Promise<ReconcileRes
   const { data: abertas, error } = await supabase
     .from("b3_live_orders")
     .select("*")
-    .eq("status", "open");
+    .in("status", ["open", "divergente_corretora"])
+    .gte("entry_time", "2026-11-11T03:00:00.000Z");
   if (error) throw new Error(`reconciliação: falha ao ler b3_live_orders — ${error.message}`);
   const ordens = (abertas ?? []) as any[];
   if (!ordens.length) {
     return { avaliadas: 0, conciliadas: 0, desconhecidas: 0, ignoradas: 0, erros: 0, janela_ms: Date.now() - t0, detalhes };
   }
 
-  const pv = await pointValues(supabase);
   const users = Array.from(new Set(ordens.map((o) => o.user_id)));
   const { data: estados } = await supabase
     .from("b3_mt5_account_state")
@@ -97,40 +83,24 @@ export async function reconcileB3LiveOrders(supabase: any): Promise<ReconcileRes
       const posicoes = (estado?.posicoes ?? []) as any[];
       const presente = posicoes.some((p) => {
         if (Math.abs(Number(p?.volume ?? 0)) <= 0) return false;
+        if (p?.ticket != null && o.broker_ticket_entry != null) return String(p.ticket) === String(o.broker_ticket_entry);
         if (p?.magic != null && Number(p.magic) === Number(o.magic_number)) return true;
         // Sem magic no relatório, a raiz + lado já basta para NÃO acusar órfã.
         return p?.magic == null && rootOf(p?.symbol) === rootOf(o.symbol) && String(p?.side ?? "") === String(o.side);
       });
-      if (presente) {
-        if (Number(o.divergencias_leituras ?? 0) > 0) {
-          await supabase.from("b3_live_orders").update({ divergencias_leituras: 0 }).eq("id", o.id).eq("status", "open");
-        }
-        ignoradas++; continue;
-      }
-
-      // (08/10/2026) Só age na SEGUNDA leitura fresca consecutiva sem a posição.
-      const leituras = Number(o.divergencias_leituras ?? 0) + 1;
-      if (leituras < 2) {
-        await supabase.from("b3_live_orders").update({ divergencias_leituras: leituras }).eq("id", o.id).eq("status", "open");
-        ignoradas++; continue;
-      }
+      if (presente) { ignoradas++; continue; }
+      // No housekeeping writes: only a reported disappearance may close a row.
 
       // Verdade da corretora: negócio de saída reportado pelo executor.
       const fechs = Array.isArray(estado?.fechamentos) ? (estado.fechamentos as any[]) : null;
       if (fechs) {
-        const ticket = o.broker_ticket_entry != null ? String(o.broker_ticket_entry) : null;
-        const entryIso = o.entry_time ?? new Date(0).toISOString();
-        const f = fechs.find((x) => ticket && x?.ticket_posicao != null && String(x.ticket_posicao) === ticket)
-          ?? (!ticket || !fechs.some((x) => x?.ticket_posicao != null && String(x.ticket_posicao) === ticket)
-            ? fechs.find((x) => Number(x?.magic) === Number(o.magic_number) && rootOf(x?.symbol) === rootOf(o.symbol)
-                && (!x?.fechado_em || String(x.fechado_em) >= entryIso))
-            : undefined);
-        if (f && Number(f.preco) > 0 && Number.isFinite(Number(f.resultado_brl)) && f.fechado_em) {
+        const f = brokerExit(o, fechs);
+        if (f) {
           const { error: updErr } = await supabase.from("b3_live_orders").update({
             exit_price: Number(f.preco), exit_time: f.fechado_em,
-            gross_result_brl: Number(f.resultado_brl), net_result_brl: Number(f.resultado_brl),
-            status: "fechada_pela_corretora", divergencias_leituras: leituras,
-          }).eq("id", o.id).eq("status", "open");
+            net_result_brl: Number(f.resultado_brl),
+            status: "closed", fechamento_corretora: { ...f, quem_fechou: "corretora" },
+          }).eq("id", o.id).eq("status", o.status);
           if (updErr) throw new Error(updErr.message);
           conciliadas++;
           detalhes.push({ id: o.id, magic: o.magic_number, ticket: o.broker_ticket_entry, via: "fechamento_da_corretora", motivo: f.motivo ?? null, exit_price: Number(f.preco), result_brl: Number(f.resultado_brl), fechado_em: f.fechado_em });
@@ -138,49 +108,15 @@ export async function reconcileB3LiveOrders(supabase: any): Promise<ReconcileRes
         }
       }
 
-      // Órfã. Primeiro tenta achar o fechamento que o executor confirmou.
-      const { data: closes } = await supabase
-        .from("b3_mt5_commands")
-        .select("id, filled_at, filled_price, broker_ticket, magic_number")
-        .eq("user_id", o.user_id)
-        .eq("env", "real")
-        .eq("action", "close")
-        .eq("status", "filled")
-        .eq("magic_number", o.magic_number)
-        .gte("filled_at", o.entry_time ?? new Date(0).toISOString())
-        .order("filled_at", { ascending: true })
-        .limit(1);
-      const cmd = (closes ?? [])[0] as any;
-
-      const point = pv.get(rootOf(o.symbol)) ?? null;
-      if (cmd && Number(cmd.filled_price) > 0) {
-        const exitPrice = Number(cmd.filled_price);
-        const entryPrice = Number(o.entry_price);
-        const dir = o.side === "buy" ? 1 : -1;
-        const pts = Number.isFinite(entryPrice) ? (exitPrice - entryPrice) * dir : null;
-        const brl = pts != null && point != null ? pts * point * Number(o.quantity || 1) : null;
-        const { error: updErr } = await supabase.from("b3_live_orders").update({
-          exit_price: exitPrice,
-          exit_time: cmd.filled_at,
-          broker_ticket_exit: cmd.broker_ticket ?? null,
-          gross_result_brl: brl,
-          net_result_brl: brl,
-          status: "closed",
-        }).eq("id", o.id).eq("status", "open");
-        if (updErr) throw new Error(updErr.message);
-        conciliadas++;
-        detalhes.push({ id: o.id, magic: o.magic_number, via: "comando_de_fechamento", exit_price: exitPrice, result_brl: brl });
-      } else {
         // Fechou na corretora sem comando nosso e sem `fechamentos` que case:
         // NÃO se chuta preço nem resultado (nem pelo stop teórico).
+        if (o.status === "divergente_corretora") { ignoradas++; continue; }
         const { error: updErr } = await supabase.from("b3_live_orders").update({
-          exit_time: estado.reportado_em,
-          status: "divergente_corretora", divergencias_leituras: leituras,
-        }).eq("id", o.id).eq("status", "open");
+          status: "divergente_corretora",
+        }).eq("id", o.id).eq("status", o.status);
         if (updErr) throw new Error(updErr.message);
         desconhecidas++;
         detalhes.push({ id: o.id, magic: o.magic_number, ticket: o.broker_ticket_entry, via: fechs ? "sem_fechamento_correspondente" : "fechamentos_ausentes", exit_time: estado.reportado_em });
-      }
     } catch (e) {
       erros++;
       detalhes.push({ id: o.id, error: (e as Error).message.slice(0, 200) });

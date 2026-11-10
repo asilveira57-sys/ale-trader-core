@@ -12,7 +12,7 @@ const hora = (iso: string | null) =>
 const diaHora = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", " às") : "—";
 
-export function DisjuntorManualPanel() {
+export function DisjuntorManualPanel({ apuracao }: { apuracao?: any }) {
   const qc = useQueryClient();
   const load = useServerFn(getDisjuntorManual);
   const destravar = useServerFn(destravarDisjuntor);
@@ -54,11 +54,12 @@ export function DisjuntorManualPanel() {
   return (
     <div className="space-y-2">
       {aviso}
+      {apuracao?.result_unknown && <p className="text-warning font-bold">vigilância suspensa: {apuracao.unappraised_count} ordens sem apuração</p>}
       <div className="rounded-md border border-destructive/60 bg-destructive/10 p-4 space-y-3">
         <div className="font-semibold">Disjuntor acionado às {hora(data.armed_at)} — {kindTxt}</div>
         <div className="grid grid-cols-[auto_auto] gap-x-6 gap-y-1 text-sm w-fit">
           <span className="text-muted-foreground">Base do cálculo</span><span className="font-mono">{BRL(data.base_brl)}</span>
-          <span className="text-muted-foreground">Resultado do dia</span><span className="font-mono">{SIGNED_BRL(data.result_brl)}</span>
+          <span className="text-muted-foreground">Resultado do dia</span><span className="font-mono">{apuracao?.result_unknown ? "RESULTADO DO DIA DESCONHECIDO" : SIGNED_BRL(data.result_brl)}</span>
           <span className="text-muted-foreground">Teto configurado</span><span className="font-mono">{pctTela}% = {BRL(tetoBrl)}</span>
           <span className="text-muted-foreground">Folga até rearmar</span>
           <span className={`font-mono font-semibold ${folga > 0 ? "text-success" : "text-destructive"}`}>{BRL(folga)}</span>
@@ -79,7 +80,7 @@ export function DisjuntorManualPanel() {
           </div>
         ) : confirmar ? (
           <div className="rounded border border-border p-3 space-y-2 text-sm">
-            <div>Destravar com: base {BRL(data.base_brl)} · resultado {SIGNED_BRL(data.result_brl)} · teto {capAtualPct}% = {BRL(data.cap_pct * data.base_brl)} · folga {BRL(folgaAtual)}</div>
+            <div>Destravar com: base {BRL(data.base_brl)} · resultado {apuracao?.result_unknown ? "RESULTADO DO DIA DESCONHECIDO" : SIGNED_BRL(data.result_brl)} · teto {capAtualPct}% = {BRL(data.cap_pct * data.base_brl)} · folga {BRL(folgaAtual)}</div>
             <div className="flex gap-2">
               <Button size="sm" variant="destructive" disabled={mDestravar.isPending} onClick={() => mDestravar.mutate()}>Confirmar</Button>
               <Button size="sm" variant="outline" onClick={() => setConfirmar(false)}>Cancelar</Button>

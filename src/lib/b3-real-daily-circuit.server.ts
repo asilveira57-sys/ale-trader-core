@@ -20,9 +20,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { rootSymbol } from "@/lib/b3-format";
 import {
-  buildRealLedger, loadAssetProfiles, saoPauloDate, STALE_REPORT_S,
-  type RealCommandRow,
+  saoPauloDate, STALE_REPORT_S,
 } from "@/lib/b3-real-cockpit.server";
+
+import { readRealApuracao } from "./b3-real-apuracao.server";
 
 export const DEFAULT_GAIN_TARGET_PCT = 0.40;
 export const DEFAULT_LOSS_CAP_PCT = 0.25;
@@ -43,6 +44,9 @@ export interface DailyCircuitBaseRobot {
 }
 
 export interface DailyCircuitStatus extends DailyCircuitConfig {
+  unappraised_count: number;
+  surveillance_suspended: boolean;
+  unrealized_brl: number | null;
   session_date: string;
   /** soma de max_qty × margem por contrato dos robôs reais habilitados */
   base_brl: number;
@@ -102,6 +106,8 @@ export function evaluateDailyCircuit(input: {
   realized_brl: number;
   open_positions: number;
   broker_stale: boolean;
+  unappraised_count?: number;
+  apuracao_unavailable?: boolean;
   already_armed_kind?: "meta_ganho" | "teto_perda" | null;
   /** meta já encostada em algum momento de hoje (persistido) */
   gain_latched?: boolean;
@@ -130,6 +136,14 @@ export function evaluateDailyCircuit(input: {
       reason: k === "meta_ganho"
         ? `disjuntor diário: META DE GANHO já atingida hoje (dia travado até o próximo pregão)`
         : `disjuntor diário: TETO DE PERDA já atingido hoje (novas aberturas reais bloqueadas)`,
+    };
+  }
+
+  if ((input.unappraised_count ?? 0) > 0 || input.apuracao_unavailable) {
+    return {
+      gain_target_brl: gainTarget, loss_cap_brl: lossCap, should_arm: false, kind: null,
+      gain_waiting_flat: false, gain_latched: wasLatched, gain_latch_now: false,
+      reason: `vigilância suspensa: ${input.unappraised_count ?? 0} ordens sem apuração`,
     };
   }
 
@@ -221,37 +235,23 @@ export async function loadCircuitBase(supabase: SupabaseClient, userId: string) 
 
 /** Resultado REALIZADO do dia real + posições abertas reportadas pela corretora. */
 export async function loadRealizedAndOpen(supabase: SupabaseClient, userId: string, now = new Date()) {
-  const dayStart = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
-  const [cmdRes, stateRes, profileFor] = await Promise.all([
-    supabase
-      .from("b3_mt5_commands")
-      .select("id, action, side, symbol, quantity, mode, variant, status, error_message, created_at, filled_at, filled_price, broker_ticket, magic_number, requested_by, broker_position_ticket")
-      .eq("user_id", userId)
-      .eq("env", "real")
-      .gte("created_at", dayStart)
-      .order("created_at", { ascending: true }),
-    supabase
-      .from("b3_mt5_account_state")
-      .select("posicoes, reportado_em")
-      .eq("user_id", userId)
-      .maybeSingle(),
-    loadAssetProfiles(supabase),
-  ]);
-
   const today = saoPauloDate(now);
-  const commands = ((cmdRes.data ?? []) as RealCommandRow[])
-    .filter((c) => saoPauloDate(new Date(c.filled_at ?? c.created_at)) === today);
-  const { trades } = buildRealLedger(commands, profileFor);
-  let realized = 0;
-  for (const t of trades) if (t.result_brl != null) realized += t.result_brl;
-
-  const state = (stateRes.data ?? null) as any;
-  const reportedAt = state?.reportado_em ? new Date(state.reportado_em) : null;
-  const ageS = reportedAt ? Math.round((now.getTime() - reportedAt.getTime()) / 1000) : null;
-  const stale = ageS == null || ageS > STALE_REPORT_S;
-  const open = Array.isArray(state?.posicoes) ? (state.posicoes as any[]).length : 0;
-
-  return { realized_brl: r2(realized), open_positions: open, broker_stale: stale, report_age_s: ageS };
+  const start = `${today}T03:00:00.000Z`;
+  const end = new Date(new Date(start).getTime() + 86400000).toISOString();
+  const [apuracao, stateRes] = await Promise.all([
+    readRealApuracao(supabase, userId, start, end),
+    supabase.from("b3_mt5_account_state").select("posicoes, reportado_em").eq("user_id", userId).maybeSingle(),
+  ]);
+  if (stateRes.error) throw new Error("Relatório real indisponível");
+  const state = stateRes.data as any;
+  const reported = state?.reportado_em ? new Date(state.reportado_em).getTime() : NaN;
+  const ageS = Number.isFinite(reported) ? Math.round((now.getTime() - reported) / 1000) : null;
+  const positions: any[] = Array.isArray(state?.posicoes) ? state.posicoes.filter((p: any) => Number(p.volume) > 0) : [];
+  const unrealized = positions.some(p => p.resultado == null) ? null : r2(positions.reduce((sum, p) => sum + Number(p.resultado), 0));
+  return { realized_brl: apuracao.realized_brl, unappraised_count: apuracao.unappraised_count,
+    surveillance_suspended: apuracao.result_unknown, rows_truncated: apuracao.rows_truncated,
+    unrealized_brl: unrealized, open_positions: positions.length,
+    broker_stale: ageS == null || ageS > STALE_REPORT_S, report_age_s: ageS };
 }
 
 async function loadState(supabase: SupabaseClient, userId: string, sessionDate: string) {
@@ -278,6 +278,9 @@ function toStatus(args: {
   const { config, base, live, ev } = args;
   return {
     ...config,
+    unappraised_count: live.unappraised_count,
+    surveillance_suspended: live.surveillance_suspended,
+    unrealized_brl: live.unrealized_brl,
     session_date: args.sessionDate,
     base_brl: base.base_brl,
     robots: base.robots,
@@ -297,7 +300,7 @@ function toStatus(args: {
     armed_kind: ev.kind,
 
     armed_at: args.armedAt,
-    reason: ev.reason,
+    reason: live.surveillance_suspended ? `vigilância suspensa: ${live.unappraised_count} ordens sem apuração` : ev.reason,
   };
 }
 
@@ -325,6 +328,7 @@ export async function refreshDailyCircuit(
   const ev = evaluateDailyCircuit({
     config, base_brl: base.base_brl, realized_brl: live.realized_brl,
     open_positions: live.open_positions, broker_stale: live.broker_stale,
+    unappraised_count: live.unappraised_count, apuracao_unavailable: live.rows_truncated,
     already_armed_kind: alreadyKind, gain_latched: wasLatched,
   });
 
@@ -454,6 +458,7 @@ export async function readDailyCircuit(
   const ev = evaluateDailyCircuit({
     config, base_brl: base.base_brl, realized_brl: live.realized_brl,
     open_positions: live.open_positions, broker_stale: live.broker_stale,
+    unappraised_count: live.unappraised_count, apuracao_unavailable: live.rows_truncated,
     already_armed_kind: alreadyKind, gain_latched: dayRow?.circuit_gain_latched === true,
   });
   return toStatus({

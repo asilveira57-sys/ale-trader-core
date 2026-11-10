@@ -1,6 +1,8 @@
 # Fila de trabalho
 
 ## Em andamento
+- [x] 10/11 real: evidência de saída integral/ticket exato sem inferência, histórico preservado desde corte11/11; cockpit/extrato/conferência/resumos com apuração incompleta, suspensão do disjuntor preserva trava anterior/base/percentuais. 20 testes, navegador autenticado/cópia/celular e compilação OK; +202/8nulos/0posições no relatório desatualizado. Sem escrita operacional, não publicado.
+- [ ] Retorno real ponta a ponta: bloqueado pelo executor externo enviar fechamentos[] com ticket_posicao, volume integral, preco, fechado_em com fuso e resultado_brl líquido; contrato em docs/tests/real-apuracao-10-11.md. Não preencher histórico.
 - [x] 10/11: adaptador SQL de leitura por nível, totais da simulação/selo sem somar modalidades, WIN único usa curva de ativo; evidência/cópias e dez pregões conferidos autenticado/celular. WIN +1457, TOTAL global −16; defaults preservados, funções protegidas com hashes iguais, 16 testes OK. docs/tests/disjuntor-niveis-10-11.md.
 - [ ] 10/11 publicação: proibida com pregão aberto; aguarda nova interação após 18:30 Brasília, sem agendamento automático.
 - [x] 09/11 Parte 1: carteira atual/transferência sem portão temporal ou hierarquia vazia; Hoje e Ontem sem ordens conferidos; vivo preservado para resultado/ordens/exposição.

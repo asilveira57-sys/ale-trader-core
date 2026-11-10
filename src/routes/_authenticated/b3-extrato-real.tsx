@@ -6,6 +6,8 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getB3ExtratoReal, type ExtratoGrupo, type ExtratoStats } from "@/lib/b3-listas.functions";
+import { realResultText } from "@/lib/b3-real-apuracao";
+import { copiarTexto } from "@/lib/b3-copiar";
 import { BRL, SIGNED_BRL } from "@/lib/b3-format";
 import { useModeApelidos } from "@/hooks/use-mode-apelidos";
 import { ModeName } from "@/components/b3/ModeName";
@@ -58,7 +60,7 @@ const GROUPS: { key: Group; label: string }[] = [
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: (e: React.MouseEvent) => void; children: React.ReactNode }) {
   return (
-    <button
+    <Button variant="outline"
       type="button"
       onClick={onClick}
       className={`rounded-full border px-2.5 py-1 text-xs transition ${
@@ -66,7 +68,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: (e: Rea
       }`}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -168,7 +170,7 @@ function ExtratoRealPage() {
     (modes ? `modo (${modes.length})` : "");
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
+    <div className="space-y-4 p-4 md:p-6 [&_button]:min-h-11 [&_input]:min-h-11">
       <style>{`@media print { .no-print { display: none !important } body { background: #fff } }`}</style>
 
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -180,7 +182,9 @@ function ExtratoRealPage() {
             {dm(de)} a {dm(ate)} · somente operações reais encerradas e confirmadas pela corretora · horário de Brasília
           </p>
         </div>
-        <div className="no-print flex gap-2">
+        <div className="no-print flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => copiarTexto(`Extrato real · ${de} a ${ate}
+${JSON.stringify(q.data, (_k,v) => v == null ? "sem registro" : v, 2)}`)}>Copiar leitura completa</Button>
           <Button variant="outline" size="sm" onClick={csv} disabled={!rows.length}>
             <Download className="mr-1 size-4" /> CSV
           </Button>
@@ -244,6 +248,7 @@ function ExtratoRealPage() {
         </div>
       </div>
 
+      {q.data?.result_unknown && <div role="alert" className="border border-warning bg-warning/10 p-3 font-bold text-warning">{realResultText(st?.resultado_liquido ?? 0, q.data.unappraised_count)} · {q.data.broker.open_positions} posição(ões) aberta(s) · não realizado da corretora: {q.data.broker.unrealized_brl == null ? "sem apuração" : SIGNED_BRL(q.data.broker.unrealized_brl)}{q.data.broker.broker_stale ? " · relatório desatualizado" : ""}</div>}
       {/* Testeira: bruto separado do líquido, porque o líquido esconde a natureza do resultado. */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
         <Card label="Ganho bruto acumulado" value={BRL(st?.ganho_bruto ?? 0)} tone="pos" hint={`${st?.ganhos ?? 0} ganho(s)`} />
@@ -256,8 +261,8 @@ function ExtratoRealPage() {
         />
         <Card
           label={q.data?.custos_disponiveis ? "Resultado líquido" : "Resultado (bruto)"}
-          value={SIGNED_BRL(st?.resultado_liquido ?? 0)}
-          tone={(st?.resultado_liquido ?? 0) >= 0 ? "pos" : "neg"}
+          value={realResultText(st?.resultado_liquido ?? 0, q.data?.unappraised_count ?? 0)}
+          tone={q.data?.result_unknown ? "mute" : (st?.resultado_liquido ?? 0) >= 0 ? "pos" : "neg"}
         />
         <Card label="Fator de lucro" value={NUM(st?.fator_lucro ?? null)} hint="ganho bruto ÷ perda bruta" />
         <Card label="Taxa de acerto" value={PCT(st?.hit_rate)} hint={`${st?.ganhos ?? 0} × ${st?.perdas ?? 0}`} />
@@ -352,8 +357,8 @@ function ExtratoRealPage() {
                       <td className="px-3 py-1.5 text-right tabular-nums">{g.ops}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-emerald-500">{BRL(g.ganho_bruto)}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-destructive">{BRL(g.perda_bruta)}</td>
-                      <td className={`px-3 py-1.5 text-right tabular-nums ${g.resultado_liquido >= 0 ? "text-emerald-500" : "text-destructive"}`}>
-                        {SIGNED_BRL(g.resultado_liquido)}
+                      <td className={`px-3 py-1.5 text-right tabular-nums ${g.sem_preco > 0 ? "text-warning" : g.resultado_liquido >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                        {realResultText(g.resultado_liquido, g.sem_preco)}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums">{NUM(g.fator_lucro)}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">{g.ganhos}</td>

@@ -1,0 +1,2 @@
+ALTER TABLE public.b3_live_orders ADD COLUMN IF NOT EXISTS fechamento_corretora jsonb;
+COMMENT ON COLUMN public.b3_live_orders.fechamento_corretora IS 'Negócio de saída integral informado pela corretora, com identidade, preço, horário e resultado; NULL significa sem evidência, nunca inferido. Sem backfill histórico.';

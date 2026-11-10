@@ -27,6 +27,7 @@ import { RouteErrorFallback } from "@/components/RouteErrorFallback";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { realTime, realDuration } from "@/lib/b3-safe-date";
 import { CarteiraRealPanel } from "@/components/b3/CarteiraRealPanel";
+import { realResultText } from "@/lib/b3-real-apuracao";
 import { BRL, SIGNED_BRL, PX, openSinceText, assetLabel } from "@/lib/b3-format";
 import {
   getB3RealCockpit, getB3RealCockpitLive, stopRealNewEntries, resumeRealExecution, closeRealPositionNow,
@@ -112,7 +113,7 @@ function TradeTotals({ rows, note }: { rows: any[]; note?: string }) {
       <dl className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
         <div>
           <dt className="text-[10px] uppercase text-muted-foreground">Resultado somado</dt>
-          <dd className={`font-black ${money(sum)}`}>{SIGNED_BRL(sum)}</dd>
+          <dd className={`font-black ${semPreco ? "text-warning" : money(sum)}`}>{realResultText(sum, semPreco)}</dd>
         </div>
         <div>
           <dt className="text-[10px] uppercase text-muted-foreground">Operações</dt>
@@ -197,9 +198,9 @@ function Panel({
 
 function Tile({ label, value, sub, cls }: { label: string; value: string; sub?: string; cls?: string }) {
   return (
-    <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+    <div className="min-w-0 rounded-lg border border-border bg-muted/20 px-3 py-2">
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={`text-xl font-black leading-tight ${cls ?? ""}`}>{value}</p>
+      <p className={`${value.length > 35 ? "text-sm" : value === "DESCONHECIDO" ? "text-base" : "text-xl"} break-words font-black leading-tight ${cls ?? ""}`}>{value}</p>
       {sub ? <p className="text-[11px] text-muted-foreground">{sub}</p> : null}
     </div>
   );
@@ -244,7 +245,7 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
         <div>
           <h2 className="flex items-center gap-2 text-sm font-black tracking-tight">
             <TrendingDown className="size-4" />
-            Devolução de pico de lucro no dia da CONTA {armed ? "— ARMADO" : "— vigiando"}
+            Devolução de pico de lucro no dia da CONTA {peak.result_unknown ? "— resultado desconhecido" : armed ? "— ARMADO" : "— vigiando"}
           </h2>
           <p className="text-[11px] leading-snug text-muted-foreground">
             {armed
@@ -283,8 +284,8 @@ function PeakBrakePanel({ peak, onSaved }: { peak: any | null; onSaved: () => vo
 
 
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-        <Tile label="Pico de lucro no dia" value={SIGNED_BRL(peak.peak_brl ?? 0)} sub={peak.peak_at ? `às ${hhmm(peak.peak_at)}` : "—"} cls="text-emerald-300" />
-        <Tile label="Resultado agora" value={SIGNED_BRL(peak.result_brl ?? 0)} cls={money(peak.result_brl)} />
+        <Tile label="Pico de lucro no dia" value={peak.result_unknown ? "DESCONHECIDO" : SIGNED_BRL(peak.peak_brl ?? 0)} sub={peak.peak_at ? `às ${hhmm(peak.peak_at)}` : "—"} cls={peak.result_unknown ? "text-warning" : "text-emerald-300"} />
+        <Tile label="Resultado agora" value={peak.result_unknown ? "RESULTADO DO DIA DESCONHECIDO" : SIGNED_BRL(peak.result_brl ?? 0)} cls={peak.result_unknown ? "text-warning" : money(peak.result_brl)} />
         <Tile label="Já devolvido" value={BRL(peak.given_back_brl ?? 0)} sub={peak.given_back_pct == null ? "—" : `${(Number(peak.given_back_pct) * 100).toFixed(1)}% do pico de lucro no dia`} cls="text-rose-300" />
         <Tile label={`Tolerado (${(pctCfg * 100).toFixed(0)}%)`} value={BRL(peak.allowed_giveback_brl ?? 0)} sub={peak.trigger_at_brl == null ? "pico de lucro no dia abaixo do piso" : `arma se cair de ${BRL(peak.trigger_at_brl)}`} />
         <Tile
@@ -365,7 +366,7 @@ function DailyCircuitPanel({ circuit, onSaved }: { circuit: any | null; onSaved:
 
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         <Tile label="Base (margem)" value={BRL(base)} sub={`${circuit.robots_count} robô(s) real(is)`} />
-        <Tile label="Realizado do dia" value={SIGNED_BRL(circuit.realized_brl ?? 0)} cls={money(circuit.realized_brl)} sub={`${circuit.open_positions} posição(ões) aberta(s)`} />
+        <Tile label="Realizado do dia" value={realResultText(circuit.realized_brl ?? 0, circuit.unappraised_count ?? 0)} cls={circuit.surveillance_suspended ? "text-warning" : money(circuit.realized_brl)} sub={`${circuit.open_positions} posição(ões) aberta(s)`} />
         <Tile label={`Meta (${(gainCfg * 100).toFixed(0)}%)`} value={BRL(circuit.gain_target_brl ?? 0)} cls="text-emerald-300"
           sub={armed && circuit.armed_kind === "meta_ganho"
             ? "atingida — dia travado"
@@ -374,9 +375,9 @@ function DailyCircuitPanel({ circuit, onSaved }: { circuit: any | null; onSaved:
               : `faltam ${BRL(circuit.to_gain_brl ?? 0)}`} />
         <Tile label={`Teto (${(lossCfg * 100).toFixed(0)}%)`} value={`−${BRL(circuit.loss_cap_brl ?? 0)}`} cls="text-rose-300"
           sub={armed && circuit.armed_kind === "teto_perda" ? "atingido — entradas bloqueadas" : `faltam ${BRL(circuit.to_loss_brl ?? 0)}`} />
-        <Tile label="Estado" value={armed ? "TRAVADO" : circuit.gain_latched ? "ARMADO" : on ? "vigiando" : "desligado"}
-          cls={armed ? "text-rose-300" : circuit.gain_latched ? "text-amber-300" : on ? "text-sky-200" : "text-muted-foreground"}
-          sub={armed
+        <Tile label="Estado" value={circuit.surveillance_suspended ? `vigilância suspensa: ${circuit.unappraised_count} ordens sem apuração` : armed ? "TRAVADO" : circuit.gain_latched ? "ARMADO" : on ? "vigiando" : "desligado"}
+          cls={circuit.surveillance_suspended ? "text-warning" : armed ? "text-rose-300" : circuit.gain_latched ? "text-amber-300" : on ? "text-sky-200" : "text-muted-foreground"}
+          sub={circuit.surveillance_suspended ? (armed ? "Trava anterior preservada; resultado desconhecido" : "RESULTADO DO DIA DESCONHECIDO") : armed
             ? (circuit.armed_at ? `desde ${hhmm(circuit.armed_at)}` : "hoje")
             : circuit.gain_latched
               ? "meta encostada; espera a conta limpar"
@@ -455,8 +456,9 @@ function CockpitRealPage() {
     const openBrl = live.open_profit_brl;
     const today = {
       ...(heavy.today ?? {}),
+      ...(heavy.period?.single_day !== false ? {realized_brl: live.realized_brl, result_unknown: live.result_unknown, unappraised_count: live.unappraised_count} : {}),
       unrealized_brl: openBrl != null ? openBrl : heavy.today?.unrealized_brl,
-      total_brl: openBrl != null ? Number(heavy.today?.realized_brl ?? 0) + Number(openBrl) : heavy.today?.total_brl,
+      total_brl: openBrl != null ? Number(heavy.period?.single_day !== false ? live.realized_brl : heavy.today?.realized_brl ?? 0) + Number(openBrl) : heavy.today?.total_brl,
       saldo_conta_brl: live.broker?.balance_brl ?? heavy.today?.saldo_conta_brl,
       capital_liquido_brl: live.broker?.equity_brl ?? heavy.today?.capital_liquido_brl,
       margem_livre_brl: live.broker?.free_margin_brl ?? heavy.today?.margem_livre_brl,
@@ -604,6 +606,8 @@ function CockpitRealPage() {
   const st = STATE_UI[d?.executor?.state ?? "sem_comando"] ?? STATE_UI["sem_comando"]!;
   const realEnabled = d?.real_state?.real_enabled !== false;
   const today = d?.today ?? {};
+  const missing = Number(today.unappraised_count ?? 0);
+  const resultUnknown = today.result_unknown === true;
   const per = (d?.period ?? null) as any;
   // MODO histórico: período que não inclui hoje esconde blocos vivos e ações.
   const vivo = per ? per.includes_today !== false : true;
@@ -823,6 +827,10 @@ function CockpitRealPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1500px] px-3 pb-16 pt-3 sm:px-6 sm:pt-4 [&_button]:min-h-11">
+      {resultUnknown && <div role="alert" className="mb-3 border-2 border-warning bg-warning/10 p-3 text-warning">
+        <p className="font-bold">{realResultText(today.realized_brl ?? 0, missing)}</p>
+        {vivo && <p>{brokerPositions.length} posição(ões) aberta(s) · não realizado da corretora: {today.unrealized_brl == null ? "sem apuração" : SIGNED_BRL(today.unrealized_brl)}{reportStale ? " · relatório desatualizado" : ""}</p>}
+      </div>}
       <DivergenceAlarm />
       <EscrituracaoAlarm />
 
@@ -888,7 +896,7 @@ function CockpitRealPage() {
 
         {/* 2) Resultado do dia e saldo */}
         <div className="grid grid-cols-2 gap-2">
-          <Tile label="Resultado do dia" value={SIGNED_BRL(today.total_brl ?? 0)} sub={`realizado ${SIGNED_BRL(today.realized_brl ?? 0)}`} cls={money(today.total_brl)} />
+          <Tile label="Resultado do dia" value={resultUnknown ? "DESCONHECIDO" : SIGNED_BRL(today.total_brl ?? 0)} sub={`realizado ${SIGNED_BRL(today.realized_brl ?? 0)}`} cls={resultUnknown ? "text-warning" : money(today.total_brl)} />
           <Tile
             label="Saldo da conta"
             value={today.saldo_conta_brl != null ? BRL(today.saldo_conta_brl) : today.saldo_estimado_brl == null ? "—" : BRL(today.saldo_estimado_brl)}
@@ -964,8 +972,8 @@ function CockpitRealPage() {
         <AudioBanner />
       </div>
 
-      <div className="mt-2"><AppErrorBoundary><DisjuntorManualPanel /></AppErrorBoundary></div>
-      <div className="mt-2"><AppErrorBoundary><CarteiraRealPanel /></AppErrorBoundary></div>
+      <div className="mt-2"><AppErrorBoundary><DisjuntorManualPanel apuracao={today} /></AppErrorBoundary></div>
+      <div className="mt-2"><AppErrorBoundary><CarteiraRealPanel apuracao={today} /></AppErrorBoundary></div>
       <Button variant="outline" className="mt-3 min-h-11" disabled={!d} onClick={() => copiarTexto(`Cockpit Real · ${per?.label ?? 'sem registro'}\n${JSON.stringify(d, (_key, value) => value == null ? 'sem registro' : value, 2)}`)}><Copy className="mr-2 size-4" />Copiar leitura completa</Button>
 
       <header className="mt-3 hidden flex-wrap items-start justify-between gap-3 md:flex">
@@ -1067,14 +1075,14 @@ function CockpitRealPage() {
 
       {/* Placar do dia */}
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <Tile label={vivo ? "Realizado hoje" : "Realizado no período"} value={SIGNED_BRL(today.realized_brl ?? 0)} sub={PCT(today.realized_pct)} cls={money(today.realized_brl)} />
+        <Tile label={vivo ? "Realizado hoje" : "Realizado no período"} value={realResultText(today.realized_brl ?? 0, missing)} sub={resultUnknown ? "apurado, não é o resultado final" : PCT(today.realized_pct)} cls={resultUnknown ? "text-warning" : money(today.realized_brl)} />
         <Tile
           label="Em aberto"
           value={today.unrealized_brl == null ? "—" : SIGNED_BRL(today.unrealized_brl)}
           sub={abertoEstimado ? "estimado por cotação" : `${PCT(today.unrealized_pct)} · corretora`}
           cls={money(today.unrealized_brl)}
         />
-        <Tile label={per && per.single_day === false ? "Total do período" : "Total do dia"} value={SIGNED_BRL(today.total_brl ?? 0)} sub={PCT(today.total_pct)} cls={money(today.total_brl)} />
+        <Tile label={per && per.single_day === false ? "Total do período" : "Total do dia"} value={resultUnknown ? "DESCONHECIDO" : SIGNED_BRL(today.total_brl ?? 0)} sub={resultUnknown ? "apuração incompleta" : PCT(today.total_pct)} cls={resultUnknown ? "text-warning" : money(today.total_brl)} />
         <Tile
           label="Saldo da conta"
           value={
@@ -1106,7 +1114,7 @@ function CockpitRealPage() {
       ) : null}
 
       <AppErrorBoundary><DailyCircuitPanel circuit={(d as any)?.daily_circuit ?? null} onSaved={() => q.refetch()} /></AppErrorBoundary>
-      <AppErrorBoundary><PeakBrakePanel peak={d?.account_peak ?? null} onSaved={() => q.refetch()} /></AppErrorBoundary>
+      <AppErrorBoundary><PeakBrakePanel peak={d?.account_peak ? {...d.account_peak, result_unknown: resultUnknown, unappraised_count: missing} : null} onSaved={() => q.refetch()} /></AppErrorBoundary>
 
 
 
@@ -1319,7 +1327,7 @@ function CockpitRealPage() {
                           </td>
                           <td className="py-1">
                             {t.open ? "—" : t.closed_by === "executor" ? "executor" : t.closed_by === "corretora"
-                              ? <span className="font-semibold text-amber-200">corretora<span className="block text-[10px]">resultado inferido — confira no extrato</span></span>
+                              ? <span className="font-semibold text-amber-200">corretora<span className="block text-[10px]">{t.broker_evidence ? "resultado da corretora" : t.result_brl == null ? "sem apuração — confira no extrato" : "resultado inferido — confira no extrato"}</span></span>
                               : <span className="text-muted-foreground">sem registro</span>}
                           </td>
                         </tr>
@@ -1436,8 +1444,8 @@ function CockpitRealPage() {
                             : r.executor_status === "recusado" ? <span className="text-rose-300">fora da lista branca</span>
                               : <span className="text-muted-foreground">sem evidência</span>}
                         </td>
-                        <td className={`py-1 text-right font-semibold ${money(r.realized_brl)}`}>
-                          {SIGNED_BRL(r.realized_brl ?? 0)} <span className="text-[10px] text-muted-foreground">({r.trades_count})</span>
+                        <td className={`py-1 text-right font-semibold ${r.unappraised_count ? "text-warning" : money(r.realized_brl)}`}>
+                          {realResultText(r.realized_brl ?? 0, r.unappraised_count ?? 0)} <span className="text-[10px] text-muted-foreground">({r.trades_count})</span>
                         </td>
                       </tr>
                     ))}

@@ -27,6 +27,8 @@ import {
   setB3PriceSource,
 } from "@/lib/b3.functions";
 import { getB3EngineDiagnostic } from "@/lib/b3-simulation.functions";
+import { getB3RealCockpitLive } from "@/lib/b3-real-cockpit.functions";
+import { realResultText } from "@/lib/b3-real-apuracao";
 import { EngineDiagnosticPanel, SimComparePanel } from "@/components/b3/SimComparePanel";
 import { PipelineAuditPanel } from "@/components/b3/PipelineAuditPanel";
 
@@ -36,7 +38,7 @@ const TAB_VALUES = ["panel", "trade", "committee", "sim3", "live", "diagnostic",
 type TabValue = (typeof TAB_VALUES)[number];
 
 export const Route = createFileRoute("/_authenticated/b3")({
-  head: () => ({ meta: [{ title: "B3 Day Trade (WIN) — AleTrader AI" }] }),
+  head: () => ({ meta: [{ title: "B3 Day Trade (WIN) — AleTrader AI" }, {name: "description", content: "Painel de operações B3, relatório e acompanhamento da apuração real."}, {property: "og:title", content: "B3 Day Trade WIN — AleTrader AI"}, {property: "og:description", content: "Operações B3 e acompanhamento da apuração real."}, {property: "og:type", content: "website"}, {name: "twitter:card", content: "summary"}] }),
   validateSearch: (search: Record<string, unknown>): { tab: TabValue } => {
     const t = search.tab;
     return { tab: (TAB_VALUES as readonly string[]).includes(t as string) ? (t as TabValue) : "panel" };
@@ -215,6 +217,7 @@ function B3Page() {
         </TabsList>
 
         <TabsContent value="panel">
+          {settings.environment === "real" && <RealApuracaoNotice />}
           <Panel settings={settings} orders={orders} />
         </TabsContent>
         <TabsContent value="trade">
@@ -240,6 +243,7 @@ function B3Page() {
           <B3EngineDiagnosticTab />
         </TabsContent>
         <TabsContent value="report">
+          {settings.environment === "real" && <RealApuracaoNotice />}
           <Report orders={orders} settings={settings} />
         </TabsContent>
         <TabsContent value="settings">
@@ -316,7 +320,7 @@ function Panel({ settings, orders }: { settings: B3Settings; orders: B3Order[] }
         <StatCard label="Saldo inicial" value={BRL(settings.capital_allocated)} />
         <StatCard label="Resultado bruto" value={BRL(grossBRL)} tone={grossBRL >= 0 ? "up" : "down"} />
         <StatCard label="Taxas" value={BRL(fees)} />
-        <StatCard label="Resultado líquido" value={BRL(realizedBRL)} tone={realizedBRL >= 0 ? "up" : "down"} />
+        <StatCard label="Resultado líquido" value={settings.environment === "real" ? "Conferir apuração real acima" : BRL(realizedBRL)} tone={settings.environment === "real" ? undefined : realizedBRL >= 0 ? "up" : "down"} />
         <StatCard label="Pontos" value={NUM(realizedPts)} tone={realizedPts >= 0 ? "up" : "down"} />
         <StatCard label="Contratos operados" value={NUM(contracts)} />
         <StatCard label="Operações abertas" value={NUM(open.length)} />
@@ -540,6 +544,16 @@ function TradePanel({
   );
 }
 
+function RealApuracaoNotice() {
+  const fn = useServerFn(getB3RealCockpitLive);
+  const q = useQuery({ queryKey: ["b3-real-live"], queryFn: () => fn(), staleTime: 10000 });
+  const d = q.data as any;
+  return <div role="alert" className="border border-warning p-3 text-warning font-bold">
+    {d ? realResultText(d.realized_brl ?? 0, d.unappraised_count ?? 0) : "Apuração real indisponível"}
+    {d?.result_unknown && <p>{d.daily_circuit?.open_positions ?? 0} posição(ões) aberta(s) · não realizado da corretora: {d.open_profit_brl == null ? "sem apuração" : BRL(d.open_profit_brl)}</p>}
+  </div>;
+}
+
 // ────────────────────────────────────────────────────────────────────
 function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -596,7 +610,7 @@ function Report({ orders, settings }: { orders: B3Order[]; settings: B3Settings 
   return (
     <div className="space-y-3 mt-3">
       <div className="grid gap-3 md:grid-cols-3">
-        <StatCard label="Resultado realizado" value={BRL(realized)} tone={realized >= 0 ? "up" : "down"} />
+        <StatCard label="Resultado realizado" value={settings.environment === "real" ? "Conferir apuração real acima" : BRL(realized)} tone={settings.environment === "real" ? undefined : realized >= 0 ? "up" : "down"} />
         <StatCard label="Resultado em aberto" value={BRL(unrealized)} />
         <StatCard label="Bruto realizado" value={BRL(grossRealized)} tone={grossRealized >= 0 ? "up" : "down"} />
         <StatCard label="Taxas" value={BRL(fees)} />

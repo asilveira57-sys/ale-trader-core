@@ -36,3 +36,11 @@ it("desligado nao arma", () => {
   const e = evaluateDailyCircuit({ config: { ...cfg, enabled: false }, base_brl: 930, realized_brl: -900, open_positions: 0, broker_stale: false });
   expect(e.should_arm).toBe(false);
 });
+it("7 ordens sem apuração suspendem a vigilância sem armar ganho", () => {
+  const e = evaluateDailyCircuit({ config: cfg, base_brl: 400, realized_brl: 202, open_positions: 1, broker_stale: false, unappraised_count: 7 });
+  expect(e.should_arm).toBe(false); expect(e.gain_latch_now).toBe(false);
+});
+it("suspensão não desfaz trava irreversível já existente", () => {
+  const e = evaluateDailyCircuit({ config: cfg, base_brl: 400, realized_brl: 202, open_positions: 0, broker_stale: false, unappraised_count: 7, already_armed_kind: "teto_perda" });
+  expect(e.should_arm).toBe(true); expect(e.kind).toBe("teto_perda");
+});

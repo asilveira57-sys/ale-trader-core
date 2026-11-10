@@ -142,6 +142,17 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       for (const r of (resolvidas ?? []) as any[]) resolvedTickets.add(String(r.broker_ticket_entry));
     }
     const ledger = buildRealLedger(commands, profileFor, accountMode, resolvedTickets);
+    const { readRealApuracao } = await import("./b3-real-apuracao.server");
+    const apuracao = await readRealApuracao(supabase, userId, dayStartUtc, dayEndUtc);
+    // One authoritative record per real order, including broker exits and unknowns.
+    ledger.trades = apuracao.rows.filter((o: any) => o.status !== "open").map((o: any) => ({
+      root: rootSymbol(o.symbol), symbol: o.symbol, mode: o.mode, variant: o.variant,
+      magic_number: Number(o.magic_number), side: o.side, quantity: Number(o.quantity),
+      entry_price: o.entry_price, exit_price: o.exit_price, entry_time: o.entry_time,
+      exit_time: o.exit_time, result_pts: null, result_brl: o.net_result_brl,
+      broker_ticket: o.broker_ticket_entry, tick_size: profileFor(rootSymbol(o.symbol)).tick_size,
+      closed_by: o.fechamento_corretora ? "corretora" : o.broker_ticket_exit ? "executor" : "corretora",
+    }));
 
     // Cotação viva (sem cache) para marcar a mercado a posição aberta.
     const symbols = Array.from(new Set([
@@ -308,7 +319,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     // ── 4b. Visão por OPERAÇÃO (uma linha por operação completa) ──
     const dayTrades = [
       ...ledger.trades
-        .filter((t) => inWindow(t.exit_time))
+        .filter((t) => inWindow(t.exit_time ?? t.entry_time))
         .map((t) => ({
           id: `${t.close_command_id ?? t.magic_number}-${t.entry_time ?? ""}`,
           root: t.root, symbol: t.symbol, mode: t.mode, variant: t.variant,
@@ -319,6 +330,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
           broker_ticket: t.broker_ticket,
           tick_size: t.tick_size ?? profileFor(t.root).tick_size,
           open: false,
+          broker_evidence: apuracao.rows.find((o: any) => String(o.broker_ticket_entry) === String(t.broker_ticket))?.fechamento_corretora ?? null,
         })),
       // Posição aberta só existe no PRESENTE: em modo histórico ela não entra.
       ...(period.includes_today ? positions : []).map((p) => ({
@@ -350,8 +362,8 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     const rejectedToday = dayOrders.filter((o) => o.status === "rejected" || o.status === "error").length;
 
     // ── 5. Resultado real do dia e saldo ──
-    const tradesToday = ledger.trades.filter((t) => inWindow(t.exit_time));
-    const realizedBrl = tradesToday.reduce((a, t) => a + (t.result_brl ?? 0), 0);
+    const tradesToday = ledger.trades.filter((t) => inWindow(t.exit_time ?? t.entry_time));
+    const realizedBrl = apuracao.realized_brl;
     const tradesSemPreco = tradesToday.filter((t) => t.result_brl == null).length;
     const unrealizedBrl = period.includes_today
       ? positions.reduce((a, p) => a + (p.unrealized_brl ?? 0), 0)
@@ -362,6 +374,8 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     const lastTrade = tradesToday[tradesToday.length - 1] ?? null;
 
     const today = {
+      result_unknown: apuracao.result_unknown,
+      unappraised_count: apuracao.unappraised_count,
       realized_brl: realizedBrl,
       unrealized_brl: unrealizedBrl,
       total_brl: realizedBrl + unrealizedBrl,
@@ -378,7 +392,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       closed_count: tradesToday.length,
       wins: tradesToday.filter((t) => (t.result_brl ?? 0) > 0).length,
       losses: tradesToday.filter((t) => (t.result_brl ?? 0) < 0).length,
-      sem_preco_count: tradesSemPreco,
+      sem_preco_count: apuracao.unappraised_count,
       // Posições que o livro tem como abertas e a corretora não confirma. Não
       // entram em unrealized_brl nem em total_brl.
       estado_desconhecido_count: posFantasma.length,
@@ -417,7 +431,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       const executorStatus: "confirmado" | "recusado" | "sem_evidencia" =
         ev && ev.filled > 0 ? "confirmado" : ev && ev.whitelist_reject > 0 ? "recusado" : "sem_evidencia";
       const trades = ledger.trades.filter(
-        (t) => t.root === root && t.mode === a.mode && t.variant === (a.variant ?? "indicador") && inWindow(t.exit_time),
+        (t) => t.root === root && t.mode === a.mode && t.variant === (a.variant ?? "indicador") && inWindow(t.exit_time ?? t.entry_time),
       );
       return {
         symbol: root, variant: a.variant ?? "indicador", mode: a.mode,
@@ -427,6 +441,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
         executor_status: executorStatus,
         executor_last_error: ev?.last_error ?? null,
         has_open_position: !!openPos,
+        unappraised_count: trades.filter(t => t.result_brl == null).length,
         realized_brl: trades.reduce((s, t) => s + (t.result_brl ?? 0), 0),
         trades_count: trades.length,
       };
@@ -630,7 +645,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
     // ── 9. Resultado de cada pregão do recorte (só quando há mais de um dia) ──
     const byDayMap = new Map<string, { date: string; realized_brl: number; trades: number; wins: number; losses: number; sem_preco: number }>();
     for (const t of tradesToday) {
-      const day = brtDate(new Date(t.exit_time ?? now));
+      const day = brtDate(new Date(t.exit_time ?? t.entry_time ?? now));
       const row = byDayMap.get(day) ?? { date: day, realized_brl: 0, trades: 0, wins: 0, losses: 0, sem_preco: 0 };
       row.trades += 1;
       if (t.result_brl == null) row.sem_preco += 1;
@@ -659,7 +674,7 @@ export const getB3RealCockpit = createServerFn({ method: "GET" })
       },
       // Livro incompleto NUNCA pode aparecer como número completo.
       rows_limit: rowLimit,
-      rows_truncated: (cmds ?? []).length >= rowLimit,
+      rows_truncated: apuracao.rows_truncated || (cmds ?? []).length >= rowLimit,
       by_day: byDay,
       no_movement: dayOrders.length === 0 && tradesToday.length === 0,
       real_state: realState,
@@ -943,6 +958,8 @@ export const getB3RealCockpitLive = createServerFn({ method: "GET" })
       broker,
       broker_fresh: brokerFresh,
       open_profit_brl: openProfitBrl,
+      result_unknown: dailyCircuit.surveillance_suspended,
+      unappraised_count: dailyCircuit.unappraised_count,
       realized_brl: Number(dailyCircuit.realized_brl ?? 0),
       total_brl: totalBrl,
       daily_circuit: dailyCircuit,

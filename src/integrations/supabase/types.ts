@@ -1973,6 +1973,7 @@ export type Database = {
           entry_time: string | null
           exit_price: number | null
           exit_time: string | null
+          fechamento_corretora: Json | null
           fees_brl: number | null
           gain_pts: number | null
           gross_result_brl: number | null
@@ -2004,6 +2005,7 @@ export type Database = {
           entry_time?: string | null
           exit_price?: number | null
           exit_time?: string | null
+          fechamento_corretora?: Json | null
           fees_brl?: number | null
           gain_pts?: number | null
           gross_result_brl?: number | null
@@ -2035,6 +2037,7 @@ export type Database = {
           entry_time?: string | null
           exit_price?: number | null
           exit_time?: string | null
+          fechamento_corretora?: Json | null
           fees_brl?: number | null
           gain_pts?: number | null
           gross_result_brl?: number | null
