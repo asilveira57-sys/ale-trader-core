@@ -4752,7 +4752,7 @@ async function runB3SimulationTickInner(
         ...(freioProtecaoSombra ? [freioProtecaoSombra] : []),
         ...(lossHit && freioProtecaoSombra !== "stop_diario" ? ["stop_diario"] : []),
       ];
-      const entradaEmSombra = freiosNaSombra.length > 0;
+      let entradaEmSombra = freiosNaSombra.length > 0;
       // LIBERAÇÃO MANUAL (16/09/2026): a ordem SIMULADA e `freios_na_sombra` não
       // mudam — a medição da sombra tem que continuar limpa, é ela que dirá se
       // essa vontade de destravar é boa ideia ao longo de semanas. Muda só quem
@@ -4760,14 +4760,14 @@ async function runB3SimulationTickInner(
       // 21/09/2026: "pico" só barra o espelho quando a CONTA REAL tem pico do dia
       // registrado, acima do piso e armado — o pico marcado a mercado do robô
       // simulado nunca mais barra dinheiro real.
-      const freiosBarrandoReal = freiosNaSombra.filter((f) =>
+      let freiosBarrandoReal = freiosNaSombra.filter((f) =>
         !freioEstaLiberado(mode, f)
         && (f !== "pico" || picoBarraReal)
         && (f !== "grupo" || grupoBarraReal(mode))
         && (f !== "stop_diario" || stopDiarioBarraReal));
 
-      const espelhoBarradoPorFreio = freiosBarrandoReal.length > 0;
-      const entradaSobLiberacao = entradaEmSombra && !espelhoBarradoPorFreio;
+      let espelhoBarradoPorFreio = freiosBarrandoReal.length > 0;
+      let entradaSobLiberacao = entradaEmSombra && !espelhoBarradoPorFreio;
 
 
 
@@ -4994,6 +4994,25 @@ async function runB3SimulationTickInner(
         }
       }
 
+
+      // ── PORTÃO DE SETUP VÁLIDO POR ROBÔ (10/11/2026) ──
+      // Depois do classificador e do comitê, antes da abertura. Com
+      // `exigir_setup_valido = true`, entrada cujo setup resolvido é
+      // `no_valid_setup` (ou vazio) vira freio EM SOMBRA `setup_invalido`:
+      // a ordem simulada entra com bloqueado_na_sombra = true (contrafactual)
+      // e o espelho para o real fica barrado. Nenhum outro portão muda.
+      {
+        const setupNome = String(setupInfo?.name ?? "").trim();
+        if ((cfg as any).exigir_setup_valido === true
+          && (setupNome === "" || setupNome === "no_valid_setup")
+          && !freiosNaSombra.includes("setup_invalido")) {
+          freiosNaSombra.push("setup_invalido");
+          entradaEmSombra = true;
+          freiosBarrandoReal = [...freiosBarrandoReal, "setup_invalido"];
+          espelhoBarradoPorFreio = true;
+          entradaSobLiberacao = false;
+        }
+      }
 
       if (decision.final === "approved" && !setupAllowed && !pendSimPronto) {
         // Comitê aprovou, mas o setup técnico não é operável (Fase 1: só trend_pullback).

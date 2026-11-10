@@ -4539,6 +4539,7 @@ export type Database = {
           enabled: boolean
           entry_cutoff_time: string
           entry_style: string
+          exigir_setup_valido: boolean
           force_close_time: string
           gain_pts: number
           id: string
@@ -4609,6 +4610,7 @@ export type Database = {
           enabled?: boolean
           entry_cutoff_time?: string
           entry_style?: string
+          exigir_setup_valido?: boolean
           force_close_time?: string
           gain_pts?: number
           id?: string
@@ -4679,6 +4681,7 @@ export type Database = {
           enabled?: boolean
           entry_cutoff_time?: string
           entry_style?: string
+          exigir_setup_valido?: boolean
           force_close_time?: string
           gain_pts?: number
           id?: string
@@ -8957,6 +8960,7 @@ export type Database = {
           confirmacao_exigida_pts: number
           contratos: number
           entrada: number
+          freios_na_sombra: string[]
           geometria: Json
           hora_brt: string
           lado: string

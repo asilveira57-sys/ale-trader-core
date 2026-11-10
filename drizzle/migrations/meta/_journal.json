@@ -176,6 +176,13 @@
       "when": 1794265781603,
       "tag": "0024_real_divergencia_quatro_status",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794312513356,
+      "tag": "0025_exigir_setup_valido_por_robo",
+      "breakpoints": true
     }
   ]
 }

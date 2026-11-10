@@ -3,7 +3,7 @@ import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getB3FichaDia } from "@/lib/b3-ficha-dia.functions";
-import { BRL } from "@/lib/b3-format";
+import { BRL, FREIO_LABEL } from "@/lib/b3-format";
 import { copiarTexto, tabular } from "@/lib/b3-copiar";
 import { vLabel } from "@/lib/b3-listas-format";
 import { robotLabel } from "@/lib/b3-cockpit-labels";
@@ -39,7 +39,8 @@ function mover(d: string, passo: number) {
 }
 const robo = (o: any) => robotLabel(o.mode, o.variant, o.apelido);
 const HEAD = ["Hora", "Ativo · modalidade", "Robô", "Lado", "Contratos", "Entrada", "Stop", "Alvo", "Score", "Confiança", "Votos", "Resultado", "Saiu", "MFE (pts)", "MAE (pts)", "Barrada na sombra"];
-const linhaTxt = (o: any) => [o.hora_brt ? String(o.hora_brt).slice(0, 8) : SR, `${o.raiz} · ${vLabel(o.variant)}`, robo(o), lado(o.lado), num(o.contratos), num(o.entrada, 2), num(o.stop, 2), num(o.alvo, 2), num(o.score, 1), num(o.confianca, 1), num(o.votos), o.resultado_brl == null ? SR : BRL(Number(o.resultado_brl)), o.saiu ?? SR, num(o.mfe_pts), num(o.mae_pts), o.barrada_na_sombra ? "sim" : "não"];
+const motivoSombra = (o: any) => (Array.isArray(o.freios_na_sombra) ? o.freios_na_sombra : []).map((f: string) => FREIO_LABEL[f] ?? f).join(" + ");
+const linhaTxt = (o: any) => [o.hora_brt ? String(o.hora_brt).slice(0, 8) : SR, `${o.raiz} · ${vLabel(o.variant)}`, robo(o), lado(o.lado), num(o.contratos), num(o.entrada, 2), num(o.stop, 2), num(o.alvo, 2), num(o.score, 1), num(o.confianca, 1), num(o.votos), o.resultado_brl == null ? SR : BRL(Number(o.resultado_brl)), o.saiu ?? SR, num(o.mfe_pts), num(o.mae_pts), o.barrada_na_sombra ? `sim${motivoSombra(o) ? ` — ${motivoSombra(o)}` : ""}` : "não"];
 const confTxt = (o: any) => (o.confirmacao_exigida_pts == null ? null : `a confirmação exigia ${num(o.confirmacao_exigida_pts)} pontos; entrou a ${num(o.preco_confirmacao, 2)}`);
 
 function fichaTxt(o: any) {
@@ -133,7 +134,7 @@ function FichaDiaPage() {
                       <tr className={`cursor-pointer border-t hover:bg-muted/40 ${aberta === i ? "bg-muted/40" : ""}`} onClick={() => setAberta(aberta === i ? null : i)}>
                         {t.slice(0, 15).map((c, j) => (
                           <td key={j} className={`whitespace-nowrap px-2 py-3 ${j === 11 && o.resultado_brl != null ? (Number(o.resultado_brl) < 0 ? "text-destructive" : Number(o.resultado_brl) > 0 ? "text-success" : "") : ""}`}>
-                            {c}{j === 2 && o.barrada_na_sombra ? <span className="ml-2 rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">o freio barraria esta entrada (no simulado ela entrou)</span> : null}
+                            {c}{j === 2 && o.barrada_na_sombra ? <span className="ml-2 rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">o freio barraria esta entrada (no simulado ela entrou){motivoSombra(o) ? ` — ${motivoSombra(o)}` : ""}</span> : null}
                           </td>
                         ))}
                       </tr>
