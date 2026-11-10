@@ -8777,6 +8777,17 @@ export type Database = {
           variant: string
         }[]
       }
+      b3_cockpit_disjuntor_niveis: {
+        Args: {
+          p_fim: string
+          p_inicio: string
+          p_modes?: string[]
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: Json
+      }
       b3_cockpit_tres_leituras: {
         Args: {
           p_fim: string

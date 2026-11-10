@@ -527,6 +527,10 @@ function CockpitPage() {
   const readThree = useServerFn(readThreeReadings);
   const threeQ = useQuery({ queryKey: ["b3-cockpit-pesado", "tres-leituras", period, filterKey], queryFn: () => readThree({ data: { ...period, ...filterArgs } }), staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false });
   const threeRows = threeQ.data?.rows ?? [];
+  // With one selected asset, the top readout is that asset's own curve, not the all-asset TOTAL.
+  const displayedReading = (rows: ThreeReading[]) => !allSymbols && symbolsSel.length === 1
+    ? rows.find(r => r.nivel === "ativo" && r.symbol === symbolsSel[0])
+    : rows.find(r => r.nivel === "total");
   const threeFor = (root: string, variant?: string, mode?: string) => readingFor(threeRows, root, variant, mode);
 
   // LEVE (18/10/2026): a leitura viva é UMA só, sem recorte — o filtro de
@@ -784,8 +788,8 @@ function CockpitPage() {
       <WalletBand title="Cockpit simulado — todos os ativos · carteira atual" rows={walletRows} exposure={vivo ? currentExposure : undefined} pending={walletsQ.isPending} error={walletsQ.isError} />
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
-      <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(threeRows.find(r => r.nivel === "total")))}><Copy />Copiar resultado</Button></div><ThreeReadings row={threeRows.find(r => r.nivel === "total")} /></section>
-      {recentQ.isPending ? <p>Carregando os pregões…</p> : recentQ.isError ? <p role="alert">Não foi possível ler os pregões.</p> : recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={recentQ.data.rows.find(r => r.nivel === "total")} sessions={sessions} onToggleSessions={() => setSessions(sessions === 5 ? 10 : 5)} busy={recentQ.isFetching} />}
+      <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(displayedReading(threeRows)))}><Copy />Copiar resultado</Button></div><ThreeReadings row={displayedReading(threeRows)} /></section>
+      {recentQ.isPending ? <p>Carregando os pregões…</p> : recentQ.isError ? <p role="alert">Não foi possível ler os pregões.</p> : recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} symbol={!allSymbols && symbolsSel.length === 1 ? symbolsSel[0] : undefined} total={displayedReading(recentQ.data.rows)} sessions={sessions} onToggleSessions={() => setSessions(sessions === 5 ? 10 : 5)} busy={recentQ.isFetching} />}
 
       {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">

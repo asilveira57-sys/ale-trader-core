@@ -183,6 +183,13 @@
       "when": 1794312513356,
       "tag": "0025_exigir_setup_valido_por_robo",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794331686944,
+      "tag": "0026_cockpit_disjuntor_niveis_leitura",
+      "breakpoints": true
     }
   ]
 }

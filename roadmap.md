@@ -1,6 +1,8 @@
 # Fila de trabalho
 
 ## Em andamento
+- [x] 10/11: adaptador SQL de leitura por nível, totais da simulação/selo sem somar modalidades, WIN único usa curva de ativo; evidência/cópias e dez pregões conferidos autenticado/celular. WIN +1457, TOTAL global −16; defaults preservados, funções protegidas com hashes iguais, 16 testes OK. docs/tests/disjuntor-niveis-10-11.md.
+- [ ] 10/11 publicação: proibida com pregão aberto; aguarda nova interação após 18:30 Brasília, sem agendamento automático.
 - [x] 09/11 Parte 1: carteira atual/transferência sem portão temporal ou hierarquia vazia; Hoje e Ontem sem ordens conferidos; vivo preservado para resultado/ordens/exposição.
 - [x] 09/11 Parte 2: RPC canônica n, prévia/snapshot owner, núcleo privado auditado/transação; SC1368→n6/228/contratos0→6; cópias/celular conferidos, 18 testes leitura OK. Transferências9→9, zero equalizações; confirmação não exercitada por proibição do dono.
 - [x] 09/11 Parte 3: causa alerts[].at=identidade não temporal (carteira_insuficiente 2026-11-09:WIN); horas/duração/datas tolerantes e fallback/isolamento; real vazio desktop/celular abre e cópia completa conferida. Compilação OK; docs/tests/carteira-cockpit-09-11.md.

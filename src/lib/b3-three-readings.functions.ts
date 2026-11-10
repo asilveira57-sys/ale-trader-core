@@ -21,7 +21,7 @@ export const readThreeReadings = createServerFn({ method: "GET" })
       if (window) period = resolvePeriod({ preset: "entre", ...window });
     }
     const clock = performance.now();
-    const { data: result, error } = await context.supabase.rpc("b3_cockpit_tres_leituras", {
+    const { data: result, error } = await context.supabase.rpc("b3_cockpit_disjuntor_niveis", {
       p_user_id: context.userId, p_inicio: period.start, p_fim: period.end,
       p_symbols: data.symbols ?? undefined, p_variants: data.variants ?? undefined, p_modes: data.modes ?? undefined,
     });

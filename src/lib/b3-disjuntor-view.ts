@@ -9,7 +9,7 @@ export const disjuntorInput = z.object({
   variants: z.array(z.string().min(1).max(40)).nullable().default(null),
 });
 export interface DisjuntorRow {
-  variant?: string; conta_base?: string;
+  variant?: string; symbol?: string; nivel?: "total" | "ativo" | "modalidade"; conta_base?: string;
   dia: string; capital_base_brl: number; base_origem: string; perda_pct: number;
   limite_perda_brl: number; meta_ganho_brl: number; disparou: string;
   hora_disparo_brt: string | null; resultado_com_disjuntor_brl: number;
@@ -51,9 +51,14 @@ export function shiftSession(day: string, delta: number) {
   return d.toISOString().slice(0, 10);
 }
 export function disjuntorTotals(rows: DisjuntorRow[]) {
+  // Only daily TOTAL RPC rows can contribute to a period total.
+  const days = new Set<string>();
   const totals = new Map<number, { pct: number; com: number; sem: number; diferenca: number; antes: number; evitadas: number; ordens: number; pregoes: number }>();
   for (const r of rows) {
-    if (!r.ordens_no_dia) continue;
+    if (r.nivel !== "total" || !r.ordens_no_dia) continue;
+    const identity = `${r.dia}|${r.perda_pct}`;
+    if (days.has(identity)) throw new Error("Mais de um cenário TOTAL para o mesmo pregão e limiar.");
+    days.add(identity);
     const t = totals.get(Number(r.perda_pct)) ?? { pct: Number(r.perda_pct), com: 0, sem: 0, diferenca: 0, antes: 0, evitadas: 0, ordens: 0, pregoes: 0 };
     t.com += Number(r.resultado_com_disjuntor_brl); t.sem += Number(r.resultado_sem_disjuntor_brl); t.diferenca += Number(r.diferenca_brl);
     t.antes += Number(r.ordens_antes); t.evitadas += Number(r.ordens_evitadas); t.ordens += Number(r.ordens_no_dia); t.pregoes++;
@@ -68,7 +73,7 @@ export function derivedPeakFloor(pct: number | null | undefined, globalStop: num
 export function disjuntorBadgeText(row: DisjuntorRow | undefined) {
   if (!row) return "Disjuntor: sem registro";
   if (!row.ordens_no_dia) return "Disjuntor: sem ordens no dia";
-  if (row.disparou === "não disparou") return "disjuntor não teria armado";
+  if (row.disparou === "não disparou") return "não armou — resultado idêntico ao com freio";
   const money = Number(row.resultado_com_disjuntor_brl).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   return `teria armado o disjuntor às ${row.hora_disparo_brt?.slice(0, 5) ?? "sem registro"} · ${row.disparou} · resultado travado ${money}`;
 }

@@ -28,18 +28,22 @@ export const readDisjuntorScenarios = createServerFn({ method: "POST" })
     const robots = (capacity ?? []) as CapacityRobot[];
     capacityBase(robots, data.capital);
     const variants = data.variants ?? [...new Set(robots.map(r => r.variant))].sort();
-    const jobs = dates.flatMap(day => variants.map(variant => ({ day, variant })));
+    const levels: { nivel: "total" | "ativo" | "modalidade"; variant?: string; symbols: string[] | null }[] = [
+      { nivel: "total", symbols: null }, { nivel: "ativo", symbols: ["WIN"] },
+      ...variants.map(variant => ({ nivel: "modalidade" as const, variant, symbols: ["WIN"] })),
+    ];
+    const jobs = dates.flatMap(day => levels.map(level => ({ day, ...level })));
     const rows: DisjuntorRow[] = [];
     // Small batches avoid serial latency without flooding the data service.
     for (let i = 0; i < jobs.length; i += 3) {
-      const batches = await Promise.all(jobs.slice(i, i + 3).map(async ({ day, variant }) => {
+      const batches = await Promise.all(jobs.slice(i, i + 3).map(async ({ day, variant, nivel, symbols }) => {
         const { data: result, error } = await (context.supabase as any).rpc("b3_disjuntor_simulado", {
           p_user_id: context.userId, p_dia: day, p_perdas_pct: data.losses.map((n) => n / 100),
-          p_capital_base: data.capital, p_symbols: ["WIN"], p_variants: [variant], p_com_freio: true,
+          p_capital_base: data.capital, p_symbols: symbols, p_variants: variant ? [variant] : null, p_com_freio: true,
           p_piso_pico_brl: floor.peak_min_brl,
         });
         if (error) { console.error("[disjuntor-leitura]", day, error.message); throw new Error(`Não foi possível consultar o disjuntor em ${day}.`); }
-        return (result ?? []).map((r: DisjuntorRow) => ({ ...r, variant, conta_base: capacityFormula(robots.filter(c => c.variant === variant), data.capital) })) as DisjuntorRow[];
+        return (result ?? []).map((r: DisjuntorRow) => ({ ...r, variant, nivel, symbol: nivel === "total" ? undefined : "WIN", conta_base: nivel === "modalidade" ? capacityFormula(robots.filter(c => c.variant === variant), data.capital) : `${r.base_origem}: ${r.capital_base_brl}` })) as DisjuntorRow[];
       }));
       rows.push(...batches.flat());
     }
