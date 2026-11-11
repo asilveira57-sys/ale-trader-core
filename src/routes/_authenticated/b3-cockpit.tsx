@@ -17,6 +17,7 @@ import { getCockpitDailyPeaks } from "@/lib/b3-cockpit-measurements.functions";
 import { brakeNotActivated, totalBlocked, cockpitBrakeEffect, brakeTableTotal } from "@/lib/b3-cockpit-brake";
 import { peakSummary, type RealizedPeak } from "@/lib/b3-cockpit-measurements";
 import { copiarTexto, tabular } from "@/lib/b3-copiar";
+import { PeakPanel } from "@/components/b3/PeakPanel";
 import { useState, useEffect, Profiler } from "react";
 import { timedCockpitRead, cockpitRenderTiming } from "@/lib/b3-cockpit-timing";
 import { formatBrDate } from "@/lib/b3-period";
@@ -257,11 +258,14 @@ const VARIANT_LIST = Object.keys(VARIANT_LABEL);
 // São 250 robôs; quem está acompanhando um ativo não quer remarcar tudo a cada
 // visita. Guardado no navegador, sem tocar em banco — é preferência de tela.
 const FILTER_STORAGE_KEY = "b3-cockpit-filtros-v2";
+// 11/11/2026: the owner trades only WIN with real money — the screen always opens on WIN;
+// other assets and the aggregate stay behind the selector, never as the default.
+const OPENING_SYMBOLS = ["WIN"];
 type SavedFilters = {
   symbols: string[]; variants: string[]; modes: string[]; filter: Filter; sort: Sort;
 };
 const DEFAULT_FILTERS: SavedFilters = {
-  symbols: [...B3_ASSETS], variants: [...VARIANT_LIST], modes: [...MODE_LIST],
+  symbols: [...OPENING_SYMBOLS], variants: [...VARIANT_LIST], modes: [...MODE_LIST],
   filter: "all", sort: "none",
 };
 function loadFilters(): SavedFilters {
@@ -271,7 +275,7 @@ function loadFilters(): SavedFilters {
     if (!raw) return DEFAULT_FILTERS;
     const p = JSON.parse(raw);
     return {
-      symbols: Array.isArray(p.symbols) ? p.symbols : DEFAULT_FILTERS.symbols,
+      symbols: DEFAULT_FILTERS.symbols,
       variants: Array.isArray(p.variants) ? p.variants : DEFAULT_FILTERS.variants,
       modes: Array.isArray(p.modes) ? p.modes : DEFAULT_FILTERS.modes,
       filter: (["all", "open", "blocked", "real"].includes(p.filter) ? p.filter : "all") as Filter,
@@ -576,11 +580,16 @@ function CockpitPage() {
     gcTime: 60_000,
   });
 
+  // Realized peak per asset and modality, displayed for live and historical periods alike.
+  const peakTableQ = useQuery({ queryKey: ["b3-cockpit-pesado", "pico-tabela", period, filterKey], queryFn: () => readPeriodPeaks({ data: { ...period, symbols: filterArgs.symbols, variants: filterArgs.variants } }), staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false });
+  const peakRowsFor = (root: string, variant: string) => ((peakTableQ.data?.realized ?? []) as any[]).filter((r) => r.raiz === root && r.variant === variant);
+  const scopeAssets = allSymbols ? "todos os ativos (agregado)" : symbolsSel.join(" + ");
   const readLabels = useServerFn(getCockpitLabelEvidence);
   const readWallets = useServerFn(readRobotWallets);
   const walletsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "carteiras"], queryFn: () => readWallets(), staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false });
   const walletRows = walletsQ.data?.rows ?? [];
   const walletsFor = (root: string, variant?: string, mode?: string) => walletRows.filter(w => w.symbol === root && (!variant || w.variant === variant) && (!mode || w.mode === mode));
+  const contractCap = (rows: any[]) => { const v = rows.map((w) => Number(w.max_contracts)).filter((n) => Number.isFinite(n) && n > 0); return v.length ? Math.max(...v) : null; };
   const currentExposure = walletExposure((q.data?.cards ?? []) as any[], new Map(Object.entries(walletsQ.data?.margins ?? {})));
   const labelsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "label-evidence", filterKey], queryFn: () => readLabels({ data: filterArgs }), enabled: vivo, staleTime: Infinity, gcTime: 60_000 });
   const labelEvidence: BrakeEvidence[] = vivo ? labelsQ.data?.brake ?? [] : (periodPeaksQ.data?.brake ?? []).filter((r: any) => !filterArgs.modes || filterArgs.modes.includes(r.mode));
@@ -785,10 +794,10 @@ function CockpitPage() {
       {threeQ.isError && <p role="alert" className="text-destructive">Três leituras indisponíveis — sem registro. Use Atualizar.</p>}
       {!vivo && hd && <h2 className="text-xl font-black">{hd.sem_freio.by_day.length} pregões: {hd.sem_freio.by_day.map((d: any) => shortDate(d.date)).join(", ")} · {hd.period.label}</h2>}
 
-      <WalletBand title="Cockpit simulado — todos os ativos · carteira atual" rows={walletRows} exposure={vivo ? currentExposure : undefined} pending={walletsQ.isPending} error={walletsQ.isError} />
+      <WalletBand title={`Cockpit simulado — ${scopeAssets} · carteira atual`} rows={allSymbols ? walletRows : walletRows.filter(w => symbolsSel.includes(w.symbol))} exposure={vivo ? currentExposure : undefined} pending={walletsQ.isPending} error={walletsQ.isError} />
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
-      <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(displayedReading(threeRows)))}><Copy />Copiar resultado</Button></div><ThreeReadings row={displayedReading(threeRows)} /></section>
+      <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte · {scopeAssets}</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(displayedReading(threeRows)))}><Copy />Copiar resultado</Button></div><ThreeReadings row={displayedReading(threeRows)} /></section>
       {recentQ.isPending ? <p>Carregando os pregões…</p> : recentQ.isError ? <p role="alert">Não foi possível ler os pregões.</p> : recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} symbol={!allSymbols && symbolsSel.length === 1 ? symbolsSel[0] : undefined} total={displayedReading(recentQ.data.rows)} sessions={sessions} onToggleSessions={() => setSessions(sessions === 5 ? 10 : 5)} busy={recentQ.isFetching} />}
 
       {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
@@ -964,6 +973,7 @@ function CockpitPage() {
             {!vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}
           </div>}
 
+          <div className="rounded-lg border border-border/60 bg-card"><PeakPanel title={`${root} · ativo inteiro`} rows={peakRowsFor(root, "(ativo)")} contracts={contractCap(walletsFor(root))} pending={peakTableQ.isPending} error={peakTableQ.isError} note /></div>
           {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
             const sub = (hdr?.por_modalidade ?? []).find((m: any) => m.variant === variant);
             const variantKey = `${root}|${variant}`;
@@ -1009,6 +1019,7 @@ function CockpitPage() {
                 </Button>
                </div>
                <WalletBand title={`${root} · ${variantLabel(variant)} · carteira atual`} rows={walletsFor(root, variant)} pending={walletsQ.isPending} error={walletsQ.isError} />
+               <PeakPanel title={`${root} · ${variantLabel(variant)}`} rows={peakRowsFor(root, variant)} contracts={contractCap(walletsFor(root, variant))} pending={peakTableQ.isPending} error={peakTableQ.isError} />
                <ReadingDetails row={threeFor(root, variant)} />
                </div>
 

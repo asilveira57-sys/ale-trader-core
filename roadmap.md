@@ -86,3 +86,5 @@
 - [x] Percentuais por robô (chave desligada), contratos = piso(capital×risco_pct/margem do ativo), margem por ativo em branco
 - [x] Trava de capital real assimétrica (queda imediata, alta >30% quarentena 3 leituras)
 - [x] Tela de proposta de conversão + confirmar/lote/desfazer + capital na tela
+
+- [ ] 11/11 cockpit: fases 3 (pico com freio/disjuntor, função nova), 4 (capital em risco × saldo) e 5 (cores por ativo) pendentes — fases 1 e 2 entregues.
