@@ -1,0 +1,42 @@
+DO $migration$
+DECLARE capacity_def text; circuit_def text; cockpit_def text; readings_def text; updated text;
+BEGIN
+ SELECT pg_get_functiondef('public.b3_disjuntor_capacidade(uuid,text[],text[])'::regprocedure) INTO STRICT capacity_def;
+ SELECT pg_get_functiondef('public.b3_disjuntor_simulado(uuid,date,numeric[],numeric,numeric,numeric,numeric,text[],text[],boolean)'::regprocedure) INTO STRICT circuit_def;
+ SELECT pg_get_functiondef('public.b3_cockpit_disjuntor_niveis(uuid,date,date,text[],text[],text[])'::regprocedure) INTO STRICT cockpit_def;
+ SELECT pg_get_functiondef('public.b3_cockpit_tres_leituras(uuid,date,date,text[],text[],text[])'::regprocedure) INTO STRICT readings_def;
+ updated := replace(capacity_def, 'p_variants text[] DEFAULT NULL::text[])', 'p_variants text[] DEFAULT NULL::text[], p_modes text[] DEFAULT NULL::text[])');
+ IF updated=capacity_def THEN RAISE EXCEPTION 'Capacity signature not found'; END IF;
+ capacity_def := updated;
+ updated := replace(capacity_def, 'AND (p_variants IS NULL OR coalesce(r.variant,''indicador'')=ANY(p_variants));', 'AND (p_variants IS NULL OR coalesce(r.variant,''indicador'')=ANY(p_variants)) AND (p_modes IS NULL OR s.mode=ANY(p_modes));');
+ IF updated=capacity_def THEN RAISE EXCEPTION 'Capacity filter not found'; END IF;
+ capacity_def := updated;
+ updated := replace(circuit_def, 'p_com_freio boolean DEFAULT true)', 'p_com_freio boolean DEFAULT true, p_modes text[] DEFAULT NULL::text[])');
+ IF updated=circuit_def THEN RAISE EXCEPTION 'Circuit signature not found'; END IF;
+ circuit_def := updated;
+ updated := replace(circuit_def, 'and (p_variants is null or coalesce(r.variant,''indicador'') = any(p_variants))', 'and (p_variants is null or coalesce(r.variant,''indicador'') = any(p_variants)) and (p_modes is null or o.mode = any(p_modes))');
+ IF updated=circuit_def THEN RAISE EXCEPTION 'Circuit order filter not found'; END IF;
+ circuit_def := updated;
+ updated := replace(circuit_def, 'public.b3_disjuntor_capacidade(p_user_id,p_symbols,p_variants)', 'public.b3_disjuntor_capacidade(p_user_id,p_symbols,p_variants,p_modes)');
+ IF updated=circuit_def THEN RAISE EXCEPTION 'Circuit capacity call not found'; END IF;
+ circuit_def := updated;
+ updated := replace(cockpit_def, 'CASE WHEN l.nivel=''total'' THEN NULL ELSE ARRAY[l.symbol] END,CASE WHEN l.nivel=''modalidade'' THEN ARRAY[l.variant] ELSE NULL END,true)', 'CASE WHEN l.nivel=''total'' THEN p_symbols ELSE ARRAY[l.symbol] END,CASE WHEN l.nivel=''modalidade'' THEN ARRAY[l.variant] ELSE p_variants END,true,p_modes)');
+ IF updated=cockpit_def THEN RAISE EXCEPTION 'Cockpit scenario call not found'; END IF;
+ cockpit_def := updated;
+ updated := replace(readings_def, 'ARRAY[d.raiz],ARRAY[d.variant],true)', 'ARRAY[d.raiz],ARRAY[d.variant],true,p_modes)');
+ IF updated=readings_def THEN RAISE EXCEPTION 'Three readings scenario call not found'; END IF;
+ readings_def := updated;
+ -- No CASCADE or ambiguous overload; former arities use the final default.
+ DROP FUNCTION public.b3_disjuntor_simulado(uuid,date,numeric[],numeric,numeric,numeric,numeric,text[],text[],boolean);
+ DROP FUNCTION public.b3_disjuntor_capacidade(uuid,text[],text[]);
+ EXECUTE capacity_def;
+ EXECUTE circuit_def;
+ EXECUTE readings_def;
+ EXECUTE cockpit_def;
+END $migration$;
+REVOKE ALL ON FUNCTION public.b3_disjuntor_capacidade(uuid,text[],text[],text[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.b3_disjuntor_simulado(uuid,date,numeric[],numeric,numeric,numeric,numeric,text[],text[],boolean,text[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.b3_disjuntor_capacidade(uuid,text[],text[],text[]) TO anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.b3_disjuntor_simulado(uuid,date,numeric[],numeric,numeric,numeric,numeric,text[],text[],boolean,text[]) TO anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION public.b3_cockpit_disjuntor_niveis(uuid,date,date,text[],text[],text[]) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.b3_cockpit_disjuntor_niveis(uuid,date,date,text[],text[],text[]) TO authenticated,service_role;

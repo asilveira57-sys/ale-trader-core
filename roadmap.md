@@ -1,6 +1,7 @@
 # Fila de trabalho
 
 ## Em andamento
+- [x] 11/11 filtros do disjuntor simulado: migration 0028 preserva recorte ativo/modalidade/modo em cada nível e capacidade, assinatura única/default NULL; sessão do dono conferiu WIN1457, WIN+WDO−10829 (não disparou), três ativos/NULL−16. 20 testes OK; layout/regras intactos, sem publicação. docs/tests/disjuntor-recorte-11-11.md.
 - [x] 10/11 real: evidência de saída integral/ticket exato sem inferência, histórico preservado desde corte11/11; cockpit/extrato/conferência/resumos com apuração incompleta, suspensão do disjuntor preserva trava anterior/base/percentuais. 20 testes, navegador autenticado/cópia/celular e compilação OK; +202/8nulos/0posições no relatório desatualizado. Sem escrita operacional, não publicado.
 - [ ] Retorno real ponta a ponta: bloqueado pelo executor externo enviar fechamentos[] com ticket_posicao, volume integral, preco, fechado_em com fuso e resultado_brl líquido; contrato em docs/tests/real-apuracao-10-11.md. Não preencher histórico.
 - [x] 10/11: adaptador SQL de leitura por nível, totais da simulação/selo sem somar modalidades, WIN único usa curva de ativo; evidência/cópias e dez pregões conferidos autenticado/celular. WIN +1457, TOTAL global −16; defaults preservados, funções protegidas com hashes iguais, 16 testes OK. docs/tests/disjuntor-niveis-10-11.md.

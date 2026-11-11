@@ -8,7 +8,7 @@ export const getDisjuntorOptions = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const sb = context.supabase as any;
     const [runs, last] = await Promise.all([
-      sb.rpc("b3_disjuntor_capacidade", { p_user_id: context.userId, p_symbols: ["WIN"], p_variants: null }),
+      sb.rpc("b3_disjuntor_capacidade", { p_user_id: context.userId, p_symbols: ["WIN"], p_variants: null, p_modes: null }),
       sb.from("b3_simulation_orders").select("exit_time").eq("user_id", context.userId).ilike("symbol", "WIN%").eq("status", "closed").not("exit_time", "is", null).order("exit_time", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (runs.error || last.error) throw new Error("Não foi possível carregar os pregões WIN.");
@@ -23,7 +23,7 @@ export const readDisjuntorScenarios = createServerFn({ method: "POST" })
     const dates = sessionDates(data.start, data.end);
     const { syncPeakFloorFromGlobalStop } = await import("./b3-real-stop.server");
     const floor = await syncPeakFloorFromGlobalStop(context.supabase, context.userId);
-    const { data: capacity, error: capacityError } = await (context.supabase as any).rpc("b3_disjuntor_capacidade", { p_user_id: context.userId, p_symbols: ["WIN"], p_variants: data.variants });
+    const { data: capacity, error: capacityError } = await (context.supabase as any).rpc("b3_disjuntor_capacidade", { p_user_id: context.userId, p_symbols: ["WIN"], p_variants: data.variants, p_modes: null });
     if (capacityError) throw new Error("Não foi possível ler a capacidade dos robôs.");
     const robots = (capacity ?? []) as CapacityRobot[];
     capacityBase(robots, data.capital);
@@ -39,7 +39,7 @@ export const readDisjuntorScenarios = createServerFn({ method: "POST" })
       const batches = await Promise.all(jobs.slice(i, i + 3).map(async ({ day, variant, nivel, symbols }) => {
         const { data: result, error } = await (context.supabase as any).rpc("b3_disjuntor_simulado", {
           p_user_id: context.userId, p_dia: day, p_perdas_pct: data.losses.map((n) => n / 100),
-          p_capital_base: data.capital, p_symbols: symbols, p_variants: variant ? [variant] : null, p_com_freio: true,
+          p_capital_base: data.capital, p_symbols: symbols, p_variants: variant ? [variant] : data.variants, p_modes: null, p_com_freio: true,
           p_piso_pico_brl: floor.peak_min_brl,
         });
         if (error) { console.error("[disjuntor-leitura]", day, error.message); throw new Error(`Não foi possível consultar o disjuntor em ${day}.`); }

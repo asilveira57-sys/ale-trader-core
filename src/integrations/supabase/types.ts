@@ -8852,7 +8852,12 @@ export type Database = {
       }
       b3_diagnosticar_dia: { Args: { p_date: string }; Returns: number }
       b3_disjuntor_capacidade: {
-        Args: { p_symbols?: string[]; p_user_id: string; p_variants?: string[] }
+        Args: {
+          p_modes?: string[]
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
         Returns: {
           margin_per_contract_brl: number
           max_contracts: number
@@ -8868,6 +8873,7 @@ export type Database = {
           p_devolucao_pico_pct?: number
           p_dia: string
           p_ganho_pct?: number
+          p_modes?: string[]
           p_perdas_pct?: number[]
           p_piso_pico_brl?: number
           p_symbols?: string[]
