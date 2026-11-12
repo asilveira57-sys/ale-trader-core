@@ -1,3 +1,9 @@
+/** Evidência diária do disjuntor, como vem de b3_cockpit_disjuntor_niveis. No total, `por_ativo` traz o disjuntor de cada ativo somado. */
+export type DisjuntorDisparo = {
+  dia: string; motivo: string; hora: string | null; disparou?: string; ordens_antes: number; ordens_no_dia: number; ordens_evitadas?: number;
+  resultado_sem_disjuntor_brl?: number | null; resultado_com_disjuntor_brl?: number | null; diferenca_brl?: number | null;
+  por_ativo?: { symbol: string; disparou: string; hora_disparo_brt: string | null; resultado_com_disjuntor_brl: number | null; resultado_sem_disjuntor_brl?: number | null }[];
+};
 export type ThreeReading = {
   nivel: string; symbol: string | null; variant: string | null; mode: string | null;
   sem_freio: number; com_freio: number; com_freio_disjuntor: number;
@@ -5,7 +11,7 @@ export type ThreeReading = {
   barradas: number; frase: string; saiu_no_alvo: number; saiu_no_stop: number; saiu_no_meio: number;
   pico_lucro?: number | null; pico_data?: string; pico_hora?: string;
   disjuntor_nivel?: string; disjuntor_atribuicao?: string;
-  disparos?: { dia: string; motivo: string; hora: string | null; ordens_antes: number; ordens_no_dia: number; ordens_evitadas?: number; resultado_sem_disjuntor_brl?: number | null; resultado_com_disjuntor_brl?: number | null; diferenca_brl?: number | null }[];
+  disparos?: DisjuntorDisparo[];
 };
 export function readingFor(rows: ThreeReading[], symbol: string, variant?: string, mode?: string) {
   return rows.find(r => r.symbol === symbol && r.nivel === (mode ? "robo" : variant ? "modalidade" : "ativo") && (!variant || r.variant === variant) && (!mode || r.mode === mode));

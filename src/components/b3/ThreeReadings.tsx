@@ -5,7 +5,7 @@ import { copiarTexto } from "@/lib/b3-copiar";
 import { readingText } from "@/lib/b3-three-readings";
 import { MilestoneMark } from "./ConfigurationMilestones";
 import { newestSessions } from "@/lib/b3-session-window";
-import { circuitLevel, DisjuntorEvidence } from "./DisjuntorEvidence";
+import { circuitLabel, circuitLevel, DisjuntorEvidence } from "./DisjuntorEvidence";
 const brl = (n: number) => Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const color = (n: number) => Number(n) > 0 ? "text-success" : Number(n) < 0 ? "text-destructive" : "text-foreground";
 export function ThreeReadings({ row }: { row?: ThreeReading }) {
@@ -14,7 +14,7 @@ export function ThreeReadings({ row }: { row?: ThreeReading }) {
       <span className="block min-h-8 text-muted-foreground">{label}</span>
       <strong className={`block break-words font-mono ${row ? color(row[key]) : "text-muted-foreground"}`}>{row ? brl(row[key]) : "sem registro"}</strong>
     </div>)}
-  </div><p className="text-xs text-muted-foreground">disjuntor calculado no nível: {row ? circuitLevel(row) : "sem registro"}{row?.nivel === "robo" ? " · parcela do robô" : ""}</p>{row?.disparos?.length ? <details className="text-xs"><summary className="flex min-h-11 cursor-pointer items-center">Disjuntor por pregão</summary><DisjuntorEvidence row={row} /></details> : null}</div>;
+  </div><p className="text-xs text-muted-foreground">{circuitLabel(row)}{row?.nivel === "robo" ? " · parcela do robô" : ""}</p>{row?.disparos?.length ? <details className="text-xs"><summary className="flex min-h-11 cursor-pointer items-center">Disjuntor por pregão</summary><DisjuntorEvidence row={row} /></details> : null}</div>;
 }
 export function ReadingDetails({ row }: { row?: ThreeReading }) {
   if (!row) return <p className="text-xs text-muted-foreground">sem registro</p>;
@@ -35,7 +35,7 @@ export function ThreePeriodRows({ rows, total, symbol, variant, sessions, onTogg
       {daily.map(r => <tr key={r.dia} className="border-b border-border"><td>{r.dia}<MilestoneMark date={r.dia} symbol={symbol} variant={variant} /></td>{(['sem_freio', 'com_freio', 'com_freio_disjuntor'] as const).map(key => <td key={key} className={`py-2 text-right font-mono ${color(r[key])}`}>{brl(r[key])}</td>)}</tr>)}
       {total && <tr className="font-bold" data-period-total><td>{totalLabel}</td>{(['sem_freio', 'com_freio', 'com_freio_disjuntor'] as const).map(key => <td key={key} className={`py-2 text-right font-mono ${color(total[key])}`}>{brl(total[key])}</td>)}</tr>}
     </tbody></table></div>
-    <p className="py-2 text-xs text-muted-foreground">disjuntor calculado no nível: {total ? circuitLevel(total) : symbol ? variant ? `modalidade ${variant}` : `ativo ${symbol}` : "total"}. Modalidades e ativos não somam o todo: cada curva dispara em seu próprio instante. O período soma apenas pregões.</p>
+    <p className="py-2 text-xs text-muted-foreground">{total ? circuitLabel(total) : symbol ? `disjuntor calculado no nível: ${variant ? circuitLevel({ nivel: "modalidade", symbol, variant }) : `ativo ${symbol}`}` : "disjuntor: soma dos disjuntores por ativo"}. O total é a soma dos disjuntores de cada ativo. As modalidades ainda não somam o ativo: cada curva de modalidade dispara em seu próprio instante. O período soma apenas pregões.</p>
     {daily.map(r => <DisjuntorEvidence key={r.dia} row={{ ...r, nivel: r.disjuntor_nivel }} />)}
   </section>;
 }
