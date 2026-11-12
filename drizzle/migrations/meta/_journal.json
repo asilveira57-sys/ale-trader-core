@@ -218,6 +218,13 @@
       "when": 1794488013692,
       "tag": "0030_owner_only_shared_b3_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794520109618,
+      "tag": "0031_pico_tres_cenarios_capital_em_risco",
+      "breakpoints": true
     }
   ]
 }

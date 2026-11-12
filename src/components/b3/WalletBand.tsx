@@ -3,21 +3,25 @@ import { Button } from "@/components/ui/button";
 import { BRL } from "@/lib/b3-format";
 import { copiarTexto } from "@/lib/b3-copiar";
 import { walletSteps, walletSummary, type RobotWallet, type walletExposure } from "@/lib/b3-wallet-view";
+import type { CapitalRiskRow } from "@/lib/b3-pico-capital.functions";
 
 const LEGEND = "Quando o mesmo ativo tem compra e venda abertas, a exposição ao movimento do preço é a líquida, mas a margem exigida é a bruta — a corretora cobra as duas pontas.";
 export const COM_FREIO_NOTE = "A carteira é COM FREIO: ordem barrada na sombra não debita. O 'realizado hoje' do card é SEM FREIO. Os dois números não fecham por desenho.";
-export function WalletBand({ rows, title, robot = false, exposure, historical = false, pending = false, error = false }: { rows: RobotWallet[]; title: string; robot?: boolean; exposure?: ReturnType<typeof walletExposure>; historical?: boolean; pending?: boolean; error?: boolean }) {
+// Fase 4 do pedido de 11/11: saldo da carteira e capital em risco são coisas diferentes.
+// O capital em risco (robôs × contratos × margem, e com folga) vem pronto do banco, com a conta escrita.
+export function WalletBand({ rows, title, robot = false, exposure, historical = false, pending = false, error = false, risk, riskPending = false, riskError = false }: { rows: RobotWallet[]; title: string; robot?: boolean; exposure?: ReturnType<typeof walletExposure>; historical?: boolean; pending?: boolean; error?: boolean; risk?: CapitalRiskRow | null; riskPending?: boolean; riskError?: boolean }) {
+  const riskText = risk === undefined ? null : riskPending ? "Capital em risco: consultando…" : riskError ? "Capital em risco: leitura indisponível" : risk ? `Capital em risco: ${risk.conta}` : "Capital em risco: sem registro";
   const summary = walletSummary(rows), w = rows[0], steps = robot && w ? walletSteps(w) : null;
   const unavailable = historical ? "Carteira atual: período encerrado — sem retrato histórico" : pending ? "Consultando carteira…" : error ? "Carteira: leitura indisponível" : rows.length === 0 ? "Carteira: sem registro" : null;
-  const text = unavailable ?? (robot && w ? `Saldo ${BRL(w.saldo_atual_brl)} · ${w.contratos_atuais} contratos atuais` : `Capital total investido ${BRL(summary.capital)} · ${summary.robots} robôs · ${summary.contracts} contratos`);
+  const text = unavailable ?? (robot && w ? `Saldo ${BRL(w.saldo_atual_brl)} · ${w.contratos_atuais} contratos atuais` : `Saldo das carteiras ${BRL(summary.capital)} · ${summary.robots} robôs · ${summary.contracts} contratos que o saldo permite hoje`);
   const insufficient = !unavailable && summary.insufficient > 0;
   const next = steps ? `faltam ${BRL(steps.missing)} para ${steps.next} contratos` : robot && !unavailable ? "Próximo degrau: margem sem registro" : null;
   const cap = steps?.capped ? `a carteira permite ${steps.allowed} contratos, mas o teto do robô é ${w?.max_contracts}` : null;
   const state = insufficient ? robot ? "carteira insuficiente — o robô parou de entrar" : `${summary.insufficient} de ${summary.robots} em carteira insuficiente` : null;
-  const copy = () => copiarTexto(`${title}\n${text}\n${state ?? "Carteira insuficiente: nenhuma ou sem registro"}\n${next ?? "Próximo degrau: sem registro"}\n${cap ?? "Teto limitando: não ou sem registro"}\n` + (exposure ? `Exposição bruta: ${exposure.grossContracts} contratos · ${BRL(exposure.gross)}\nExposição líquida: ${exposure.netContracts} contratos · ${BRL(exposure.net)}\n${LEGEND}\n` : "Exposição: sem registro\n") + rows.map(r => Object.entries(r).map(([k,v]) => `${k}: ${v ?? "sem registro"}`).join("\n")).join("\n\n"));
+  const copy = () => copiarTexto(`${title}\n${text}\n${riskText ? `${riskText}\n` : ""}${state ?? "Carteira insuficiente: nenhuma ou sem registro"}\n${next ?? "Próximo degrau: sem registro"}\n${cap ?? "Teto limitando: não ou sem registro"}\n` + (exposure ? `Exposição bruta: ${exposure.grossContracts} contratos · ${BRL(exposure.gross)}\nExposição líquida: ${exposure.netContracts} contratos · ${BRL(exposure.net)}\n${LEGEND}\n` : "Exposição: sem registro\n") + rows.map(r => Object.entries(r).map(([k,v]) => `${k}: ${v ?? "sem registro"}`).join("\n")).join("\n\n"));
   return <div data-wallet-band data-wallet-insufficient={insufficient} className={`flex flex-wrap items-start gap-2 border-t border-border px-3 py-2 text-xs ${insufficient ? "bg-destructive/10 text-destructive" : "text-foreground"}`}>
     {insufficient ? <AlertTriangle className="size-4 shrink-0" /> : <Wallet className="size-4 shrink-0" />}
-    <div className="min-w-0 flex-1 space-y-1"><p className="font-semibold">{text}</p>{state && <p className="font-bold">{state}</p>}{next && <p>{next}</p>}{cap && <p className="font-semibold">{cap}</p>}
+    <div className="min-w-0 flex-1 space-y-1"><p className="font-semibold">{text}</p>{riskText && <p className="font-semibold" data-capital-risk>{riskText}</p>}{state && <p className="font-bold">{state}</p>}{next && <p>{next}</p>}{cap && <p className="font-semibold">{cap}</p>}
       {exposure !== undefined && <><p>Exposição bruta atual: {exposure ? `${exposure.grossContracts} contratos · ${BRL(exposure.gross)}` : "margem sem registro"}</p><p>Exposição líquida atual: {exposure ? `${exposure.netContracts} contratos · ${BRL(exposure.net)}` : "margem sem registro"}</p><p className="text-muted-foreground">{LEGEND}</p></>}
     </div><Button variant="ghost" className="min-h-11 min-w-11" aria-label={`Copiar carteira de ${title}`} onClick={copy}><Copy className="size-4" /></Button>
   </div>;

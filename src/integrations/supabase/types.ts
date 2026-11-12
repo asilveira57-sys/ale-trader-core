@@ -8780,6 +8780,27 @@ export type Database = {
           variant: string
         }[]
       }
+      b3_capital_em_risco: {
+        Args: {
+          p_folga?: number
+          p_modes?: string[]
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: {
+          capital_com_folga_brl: number
+          capital_em_risco_brl: number
+          conta: string
+          contratos: number
+          contratos_por_robo: number
+          margem_por_contrato_brl: number
+          nivel: string
+          raiz: string
+          robos: number
+          variant: string
+        }[]
+      }
       b3_cockpit_disjuntor_niveis: {
         Args: {
           p_fim: string
@@ -9078,6 +9099,28 @@ export type Database = {
           pico_margem_brl: number
           pico_margem_com_folga_brl: number
           posicoes_no_pico: number
+          raiz: string
+          trade_date: string
+          variant: string
+        }[]
+      }
+      b3_pico_tres_cenarios_dia: {
+        Args: {
+          p_fim: string
+          p_inicio: string
+          p_modes?: string[]
+          p_symbols?: string[]
+          p_user_id: string
+          p_variants?: string[]
+        }
+        Returns: {
+          cenario: string
+          devolveu_brl: number
+          disparou: string
+          fechamento_brl: number
+          hora_do_pico_brt: string
+          ordens: number
+          pico_brl: number
           raiz: string
           trade_date: string
           variant: string
