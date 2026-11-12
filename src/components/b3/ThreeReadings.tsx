@@ -6,7 +6,7 @@ import { copiarTexto } from "@/lib/b3-copiar";
 import { readingText } from "@/lib/b3-three-readings";
 import { MilestoneMark } from "./ConfigurationMilestones";
 import { newestSessions } from "@/lib/b3-session-window";
-import { circuitLabel, circuitLevel, DisjuntorEvidence } from "./DisjuntorEvidence";
+import { circuitLabel, DisjuntorEvidence } from "./DisjuntorEvidence";
 const brl = (n: number) => Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const color = (n: number) => Number(n) > 0 ? "text-success" : Number(n) < 0 ? "text-destructive" : "text-foreground";
 export function ThreeReadings({ row }: { row?: ThreeReading }) {
@@ -15,7 +15,7 @@ export function ThreeReadings({ row }: { row?: ThreeReading }) {
       <span className="block min-h-8 text-muted-foreground">{label}</span>
       <strong className={`block break-words font-mono ${row ? color(row[key]) : "text-muted-foreground"}`}>{row ? brl(row[key]) : "sem registro"}</strong>
     </div>)}
-  </div><p className="text-xs text-muted-foreground">{circuitLabel(row)}{row?.nivel === "robo" ? " · parcela do robô" : ""}</p>{row?.disparos?.length ? <details className="text-xs"><summary className="flex min-h-11 cursor-pointer items-center">Disjuntor por pregão</summary><DisjuntorEvidence row={row} /></details> : null}</div>;
+  </div><p className="text-xs text-muted-foreground">{circuitLabel(row)}</p>{row?.disparos?.length ? <details className="text-xs"><summary className="flex min-h-11 cursor-pointer items-center">Disjuntor por pregão</summary><DisjuntorEvidence row={row} /></details> : null}</div>;
 }
 export function ReadingDetails({ row }: { row?: ThreeReading }) {
   if (!row) return <p className="text-xs text-muted-foreground">sem registro</p>;
@@ -35,7 +35,7 @@ export function ThreePeriodRows({ rows, total, symbol, variant, sessions, onTogg
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (dia: string) => setOpen(prev => { const next = new Set(prev); next.has(dia) ? next.delete(dia) : next.add(dia); return next; });
   const totalLabel = `Total · ${daily.length} pregões`;
-  const level = total ? circuitLabel(total) : symbol ? `disjuntor calculado no nível: ${variant ? circuitLevel({ nivel: "modalidade", symbol, variant }) : `ativo ${symbol}`}` : "disjuntor: soma dos disjuntores por ativo";
+  const level = total ? circuitLabel(total) : circuitLabel({ nivel: symbol ? variant ? "modalidade" : "ativo" : "total", symbol: symbol ?? null, variant: variant ?? null });
   const keys = ['sem_freio', 'com_freio', 'com_freio_disjuntor'] as const;
   return <section className={`border-y border-border text-foreground ${compact ? "px-3 py-2" : "p-3"}`} data-three-period>
     <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-bold">{title}</h2>{onToggleSessions && <Button variant="outline" className="min-h-11" disabled={busy} onClick={onToggleSessions}>{sessions === 10 ? "mostrar 5 pregões" : "mostrar 10 pregões"}</Button>}<Button variant="outline" className="min-h-11" onClick={() => copiarTexto(`${title}\n` + daily.map(r => `${r.dia} · sem freio ${brl(r.sem_freio)} · com freio ${brl(r.com_freio)} · com freio + disjuntor ${brl(r.com_freio_disjuntor)} · ${(r.disparos?.[0]?.disparou ?? "sem registro")}`).join("\n") + `\n${totalLabel} · sem freio ${total ? brl(total.sem_freio) : "sem registro"} · com freio ${total ? brl(total.com_freio) : "sem registro"} · com freio + disjuntor ${total ? brl(total.com_freio_disjuntor) : "sem registro"}\n${level}`)}><Copy />Copiar pregões</Button></div>
@@ -46,7 +46,7 @@ export function ThreePeriodRows({ rows, total, symbol, variant, sessions, onTogg
       </Fragment>; })}
       {total && <tr className="font-bold" data-period-total><td>{totalLabel}</td>{keys.map(key => <td key={key} className={`py-2 text-right font-mono ${color(total[key])}`}>{brl(total[key])}</td>)}</tr>}
     </tbody></table></div>
-    <p className="py-2 text-xs text-muted-foreground">{level}. Toque no dia para ver por que o disjuntor disparou ou não. O total é a soma dos disjuntores de cada ativo; as modalidades ainda não somam o ativo. O período soma apenas pregões.</p>
+    <p className="py-2 text-xs text-muted-foreground">{level}. Toque no dia para ver por que o disjuntor disparou ou não. Existe um disjuntor por ativo: o total é a soma dos ativos, e cada modalidade mostra a sua parte no disjuntor do ativo (as ordens com freio fechadas até o disparo), por isso as modalidades somam o ativo. O período soma os pregões.</p>
   </section>;
 }
 

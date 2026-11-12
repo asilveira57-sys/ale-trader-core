@@ -78,6 +78,21 @@ describe.skipIf(process.env.B3_RPC_TEST !== "1")("disjuntor: recorte SQL de 10/1
     for (const symbol of ativos) soma += Number((await direto([symbol], ["range"])).resultado_com_disjuntor_brl ?? 0);
     expect(Number(total.com_freio_disjuntor)).toBeCloseTo(soma, 2);
   }, 60000);
+  // Desde 12/11/2026 (migration 0032) modalidade e robô mostram a parcela deles no disjuntor do ATIVO:
+  // ordens com freio fechadas até a ordem do disparo do ativo. Logo somam o ativo, por dia e no período.
+  it("modalidades e robôs somam o ativo na coluna com freio + disjuntor (WIN 10/11, com disparo)", async () => {
+    const { data } = await cockpit(["WIN"]);
+    const ativo = data.rows.find((r: any) => r.nivel === "ativo");
+    const soma = (nivel: string) => data.rows.filter((r: any) => r.nivel === nivel).reduce((s: number, r: any) => s + Number(r.com_freio_disjuntor), 0);
+    expect(Number(ativo.com_freio_disjuntor)).toBeCloseTo(10413, 2);
+    expect(soma("modalidade")).toBeCloseTo(10413, 2);
+    expect(soma("robo")).toBeCloseTo(10413, 2);
+    const pa = data.rows.find((r: any) => r.nivel === "modalidade" && r.variant === "price_action");
+    expect(Number(pa.com_freio_disjuntor)).toBeCloseTo(-3030, 2);
+    expect(pa.disjuntor_atribuicao).toBe("parcela da modalidade no disjuntor do ativo");
+    const daily = data.daily.filter((d: any) => d.gid === 0).reduce((s: number, d: any) => s + Number(d.com_freio_disjuntor), 0);
+    expect(daily).toBeCloseTo(10413, 2);
+  }, 60000);
   it("sem freio e com freio permanecem idênticos à função original", async () => {
     const { data, sb, args } = await cockpit(["WIN", "WDO"]);
     const { data: original, error } = await sb.rpc("b3_cockpit_tres_leituras", args);

@@ -225,6 +225,13 @@
       "when": 1794520109618,
       "tag": "0031_pico_tres_cenarios_capital_em_risco",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794522280493,
+      "tag": "0032_disjuntor_parcela_do_ativo",
+      "breakpoints": true
     }
   ]
 }

@@ -5,11 +5,14 @@ export function circuitLevel(row?: Pick<ThreeReading, "nivel" | "disjuntor_nivel
   const level = row?.disjuntor_nivel ?? row?.nivel;
   return level === "total" ? "total" : level === "ativo" ? `ativo ${row?.symbol ?? "sem registro"}` : `modalidade ${variantName(row?.variant)}`;
 }
-/** Rótulo do disjuntor. No total usa a atribuição gravada pelo banco ("soma dos disjuntores por ativo"); só apresentação. */
+/** Rótulo do disjuntor (só apresentação). Desde 12/11/2026 existe um disjuntor por ATIVO: o total é a
+ * soma dos ativos, e modalidade e robô mostram a sua parte no disjuntor do ativo (migration 0032). */
 export function circuitLabel(row?: Pick<ThreeReading, "nivel" | "disjuntor_nivel" | "symbol" | "variant" | "disjuntor_atribuicao" | "disparos">) {
   if (!row) return "disjuntor: sem registro";
-  const level = row.disjuntor_nivel ?? row.nivel;
-  if (level === "total") return `disjuntor: ${row.disjuntor_atribuicao ?? row.disparos?.[0]?.disparou ?? "total"}`;
+  const level = row.nivel === "robo" ? "robo" : row.disjuntor_nivel ?? row.nivel;
+  if (level === "total") return `disjuntor: ${row.disjuntor_atribuicao ?? row.disparos?.[0]?.disparou ?? "soma dos disjuntores por ativo"}`;
+  if (level === "modalidade") return `disjuntor: parcela da modalidade ${variantName(row.variant)} no disjuntor do ativo ${row.symbol ?? ""}`.trim();
+  if (level === "robo") return `disjuntor: parcela do robô no disjuntor do ativo ${row.symbol ?? ""}`.trim();
   return `disjuntor calculado no nível: ${circuitLevel(row)}`;
 }
 const money = (n: number | null | undefined) => n == null ? "sem registro" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -18,7 +21,6 @@ export function DisjuntorEvidence({ row, showValues = true }: { row?: ThreeReadi
   const level = row.disjuntor_nivel ?? row.nivel;
   return <div className="space-y-2 text-xs text-foreground">
     <p>{circuitLabel(row)}</p>
-    {row.disjuntor_atribuicao && level !== "total" && <p>{row.disjuntor_atribuicao}</p>}
     {row.disparos?.map(d => <div key={d.dia} className="border-t border-border py-2">
       {d.por_ativo?.length
         ? <p>{d.dia} · {d.disparou ?? row.disjuntor_atribuicao ?? "soma por ativo"}</p>
