@@ -22,17 +22,34 @@ describe.skipIf(process.env.B3_RPC_TEST !== "1")("disjuntor: recorte SQL de 10/1
     if (error) throw new Error(error.message);
     return { data, sb, userId, args };
   };
+  // Desde 11/11/2026 (migration 0029) o disjuntor é por ativo e o total é a soma dos ativos.
+  // Conferido em 10/11, com freio + disjuntor: WIN +10.413 · WDO -17.620 · BIT +3.824,40.
   for (const { symbols, level, expected } of [
-    { symbols: ["WIN"], level: "ativo", expected: 1457 },
-    { symbols: ["WIN", "WDO"], level: "total", expected: -10829 },
-    { symbols: ["WIN", "WDO", "BIT"], level: "total", expected: -16 },
-    { symbols: null, level: "total", expected: -16 },
+    { symbols: ["WIN"], level: "ativo", expected: 10413 },
+    { symbols: ["WIN", "WDO"], level: "total", expected: -7207 },
+    { symbols: ["WIN", "WDO", "BIT"], level: "total", expected: -3382.6 },
+    { symbols: null, level: "total", expected: -3382.6 },
   ]) {
     it(`${symbols?.join("+") ?? "NULL"}: ${level} = ${expected}`, async () => {
       const { data } = await cockpit(symbols);
       const row = data.rows.find((r: any) => r.nivel === level);
-      expect(Number(row?.com_freio_disjuntor)).toBe(expected);
-      if (expected === -10829) expect(row.disparos[0].disparou).toBe("não disparou");
+      expect(Number(row?.com_freio_disjuntor)).toBeCloseTo(expected, 2);
+      if (level === "total") expect(row.disjuntor_atribuicao).toBe("soma dos disjuntores por ativo");
+    }, 60000);
+  }
+  for (const symbols of [["WIN", "WDO"], ["WIN", "WDO", "BIT"], null]) {
+    it(`${symbols?.join("+") ?? "NULL"}: total = soma dos ativos`, async () => {
+      const { data } = await cockpit(symbols);
+      const total = data.rows.find((r: any) => r.nivel === "total");
+      const ativos = data.rows.filter((r: any) => r.nivel === "ativo");
+      expect(ativos.length).toBeGreaterThan(1);
+      const soma = ativos.reduce((sum: number, r: any) => sum + Number(r.com_freio_disjuntor), 0);
+      expect(Number(total.com_freio_disjuntor)).toBeCloseTo(soma, 2);
+      // A evidência diária do total traz a lista por_ativo e ela fecha com o valor do dia.
+      const dia = total.disparos[0];
+      expect(dia.por_ativo.map((a: any) => a.symbol).sort()).toEqual(ativos.map((r: any) => r.symbol).sort());
+      const somaDia = dia.por_ativo.reduce((sum: number, a: any) => sum + Number(a.resultado_com_disjuntor_brl ?? 0), 0);
+      expect(Number(dia.resultado_com_disjuntor_brl)).toBeCloseTo(somaDia, 2);
     }, 60000);
   }
   it("modalidade e modo filtram a curva e a capacidade em todos os níveis", async () => {
@@ -41,15 +58,25 @@ describe.skipIf(process.env.B3_RPC_TEST !== "1")("disjuntor: recorte SQL de 10/1
     if (ce) throw new Error(ce.message);
     expect(capacity.length).toBeGreaterThan(0);
     expect(capacity.every((r: any) => r.mode === "agressivo" && r.variant === "range")).toBe(true);
-    for (const row of data.rows.filter((r: any) => ["total", "ativo", "modalidade"].includes(r.nivel))) {
-      const symbols = row.nivel === "total" ? ["WIN", "WDO"] : [row.symbol];
-      const variants = row.nivel === "modalidade" ? [row.variant] : ["range"];
+    const direto = async (symbols: string[], variants: string[]) => {
       const { data: direct, error } = await sb.rpc("b3_disjuntor_simulado", { p_user_id: userId, p_dia: "2026-11-10", p_symbols: symbols, p_variants: variants, p_modes: ["agressivo"], p_perdas_pct: [0.25], p_com_freio: true });
       if (error) throw new Error(error.message);
-      expect(Number(row.com_freio_disjuntor)).toBe(Number(direct[0].resultado_com_disjuntor_brl ?? 0));
+      return direct[0];
+    };
+    for (const row of data.rows.filter((r: any) => ["ativo", "modalidade"].includes(r.nivel))) {
+      const symbols = [row.symbol];
+      const variants = row.nivel === "modalidade" ? [row.variant] : ["range"];
+      const direct = await direto(symbols, variants);
+      expect(Number(row.com_freio_disjuntor)).toBe(Number(direct.resultado_com_disjuntor_brl ?? 0));
       const base = capacity.filter((r: any) => symbols.includes(r.symbol) && variants.includes(r.variant)).reduce((sum: number, r: any) => sum + Number(r.max_contracts) * Number(r.margin_per_contract_brl), 0);
-      expect(Number(direct[0].capital_base_brl)).toBe(base);
+      expect(Number(direct.capital_base_brl)).toBe(base);
     }
+    // Total = soma dos disjuntores de cada ativo do recorte, cada um com o filtro de modalidade e modo.
+    const total = data.rows.find((r: any) => r.nivel === "total");
+    const ativos = data.rows.filter((r: any) => r.nivel === "ativo").map((r: any) => r.symbol);
+    let soma = 0;
+    for (const symbol of ativos) soma += Number((await direto([symbol], ["range"])).resultado_com_disjuntor_brl ?? 0);
+    expect(Number(total.com_freio_disjuntor)).toBeCloseTo(soma, 2);
   }, 60000);
   it("sem freio e com freio permanecem idênticos à função original", async () => {
     const { data, sb, args } = await cockpit(["WIN", "WDO"]);
