@@ -73,3 +73,8 @@ Três regras reescritas: disjuntor por ativo, total = soma SQL dos ativos, modal
 ### A8 — tela publicada
 Deploy `e5fb9240`. O navegador do app abriu `/b3-sim-disjuntor` e caiu em `/auth` (sem sessão). Conferência visual pendente do login do dono. Teste de integração com `B3_RPC_TEST=1` continua dependendo da sessão dele.
 md5 das duas funções conferido de novo: igual à migration 0029.
+
+## Tela publicada (12/11, 18:26 BRT, logado pelo dono no navegador do app)
+- `/b3-sim-disjuntor`: "Piso da devolução de pico de lucro: 50% do limite de perda de cada cenário"; linha total = linha ativo WIN (12/11: −3.258, não disparou, 41 ordens); frase nova "o disjuntor é por ativo".
+- `/b3-cockpit` (abre filtrado no WIN): Resultados por pregão com freio + disjuntor 12/11 −3.258 · 11/11 −3.788 · 10/11 +10.413 (devolução de pico 12:05, 47 de 208 evitadas) · 09/11 −2.083 · 06/11 −742; total 5 pregões +542. Frase nova "O total é a soma dos disjuntores de cada ativo".
+- Não conferido na tela: o total com vários ativos e a lista `por_ativo` (o filtro de ativos não estava acessível na largura do painel). Mesmos valores conferidos por SQL de manhã.
