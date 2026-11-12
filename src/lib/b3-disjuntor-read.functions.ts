@@ -29,7 +29,8 @@ export const readDisjuntorScenarios = createServerFn({ method: "POST" })
     capacityBase(robots, data.capital);
     const variants = data.variants ?? [...new Set(robots.map(r => r.variant))].sort();
     const levels: { nivel: "total" | "ativo" | "modalidade"; variant?: string; symbols: string[] | null }[] = [
-      { nivel: "total", symbols: null }, { nivel: "ativo", symbols: ["WIN"] },
+      // Disjuntor por ativo (11/11/2026): nesta tela só há WIN, então o total é o próprio WIN.
+      { nivel: "total", symbols: ["WIN"] }, { nivel: "ativo", symbols: ["WIN"] },
       ...variants.map(variant => ({ nivel: "modalidade" as const, variant, symbols: ["WIN"] })),
     ];
     const jobs = dates.flatMap(day => levels.map(level => ({ day, ...level })));
@@ -40,12 +41,13 @@ export const readDisjuntorScenarios = createServerFn({ method: "POST" })
         const { data: result, error } = await (context.supabase as any).rpc("b3_disjuntor_simulado", {
           p_user_id: context.userId, p_dia: day, p_perdas_pct: data.losses.map((n) => n / 100),
           p_capital_base: data.capital, p_symbols: symbols, p_variants: variant ? [variant] : data.variants, p_modes: null, p_com_freio: true,
-          p_piso_pico_brl: floor.peak_min_brl,
+          // Sem override: o banco usa peak_min_pct_of_global x limite de perda do cenário (migration 0029).
+          p_piso_pico_brl: null,
         });
         if (error) { console.error("[disjuntor-leitura]", day, error.message); throw new Error(`Não foi possível consultar o disjuntor em ${day}.`); }
         return (result ?? []).map((r: DisjuntorRow) => ({ ...r, variant, nivel, symbol: nivel === "total" ? undefined : "WIN", conta_base: nivel === "modalidade" ? capacityFormula(robots.filter(c => c.variant === variant), data.capital) : `${r.base_origem}: ${r.capital_base_brl}` })) as DisjuntorRow[];
       }));
       rows.push(...batches.flat());
     }
-    return { rows, floor: { pct: floor.pct, stop_global_brl: floor.global_stop_brl, piso_brl: floor.peak_min_brl } };
+    return { rows, floor: { pct: floor.pct, base: "limite de perda do cenário" as const } };
   });
