@@ -204,6 +204,13 @@
       "when": 1794402151336,
       "tag": "0028_disjuntor_recorte_symbols_variants_modes",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794486884147,
+      "tag": "0029_disjuntor_por_ativo_piso_pct",
+      "breakpoints": true
     }
   ]
 }
