@@ -46,3 +46,30 @@ Marco 12/11 em `b3_marco_mudanca`; livreto 132 criado; livretos 124 e 86 atualiz
 - `AGENTS.md` ainda diz que só dias podem ser somados no disjuntor; contradiz o total = soma dos ativos.
 - `readDisjuntorScenarios` (selo do WIN) passa `p_piso_pico_brl` derivado do stop global do real: ali o piso não é o % do cenário.
 - Conferência visual na tela publicada depende do login do dono.
+
+## Segunda rodada (12/11, 09:51–10:00 BRT)
+
+### A7 — piso do selo do WIN e /b3-sim-disjuntor (commit `824a40c`)
+`readDisjuntorScenarios` passa `p_piso_pico_brl: null`: o banco aplica `peak_min_pct_of_global` × limite de perda do cenário, igual à grade. O total da tela `/b3-sim-disjuntor` (só WIN) passa a ser o WIN, não mais uma curva única com todos os ativos.
+Medido por SQL, WIN, com freio, perda 25%, piso R$ 96 (antigo) contra % do cenário:
+
+| Pregão | WIN ativo piso 96 | WIN ativo % cenário |
+|---|---|---|
+| 03/11 | −4.053 | −4.053 |
+| 04/11 | −2.105 | −2.105 |
+| 05/11 | +208 (devolução) | −975 |
+| 06/11 | +859 (devolução) | −742 |
+| 09/11 | −2.083 | −2.083 |
+| 10/11 | +1.457 (devolução) | +10.413 (devolução 12:05) |
+| 11/11 | −3.788 | −3.788 |
+| soma | −9.505 | −3.333 |
+
+Devolução de pico disparou 11 vezes em 21 cenários (WIN ativo, price_action, rompimento) com piso 96 e 3 com o % do cenário.
+`bunx tsc --noEmit -p .` limpo; `b3-disjuntor-view` e `b3-sim-disjuntor`: 14 testes passaram.
+
+### A6 — AGENTS.md (commit `cf66df3`)
+Três regras reescritas: disjuntor por ativo, total = soma SQL dos ativos, modalidades não somam o ativo, piso sem override nas telas simuladas.
+
+### A8 — tela publicada
+Deploy `e5fb9240`. O navegador do app abriu `/b3-sim-disjuntor` e caiu em `/auth` (sem sessão). Conferência visual pendente do login do dono. Teste de integração com `B3_RPC_TEST=1` continua dependendo da sessão dele.
+md5 das duas funções conferido de novo: igual à migration 0029.
