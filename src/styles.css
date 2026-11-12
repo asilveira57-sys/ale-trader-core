@@ -126,6 +126,29 @@
   --cockpit-modality-foreground: #ffffff;
   background: var(--background);
 }
+/* Cor por ativo (pedido do dono 11/11, fase 5): fundo escuro mantido; a cor do ativo
+   vai na borda, no tom da testeira do ativo e na barra das modalidades. */
+.cockpit-legibility [data-asset] {
+  --asset-accent: #2563eb;
+  --asset-accent-foreground: #ffffff;
+}
+.cockpit-legibility [data-asset="WDO"] {
+  --asset-accent: #16a34a;
+  --asset-accent-foreground: #ffffff;
+}
+.cockpit-legibility [data-asset="BIT"] {
+  --asset-accent: #d4a017;
+  --asset-accent-foreground: #111111;
+}
+.cockpit-legibility [data-asset] {
+  --border: var(--asset-accent);
+  --cockpit-modality-bar: var(--asset-accent);
+  --cockpit-modality-foreground: var(--asset-accent-foreground);
+}
+.cockpit-legibility [data-asset] [data-asset-header] {
+  background: color-mix(in oklab, var(--asset-accent) 22%, var(--background));
+  border: 2px solid var(--asset-accent);
+}
 .cockpit-legibility .cockpit-result-band {
   background: var(--background);
   color: var(--foreground);

@@ -192,7 +192,9 @@ const VARIANT_SHORT: Record<string, string> = {
 const roboShort = (r: any) =>
   !r ? "—" : `${VARIANT_SHORT[r.variant] ?? r.variant} ${robotLabel(r.mode, r.variant)} ${SIGNED_HDR(r.brl)}`;
 
-// Asset identity stays in labels; result surfaces use the cockpit's dark tokens.
+// Asset identity: dark result surfaces, with the asset color on borders, the asset
+// header tint and the modality bars (styles.css, [data-asset]). WIN azul, WDO verde,
+// BIT dourado — pedido do dono 11/11 (fase 5).
 const ASSET_BAND: Record<string, string> = {
   WIN: "cockpit-result-band",
   WDO: "cockpit-result-band",
@@ -927,7 +929,7 @@ function CockpitPage() {
         const isCollapsed = collapsedAssets.has(root);
         const robotCount = Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0);
         return (
-        <div key={root} className="space-y-3">
+        <div key={root} className="space-y-3" data-asset={root}>
           {/* ── Testeira do ativo: sempre visível, mesmo recolhida ── */}
           {orderedAssets.length > 1 && <div className={`overflow-hidden rounded-lg border border-current/30 shadow-sm ${assetBand(root)}`} data-asset-header>
             <div className="flex items-start gap-2 flex-wrap px-3 py-2">
