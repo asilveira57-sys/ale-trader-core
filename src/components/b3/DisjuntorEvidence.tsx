@@ -13,7 +13,7 @@ export function circuitLabel(row?: Pick<ThreeReading, "nivel" | "disjuntor_nivel
   return `disjuntor calculado no nível: ${circuitLevel(row)}`;
 }
 const money = (n: number | null | undefined) => n == null ? "sem registro" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-export function DisjuntorEvidence({ row }: { row?: ThreeReading }) {
+export function DisjuntorEvidence({ row, showValues = true }: { row?: ThreeReading; showValues?: boolean }) {
   if (!row) return null;
   const level = row.disjuntor_nivel ?? row.nivel;
   return <div className="space-y-2 text-xs text-foreground">
@@ -33,8 +33,8 @@ export function DisjuntorEvidence({ row }: { row?: ThreeReading }) {
         {d.por_ativo.some(a => a.resultado_com_disjuntor_brl == null) && <li className="text-muted-foreground">sem ordens no dia: {d.por_ativo.filter(a => a.resultado_com_disjuntor_brl == null).map(a => a.symbol).join(", ")}</li>}
       </ul> : null}
       <p>Ordens evitadas: {d.ordens_evitadas ?? "sem registro"} · ordens no dia: {d.ordens_no_dia ?? "sem registro"}</p>
-      <div className="grid grid-cols-2 gap-2 font-mono"><span>Sem disjuntor<br />{money(d.resultado_sem_disjuntor_brl)}</span><span>Com disjuntor<br />{money(d.resultado_com_disjuntor_brl)}</span></div>
-      <p>Diferença: {money(d.diferenca_brl)}</p>
+      {showValues && <div className="grid grid-cols-2 gap-2 font-mono"><span>Com freio, sem disjuntor<br />{money(d.resultado_sem_disjuntor_brl)}</span><span>Com freio + disjuntor<br />{money(d.resultado_com_disjuntor_brl)}</span></div>}
+      <p>Efeito do disjuntor sobre o com freio: {money(d.diferenca_brl)}</p>
     </div>)}
   </div>;
 }

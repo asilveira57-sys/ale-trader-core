@@ -977,6 +977,7 @@ function CockpitPage() {
                 {isCollapsed ? <ChevronDown /> : <ChevronUp />}
               </Button>
             </div>
+            {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root)} symbol={root} sessions={sessions} title={`${root} — últimos ${sessions} pregões`} compact />}
             <WalletBand title={`${root} · carteira atual`} rows={walletsFor(root)} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("ativo", root)} riskPending={riskQ.isPending} riskError={riskQ.isError} />
             <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">Curva realizada pela hora de saída; cenário conservador. O real também lê o flutuante da posição aberta.</p>
             {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
@@ -1028,6 +1029,7 @@ function CockpitPage() {
                   {variantCollapsed ? <ChevronDown /> : <ChevronUp />}
                 </Button>
                </div>
+               {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root, variant)} symbol={root} variant={variant} sessions={sessions} title={`${root} · ${variantLabel(variant)} — últimos ${sessions} pregões`} compact />}
                <WalletBand title={`${root} · ${variantLabel(variant)} · carteira atual`} rows={walletsFor(root, variant)} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("modalidade", root, variant)} riskPending={riskQ.isPending} riskError={riskQ.isError} />
                <PeakPanel title={`${root} · ${variantLabel(variant)}`} rows={peakRowsFor(root, variant)} contracts={contractCap(walletsFor(root, variant))} pending={peakTableQ.isPending} error={peakTableQ.isError} scenarios={scenariosFor(root, variant)} scenariosPending={scenariosQ.isPending} scenariosError={scenariosQ.isError} />
                <ReadingDetails row={threeFor(root, variant)} />
