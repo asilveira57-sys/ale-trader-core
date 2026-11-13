@@ -600,7 +600,7 @@ function CockpitPage() {
   const walletRows = walletsQ.data?.rows ?? [];
   const walletsFor = (root: string, variant?: string, mode?: string) => walletRows.filter(w => w.symbol === root && (!variant || w.variant === variant) && (!mode || w.mode === mode));
   const contractCap = (rows: any[]) => { const v = rows.map((w) => Number(w.max_contracts)).filter((n) => Number.isFinite(n) && n > 0); return v.length ? Math.max(...v) : null; };
-  const currentExposure = walletExposure((q.data?.cards ?? []) as any[], new Map(Object.entries(walletsQ.data?.margins ?? {})));
+  const currentExposure = walletExposure((q.data?.cards ?? []) as any[], new Map(Object.entries(walletsQ.data?.margins ?? {})), allSymbols ? null : symbolsSel);
   const labelsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "label-evidence", filterKey], queryFn: () => readLabels({ data: filterArgs }), enabled: vivo, staleTime: Infinity, gcTime: 60_000 });
   const labelEvidence: BrakeEvidence[] = vivo ? labelsQ.data?.brake ?? [] : (periodPeaksQ.data?.brake ?? []).filter((r: any) => !filterArgs.modes || filterArgs.modes.includes(r.mode));
   const currentDate = q.data?.session_date ?? peakDates[0];
