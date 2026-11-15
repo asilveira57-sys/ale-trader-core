@@ -714,8 +714,11 @@ function CockpitPage() {
   for (const [root, group] of bySymbol.entries()) {
     for (const [vk, list] of Array.from(group.byVariant.entries())) {
       const allOff = list.length > 0 && list.every((c) => c.enabled === false && !c.open);
-      const semOrdemNoPeriodo = !vivo && threeRows.length > 0 && !Number(threeFor(root, vk)?.ordens ?? 0);
-      if ((vivo && allOff) || semOrdemNoPeriodo) group.byVariant.delete(vk);
+      // Enquanto a leitura ao vivo não chega, a tela usa o catálogo do período, que inclui
+      // execuções pausadas (WIN VWAP): aí vale a regra do histórico, não a do ao vivo.
+      const aoVivo = vivo && !!q.data?.cards?.length;
+      const semOrdemNoPeriodo = !aoVivo && !Number(threeFor(root, vk)?.ordens ?? 0);
+      if ((aoVivo && allOff) || semOrdemNoPeriodo) group.byVariant.delete(vk);
     }
   }
 
