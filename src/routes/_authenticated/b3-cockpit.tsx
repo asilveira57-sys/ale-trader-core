@@ -19,7 +19,7 @@ import { brakeNotActivated, totalBlocked, cockpitBrakeEffect, brakeTableTotal } 
 import { peakSummary, type RealizedPeak } from "@/lib/b3-cockpit-measurements";
 import { copiarTexto, tabular } from "@/lib/b3-copiar";
 import { PeakPanel } from "@/components/b3/PeakPanel";
-import { useState, useEffect, Profiler } from "react";
+import { useState, useEffect, Profiler, type ReactNode } from "react";
 import { timedCockpitRead, cockpitRenderTiming } from "@/lib/b3-cockpit-timing";
 import { formatBrDate } from "@/lib/b3-period";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -36,7 +36,7 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { ChevronDown, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, Unlock, AlertTriangle, Copy } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, ShieldAlert, RefreshCw, PowerOff, RotateCcw, Lock, Unlock, AlertTriangle, Copy } from "lucide-react";
 
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { openSinceText, rootSymbol, PX, B3_ASSETS, assetLabel, freiosAcionadosTexto, somarSombrasDia, type SombraDia } from "@/lib/b3-format";
@@ -53,6 +53,14 @@ import {
   PeriodBar, HistoricalBanner, NoMovementNotice, TruncatedNotice, PerDayTable,
   DEFAULT_PERIOD, type PeriodInput,
 } from "@/components/b3/PeriodBar";
+
+// Bloco recolhido por padrão (pedido do dono 15/11: menos rolagem). Abre ao tocar.
+function MoreInfo({ label, children, boxed = false }: { label: string; children: ReactNode; boxed?: boolean }) {
+  return <details className={`group text-foreground ${boxed ? "rounded-lg border border-border/60 bg-card" : "border-t border-border"}`} data-more-info>
+    <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1 px-3 text-[11px] font-semibold text-muted-foreground hover:text-foreground"><ChevronRight className="size-3 transition-transform group-open:rotate-90" />{label}</summary>
+    {children}
+  </details>;
+}
 
 export const Route = createFileRoute("/_authenticated/b3-cockpit")({
   head: () => ({
@@ -804,7 +812,7 @@ function CockpitPage() {
       {threeQ.isError && <p role="alert" className="text-destructive">Três leituras indisponíveis — sem registro. Use Atualizar.</p>}
       {!vivo && hd && <h2 className="text-xl font-black">{hd.sem_freio.by_day.length} pregões: {hd.sem_freio.by_day.map((d: any) => shortDate(d.date)).join(", ")} · {hd.period.label}</h2>}
 
-      <WalletBand title={`Cockpit simulado — ${scopeAssets} · carteira atual`} rows={allSymbols ? walletRows : walletRows.filter(w => symbolsSel.includes(w.symbol))} exposure={vivo ? currentExposure : undefined} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("total")} riskPending={riskQ.isPending} riskError={riskQ.isError} />
+      <MoreInfo label={`Carteira e exposição · ${scopeAssets}`}><WalletBand title={`Cockpit simulado — ${scopeAssets} · carteira atual`} rows={allSymbols ? walletRows : walletRows.filter(w => symbolsSel.includes(w.symbol))} exposure={vivo ? currentExposure : undefined} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("total")} riskPending={riskQ.isPending} riskError={riskQ.isError} /></MoreInfo>
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
       <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte · {scopeAssets}</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(displayedReading(threeRows)))}><Copy />Copiar resultado</Button></div><ThreeReadings row={displayedReading(threeRows)} /></section>
@@ -977,14 +985,13 @@ function CockpitPage() {
                 {isCollapsed ? <ChevronDown /> : <ChevronUp />}
               </Button>
             </div>
-            {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root)} symbol={root} sessions={sessions} title={`${root} — últimos ${sessions} pregões`} compact />}
-            <WalletBand title={`${root} · carteira atual`} rows={walletsFor(root)} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("ativo", root)} riskPending={riskQ.isPending} riskError={riskQ.isError} />
-            <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">Curva realizada pela hora de saída; cenário conservador. O real também lê o flutuante da posição aberta.</p>
+            {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root)} symbol={root} sessions={sessions} title={`${root} — últimos ${sessions} pregões`} peaks={peakRowsFor(root, "(ativo)")} compact />}
+            <MoreInfo label={`${root} · carteira`}><WalletBand title={`${root} · carteira atual`} rows={walletsFor(root)} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("ativo", root)} riskPending={riskQ.isPending} riskError={riskQ.isError} /></MoreInfo>
             {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
             {!vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}
           </div>}
 
-          <div className="rounded-lg border border-border/60 bg-card"><PeakPanel title={`${root} · ativo inteiro`} rows={peakRowsFor(root, "(ativo)")} contracts={contractCap(walletsFor(root))} pending={peakTableQ.isPending} error={peakTableQ.isError} note scenarios={scenariosFor(root, "(ativo)")} scenariosPending={scenariosQ.isPending} scenariosError={scenariosQ.isError} /></div>
+          <MoreInfo label={`${root} · picos do ativo`} boxed><PeakPanel title={`${root} · ativo inteiro`} rows={peakRowsFor(root, "(ativo)")} contracts={contractCap(walletsFor(root))} pending={peakTableQ.isPending} error={peakTableQ.isError} note scenarios={scenariosFor(root, "(ativo)")} scenariosPending={scenariosQ.isPending} scenariosError={scenariosQ.isError} /></MoreInfo>
           {!isCollapsed && Array.from(group.byVariant.entries()).map(([variant, cards]) => {
             const sub = (hdr?.por_modalidade ?? []).find((m: any) => m.variant === variant);
             const variantKey = `${root}|${variant}`;
@@ -1029,13 +1036,13 @@ function CockpitPage() {
                   {variantCollapsed ? <ChevronDown /> : <ChevronUp />}
                 </Button>
                </div>
-               {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root, variant)} symbol={root} variant={variant} sessions={sessions} title={`${root} · ${variantLabel(variant)} — últimos ${sessions} pregões`} compact />}
-               <WalletBand title={`${root} · ${variantLabel(variant)} · carteira atual`} rows={walletsFor(root, variant)} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("modalidade", root, variant)} riskPending={riskQ.isPending} riskError={riskQ.isError} />
+               {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root, variant)} symbol={root} variant={variant} sessions={sessions} title={`${root} · ${variantLabel(variant)} — últimos ${sessions} pregões`} peaks={peakRowsFor(root, variant)} compact />}
+               <MoreInfo label={`${root} · ${variantLabel(variant)} · carteira, picos e transferência`}><WalletBand title={`${root} · ${variantLabel(variant)} · carteira atual`} rows={walletsFor(root, variant)} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("modalidade", root, variant)} riskPending={riskQ.isPending} riskError={riskQ.isError} />
                <PeakPanel title={`${root} · ${variantLabel(variant)}`} rows={peakRowsFor(root, variant)} contracts={contractCap(walletsFor(root, variant))} pending={peakTableQ.isPending} error={peakTableQ.isError} scenarios={scenariosFor(root, variant)} scenariosPending={scenariosQ.isPending} scenariosError={scenariosQ.isError} />
                <ReadingDetails row={threeFor(root, variant)} />
-               </div>
-
                <WalletTransferPanel symbol={root} variant={variant} title={`${root} · ${variantLabel(variant)}`} />
+               </MoreInfo>
+               </div>
 
               {/* Degraduação em degraus previsíveis (8→4→2→1) por container query:
                   mede a largura real disponível — inclusive após recolher o menu
