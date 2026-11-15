@@ -246,6 +246,13 @@
       "when": 1794768600000,
       "tag": "0034_disjuntor_zera_posicao_aberta",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794769200000,
+      "tag": "0035_paridade_modalidades",
+      "breakpoints": true
     }
   ]
 }

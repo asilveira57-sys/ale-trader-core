@@ -9,6 +9,7 @@ import {
   loadAssetProfiles, saoPauloDate,
 } from "@/lib/b3-real-cockpit.server";
 import { rootSymbol } from "@/lib/b3-format";
+import { z } from "zod";
 
 export type CombGroup = "ativo" | "par" | "trio" | "modalidade" | "modo";
 
@@ -417,3 +418,20 @@ export const getB3ExtratoReal = createServerFn({ method: "POST" })
     };
   });
 
+
+// Paridade entre modalidades (15/11) — tudo por 1 contrato e com freio, pronto do banco
+// (b3_paridade_matriz e b3_paridade_pares, migration 0035).
+export const getB3Paridade = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => z.object({
+    de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    symbol: z.enum(["WIN", "WDO", "BIT"]),
+  }).parse(i))
+  .handler(async ({ data, context }) => {
+    const sb = context.supabase as any;
+    const args = { p_user_id: context.userId, p_de: data.de, p_ate: data.ate, p_symbol: data.symbol };
+    const [m, p] = await Promise.all([sb.rpc("b3_paridade_matriz", args), sb.rpc("b3_paridade_pares", args)]);
+    if (m.error || p.error) throw new Error("Não foi possível ler a paridade.");
+    return { matriz: (m.data ?? []) as { variant: string; mode: string; resultado_1c: number; ordens: number; acerto_pct: number | null; pregoes: number }[],
+      pares: (p.data ?? []) as { variant_a: string; variant_b: string; pregoes: number; juntos: number; juntos_pct: number | null; correlacao: number | null; resultado_a_1c: number; resultado_b_1c: number }[] };
+  });
