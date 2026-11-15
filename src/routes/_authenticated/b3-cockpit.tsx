@@ -700,9 +700,13 @@ function CockpitPage() {
   }
   // Modalidade com TODOS os robôs desligados e sem posição aberta sai da tela
   // (ex.: WIN VWAP desligado). Religar pelo cadastro traz o bloco de volta.
-  if (vivo) for (const group of bySymbol.values()) {
+  // No histórico (fim de semana, períodos) sai toda modalidade sem NENHUMA ordem no período
+  // (ex.: pullback desligado desde 23/10 aparecia vazio — pedido do dono 15/11).
+  for (const [root, group] of bySymbol.entries()) {
     for (const [vk, list] of Array.from(group.byVariant.entries())) {
-      if (list.length > 0 && list.every((c) => c.enabled === false && !c.open)) group.byVariant.delete(vk);
+      const allOff = list.length > 0 && list.every((c) => c.enabled === false && !c.open);
+      const semOrdemNoPeriodo = !vivo && threeRows.length > 0 && !Number(threeFor(root, vk)?.ordens ?? 0);
+      if ((vivo && allOff) || semOrdemNoPeriodo) group.byVariant.delete(vk);
     }
   }
 
