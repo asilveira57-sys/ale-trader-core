@@ -253,6 +253,13 @@
       "when": 1794769200000,
       "tag": "0035_paridade_modalidades",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794769800000,
+      "tag": "0036_calibracao_por_contrato",
+      "breakpoints": true
     }
   ]
 }

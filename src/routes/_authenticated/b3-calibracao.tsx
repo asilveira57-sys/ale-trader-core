@@ -58,7 +58,7 @@ function CalibracaoPage() {
       <div>
         <h1 className="text-2xl font-bold">Calibração do stop diário</h1>
         <p className="text-sm text-muted-foreground">
-          Semana de {q.data?.semana ? new Date(q.data.semana + "T12:00:00").toLocaleDateString("pt-BR") : "—"} · aplica só no simulado · nada é aplicado sozinho.
+          Semana de {q.data?.semana ? new Date(q.data.semana + "T12:00:00").toLocaleDateString("pt-BR") : "—"} · valores por 1 contrato, só ordens com freio, últimos 60 dias · roda toda sexta às 18h · aplica só no simulado e só com o seu clique.
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-4">
