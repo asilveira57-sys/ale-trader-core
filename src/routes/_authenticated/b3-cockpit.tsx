@@ -951,6 +951,13 @@ function CockpitPage() {
         <p className="text-sm text-muted-foreground">Nenhum robô para o filtro selecionado.</p>
       )}
 
+      {/* Testeira dos robôs com ORDEM REAL ABERTA agora (pedido do dono 08/11 e 15/11).
+          Só leitura: nada de botão de fechar ou disjuntor — o simulado ainda não opera o real. */}
+      {vivo && (() => { const reais = all.filter((c: any) => c.real_open); return <section className="rounded-lg border-2 border-emerald-500 bg-white px-3 py-2 text-emerald-800" data-real-open-band>
+        <h2 className="text-sm font-black">Ordem real aberta agora · {reais.length} {reais.length === 1 ? "robô" : "robôs"}</h2>
+        {reais.length === 0 ? <p className="text-xs">Nenhum robô com ordem real aberta.</p> : <div className="mt-1 flex flex-wrap gap-1.5">{reais.map((c: any) => <span key={`${c.run_id}:${c.mode}`} className="rounded border border-emerald-500 px-2 py-1 text-xs font-bold">{rootSymbol(c.symbol)} · {variantLabel(c.variant ?? "indicador")} · {robotLabel(c.mode, c.variant)}{c.open ? ` · simulado ${c.open.side === "buy" ? "comprado" : "vendido"}` : ""}</span>)}</div>}
+      </section>; })()}
+
       <Profiler id="cockpit-hierarquia" onRender={(...args) => { if (!vivo) cockpitRenderTiming(...args.slice(0, 4) as [string, string, number, number]); }}>
       {orderedAssets.map(([root, group]) => {
         const hdr = headerByAsset.get(root);
@@ -1079,8 +1086,10 @@ function CockpitPage() {
                      <div
                        key={key}
                        title={cor?.label}
-                       className={`relative rounded-lg border bg-card overflow-hidden ${cor ? cor.border : "border-border/60"}`}
+                       data-real-open={c.real_open ? "1" : undefined}
+                       className={`relative rounded-lg border overflow-hidden bg-card ${c.real_open ? "border-2 border-emerald-400 ring-2 ring-emerald-400/50" : cor ? cor.border : "border-border/60"}`}
                      >
+                       {c.real_open && <div className="bg-white px-3 py-1 text-center text-[11px] font-black uppercase tracking-wide text-emerald-700" data-real-open-strip>Ordem real aberta</div>}
                        {cor && <span aria-hidden className={`absolute left-0 top-0 h-full w-1 ${cor.bar}`} />}
                       {/* Configurar este robô — fora do <button> do card pra não aninhar botões */}
                       <div className="absolute top-1 right-7 z-10">
