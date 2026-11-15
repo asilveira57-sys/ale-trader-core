@@ -17,3 +17,12 @@ export const saveMarco = createServerFn({ method: "POST" }).middleware([requireS
   if (result.error) throw new Error("Não foi possível salvar o marco.");
   return result.data;
 });
+// Manual do sistema ("livretos" = b3_manual_sistema, número = id). Só leitura;
+// RLS já restringe ao dono (is_owner). Substitui o Livro de ocorrências na tela.
+export const readManual = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
+  const { data, error } = await (context.supabase as any).from("b3_manual_sistema")
+    .select("id, area, titulo, o_que_e, armadilha, como_verificar, gravidade, descoberto_em, atualizado_em")
+    .order("id", { ascending: false }).range(0, 999);
+  if (error) throw new Error("Não foi possível ler o manual.");
+  return (data ?? []) as { id: number; area: string; titulo: string; o_que_e: string; armadilha: string | null; como_verificar: string | null; gravidade: string; descoberto_em: string | null; atualizado_em: string }[];
+});
