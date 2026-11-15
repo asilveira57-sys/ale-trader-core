@@ -689,7 +689,7 @@ function CockpitPage() {
   // Botões de modalidade: só as que têm robô ligado nos ativos marcados (pedido do dono 15/11:
   // VWAP e repique apareciam no filtro do WIN sem nenhum robô rodando).
   const modalidadesComRobo = new Set<string>(baseCards
-    .filter((c: any) => (allSymbols || symbolsSel.includes(rootSymbol(c.symbol))) && (c.enabled !== false || c.open))
+    .filter((c: any) => (allSymbols || symbolsSel.includes(rootSymbol(c.symbol))) && (vivo && q.data?.cards?.length ? (c.enabled !== false || c.open) : Number(c.ops ?? 0) > 0))
     .map((c: any) => c.variant ?? "indicador"));
   if (modalidadesComRobo.size === 0) VARIANT_LIST.forEach((v) => modalidadesComRobo.add(v));
   variantsSel.forEach((v) => { if (!allVariants) modalidadesComRobo.add(v); });
