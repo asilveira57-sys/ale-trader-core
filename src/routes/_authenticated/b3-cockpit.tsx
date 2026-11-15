@@ -614,7 +614,8 @@ function CockpitPage() {
   const currentDate = q.data?.session_date ?? peakDates[0];
   const hypothesisDay = vivo ? currentDate : hd?.period?.end ?? period.end ?? period.start;
   const filtroCliente = buildCockpitFilter(filterArgs);
-  const all: any[] = (vivo && q.data?.cards?.length ? ((q.data?.cards ?? []) as any[]) : periodCards(hd?.catalog ?? [], hd?.sem_freio?.robots ?? [])).filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode)).map((c) => ({ ...c, operational_loaded: !vivo || !!q.data?.cards?.length, brake_evidence: labelEvidence.find((r) => r.trade_date === currentDate && r.raiz === rootSymbol(c.symbol) && r.variant === c.variant && r.mode === c.mode) }));
+  const baseCards: any[] = vivo && q.data?.cards?.length ? ((q.data?.cards ?? []) as any[]) : periodCards(hd?.catalog ?? [], hd?.sem_freio?.robots ?? []);
+  const all: any[] = baseCards.filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode)).map((c) => ({ ...c, operational_loaded: !vivo || !!q.data?.cards?.length, brake_evidence: labelEvidence.find((r) => r.trade_date === currentDate && r.raiz === rootSymbol(c.symbol) && r.variant === c.variant && r.mode === c.mode) }));
   const porAtivo: any[] = threeHeaders(threeRows);
   // Pesado recarrega quando uma posição abre ou fecha (ou pelo botão).
   const abertasSig = ((q.data?.cards ?? []) as any[]).filter((c) => !!c.open).map((c) => `${c.run_id}|${c.mode}`).sort().join(",");
@@ -684,6 +685,14 @@ function CockpitPage() {
   // atalhos de pregão (posicionado / bloqueado) e a ordenação.
   const visible = all
     .filter((c) => !vivo ? true : filter === "all" ? true : filter === "real" ? !!c.real_auth : filter === "open" ? !!c.open : isRiskBlocked(c));
+
+  // Botões de modalidade: só as que têm robô ligado nos ativos marcados (pedido do dono 15/11:
+  // VWAP e repique apareciam no filtro do WIN sem nenhum robô rodando).
+  const modalidadesComRobo = new Set<string>(baseCards
+    .filter((c: any) => (allSymbols || symbolsSel.includes(rootSymbol(c.symbol))) && (c.enabled !== false || c.open))
+    .map((c: any) => c.variant ?? "indicador"));
+  if (modalidadesComRobo.size === 0) VARIANT_LIST.forEach((v) => modalidadesComRobo.add(v));
+  variantsSel.forEach((v) => { if (!allVariants) modalidadesComRobo.add(v); });
 
   // Agrupa pela RAIZ do ativo (WIN, WDO, PETR4) — o contrato rola de vencimento —
   // e, dentro do ativo, por modalidade (variant).
@@ -903,7 +912,7 @@ function CockpitPage() {
             <Button size="sm" variant={allVariants ? "default" : "outline"} className="h-8 shrink-0 text-[11px] sm:h-7"
               title={allVariants ? "Desmarcar todas" : "Marcar todas"}
               onClick={() => toggleAll("variants", allVariants)}>Todas</Button>
-            {VARIANT_LIST.map((v) => (
+            {VARIANT_LIST.filter((v) => modalidadesComRobo.has(v)).map((v) => (
               <Button key={v} size="sm" variant={variantsSel.includes(v) ? "default" : "outline"}
                 className="h-8 shrink-0 text-[11px] sm:h-7" title="Clique marca e desmarca; os três recortes se combinam"
                 onClick={(e) => clickItem("variants", v, e)}>
