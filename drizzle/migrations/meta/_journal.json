@@ -260,6 +260,13 @@
       "when": 1794769800000,
       "tag": "0036_calibracao_por_contrato",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1794770400000,
+      "tag": "0037_extrato_real_vs_corretora",
+      "breakpoints": true
     }
   ]
 }

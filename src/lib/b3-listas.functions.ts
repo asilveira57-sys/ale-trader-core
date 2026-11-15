@@ -435,3 +435,13 @@ export const getB3Paridade = createServerFn({ method: "POST" })
     return { matriz: (m.data ?? []) as { variant: string; mode: string; resultado_1c: number; ordens: number; acerto_pct: number | null; pregoes: number }[],
       pares: (p.data ?? []) as { variant_a: string; variant_b: string; pregoes: number; juntos: number; juntos_pct: number | null; correlacao: number | null; resultado_a_1c: number; resultado_b_1c: number }[] };
   });
+
+// Extrato real × corretora por pregão (15/11, migration 0037). Só leitura.
+export const getB3RealVsCorretora = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => z.object({ de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(i))
+  .handler(async ({ data, context }) => {
+    const { data: rows, error } = await (context.supabase as any).rpc("b3_extrato_real_vs_corretora", { p_user_id: context.userId, p_de: data.de, p_ate: data.ate });
+    if (error) throw new Error("Não foi possível comparar com a corretora.");
+    return (rows ?? []) as { pregao: string; ordens: number; sem_resultado: number; sistema_brl: number | null; corretora_ajuste_brl: number | null; corretora_custos_brl: number | null; corretora_liquido_brl: number | null; diferenca_brl: number | null; situacao: string }[];
+  });

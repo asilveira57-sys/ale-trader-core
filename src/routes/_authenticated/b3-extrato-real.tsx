@@ -5,7 +5,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getB3ExtratoReal, type ExtratoGrupo, type ExtratoStats } from "@/lib/b3-listas.functions";
+import { getB3ExtratoReal, getB3RealVsCorretora, type ExtratoGrupo, type ExtratoStats } from "@/lib/b3-listas.functions";
 import { realResultText } from "@/lib/b3-real-apuracao";
 import { copiarTexto } from "@/lib/b3-copiar";
 import { BRL, SIGNED_BRL } from "@/lib/b3-format";
@@ -97,6 +97,9 @@ function ExtratoRealPage() {
   const [variants, setVariants] = useState<string[] | null>(null);
   const [modes, setModes] = useState<string[] | null>(null);
   const [group, setGroup] = useState<Group>("dia");
+  // 15/11: a corretora é a fonte oficial. Comparação por pregão, pronta do banco (migration 0037).
+  const vsFn = useServerFn(getB3RealVsCorretora);
+  const vs = useQuery({ queryKey: ["b3-real-vs-corretora", de, ate], queryFn: () => vsFn({ data: { de, ate } }), staleTime: 60_000 });
 
   const q = useQuery({
     queryKey: ["b3-extrato-real", de, ate, symbols, variants, modes],
@@ -193,6 +196,23 @@ ${JSON.stringify(q.data, (_k,v) => v == null ? "sem registro" : v, 2)}`)}>Copiar
           </Button>
         </div>
       </header>
+
+      <section className="rounded-lg border p-3" data-real-vs-corretora>
+        <h2 className="font-semibold">Confere com a corretora?</h2>
+        {vs.isPending ? <p className="text-sm">Comparando…</p> : vs.isError ? <p role="alert" className="text-sm text-destructive">Não foi possível comparar.</p> : !vs.data?.length ? <p className="text-sm">Sem movimento no período.</p> : <>
+          <p className="text-sm">{vs.data.filter(r => r.situacao === "bate").length} de {vs.data.length} pregões batem com o extrato da corretora. Os valores do sistema só valem nos pregões que batem.</p>
+          <div className="mt-2 overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="text-left text-muted-foreground"><th className="p-1">Pregão</th><th className="p-1 text-right">Ordens</th><th className="p-1 text-right">Sem resultado</th><th className="p-1 text-right">Sistema</th><th className="p-1 text-right">Corretora (líquido)</th><th className="p-1 text-right">Diferença</th><th className="p-1">Situação</th></tr></thead>
+            <tbody>{vs.data.map(r => <tr key={r.pregao} className="border-t">
+              <td className="p-1">{dm(r.pregao)}</td><td className="p-1 text-right">{r.ordens}</td><td className={`p-1 text-right ${r.sem_resultado ? "text-amber-400" : ""}`}>{r.sem_resultado}</td>
+              <td className="p-1 text-right font-mono">{r.sistema_brl == null ? "—" : BRL(Number(r.sistema_brl))}</td>
+              <td className="p-1 text-right font-mono">{r.corretora_liquido_brl == null ? "—" : BRL(Number(r.corretora_liquido_brl))}</td>
+              <td className="p-1 text-right font-mono">{r.diferenca_brl == null ? "—" : BRL(Number(r.diferenca_brl))}</td>
+              <td className={`p-1 ${r.situacao === "bate" ? "text-success" : r.situacao === "não bate" ? "text-destructive" : "text-amber-400"}`}>{r.situacao}</td>
+            </tr>)}</tbody>
+          </table></div>
+        </>}
+      </section>
 
       <div className="no-print space-y-3 rounded-lg border border-border p-3">
         <div className="flex flex-wrap items-end gap-3">
