@@ -239,6 +239,13 @@
       "when": 1794768000000,
       "tag": "0033_extrato_do_dia",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794768600000,
+      "tag": "0034_disjuntor_zera_posicao_aberta",
+      "breakpoints": true
     }
   ]
 }

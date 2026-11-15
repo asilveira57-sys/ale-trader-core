@@ -1,15 +1,20 @@
 import { z } from "zod";
 
 export const LOSS_OPTIONS = [15, 25, 40, 50, 75, 100] as const;
+// Meta de ganho do disjuntor (15/11: a tela não mostrava; o banco já simulava 80%).
+export const GAIN_OPTIONS = [40, 60, 80, 100, 150] as const;
+export const ASSET_OPTIONS = ["WIN", "WDO", "BIT"] as const;
 export const disjuntorInput = z.object({
   start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   losses: z.array(z.number().refine((n) => LOSS_OPTIONS.some((p) => p === n))).min(1).max(6).default([25]),
   capital: z.number().positive().nullable().default(null),
   variants: z.array(z.string().min(1).max(40)).nullable().default(null),
+  symbols: z.array(z.enum(ASSET_OPTIONS)).min(1).max(3).default(["WIN"]),
+  gains: z.array(z.number().refine((n) => GAIN_OPTIONS.some((p) => p === n))).min(1).max(5).default([80]),
 });
 export interface DisjuntorRow {
-  variant?: string; symbol?: string; nivel?: "total" | "ativo" | "modalidade"; conta_base?: string;
+  variant?: string; symbol?: string; nivel?: "total" | "ativo" | "modalidade"; conta_base?: string; ganho_pct?: number;
   dia: string; capital_base_brl: number; base_origem: string; perda_pct: number;
   limite_perda_brl: number; meta_ganho_brl: number; disparou: string;
   hora_disparo_brt: string | null; resultado_com_disjuntor_brl: number;
@@ -53,18 +58,19 @@ export function shiftSession(day: string, delta: number) {
 export function disjuntorTotals(rows: DisjuntorRow[]) {
   // Only daily TOTAL RPC rows can contribute to a period total.
   const days = new Set<string>();
-  const totals = new Map<number, { pct: number; com: number; sem: number; diferenca: number; antes: number; evitadas: number; ordens: number; pregoes: number }>();
+  const totals = new Map<string, { pct: number; ganho?: number; com: number; sem: number; diferenca: number; antes: number; evitadas: number; ordens: number; pregoes: number }>();
   for (const r of rows) {
     if (r.nivel !== "total" || !r.ordens_no_dia) continue;
-    const identity = `${r.dia}|${r.perda_pct}`;
+    const identity = `${r.dia}|${r.perda_pct}|${r.ganho_pct ?? ""}`;
     if (days.has(identity)) throw new Error("Mais de um cenário TOTAL para o mesmo pregão e limiar.");
     days.add(identity);
-    const t = totals.get(Number(r.perda_pct)) ?? { pct: Number(r.perda_pct), com: 0, sem: 0, diferenca: 0, antes: 0, evitadas: 0, ordens: 0, pregoes: 0 };
+    const key = `${r.perda_pct}|${r.ganho_pct ?? ""}`;
+    const t = totals.get(key) ?? { pct: Number(r.perda_pct), ganho: r.ganho_pct, com: 0, sem: 0, diferenca: 0, antes: 0, evitadas: 0, ordens: 0, pregoes: 0 };
     t.com += Number(r.resultado_com_disjuntor_brl); t.sem += Number(r.resultado_sem_disjuntor_brl); t.diferenca += Number(r.diferenca_brl);
     t.antes += Number(r.ordens_antes); t.evitadas += Number(r.ordens_evitadas); t.ordens += Number(r.ordens_no_dia); t.pregoes++;
-    totals.set(t.pct, t);
+    totals.set(key, t);
   }
-  return [...totals.values()].sort((a, b) => a.pct - b.pct);
+  return [...totals.values()].sort((a, b) => a.pct - b.pct || Number(a.ganho ?? 0) - Number(b.ganho ?? 0));
 }
 export function derivedPeakFloor(pct: number | null | undefined, globalStop: number) {
   const fraction = pct != null && Number.isFinite(pct) && pct >= 0 ? pct : 0.5;
