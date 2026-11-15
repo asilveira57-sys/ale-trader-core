@@ -232,6 +232,13 @@
       "when": 1794522280493,
       "tag": "0032_disjuntor_parcela_do_ativo",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794768000000,
+      "tag": "0033_extrato_do_dia",
+      "breakpoints": true
     }
   ]
 }
