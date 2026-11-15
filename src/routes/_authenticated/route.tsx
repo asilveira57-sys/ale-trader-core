@@ -144,17 +144,17 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 const PRINCIPAL_NAV = [
+  // Revisão do menu (dono, 08/11 e 15/11): o cockpit simulado é a página inicial e o 1º item.
+  // Diagnóstico diário, Livro de ocorrências e Limites proporcionais saíram do menu
+  // (ver claude/revisao-telas-menu.md); as rotas continuam existindo.
+  { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
   { to: "/cockpit-real", label: "Cockpit Real (dinheiro real)", icon: Smartphone },
   { to: "/b3-autorizacoes-reais", label: "B3 — Automações Reais", icon: ShieldAlert },
-  { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
-  { to: "/b3-diagnostico", label: "Diagnóstico diário", icon: Stethoscope },
-  { to: "/b3-ficha-dia", label: "Ficha do dia (por que entrou/saiu)", icon: Table2 },
-  { to: "/b3-livro", label: "Livro de ocorrências", icon: Receipt },
-  { to: "/b3-marcos", label: "Marcos de configuração", icon: Calendar },
+  { to: "/b3-ficha-dia", label: "Extrato do dia", icon: Table2 },
+  { to: "/b3-marcos", label: "Marcos e manual", icon: Calendar },
   { to: "/b3-sim-disjuntor", label: "Simulação de disjuntor", icon: Table2 },
+  { to: "/b3-listas", label: "Paridade entre modalidades", icon: Table2 },
   { to: "/b3-calibracao", label: "Calibração do stop diário", icon: Stethoscope },
-  { to: "/b3-proporcional", label: "Limites proporcionais", icon: Table2 },
-  { to: "/b3-listas", label: "Resultado por combinação", icon: Table2 },
   { to: "/b3-extrato-real", label: "Extrato do dinheiro real", icon: Receipt },
   { to: "/b3-conferencia-real", label: "Conferência real × corretora", icon: FileSearch },
 ] as const;
@@ -229,7 +229,8 @@ function NavContent({ pathname, onNavigate, onSignOut, collapsed = false, onTogg
     idle: string,
   ) =>
     items.map(({ to, label, icon: Icon }) => {
-      const isActive = pathname.startsWith(to);
+      // "/b3" não pode acender junto com "/b3-cockpit": só a rota exata ou uma subpágina dela.
+      const isActive = pathname === to || pathname.startsWith(`${to}/`);
       return (
         <Link
           key={to}
