@@ -3,7 +3,7 @@ import { ThreeReadings, ReadingDetails, ThreePeriodRows } from "@/components/b3/
 import { readThreeReadings, readCockpitRealLabels } from "@/lib/b3-three-readings.functions";
 import { readingFor, readingText, threePeriodData, threeHeaders, type ThreeReading } from "@/lib/b3-three-readings";
 import { MilestoneContext, MilestoneMark, MilestoneWarning, useMilestones } from "@/components/b3/ConfigurationMilestones";
-import { readPeakScenarios, readCapitalRisk } from "@/lib/b3-pico-capital.functions";
+import { readPeakScenarios, readCapitalRisk, readCapitalPeaks } from "@/lib/b3-pico-capital.functions";
 import { WalletBand } from "@/components/b3/WalletBand";
 import { WalletTransferPanel } from "@/components/b3/WalletTransferPanel";
 import { readRobotWallets } from "@/lib/b3-wallet-read.functions";
@@ -581,6 +581,15 @@ function CockpitPage() {
   const recentQ = useQuery({ queryKey: ["b3-cockpit-pesado", "tres-recentes", period, sessions, filterKey], queryFn: () => readThree({ data: { ...period, sessions, ...filterArgs } }), staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false });
   const readRealLabels = useServerFn(readCockpitRealLabels);
   const realLabelsQ = useQuery({ queryKey: ["b3-cockpit-pesado", "selos-reais"], queryFn: () => readRealLabels(), enabled: vivo, staleTime: Infinity, refetchOnWindowFocus: false });
+  // Pico de capital (contratos abertos ao mesmo tempo × margem × 1,30) por pregão dos quadradinhos.
+  const readCapPeaks = useServerFn(readCapitalPeaks);
+  const capDias: string[] = [...new Set<string>((recentQ.data?.daily ?? []).map((r: any) => String(r.dia)))].sort();
+  const capPeaksQ = useQuery({
+    queryKey: ["b3-cockpit-pesado", "pico-capital", capDias, filterKey],
+    queryFn: () => readCapPeaks({ data: { start: capDias[0], end: capDias[capDias.length - 1], symbols: filterArgs.symbols ?? null, variants: filterArgs.variants ?? null } }),
+    enabled: capDias.length > 0, staleTime: Infinity, refetchOnWindowFocus: false,
+  });
+  const capFor = (nivel: "total" | "ativo" | "modalidade", root?: string, variant?: string) => (capPeaksQ.data?.rows ?? []).filter((r) => r.nivel === nivel && (nivel === "total" || r.raiz === root) && (nivel !== "modalidade" || r.variant === variant));
   const readPeaks = useServerFn(getCockpitDailyPeaks);
   const peakDates: string[] = [...new Set<string>((recentQ.data?.daily ?? []).map(r => r.dia))].sort().reverse();
   const peaksQ = useQuery({
@@ -832,7 +841,7 @@ function CockpitPage() {
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
       <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte · {scopeAssets}</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(displayedReading(threeRows)))}><Copy />Copiar resultado</Button></div><ThreeReadings row={displayedReading(threeRows)} /></section>
-      {recentQ.isPending ? <p>Carregando os pregões…</p> : recentQ.isError ? <p role="alert">Não foi possível ler os pregões.</p> : recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} symbol={!allSymbols && symbolsSel.length === 1 ? symbolsSel[0] : undefined} total={displayedReading(recentQ.data.rows)} sessions={sessions} onToggleSessions={() => setSessions(sessions === 5 ? 10 : 5)} busy={recentQ.isFetching} />}
+      {recentQ.isPending ? <p>Carregando os pregões…</p> : recentQ.isError ? <p role="alert">Não foi possível ler os pregões.</p> : recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} symbol={!allSymbols && symbolsSel.length === 1 ? symbolsSel[0] : undefined} total={displayedReading(recentQ.data.rows)} sessions={sessions} onToggleSessions={() => setSessions(sessions === 5 ? 10 : 5)} busy={recentQ.isFetching} capital={!allSymbols && symbolsSel.length === 1 ? capFor("ativo", symbolsSel[0]) : capFor("total")} />}
 
       {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
@@ -1008,7 +1017,7 @@ function CockpitPage() {
                 {isCollapsed ? <ChevronDown /> : <ChevronUp />}
               </Button>
             </div>
-            {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root)} symbol={root} sessions={sessions} title={`${root} — últimos ${sessions} pregões`} peaks={peakRowsFor(root, "(ativo)")} compact />}
+            {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root)} symbol={root} sessions={sessions} title={`${root} — últimos ${sessions} pregões`} capital={capFor("ativo", root)} compact />}
             <MoreInfo label={`${root} · carteira`}><WalletBand title={`${root} · carteira atual`} rows={walletsFor(root)} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("ativo", root)} riskPending={riskQ.isPending} riskError={riskQ.isError} /></MoreInfo>
             {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
             {!vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}
@@ -1059,7 +1068,7 @@ function CockpitPage() {
                   {variantCollapsed ? <ChevronDown /> : <ChevronUp />}
                 </Button>
                </div>
-               {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root, variant)} symbol={root} variant={variant} sessions={sessions} title={`${root} · ${variantLabel(variant)} — últimos ${sessions} pregões`} peaks={peakRowsFor(root, variant)} compact />}
+               {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root, variant)} symbol={root} variant={variant} sessions={sessions} title={`${root} · ${variantLabel(variant)} — últimos ${sessions} pregões`} capital={capFor("modalidade", root, variant)} compact />}
                <MoreInfo label={`${root} · ${variantLabel(variant)} · carteira, picos e transferência`}><WalletBand title={`${root} · ${variantLabel(variant)} · carteira atual`} rows={walletsFor(root, variant)} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("modalidade", root, variant)} riskPending={riskQ.isPending} riskError={riskQ.isError} />
                <PeakPanel title={`${root} · ${variantLabel(variant)}`} rows={peakRowsFor(root, variant)} contracts={contractCap(walletsFor(root, variant))} pending={peakTableQ.isPending} error={peakTableQ.isError} scenarios={scenariosFor(root, variant)} scenariosPending={scenariosQ.isPending} scenariosError={scenariosQ.isError} />
                <ReadingDetails row={threeFor(root, variant)} />

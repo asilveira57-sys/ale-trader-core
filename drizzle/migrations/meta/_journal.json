@@ -281,6 +281,13 @@
       "when": 1794838000000,
       "tag": "0039_resultados_por_1_contrato",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794860000000,
+      "tag": "0040_pico_capital_dia",
+      "breakpoints": true
     }
   ]
 }

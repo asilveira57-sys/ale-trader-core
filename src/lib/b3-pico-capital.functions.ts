@@ -33,3 +33,17 @@ export const readCapitalRisk = createServerFn({ method: "GET" })
     if (error) throw new Error("Não foi possível ler o capital em risco.");
     return { rows: (rows ?? []) as CapitalRiskRow[] };
   });
+
+// Pico de CAPITAL por pregão (16/11): maior número de contratos abertos ao mesmo tempo ×
+// margem × 1,30, com freio, nos níveis modalidade, ativo e total (migration 0040).
+export type CapitalPeakRow = { dia: string; nivel: "modalidade" | "ativo" | "total"; raiz: string | null; variant: string | null; pico_brl: number; contratos_no_pico: number; hora_pico: string | null };
+export const readCapitalPeaks = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => z.object({ start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), symbols: z.array(z.string()).nullish(), variants: z.array(z.string()).nullish() }).parse(i))
+  .handler(async ({ data, context }) => {
+    const { data: rows, error } = await (context.supabase as any).rpc("b3_pico_capital_dia", {
+      p_user_id: context.userId, p_inicio: data.start, p_fim: data.end, p_symbols: data.symbols ?? null, p_variants: data.variants ?? null,
+    });
+    if (error) throw new Error("Não foi possível ler o pico de capital.");
+    return { rows: (rows ?? []) as CapitalPeakRow[] };
+  });
