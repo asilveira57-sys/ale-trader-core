@@ -25,13 +25,14 @@ describe.skipIf(process.env.B3_RPC_TEST !== "1")("disjuntor: recorte SQL de 10/1
   // Desde 11/11/2026 (migration 0029) o disjuntor é por ativo e o total é a soma dos ativos.
   // Conferido em 15/11 para o pregão de 10/11, com freio + disjuntor e a capacidade ATUAL (1 contrato
   // por robô desde 12/11) e com a posição aberta zerada no disparo (migration 0034):
-  // WIN -810 · WIN+WDO -2.830 · três ativos -3.436. A base automática é a capacidade de hoje,
+  // WIN -810 · WIN+WDO -2.830 · três ativos -3.436. Desde 16/11 tudo por 1 contrato (migration 0039):
+  // WIN +1.453 · WIN+WDO +131 · três ativos +431,20 · WIN price action -269. A base automática é a capacidade de hoje,
   // então estes números mudam quando mudar o número de contratos.
   for (const { symbols, level, expected } of [
-    { symbols: ["WIN"], level: "ativo", expected: -810 },
-    { symbols: ["WIN", "WDO"], level: "total", expected: -2830 },
-    { symbols: ["WIN", "WDO", "BIT"], level: "total", expected: -3436 },
-    { symbols: null, level: "total", expected: -3436 },
+    { symbols: ["WIN"], level: "ativo", expected: 1453 },
+    { symbols: ["WIN", "WDO"], level: "total", expected: 131 },
+    { symbols: ["WIN", "WDO", "BIT"], level: "total", expected: 431.2 },
+    { symbols: null, level: "total", expected: 431.2 },
   ]) {
     it(`${symbols?.join("+") ?? "NULL"}: ${level} = ${expected}`, async () => {
       const { data } = await cockpit(symbols);
@@ -87,14 +88,14 @@ describe.skipIf(process.env.B3_RPC_TEST !== "1")("disjuntor: recorte SQL de 10/1
     const { data } = await cockpit(["WIN"]);
     const ativo = data.rows.find((r: any) => r.nivel === "ativo");
     const soma = (nivel: string) => data.rows.filter((r: any) => r.nivel === nivel).reduce((s: number, r: any) => s + Number(r.com_freio_disjuntor), 0);
-    expect(Number(ativo.com_freio_disjuntor)).toBeCloseTo(-810, 2);
-    expect(soma("modalidade")).toBeCloseTo(-810, 2);
-    expect(soma("robo")).toBeCloseTo(-810, 2);
+    expect(Number(ativo.com_freio_disjuntor)).toBeCloseTo(1453, 2);
+    expect(soma("modalidade")).toBeCloseTo(1453, 2);
+    expect(soma("robo")).toBeCloseTo(1453, 2);
     const pa = data.rows.find((r: any) => r.nivel === "modalidade" && r.variant === "price_action");
-    expect(Number(pa.com_freio_disjuntor)).toBeCloseTo(0, 2);
+    expect(Number(pa.com_freio_disjuntor)).toBeCloseTo(-269, 2);
     expect(pa.disjuntor_atribuicao).toBe("parcela da modalidade no disjuntor do ativo");
     const daily = data.daily.filter((d: any) => d.gid === 0).reduce((s: number, d: any) => s + Number(d.com_freio_disjuntor), 0);
-    expect(daily).toBeCloseTo(-810, 2);
+    expect(daily).toBeCloseTo(1453, 2);
   }, 60000);
   it("sem freio e com freio permanecem idênticos à função original", async () => {
     const { data, sb, args } = await cockpit(["WIN", "WDO"]);
