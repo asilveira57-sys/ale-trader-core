@@ -2359,7 +2359,12 @@ async function runB3SimulationTickInner(
         : undefined;
     // Faixa mínima: precisa caber o stop com folga, senão qualquer oscilação
     // estoura a operação antes de voltar ao meio.
-    const minRangeSize = Number((cfg as any).range_min_size_pts ?? stopPts * 1.5);
+    // Proporcional ao stop quando range_min_size_pct_stop está preenchido (dono 18/11/2026:
+    // "valor fixado é erro"; faixa menor que 3× o stop não comporta stop + alvo). Senão, o legado.
+    const minRangePct = Number((cfg as any).range_min_size_pct_stop);
+    const minRangeSize = Number.isFinite(minRangePct) && minRangePct > 0
+      ? stopPts * minRangePct / 100
+      : Number((cfg as any).range_min_size_pts ?? stopPts * 1.5);
 
     const last = sorted[sorted.length - 1];
     const lastClose = Number(last?.candle_close ?? price);
