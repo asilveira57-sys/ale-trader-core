@@ -6798,7 +6798,7 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           .eq("simulation_run_id", run.id).eq("user_id", userId),
         (supabase as any).from("b3_simulation_mode_settings").select("mode, enabled, daily_loss_limit_brl, peak_giveback_pct, confirmacao_ativa_simulado, confirmacao_ativa_real, confirmacao_pct_stop, confirmacao_janela_s")
           .eq("simulation_run_id", run.id).eq("user_id", userId),
-        (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, entry_time, created_at")
+        (supabase as any).from("b3_simulation_orders").select("id, mode, side, entry_price, quantity, entry_time, created_at, bloqueado_na_sombra")
           .eq("simulation_run_id", run.id).eq("user_id", userId).eq("status", "open"),
         // Só o resumo compacto por robô é usado aqui (score, confiança e a
         // etapa que barrou), então projetamos esse caminho do JSON.
@@ -6944,8 +6944,12 @@ export const getB3CockpitOverview = createServerFn({ method: "GET" })
           open: open ? {
             side: open.side, entry_price: Number(open.entry_price), quantity: Number(open.quantity),
             entry_time: open.entry_time ?? open.created_at ?? null,
+            // Ordem barrada pelo freio (sombra): entra só no "sem freio" da testeira.
+            sombra: open.bloqueado_na_sombra === true,
           } : null,
           live_price: livePrice,
+          // Valor de 1 ponto por contrato: a tela recalcula o aberto com a cotação viva.
+          point_value_brl: Number(asset.tick_value_brl),
           unrealized_pts: unrealizedPts, unrealized_brl: unrealizedBrl,
           balance: Number(mode?.current_balance ?? mode?.initial_balance ?? 0),
           realized_today: realizedToday,

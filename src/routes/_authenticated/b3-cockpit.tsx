@@ -1,5 +1,6 @@
 import { DisjuntorHypothesis } from "@/components/b3/DisjuntorHypothesis";
-import { ThreeReadings, ReadingDetails, ThreePeriodRows } from "@/components/b3/ThreeReadings";
+import { ThreeReadings, ReadingDetails, ThreePeriodRows, type AbertoAgora } from "@/components/b3/ThreeReadings";
+import { readLiveQuotes } from "@/lib/b3-live-quotes.functions";
 import { readThreeReadings, readCockpitRealLabels } from "@/lib/b3-three-readings.functions";
 import { readingFor, readingText, threePeriodData, threeHeaders, type ThreeReading } from "@/lib/b3-three-readings";
 import { MilestoneContext, MilestoneMark, MilestoneWarning, useMilestones } from "@/components/b3/ConfigurationMilestones";
@@ -546,7 +547,11 @@ function CockpitPage() {
   const displayedReading = (rows: ThreeReading[]) => !allSymbols && symbolsSel.length === 1
     ? rows.find(r => r.nivel === "ativo" && r.symbol === symbolsSel[0])
     : rows.find(r => r.nivel === "total");
-  const threeFor = (root: string, variant?: string, mode?: string) => readingFor(threeRows, root, variant, mode);
+  // Hoje, a testeira soma as ordens abertas a preço de agora ("se fechar agora", dono 19/11).
+  const threeFor = (root: string, variant?: string, mode?: string) => {
+    const r = readingFor(threeRows, root, variant, mode);
+    return vivo ? comAberto(r, (c) => rootSymbol(c.symbol) === root && (!variant || c.variant === variant) && (!mode || c.mode === mode)) : r;
+  };
 
   // LEVE (18/10/2026): a leitura viva é UMA só, sem recorte — o filtro de
   // ativo/modalidade/robô é aplicado no navegador. Trocar filtro não refaz
@@ -560,6 +565,28 @@ function CockpitPage() {
     gcTime: 60_000,
     enabled: vivo,
   });
+  // Cotação viva (dono 19/11): com ordem aberta, a última cotação do MT5 a cada 2 s,
+  // sem esperar o tique do motor (~45 s). O aberto é recalculado aqui, por 1 contrato.
+  const readQuotes = useServerFn(readLiveQuotes);
+  const quoteSymbols = Array.from(new Set(((q.data?.cards ?? []) as any[]).filter((c) => c.open && c.quote_symbol).map((c) => String(c.quote_symbol)))).sort();
+  const liveQ = useQuery({
+    queryKey: ["b3-cotacao-viva", quoteSymbols.join(",")],
+    queryFn: () => readQuotes({ data: { symbols: quoteSymbols } }),
+    enabled: vivo && quoteSymbols.length > 0,
+    refetchInterval: useVisibleRefetchInterval(2000),
+    refetchIntervalInBackground: false,
+    staleTime: 1000,
+  });
+  const lastBySymbol = new Map<string, number | null>((liveQ.data?.quotes ?? []).map((x) => [x.symbol, x.last]));
+  const comCotacaoViva = (c: any) => {
+    if (!c.open) return c;
+    const last = Number(lastBySymbol.get(c.quote_symbol) ?? c.live_price);
+    const pv = Number(c.point_value_brl);
+    if (!(last > 0) || !Number.isFinite(pv)) return c;
+    const pts = (last - Number(c.open.entry_price)) * (c.open.side === "buy" ? 1 : -1);
+    const brl1 = pts * pv;
+    return { ...c, live_price: last, unrealized_pts: pts, unrealized_brl: brl1, total_today: Number(c.realized_today ?? 0) + brl1 };
+  };
   const recorteServidor = !allSymbols || !allVariants || !allModes;
   // PESADO: testeiras por ativo/modalidade com recorte (somas do servidor).
   // Sem polling; só quando há recorte — sem recorte a leitura viva já traz.
@@ -623,9 +650,30 @@ function CockpitPage() {
   const currentDate = q.data?.session_date ?? peakDates[0];
   const hypothesisDay = vivo ? currentDate : hd?.period?.end ?? period.end ?? period.start;
   const filtroCliente = buildCockpitFilter(filterArgs);
-  const baseCards: any[] = vivo && q.data?.cards?.length ? ((q.data?.cards ?? []) as any[]) : periodCards(hd?.catalog ?? [], hd?.sem_freio?.robots ?? []);
+  const baseCards: any[] = vivo && q.data?.cards?.length ? ((q.data?.cards ?? []) as any[]).map(comCotacaoViva) : periodCards(hd?.catalog ?? [], hd?.sem_freio?.robots ?? []);
   const all: any[] = baseCards.filter((c) => cockpitKeep(filtroCliente, c.symbol, c.variant, c.mode)).map((c) => ({ ...c, operational_loaded: !vivo || !!q.data?.cards?.length, brake_evidence: labelEvidence.find((r) => r.trade_date === currentDate && r.raiz === rootSymbol(c.symbol) && r.variant === c.variant && r.mode === c.mode) }));
   const porAtivo: any[] = threeHeaders(threeRows);
+  // Abertas agora entram na testeira: S todas, F só as com freio, D só se o disjuntor do ativo não disparou hoje.
+  const disjuntorDisparouHoje = (root: string) => {
+    const d = ((recentQ.data?.daily ?? []) as any[]).find((r) => r.gid === 1 && r.symbol === root && String(r.dia).slice(0, 10) === String(currentDate ?? "").slice(0, 10));
+    const ev = d?.disparos?.[0];
+    return !!ev?.disparou && ev.disparou !== "não disparou";
+  };
+  const abertoAgora = (pred: (c: any) => boolean): AbertoAgora => {
+    let s = 0, f = 0, d = 0, n = 0;
+    if (vivo) for (const c of all) {
+      if (!c.open || c.unrealized_brl == null || !pred(c)) continue;
+      const v = Number(c.unrealized_brl); n++; s += v;
+      if (!c.open.sombra) { f += v; if (!disjuntorDisparouHoje(rootSymbol(c.symbol))) d += v; }
+    }
+    return { dia: String(currentDate ?? ""), s, f, d, n };
+  };
+  function comAberto(row: ThreeReading | undefined, pred: (c: any) => boolean): ThreeReading | undefined {
+    const a = abertoAgora(pred);
+    if (!a.n) return row;
+    const base: any = row ?? { nivel: "", symbol: null, variant: null, mode: null, sem_freio: 0, com_freio: 0, com_freio_disjuntor: 0, ordens: 0, ganhos: 0, perdas: 0, acerto_pct: null, barradas: 0, frase: "", saiu_no_alvo: 0, saiu_no_stop: 0, saiu_no_meio: 0 };
+    return { ...base, sem_freio: Number(base.sem_freio) + a.s, com_freio: Number(base.com_freio) + a.f, com_freio_disjuntor: Number(base.com_freio_disjuntor) + a.d };
+  }
   // Pesado recarrega quando uma posição abre ou fecha (ou pelo botão).
   const abertasSig = ((q.data?.cards ?? []) as any[]).filter((c) => !!c.open).map((c) => `${c.run_id}|${c.mode}`).sort().join(",");
   const [abertasPrev, setAbertasPrev] = useState<string | null>(null);
@@ -840,8 +888,8 @@ function CockpitPage() {
       <MoreInfo label={`Carteira e exposição · ${scopeAssets}`}><WalletBand title={`Cockpit simulado — ${scopeAssets} · carteira atual`} rows={allSymbols ? walletRows : walletRows.filter(w => symbolsSel.includes(w.symbol))} exposure={vivo ? currentExposure : undefined} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("total")} riskPending={riskQ.isPending} riskError={riskQ.isError} /></MoreInfo>
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
-      <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte · {scopeAssets}</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(displayedReading(threeRows)))}><Copy />Copiar resultado</Button></div><ThreeReadings row={displayedReading(threeRows)} /></section>
-      {recentQ.isPending ? <p>Carregando os pregões…</p> : recentQ.isError ? <p role="alert">Não foi possível ler os pregões.</p> : recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} symbol={!allSymbols && symbolsSel.length === 1 ? symbolsSel[0] : undefined} total={displayedReading(recentQ.data.rows)} sessions={sessions} onToggleSessions={() => setSessions(sessions === 5 ? 10 : 5)} busy={recentQ.isFetching} capital={!allSymbols && symbolsSel.length === 1 ? capFor("ativo", symbolsSel[0]) : capFor("total")} />}
+      <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte · {scopeAssets}</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(displayedReading(threeRows)))}><Copy />Copiar resultado</Button></div><ThreeReadings row={vivo ? comAberto(displayedReading(threeRows), () => true) : displayedReading(threeRows)} /></section>
+      {recentQ.isPending ? <p>Carregando os pregões…</p> : recentQ.isError ? <p role="alert">Não foi possível ler os pregões.</p> : recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} symbol={!allSymbols && symbolsSel.length === 1 ? symbolsSel[0] : undefined} total={displayedReading(recentQ.data.rows)} sessions={sessions} onToggleSessions={() => setSessions(sessions === 5 ? 10 : 5)} busy={recentQ.isFetching} capital={!allSymbols && symbolsSel.length === 1 ? capFor("ativo", symbolsSel[0]) : capFor("total")} aberto={abertoAgora(() => true)} />}
 
       {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
       <section className="rounded-lg border border-border/60 bg-card p-3 space-y-2">
@@ -1017,7 +1065,7 @@ function CockpitPage() {
                 {isCollapsed ? <ChevronDown /> : <ChevronUp />}
               </Button>
             </div>
-            {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root)} symbol={root} sessions={sessions} title={`${root} — últimos ${sessions} pregões`} capital={capFor("ativo", root)} compact />}
+            {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root)} symbol={root} sessions={sessions} title={`${root} — últimos ${sessions} pregões`} capital={capFor("ativo", root)} aberto={abertoAgora((c) => rootSymbol(c.symbol) === root)} compact />}
             <MoreInfo label={`${root} · carteira`}><WalletBand title={`${root} · carteira atual`} rows={walletsFor(root)} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("ativo", root)} riskPending={riskQ.isPending} riskError={riskQ.isError} /></MoreInfo>
             {vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
             {!vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}
@@ -1068,7 +1116,7 @@ function CockpitPage() {
                   {variantCollapsed ? <ChevronDown /> : <ChevronUp />}
                 </Button>
                </div>
-               {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root, variant)} symbol={root} variant={variant} sessions={sessions} title={`${root} · ${variantLabel(variant)} — últimos ${sessions} pregões`} capital={capFor("modalidade", root, variant)} compact />}
+               {recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} total={readingFor(recentQ.data.rows ?? [], root, variant)} symbol={root} variant={variant} sessions={sessions} title={`${root} · ${variantLabel(variant)} — últimos ${sessions} pregões`} capital={capFor("modalidade", root, variant)} aberto={abertoAgora((c) => rootSymbol(c.symbol) === root && c.variant === variant)} compact />}
                <MoreInfo label={`${root} · ${variantLabel(variant)} · carteira, picos e transferência`}><WalletBand title={`${root} · ${variantLabel(variant)} · carteira atual`} rows={walletsFor(root, variant)} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("modalidade", root, variant)} riskPending={riskQ.isPending} riskError={riskQ.isError} />
                <PeakPanel title={`${root} · ${variantLabel(variant)}`} rows={peakRowsFor(root, variant)} contracts={contractCap(walletsFor(root, variant))} pending={peakTableQ.isPending} error={peakTableQ.isError} scenarios={scenariosFor(root, variant)} scenariosPending={scenariosQ.isPending} scenariosError={scenariosQ.isError} />
                <ReadingDetails row={threeFor(root, variant)} />

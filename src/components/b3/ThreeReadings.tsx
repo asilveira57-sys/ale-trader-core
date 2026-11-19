@@ -39,11 +39,22 @@ type CapitalLike = { dia: string; pico_brl: number; contratos_no_pico: number; h
 const short = (n: number) => Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 const dayLabel = (d: string) => { const [, m, dd] = String(d).slice(0, 10).split("-"); return `${dd}/${m}`; };
 const KEYS = [['S', 'sem_freio', 'Sem freio'], ['F', 'com_freio', 'Com freio'], ['D', 'com_freio_disjuntor', 'Com freio + disjuntor']] as const;
+/** Ordens abertas a preço de agora, por 1 contrato: s = todas, f = com freio, d = com freio e sem disjuntor disparado. */
+export type AbertoAgora = { dia: string; s: number; f: number; d: number; n: number };
 function TileLines({ r }: { r: any }) {
   return <>{KEYS.map(([k, key, label]) => <span key={key} className="flex items-baseline justify-between gap-1" title={label}><span className="text-muted-foreground">{k}</span><span className={`font-mono font-semibold ${color(r[key])}`}>{short(r[key])}</span></span>)}</>;
 }
-export function ThreePeriodRows({ rows, total, symbol, variant, sessions, onToggleSessions, busy, title = "Resultados por pregão", peaks, capital }: { rows: any[]; total?: ThreeReading; symbol?: string; variant?: string; sessions?: 5 | 10; onToggleSessions?: () => void; busy?: boolean; title?: string; compact?: boolean; peaks?: PeakLike[]; capital?: CapitalLike[] }) {
-  const daily = newestSessions(rows.filter(r => symbol ? r.symbol === symbol && (variant ? r.variant === variant && r.gid === 0 : r.gid === 1) : r.gid === 3));
+export function ThreePeriodRows({ rows, total, symbol, variant, sessions, onToggleSessions, busy, title = "Resultados por pregão", peaks, capital, aberto }: { rows: any[]; total?: ThreeReading; symbol?: string; variant?: string; sessions?: 5 | 10; onToggleSessions?: () => void; busy?: boolean; title?: string; compact?: boolean; peaks?: PeakLike[]; capital?: CapitalLike[]; aberto?: AbertoAgora }) {
+  let daily: any[] = newestSessions(rows.filter(r => symbol ? r.symbol === symbol && (variant ? r.variant === variant && r.gid === 0 : r.gid === 1) : r.gid === 3));
+  // "Se fechar agora" (dono 19/11): ordens abertas entram no quadradinho de hoje e no total.
+  if (aberto && aberto.n > 0) {
+    const dia = String(aberto.dia).slice(0, 10);
+    const i = daily.findIndex(r => String(r.dia).slice(0, 10) === dia);
+    const soma = (r: any) => ({ ...r, sem_freio: Number(r.sem_freio ?? 0) + aberto.s, com_freio: Number(r.com_freio ?? 0) + aberto.f, com_freio_disjuntor: Number(r.com_freio_disjuntor ?? 0) + aberto.d, __aberto: aberto.f });
+    if (i >= 0) daily = daily.map((r, j) => j === i ? soma(r) : r);
+    else { daily = [soma({ dia, sem_freio: 0, com_freio: 0, com_freio_disjuntor: 0, disparos: [] }), ...daily]; if (sessions && daily.length > sessions) daily = daily.slice(0, sessions); }
+    if (total) total = { ...total, sem_freio: Number(total.sem_freio) + aberto.s, com_freio: Number(total.com_freio) + aberto.f, com_freio_disjuntor: Number(total.com_freio_disjuntor) + aberto.d };
+  }
   // Pregão mais recente à esquerda (pedido do dono 16/11).
   const tiles = [...daily].sort((a, b) => String(b.dia).localeCompare(String(a.dia)));
   const capOf = (d: string) => capital?.find(c => String(c.dia).slice(0, 10) === String(d).slice(0, 10));
@@ -63,6 +74,7 @@ export function ThreePeriodRows({ rows, total, symbol, variant, sessions, onTogg
         <button type="button" className={`w-[7.5rem] shrink-0 rounded-md border bg-background/40 p-1.5 text-left text-[11px] leading-tight hover:bg-background/70 ${fired ? "border-amber-500/70" : "border-border"}`} aria-label={`Detalhes de ${r.dia}`} data-period-tile>
           <span className="mb-0.5 flex items-center justify-between font-bold"><span>{dayLabel(r.dia)}</span>{fired && <span className="rounded bg-amber-500/25 px-1 text-[9px] text-amber-200" title={d.disparou}>disj.</span>}</span>
           <TileLines r={r} />
+          {r.__aberto != null && <span className="flex justify-between text-amber-300" title="Ordens abertas a preço de agora (com freio), já somadas acima"><span>aberto</span><span className="font-mono">{short(r.__aberto)}</span></span>}
           {(() => { const c = capOf(r.dia); return <span className="mt-0.5 flex justify-between border-t border-border/60 pt-0.5 text-sky-300" title="Pico de capital: contratos abertos ao mesmo tempo × margem × 1,30"><span>capital</span><span className="font-mono">{c ? short(Number(c.pico_brl)) : "—"}</span></span>; })()}
         </button></PopoverTrigger>
         <PopoverContent className="max-h-[70vh] w-96 overflow-y-auto text-xs"><p className="mb-1 font-bold">{r.dia}<MilestoneMark date={r.dia} symbol={symbol} variant={variant} /></p><DayCircuit r={r} />{(() => { const c = capOf(r.dia); return c ? <p className="mt-2">Pico de capital: <b>{brl(Number(c.pico_brl))}</b> — {c.contratos_no_pico} contratos abertos ao mesmo tempo{c.hora_pico ? ` às ${String(c.hora_pico).slice(0, 5)}` : ""} (margem × 1,30)</p> : <p className="mt-2 text-muted-foreground">Pico de capital: sem posição com freio neste pregão.</p>; })()}
