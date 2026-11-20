@@ -2492,9 +2492,16 @@ async function runB3SimulationTickInner(
     const rangeTop = Math.max(...highs);
     const rangeBottom = Math.min(...lows);
     const rangeSize = rangeTop - rangeBottom;
-    const minRangeSize = Number((cfg as any).range_min_size_pts ?? stopPtsCfg * 1.5);
+    // Canal mínimo e folga além da borda PROPORCIONAIS ao stop do modo (dono 20/11/2026:
+    // "valor fixado é erro"). Os campos em % mandam; os em pontos ficam só como legado.
+    const pctOk = (v: any) => Number.isFinite(Number(v)) && Number(v) > 0;
+    const minRangeSize = pctOk((cfg as any).range_min_size_pct_stop)
+      ? stopPtsCfg * Number((cfg as any).range_min_size_pct_stop) / 100
+      : Number((cfg as any).range_min_size_pts ?? stopPtsCfg * 1.5);
     // Folga mínima além da borda no FECHAMENTO do minuto, pra não entrar em pavio.
-    const minClear = Number((cfg as any).breakout_min_clearance_pts ?? Math.max(stopPtsCfg * 0.1, Number(asset?.tick_size ?? 0)));
+    const minClear = Math.max(Number(asset?.tick_size ?? 0), pctOk((cfg as any).breakout_min_clearance_pct_stop)
+      ? stopPtsCfg * Number((cfg as any).breakout_min_clearance_pct_stop) / 100
+      : Number((cfg as any).breakout_min_clearance_pts ?? stopPtsCfg * 0.1));
     const lastClose = Number(last?.candle_close ?? price);
     const lastOpen = Number(last?.candle_open ?? lastClose);
 
