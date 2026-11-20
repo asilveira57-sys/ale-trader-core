@@ -26,7 +26,7 @@
 // usa `onlyIfOpen`, então o UPDATE só vale se a linha ainda estiver aberta —
 // quem chegar depois não fecha de novo nem soma o resultado duas vezes.
 
-import { closeOrder, loadAssetProfile } from "@/lib/b3-simulation.functions";
+import { closeOrder, loadAssetProfile, computeB3Fees } from "@/lib/b3-simulation.functions";
 import {
   B3QuoteProvider,
   getB3ExecutionAudit,
@@ -236,6 +236,42 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
   }
 
 
+  // ── SINAL CONTRÁRIO NO LUCRO (20/11/2026, pedido do dono) ────────────────
+  // Quando abre uma ordem no sentido contrário (qualquer modalidade, mesmo
+  // ativo), a posição mais antiga que está NO LUCRO fecha na hora. No prejuízo
+  // ela segue com o stop dela. O sinal novo NÃO é bloqueado.
+  // Medição WIN 13–19/11, 324 posições, por 1 contrato: real −3.655 → +780
+  // com a regra (+4.435; com freio +1.435). Fechar também as que estavam no
+  // prejuízo piorava o indicador (−870), por isso só no lucro.
+  // A decisão é no momento em que o contrário aparece: só oposições que
+  // começaram há no máximo SINAL_CONTRARIO_JANELA_S segundos (o guardião roda
+  // a cada 20 s). Depois disso, vale a oposição prolongada de 20 min.
+  const SINAL_CONTRARIO_JANELA_S = 90;
+  const sinalContrarioPorOrdem = new Map<string, { oposta_id: string; oposta_side: string; oposta_em: string }>();
+  {
+    const grupos = new Map<string, any[]>();
+    for (const o of ordens) {
+      const run = runById.get(o.simulation_run_id);
+      if (!run?.symbol || !o.entry_time) continue;
+      const k = `${o.user_id}:${run.symbol}`;
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k)!.push(o);
+    }
+    const ms = (o: any) => new Date(o.entry_time).getTime();
+    for (const [, lista] of grupos) {
+      for (const velha of lista) {
+        for (const nova of lista) {
+          if (nova.side === velha.side || ms(nova) <= ms(velha)) continue;
+          if ((agora - ms(nova)) / 1000 > SINAL_CONTRARIO_JANELA_S) continue;
+          if (!sinalContrarioPorOrdem.has(velha.id)) {
+            sinalContrarioPorOrdem.set(velha.id, { oposta_id: nova.id, oposta_side: nova.side, oposta_em: nova.entry_time });
+          }
+        }
+      }
+    }
+  }
+
+
   // 3) Cotação: uma leitura por (usuário + ativo), compartilhada por todos os
   //    robôs daquele ativo. O provedor ainda tem cache de 1,5 s por cima.
   const priceCache = new Map<string, B3PriceContextResult | null>();
@@ -412,6 +448,18 @@ export async function runB3GuardiaoSaida(supabase: any): Promise<GuardiaoResulta
           corte_brt: "15:30",
           brt_time: janelaBrt.brt_time,
         };
+      }
+
+      // Sinal contrário no lucro: fecha a perna velha se, já descontado o custo,
+      // ela está positiva no preço auditado de agora.
+      const contra = sinalContrarioPorOrdem.get(open.id);
+      if (!motivo && contra) {
+        const qty = Number(open.quantity) || 1;
+        const bruto = movePts * Number(asset.tick_value_brl) * qty;
+        const custo = computeB3Fees({ assetProfile: asset, quantity: qty, entryPrice: entry, exitPrice: markPrice });
+        const liquido = bruto - Number(custo ?? 0);
+        debug.sinal_contrario = { ...contra, liquido_brl: Number(liquido.toFixed(2)), janela_s: SINAL_CONTRARIO_JANELA_S };
+        if (liquido > 0) { motivo = "sinal_contrario_lucro"; nivel = null; }
       }
 
 
