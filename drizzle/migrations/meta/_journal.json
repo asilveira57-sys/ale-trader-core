@@ -316,6 +316,13 @@
       "when": 1795103000000,
       "tag": "0044_pa_regua_solta_8_robos",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1795220000000,
+      "tag": "0045_vwap_win_religado",
+      "breakpoints": true
     }
   ]
 }
