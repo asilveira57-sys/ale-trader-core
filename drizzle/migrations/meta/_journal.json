@@ -330,6 +330,13 @@
       "when": 1795221000000,
       "tag": "0046_rompimento_canal_proporcional",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795222000000,
+      "tag": "0047_vwap_win_1_contrato",
+      "breakpoints": true
     }
   ]
 }
