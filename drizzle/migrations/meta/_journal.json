@@ -309,6 +309,13 @@
       "when": 1795100000000,
       "tag": "0043_pa_sc_teste_geometria",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1795103000000,
+      "tag": "0044_pa_regua_solta_8_robos",
+      "breakpoints": true
     }
   ]
 }
