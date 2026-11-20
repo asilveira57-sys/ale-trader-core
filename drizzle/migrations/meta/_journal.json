@@ -302,6 +302,13 @@
       "when": 1795000000000,
       "tag": "0042_faixa_win_proporcional",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1795100000000,
+      "tag": "0043_pa_sc_teste_geometria",
+      "breakpoints": true
     }
   ]
 }
