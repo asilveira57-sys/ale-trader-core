@@ -27,6 +27,7 @@
 // quem chegar depois não fecha de novo nem soma o resultado duas vezes.
 
 import { closeOrder, loadAssetProfile, computeB3Fees } from "@/lib/b3-simulation.functions";
+import { aplicarProporcional } from "@/lib/b3-proporcional";
 import {
   B3QuoteProvider,
   getB3ExecutionAudit,
@@ -82,7 +83,9 @@ async function ultimaPassadaMs(supabase: any): Promise<number | null> {
 
 
 /** Config de saída de um robô, com defaults conservadores. */
-function saidaCfg(cfg: any) {
+function saidaCfg(cfgBruto: any) {
+  // Mesmos limites do motor: com a chave ligada, trailing e zero a zero saem em % do stop.
+  const cfg = cfgBruto ? aplicarProporcional(cfgBruto, null, Number(cfgBruto?.stop_pts ?? 0)) : cfgBruto;
   return {
     stop_pts: Number(cfg?.stop_pts ?? 0),
     gain_pts: Number(cfg?.gain_pts ?? 0),

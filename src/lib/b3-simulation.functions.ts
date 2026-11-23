@@ -1897,13 +1897,20 @@ async function runB3SimulationTickInner(
     return { direction: abs < 1e-6 ? "lateral" : direction, strength };
   }
 
+  // Valores que eram pontos fixos de WIN (calibrados com o WIN a ~166.700) viram proporção
+  // do preço: no WIN dão os mesmos pontos de antes; no WDO/BIT passam a valer na escala deles.
+  function ptsDoPreco(precoAtual: any, ptsWinReferencia: number): number {
+    const p = Number(precoAtual);
+    return Number.isFinite(p) && p > 0 ? p * (ptsWinReferencia / 166700) : ptsWinReferencia;
+  }
+
   function classifyRegime(ctxLocal: any, derived: any): string | null {
     if (!Number.isFinite(ctxLocal.volatility_pct)) return null;
     const vol = ctxLocal.volatility_pct;
     const trend = classifyTrend(ctxLocal, Number(asset?.trend_strength_factor ?? 5));
     if (vol > 3.5) return "alta_volatilidade";
     if (trend.strength >= 50 && trend.direction !== "lateral") return `tendencia_${trend.direction}`;
-    if (Math.abs(derived?.var_5m_pts ?? 0) < 30 && vol < 1.5) return "range_estreito";
+    if (Math.abs(derived?.var_5m_pts ?? 0) < ptsDoPreco(ctxLocal.price, 30) && vol < 1.5) return "range_estreito";
     return "consolidacao";
   }
 
@@ -1942,7 +1949,8 @@ async function runB3SimulationTickInner(
     // nesses ativos é impossível estar a mais de 50 pontos da máxima, então a
     // evidência "resistência/suporte próximo" reprovava sempre e eles operavam
     // com 6 de 7 evidências em vez de 6 de 8. WINQ26 = 50 preserva.
-    const nearResistancePts = Number(asset?.near_resistance_pts ?? Math.max(stopPts, 50));
+    // Resistência próxima: era 50 pts fixos por ativo; agora proporção do preço (50 pts no WIN a ~167 mil).
+    const nearResistancePts = ptsDoPreco(price, 50);
     const details: Record<string, any> = {
       trend_direction: trend.direction, trend_strength: trend.strength,
       price, vwap, ema9, ema21, open, volatility_pct: vol,
@@ -2003,9 +2011,9 @@ async function runB3SimulationTickInner(
     // aquele padrão específico tem evidência suficiente), não só telemetria.
     let name: B3SetupName = "no_valid_setup";
     let altOk = false;
-    if (intendedSide === "buy" && distHigh <= 20 && trend.direction === "alta") { name = "breakout_retest"; altOk = hardBlock.length === 0 && hits >= minHits - 1; }
-    else if (intendedSide === "sell" && distLow <= 20 && trend.direction === "baixa") { name = "breakout_retest"; altOk = hardBlock.length === 0 && hits >= minHits - 1; }
-    else if (Math.abs(Number(derived?.var_5m_pts ?? 0)) < 40 && vol < 1.5) { name = "consolidation_breakout"; altOk = !wrongDirection && rr >= 1.5; }
+    if (intendedSide === "buy" && distHigh <= ptsDoPreco(price, 20) && trend.direction === "alta") { name = "breakout_retest"; altOk = hardBlock.length === 0 && hits >= minHits - 1; }
+    else if (intendedSide === "sell" && distLow <= ptsDoPreco(price, 20) && trend.direction === "baixa") { name = "breakout_retest"; altOk = hardBlock.length === 0 && hits >= minHits - 1; }
+    else if (Math.abs(Number(derived?.var_5m_pts ?? 0)) < ptsDoPreco(price, 40) && vol < 1.5) { name = "consolidation_breakout"; altOk = !wrongDirection && rr >= 1.5; }
     else if (intendedSide === "buy" && distLow <= nearResistancePts) { name = "support_resistance_rejection"; altOk = !lateral && rr >= 1.5; }
     else if (intendedSide === "sell" && distHigh <= nearResistancePts) { name = "support_resistance_rejection"; altOk = !lateral && rr >= 1.5; }
     return { name, ok: altOk, reasons: failures, details: { ...details, soft_hits: hits, soft_total: soft.length } };
@@ -2088,7 +2096,10 @@ async function runB3SimulationTickInner(
     const minSwings = Number.isFinite(minSwingsRaw) && minSwingsRaw >= 0 ? Math.floor(minSwingsRaw) : 2;
     const nearMultRaw = Number((cfg as any).pa_near_struct_mult ?? 0.6);
     const nearMult = Number.isFinite(nearMultRaw) ? nearMultRaw : 0.6;
-    const nearPisoRaw = Number((cfg as any).pa_near_struct_piso_pts ?? 20);
+    const nearPisoPct = Number((cfg as any).pa_near_struct_piso_pct_stop);
+    const nearPisoRaw = Number.isFinite(nearPisoPct) && nearPisoPct > 0
+      ? Math.max(1, Number(cfg.stop_pts) || 0) * nearPisoPct / 100
+      : Number((cfg as any).pa_near_struct_piso_pts ?? 20);
     const nearPiso = Number.isFinite(nearPisoRaw) ? nearPisoRaw : 20;
 
     const details: Record<string, any> = {
@@ -2416,7 +2427,7 @@ async function runB3SimulationTickInner(
         pass: rangeSide === "buy" ? price >= open : price <= open });
     }
     soft.push({ label: `espaço até o meio da faixa insuficiente (${Math.round(roomToMid)} pts)`,
-      pass: roomToMid >= Math.max(stopPts * 0.5, 10) });
+      pass: roomToMid >= Math.max(stopPts * 0.5, Number(asset?.tick_size ?? 0)) });
     soft.push({ label: `R:R ${rr.toFixed(2)} < 1.2`, pass: rr >= 1.2 });
     soft.push({ label: `alvo além do extremo oposto da faixa (${gainPts} pts)`,
       pass: gainPts > 0 ? gainPts <= rangeSize : false });
@@ -3414,6 +3425,21 @@ async function runB3SimulationTickInner(
 
     const runT0 = Date.now();
 
+    // Base dos limites proporcionais = carteira do robô (b3_carteira_robo, R$ 10.000
+    // desde 12/11). Antes era b3_simulation_modes.current_balance, que acumulava
+    // resultado antigo e chegava a ficar negativo (dono 23/11: "valor fixado é erro").
+    const carteiraSaldoPorModo: Record<string, number> = {};
+    try {
+      const { data: carts } = await (supabase as any).from("b3_carteira_robo")
+        .select("mode, saldo_atual_brl").eq("user_id", userId)
+        .eq("symbol", String(run.symbol ?? "").toUpperCase().replace(/[FGHJKMNQUVXZ]\d{2}$/, ""))
+        .eq("variant", String((run as any).variant ?? "indicador"));
+      for (const c of carts ?? []) {
+        const v = Number(c.saldo_atual_brl);
+        if (Number.isFinite(v) && v > 0) carteiraSaldoPorModo[String(c.mode)] = v;
+      }
+    } catch { /* sem carteira: valem os valores fixos legados */ }
+
     for (const mode of activeModes) {
       const modeT0 = Date.now();
       try {
@@ -3440,7 +3466,7 @@ async function runB3SimulationTickInner(
       }
       // Limites proporcionais: só com a chave ligada; base = carteira simulada do robô.
       const cfg = aplicarProporcional(
-        settingsByMode[mode], Number(m.current_balance ?? m.initial_balance ?? 0),
+        settingsByMode[mode], carteiraSaldoPorModo[mode] ?? null,
         Number(settingsByMode[mode]?.stop_pts ?? 0),
         (asset as any)?.margin_model === "per_contract" ? Number((asset as any)?.margin_per_contract_brl ?? 0) : null,
       );
