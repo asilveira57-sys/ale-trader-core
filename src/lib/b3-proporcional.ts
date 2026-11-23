@@ -67,7 +67,8 @@ export function resolverLimites(
   };
   const pts = (p: keyof CfgProporcional, f: keyof CfgProporcional) => {
     const v = pct(cfg[p]);
-    return on && stop > 0 && v != null ? Math.round(stop * v / 100) : fixo(f);
+    // 2 casas (não inteiro): no WDO o tique é 0,5 pt e o arredondamento inteiro mudava o valor.
+    return on && stop > 0 && v != null ? r2(stop * v / 100) : fixo(f);
   };
   const q = capOk
     ? contratosProporcionais(cap, pct(cfg.risco_contratos_pct), opts.margemContrato ?? null, opts.tetoContratos)

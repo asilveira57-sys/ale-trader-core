@@ -337,6 +337,13 @@
       "when": 1795222000000,
       "tag": "0047_vwap_win_1_contrato",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1795430000000,
+      "tag": "0048_tudo_proporcional",
+      "breakpoints": true
     }
   ]
 }
