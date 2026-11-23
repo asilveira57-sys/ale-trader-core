@@ -3469,6 +3469,7 @@ async function runB3SimulationTickInner(
         settingsByMode[mode], carteiraSaldoPorModo[mode] ?? null,
         Number(settingsByMode[mode]?.stop_pts ?? 0),
         (asset as any)?.margin_model === "per_contract" ? Number((asset as any)?.margin_per_contract_brl ?? 0) : null,
+        Number((asset as any)?.tick_value_brl ?? 0),
       );
       const realizedToday = Number(realizedTodayByMode[mode] ?? 0);
       const startMin = hhmmToMin(cfg.trading_start_time);

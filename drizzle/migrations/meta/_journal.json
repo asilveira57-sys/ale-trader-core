@@ -341,8 +341,8 @@
     {
       "idx": 48,
       "version": "7",
-      "when": 1795430000000,
-      "tag": "0048_tudo_proporcional",
+      "when": 1795432000000,
+      "tag": "0049_limites_em_stops",
       "breakpoints": true
     }
   ]

@@ -20,6 +20,10 @@ export interface CfgProporcional {
   trailing_giveback_pct_stop?: number | null;
   breakeven_ativa_pct_stop?: number | null;
   breakeven_folga_pct_stop?: number | null;
+  // Dono 23/11/2026: dinheiro por 1 CONTRATO, em múltiplos do stop do robô (não da carteira fictícia).
+  daily_loss_limit_stops?: number | null;
+  daily_gain_target_stops?: number | null;
+  peak_lock_min_profit_stops?: number | null;
 }
 
 const pct = (v: unknown): number | null => {
@@ -54,14 +58,18 @@ export interface LimitesResolvidos {
 
 export function resolverLimites(
   cfg: CfgProporcional, capital: number | null, stopPts: number | null,
-  opts: { margemContrato?: number | null; tetoContratos?: number | null } = {},
+  opts: { margemContrato?: number | null; tetoContratos?: number | null; valorPontoBrl?: number | null } = {},
 ): LimitesResolvidos {
   const fixo = (k: keyof CfgProporcional) => (cfg[k] == null ? null : Number(cfg[k]));
   const on = cfg.limites_proporcionais === true;
   const cap = Number(capital);
   const capOk = on && cap > 0;
   const stop = Math.abs(Number(stopPts) || 0);
-  const brl = (p: keyof CfgProporcional, f: keyof CfgProporcional) => {
+  const vp = Number(opts.valorPontoBrl);
+  const brl = (p: keyof CfgProporcional, f: keyof CfgProporcional, st?: keyof CfgProporcional) => {
+    // 1º) múltiplos do stop de 1 contrato; 2º) % da carteira; 3º) valor fixo legado.
+    const k = st ? pct(cfg[st]) : null;
+    if (on && k != null && stop > 0 && vp > 0) return r2(k * stop * vp);
     const v = pct(cfg[p]);
     return capOk && v != null ? r2(cap * v / 100) : fixo(f);
   };
@@ -76,9 +84,9 @@ export function resolverLimites(
   return {
     proporcional: on,
     capital_brl: capOk ? cap : null,
-    peak_lock_min_profit_brl: brl("peak_lock_min_profit_pct", "peak_lock_min_profit_brl"),
-    daily_gain_target_brl: brl("daily_gain_target_pct", "daily_gain_target_brl"),
-    daily_loss_limit_brl: brl("daily_loss_limit_pct", "daily_loss_limit_brl"),
+    peak_lock_min_profit_brl: brl("peak_lock_min_profit_pct", "peak_lock_min_profit_brl", "peak_lock_min_profit_stops"),
+    daily_gain_target_brl: brl("daily_gain_target_pct", "daily_gain_target_brl", "daily_gain_target_stops"),
+    daily_loss_limit_brl: brl("daily_loss_limit_pct", "daily_loss_limit_brl", "daily_loss_limit_stops"),
     max_contracts: q ?? fixo("max_contracts"),
     trailing_activation_pts: pts("trailing_activation_pct_stop", "trailing_activation_pts"),
     trailing_giveback_pts: pts("trailing_giveback_pct_stop", "trailing_giveback_pts"),
@@ -89,10 +97,10 @@ export function resolverLimites(
 
 /** Aplica os limites resolvidos por cima do cfg (só quando a chave está ligada). */
 export function aplicarProporcional<T extends Record<string, any>>(
-  cfg: T, capital: number | null, stopPts: number | null, margemContrato?: number | null,
+  cfg: T, capital: number | null, stopPts: number | null, margemContrato?: number | null, valorPontoBrl?: number | null,
 ): T {
   if (cfg?.limites_proporcionais !== true) return cfg;
-  const r = resolverLimites(cfg, capital, stopPts, { margemContrato });
+  const r = resolverLimites(cfg, capital, stopPts, { margemContrato, valorPontoBrl });
   const out: any = { ...cfg };
   for (const k of ["peak_lock_min_profit_brl", "daily_gain_target_brl", "daily_loss_limit_brl", "max_contracts",
     "trailing_activation_pts", "trailing_giveback_pts", "breakeven_ativa_pts", "breakeven_folga_pts"] as const) {
