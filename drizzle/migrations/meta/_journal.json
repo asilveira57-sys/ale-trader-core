@@ -344,6 +344,13 @@
       "when": 1795432000000,
       "tag": "0049_limites_em_stops",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1795433000000,
+      "tag": "0050_mr_alvo_na_media_e_resumo_recusas",
+      "breakpoints": true
     }
   ]
 }

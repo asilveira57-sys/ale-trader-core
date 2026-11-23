@@ -2196,7 +2196,8 @@ async function runB3SimulationTickInner(
   // de perder dinheiro nessa modalidade. Série de candles M1 reais.
   function classifySetupMeanReversion(params: {
     ctxLocal: any; cfg: any; m1Candles: any[];
-  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>; side_override?: "buy" | "sell" } {
+  }): { name: B3SetupName; ok: boolean; reasons: string[]; details: Record<string, any>; side_override?: "buy" | "sell";
+    stop_pts_override?: number | null; gain_pts_override?: number | null } {
     const { ctxLocal, cfg, m1Candles } = params;
     const price = Number(ctxLocal.price);
     const open = Number(ctxLocal.open);
@@ -2231,8 +2232,15 @@ async function runB3SimulationTickInner(
     // não escala com a volatilidade do momento. Base dinâmica (atrLike * 1.5)
     // subia a exigência exatamente no dia de chicote, que é o dia da
     // modalidade: 347 pts exigidos contra 307 pts de esticão real.
-    const minStretch = Number((cfg as any).mean_reversion_min_stretch_pts
-      ?? stopPts * Number((cfg as any).mean_reversion_min_stretch_stop_ratio ?? 0.6));
+    // Alvo na média (dono 23/11/2026, análise A16 — 64 pregões, duas metades positivas):
+    // alvo = distância até a média, stop = múltiplo dessa distância, esticão mínimo em %
+    // do preço. Nenhum ponto fixo; gain_pts/stop_pts do modo deixam de valer aqui.
+    const alvoNaMedia = (cfg as any).mr_alvo_na_media === true;
+    const mrStopMult = Number((cfg as any).mr_stop_mult_dist ?? 1.5) > 0 ? Number((cfg as any).mr_stop_mult_dist ?? 1.5) : 1.5;
+    const minStretch = alvoNaMedia
+      ? price * Number((cfg as any).mr_min_stretch_pct_preco ?? 0.10) / 100
+      : Number((cfg as any).mean_reversion_min_stretch_pts
+        ?? stopPts * Number((cfg as any).mean_reversion_min_stretch_stop_ratio ?? 0.6));
     // Lado escolhido exclusivamente pelo esticão. Sem referência ou sem o
     // esticão mínimo ainda não existe lado operável — nunca usamos o lado
     // tendencial recebido pelo motor como fallback desta modalidade.
@@ -2298,18 +2306,28 @@ async function runB3SimulationTickInner(
       soft.push({ label: "topo ainda avançando (topo acima do topo anterior)",
         pass: Number.isFinite(prevHigh) && Number.isFinite(lastHigh) ? lastHigh <= prevHigh : false });
     }
-    soft.push({ label: `alvo maior que o esticão disponível (${gainPts} pts > ${Math.round(stretchAbs)} pts até a média)`,
-      pass: gainPts > 0 ? gainPts <= Math.max(stretchAbs, stopPts) : false });
-    soft.push({ label: `R:R ${rr.toFixed(2)} < 1.2`, pass: rr >= 1.2 });
+    const gainDynMr = Math.round(stretchAbs);
+    const stopDynMr = Math.round(stretchAbs * mrStopMult);
+    if (alvoNaMedia) {
+      Object.assign(details, { alvo_na_media: true, alvo_dinamico_pts: gainDynMr, stop_dinamico_pts: stopDynMr,
+        stop_mult_dist: mrStopMult, min_stretch_pct_preco: Number((cfg as any).mr_min_stretch_pct_preco ?? 0.10),
+        risk_reward: stopDynMr > 0 ? Number((gainDynMr / stopDynMr).toFixed(2)) : null, min_risk_reward: null });
+    } else {
+      soft.push({ label: `alvo maior que o esticão disponível (${gainPts} pts > ${Math.round(stretchAbs)} pts até a média)`,
+        pass: gainPts > 0 ? gainPts <= Math.max(stretchAbs, stopPts) : false });
+      soft.push({ label: `R:R ${rr.toFixed(2)} < 1.2`, pass: rr >= 1.2 });
+    }
 
     const failedSoft = soft.filter((s) => !s.pass).map((s) => s.label);
-    const minHits = Number((cfg as any).setup_min_soft_hits_mr ?? 3);
+    // Com alvo na média sobram as 3 evidências de exaustão: exige todas (candle de exaustão é essencial).
+    const minHits = alvoNaMedia ? soft.length : Number((cfg as any).setup_min_soft_hits_mr ?? 3);
     const hits = soft.length - failedSoft.length;
     const softOk = hits >= minHits;
     Object.assign(details, { soft_hits: hits, soft_total: soft.length, soft_min_hits: minHits, soft_failed: failedSoft });
 
     if (hardBlock.length === 0 && softOk) {
-      return { name: "mean_reversion_snapback", ok: true, reasons: [], details, side_override: mrSide };
+      return { name: "mean_reversion_snapback", ok: true, reasons: [], details, side_override: mrSide,
+        ...(alvoNaMedia ? { stop_pts_override: stopDynMr, gain_pts_override: gainDynMr } : {}) };
     }
     return {
       name: "no_valid_setup", ok: false,
@@ -3741,7 +3759,9 @@ async function runB3SimulationTickInner(
               symbol: asset.symbol,
               entry_style: String((cfg as any).entry_style ?? "indicador"),
               estagio,
-              motivo: r.slice(0, 500),
+              // "Score insuficiente" escondia o motivo real (A16.5): mostra o primeiro passo que barrou.
+              motivo: ((/^Score insuficiente/.test(r) && firstStop && firstStop.key !== "score" && firstStop.detail)
+                ? `${firstStop.label}: ${firstStop.detail} (score também insuficiente)` : r).slice(0, 500),
               detalhe: setupObj
                 ? {
                     setup: setupObj.name ?? null,
