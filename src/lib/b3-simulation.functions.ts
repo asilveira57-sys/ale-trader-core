@@ -1248,11 +1248,16 @@ async function runB3SimulationTickInner(
     }).format(new Date());
     // 00:00 BRT (UTC-3) = 03:00 UTC do mesmo dia
     const startUtcIso = `${parts}T03:00:00.000Z`;
-    const { data: closedToday } = await supabase.from("b3_simulation_orders")
-      .select("mode, net_result_brl, exit_time")
+    // Só ordens que a conta teria aberto (com freio). As ordens-sombra são o contrafactual
+    // "e se não houvesse freio/portão": não podem armar freio de grupo, stop diário nem
+    // trava de pico (dono 23/11/2026 — o indicador ficou travado por perdas de ordens
+    // que nunca entraram).
+    const { data: closedTodayAll } = await supabase.from("b3_simulation_orders")
+      .select("mode, net_result_brl, exit_time, bloqueado_na_sombra")
       .eq("simulation_run_id", runId).eq("user_id", userId).eq("status", "closed")
       .gte("exit_time", startUtcIso)
       .order("exit_time", { ascending: true });
+    const closedToday = (closedTodayAll ?? []).filter((r: any) => r.bloqueado_na_sombra !== true);
     const map: Record<string, number> = { conservador: 0, moderado: 0, equilibrado: 0, semi_agressivo: 0, agressivo: 0 };
     // Pico do dia sai da MESMA série do realizado (27/09/2026): acumulado das
     // fechadas de hoje, começando em zero. Nada de sessão anterior atravessa.
@@ -1370,6 +1375,7 @@ async function runB3SimulationTickInner(
       let v = Number(realizedTodayByMode[mode] ?? 0);
       for (const o of openList) {
         if (o.mode !== mode) continue;
+        if (o.bloqueado_na_sombra === true) continue; // sombra não arma o freio de grupo
         // Marcação a mercado lado a lado (bid para compra, ask para venda)
         // quando há contexto de cotação; senão o último preço conhecido.
         const mark = info ? liveExitMarkPrice(o, info, fallbackCtx) : (livePrice && livePrice > 0 ? livePrice : null);
