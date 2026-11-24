@@ -3555,6 +3555,12 @@ async function runB3SimulationTickInner(
             preco_sinal: Number(pend?.preco_sinal) || null,
             side: String(pend?.side ?? ""),
             decorrido_s: Math.round(av.decorrido_s),
+            // Medição dos degraus (24/11/2026): stop congelado no sinal, instante
+            // do sinal e quando o avanço dentro da janela cruzou cada % do stop.
+            sinal_em: pend?.criado_em ?? null,
+            stop_pts: Number(pend?.stop_pts) || null,
+            gain_pts: Number(pend?.gain_pts) || null,
+            degraus: av.degraus ?? pend?.degraus ?? {},
           },
 
         });
@@ -3669,13 +3675,13 @@ async function runB3SimulationTickInner(
           // Grava o toque antes de seguir: se esta passada não conseguir abrir
           // (portão de horário/volatilidade), a próxima ainda sabe que tocou.
           if (av.melhor_pts > Number(pend.melhor_pts ?? 0) || av.melhor_janela_pts > Number(pend.melhor_janela_pts ?? 0)) {
-            await gravarPendente({ ...pend, melhor_pts: av.melhor_pts, melhor_janela_pts: av.melhor_janela_pts });
+            await gravarPendente({ ...pend, melhor_pts: av.melhor_pts, melhor_janela_pts: av.melhor_janela_pts, degraus: av.degraus ?? pend.degraus ?? {} });
           }
           pendSimPronto = confSimArmada ? (m as any).confirmacao_pendente : null;
         } else if (passo.acao === "atualizar_melhor") {
           // Melhor avanço a favor, dentro da janela e no total, para o registro
           // do descarte dizer as duas coisas. Só grava quando melhora.
-          await gravarPendente({ ...pend, melhor_pts: av.melhor_pts, melhor_janela_pts: av.melhor_janela_pts });
+          await gravarPendente({ ...pend, melhor_pts: av.melhor_pts, melhor_janela_pts: av.melhor_janela_pts, degraus: av.degraus ?? pend.degraus ?? {} });
         }
       }
 
@@ -5106,7 +5112,7 @@ async function runB3SimulationTickInner(
         // Chave do SIMULADO desligada e do REAL ligada: o simulado abre na hora
         // e só o comando real espera (tratado na pré-passada, acima).
         // A regra decide SE abre; nunca fecha posição aberta.
-        let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number; melhor_janela_pts: number; sinal_em?: string | null; preco_sinal?: number | null; real_no_sinal?: boolean } | null = null;
+        let confirmadaAgora: { em: string; exigido_pts: number; andou_pts: number; melhor_janela_pts: number; sinal_em?: string | null; preco_sinal?: number | null; real_no_sinal?: boolean; stop_pts?: number | null; gain_pts?: number | null; janela_s?: number | null; degraus?: Record<string, string> } | null = null;
         // ── O GATILHO DO REAL É O SINAL, NÃO A ORDEM SIMULADA (24/09/2026) ──
         // Correção estrutural: o comando real nascia da ordem simulada aberta,
         // então qualquer coisa que impedisse o simulado de abrir (inclusive a
@@ -5175,6 +5181,8 @@ async function runB3SimulationTickInner(
               melhor_janela_pts: av.melhor_janela_pts,
               sinal_em: pendAtual?.criado_em ?? null, preco_sinal: Number(pendAtual?.preco_sinal) || null,
               real_no_sinal: pendAtual?.real_enviado === true,
+              stop_pts: Number(pendAtual?.stop_pts) || null, gain_pts: Number(pendAtual?.gain_pts) || null,
+              janela_s: Number(pendAtual?.janela_s) || null, degraus: av.degraus ?? pendAtual?.degraus ?? {},
             };
             await gravarPendente(null);
           } else {
@@ -5497,6 +5505,8 @@ async function runB3SimulationTickInner(
               espelho_real: espelho === "barrado" ? "barrado" : "livre",
               espelho_desfecho: espelho, espelho_motivo: espelhoMotivo,
               idempotency_key: espelhoNoSinal?.chave ?? null,
+              stop_pts: confirmadaAgora.stop_pts ?? null, gain_pts: confirmadaAgora.gain_pts ?? null,
+              janela_s: confirmadaAgora.janela_s ?? null, degraus: confirmadaAgora.degraus ?? {},
             },
           });
           if (espelho === "barrado") {

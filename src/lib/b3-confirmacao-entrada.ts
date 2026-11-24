@@ -181,7 +181,34 @@ export type ConfirmacaoPendente = {
   real_enviado?: boolean;
   /** Liberação manual vigente no instante do sinal (carimbo, não decisão). */
   sob_liberacao?: boolean;
+  /** Instante (ISO) em que o melhor avanço DENTRO da janela alcançou cada
+   *  degrau, em % do stop (chave "15" = 15% do stop). Só medição (24/11/2026). */
+  degraus?: Record<string, string>;
 };
+
+// ── DEGRAUS DA CONFIRMAÇÃO (24/11/2026, pedido do dono) ─────────────────────
+// Para estudar outro percentual (15%, 20%…) e outra janela (100 s…) sem esperar
+// semanas de teste, cada sinal em espera guarda QUANDO o avanço dentro da
+// janela cruzou cada degrau. É medição: não muda limiar, janela nem decisão.
+// Precisão = intervalo entre passadas do tique (o toque é visto na passada).
+export const DEGRAUS_PCT_STOP = [5, 10, 15, 20, 25, 30, 40, 50] as const;
+
+export function atualizarDegraus(
+  anteriores: Record<string, string> | null | undefined,
+  stopPts: number | null | undefined,
+  melhorJanelaPts: number,
+  agoraMs: number,
+): Record<string, string> {
+  const out: Record<string, string> = { ...(anteriores && typeof anteriores === "object" ? anteriores : {}) };
+  const stop = Number(stopPts);
+  if (!(stop > 0) || !(melhorJanelaPts > 0)) return out;
+  const em = new Date(agoraMs).toISOString();
+  for (const pct of DEGRAUS_PCT_STOP) {
+    const k = String(pct);
+    if (!out[k] && melhorJanelaPts >= (stop * pct) / 100) out[k] = em;
+  }
+  return out;
+}
 
 
 /** Em qual lado o descarte deve ser registrado. */
@@ -239,6 +266,8 @@ export type AvaliacaoPendente = {
   melhor_janela_pts: number;
   exigido_pts: number;
   decorrido_s: number;
+  /** Degraus alcançados até agora (ver atualizarDegraus). Só medição. */
+  degraus?: Record<string, string>;
 };
 
 /** Onde o sinal em espera está agora. Não escreve nada; só julga. */
@@ -269,7 +298,8 @@ export function avaliarPendente(
     dentroDaJanela ? andou : 0,
   );
 
-  const base = { andou_pts: andou, melhor_pts: melhor, melhor_janela_pts: melhorJanela, exigido_pts: exigido, decorrido_s: decorrido };
+  const degraus = atualizarDegraus(pend.degraus, pend.stop_pts, melhorJanela, agoraMs);
+  const base = { andou_pts: andou, melhor_pts: melhor, melhor_janela_pts: melhorJanela, exigido_pts: exigido, decorrido_s: decorrido, degraus };
   // CONFIRMA POR TOQUE (07/10/2026): vale o melhor avanço dentro da janela, não a
   // posição do preço no instante do tique. Quem abre usa o preço CORRENTE
   // (ctx.price no instante em que a confirmação é detectada), nunca o preço do
@@ -315,7 +345,8 @@ export function acaoDoPendenteNaPassada(pend: any, av: AvaliacaoPendente): {
     }
   }
   const melhorou = av.melhor_pts > Number(pend?.melhor_pts ?? 0)
-    || av.melhor_janela_pts > Number(pend?.melhor_janela_pts ?? 0);
+    || av.melhor_janela_pts > Number(pend?.melhor_janela_pts ?? 0)
+    || Object.keys(av.degraus ?? {}).length > Object.keys(pend?.degraus ?? {}).length;
   return out(melhorou ? "atualizar_melhor" : "nada");
 }
 

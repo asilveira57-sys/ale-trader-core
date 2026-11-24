@@ -205,3 +205,39 @@ describe("pré-passada do sinal em espera", () => {
     expect(acaoDoPendenteNaPassada(soReal, av).acao).toBe("enfileirar_real");
   });
 });
+
+// ── Degraus da confirmação (24/11/2026): só medição ──────────────────────────
+import { atualizarDegraus, DEGRAUS_PCT_STOP } from "./b3-confirmacao-entrada";
+
+describe("degraus da confirmação", () => {
+  const t0 = Date.parse("2026-11-24T13:00:00Z");
+
+  it("carimba cada % do stop alcançado, uma vez só", () => {
+    const d1 = atualizarDegraus({}, 200, 31, t0 + 40_000); // 15,5% de 200
+    expect(Object.keys(d1)).toEqual(["5", "10", "15"]);
+    expect(d1["15"]).toBe(new Date(t0 + 40_000).toISOString());
+    const d2 = atualizarDegraus(d1, 200, 52, t0 + 90_000); // 26%
+    expect(d2["15"]).toBe(d1["15"]); // não regrava
+    expect(d2["25"]).toBe(new Date(t0 + 90_000).toISOString());
+    expect(d2["30"]).toBeUndefined();
+  });
+
+  it("sem stop ou sem avanço não carimba nada", () => {
+    expect(atualizarDegraus(null, null, 100, t0)).toEqual({});
+    expect(atualizarDegraus({}, 200, 0, t0)).toEqual({});
+  });
+
+  it("avaliarPendente devolve os degraus e não muda a decisão", () => {
+    const cfg = { confirmacao_ativa_simulado: true, confirmacao_pct_stop: 25, confirmacao_janela_s: 180 };
+    const pend = criarPendente({ side: "sell", precoSinal: 100_000, stopPtsFrozen: 200, gainPtsFrozen: 400, cfg, agoraMs: t0, aguardaSimulado: true, aguardaReal: false })!;
+    const av = avaliarPendente(pend, 99_970, t0 + 30_000); // 30 pts = 15%
+    expect(av.estado).toBe("aguardando");
+    expect(Object.keys(av.degraus ?? {})).toEqual(["5", "10", "15"]);
+    expect(acaoDoPendenteNaPassada(pend, av).acao).toBe("atualizar_melhor");
+    // depois da janela o avanço não carimba degrau novo
+    const tarde = avaliarPendente({ ...pend, degraus: av.degraus, melhor_janela_pts: 30 }, 99_900, t0 + 200_000);
+    expect(tarde.estado).toBe("expirou");
+    expect(Object.keys(tarde.degraus ?? {})).toEqual(["5", "10", "15"]);
+    expect(DEGRAUS_PCT_STOP).toContain(15);
+  });
+});

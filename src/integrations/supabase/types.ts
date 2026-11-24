@@ -1005,6 +1005,93 @@ export type Database = {
         }
         Relationships: []
       }
+      b3_confirmacao_hist: {
+        Row: {
+          andou_pts_janela: number | null
+          andou_pts_total: number | null
+          confirmou_em: string | null
+          criado_em: string
+          decorrido_s: number | null
+          degraus: Json | null
+          detalhe: Json | null
+          entry_style: string | null
+          estagio: string
+          exigido_pts: number | null
+          gain_pts: number | null
+          janela_s: number | null
+          lado: string | null
+          log_id: string
+          mode: string | null
+          preco_confirmacao: number | null
+          preco_sinal: number | null
+          side: string | null
+          simulation_mode_id: string | null
+          simulation_order_id: string | null
+          simulation_run_id: string | null
+          sinal_em: string | null
+          stop_pts: number | null
+          symbol: string | null
+          trade_date: string | null
+          user_id: string
+        }
+        Insert: {
+          andou_pts_janela?: number | null
+          andou_pts_total?: number | null
+          confirmou_em?: string | null
+          criado_em: string
+          decorrido_s?: number | null
+          degraus?: Json | null
+          detalhe?: Json | null
+          entry_style?: string | null
+          estagio: string
+          exigido_pts?: number | null
+          gain_pts?: number | null
+          janela_s?: number | null
+          lado?: string | null
+          log_id: string
+          mode?: string | null
+          preco_confirmacao?: number | null
+          preco_sinal?: number | null
+          side?: string | null
+          simulation_mode_id?: string | null
+          simulation_order_id?: string | null
+          simulation_run_id?: string | null
+          sinal_em?: string | null
+          stop_pts?: number | null
+          symbol?: string | null
+          trade_date?: string | null
+          user_id: string
+        }
+        Update: {
+          andou_pts_janela?: number | null
+          andou_pts_total?: number | null
+          confirmou_em?: string | null
+          criado_em?: string
+          decorrido_s?: number | null
+          degraus?: Json | null
+          detalhe?: Json | null
+          entry_style?: string | null
+          estagio?: string
+          exigido_pts?: number | null
+          gain_pts?: number | null
+          janela_s?: number | null
+          lado?: string | null
+          log_id?: string
+          mode?: string | null
+          preco_confirmacao?: number | null
+          preco_sinal?: number | null
+          side?: string | null
+          simulation_mode_id?: string | null
+          simulation_order_id?: string | null
+          simulation_run_id?: string | null
+          sinal_em?: string | null
+          stop_pts?: number | null
+          symbol?: string | null
+          trade_date?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       b3_daily_protection_history: {
         Row: {
           block_at: string | null
