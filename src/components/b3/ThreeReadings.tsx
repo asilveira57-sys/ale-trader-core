@@ -12,12 +12,17 @@ const color = (n: number) => Number(n) > 0 ? "text-success" : Number(n) < 0 ? "t
 // Placar de três leituras. O nível do disjuntor e a evidência ficam num balão (ícone "i"),
 // não em texto aberto: pedido do dono 15/11 para parar de rolar a página.
 export function ThreeReadings({ row }: { row?: ThreeReading }) {
-  return <div className="flex items-start gap-1"><div className="grid w-full grid-cols-3 gap-2 border-t border-border py-2 text-left text-[10px]" data-three-readings>
+  return <div className="flex items-start gap-1"><div className="w-full"><div className="grid w-full grid-cols-3 gap-2 border-t border-border py-2 text-left text-[10px]" data-three-readings>
     {([['Sem freio', 'sem_freio'], ['Com freio', 'com_freio'], ['Com freio + disjuntor', 'com_freio_disjuntor']] as const).map(([label, key]) => <div className="min-w-0" key={key}>
       <span className="block min-h-8 text-muted-foreground">{label}</span>
       <strong className={`block break-words font-mono ${row ? color(row[key]) : "text-muted-foreground"}`}>{row ? brl(row[key]) : "sem registro"}</strong>
     </div>)}
-  </div><Popover><PopoverTrigger asChild><button type="button" className="mt-2 flex size-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground" aria-label="Como o disjuntor foi calculado"><Info className="size-4" /></button></PopoverTrigger><PopoverContent className="max-h-[70vh] w-96 overflow-y-auto text-xs"><p className="mb-2 font-semibold">{circuitLabel(row)}</p>{row?.disparos?.length ? <DisjuntorEvidence row={row} /> : <p className="text-muted-foreground">Disjuntor não disparou.</p>}</PopoverContent></Popover></div>;
+  </div>{(row as any)?.__aberto && <AbertoLinha a={(row as any).__aberto} />}</div><Popover><PopoverTrigger asChild><button type="button" className="mt-2 flex size-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground" aria-label="Como o disjuntor foi calculado"><Info className="size-4" /></button></PopoverTrigger><PopoverContent className="max-h-[70vh] w-96 overflow-y-auto text-xs"><p className="mb-2 font-semibold">{circuitLabel(row)}</p>{row?.disparos?.length ? <DisjuntorEvidence row={row} /> : <p className="text-muted-foreground">Disjuntor não disparou.</p>}</PopoverContent></Popover></div>;
+}
+// Ordens abertas agora (já somadas acima). Ordem na sombra só mexe no "sem freio".
+function AbertoLinha({ a }: { a: AbertoAgora }) {
+  const real = a.n - (a.sombra ?? 0);
+  return <p className="text-[10px] text-amber-500" data-aberto-agora>{a.n} aberta{a.n > 1 ? "s" : ""} agora: sem freio {short(a.s)}{real > 0 ? ` · com freio ${short(a.f)}` : ""}{a.sombra ? ` · ${a.sombra} na sombra (freio barrou, não muda com freio)` : ""}</p>;
 }
 export function ReadingDetails({ row }: { row?: ThreeReading }) {
   if (!row) return <p className="text-xs text-muted-foreground">sem registro</p>;
@@ -40,7 +45,7 @@ const short = (n: number) => Number(n).toLocaleString("pt-BR", { maximumFraction
 const dayLabel = (d: string) => { const [, m, dd] = String(d).slice(0, 10).split("-"); return `${dd}/${m}`; };
 const KEYS = [['S', 'sem_freio', 'Sem freio'], ['F', 'com_freio', 'Com freio'], ['D', 'com_freio_disjuntor', 'Com freio + disjuntor']] as const;
 /** Ordens abertas a preço de agora, por 1 contrato: s = todas, f = com freio, d = com freio e sem disjuntor disparado. */
-export type AbertoAgora = { dia: string; s: number; f: number; d: number; n: number };
+export type AbertoAgora = { dia: string; s: number; f: number; d: number; n: number; sombra?: number };
 function TileLines({ r }: { r: any }) {
   return <>{KEYS.map(([k, key, label]) => <span key={key} className="flex items-baseline justify-between gap-1" title={label}><span className="text-muted-foreground">{k}</span><span className={`font-mono font-semibold ${color(r[key])}`}>{short(r[key])}</span></span>)}</>;
 }

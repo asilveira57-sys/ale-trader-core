@@ -660,19 +660,20 @@ function CockpitPage() {
     return !!ev?.disparou && ev.disparou !== "não disparou";
   };
   const abertoAgora = (pred: (c: any) => boolean): AbertoAgora => {
-    let s = 0, f = 0, d = 0, n = 0;
+    let s = 0, f = 0, d = 0, n = 0, sombra = 0;
     if (vivo) for (const c of all) {
       if (!c.open || c.unrealized_brl == null || !pred(c)) continue;
       const v = Number(c.unrealized_brl); n++; s += v;
-      if (!c.open.sombra) { f += v; if (!disjuntorDisparouHoje(rootSymbol(c.symbol))) d += v; }
+      if (c.open.sombra) sombra++;
+      else { f += v; if (!disjuntorDisparouHoje(rootSymbol(c.symbol))) d += v; }
     }
-    return { dia: String(currentDate ?? ""), s, f, d, n };
+    return { dia: String(currentDate ?? ""), s, f, d, n, sombra };
   };
   function comAberto(row: ThreeReading | undefined, pred: (c: any) => boolean): ThreeReading | undefined {
     const a = abertoAgora(pred);
     if (!a.n) return row;
     const base: any = row ?? { nivel: "", symbol: null, variant: null, mode: null, sem_freio: 0, com_freio: 0, com_freio_disjuntor: 0, ordens: 0, ganhos: 0, perdas: 0, acerto_pct: null, barradas: 0, frase: "", saiu_no_alvo: 0, saiu_no_stop: 0, saiu_no_meio: 0 };
-    return { ...base, sem_freio: Number(base.sem_freio) + a.s, com_freio: Number(base.com_freio) + a.f, com_freio_disjuntor: Number(base.com_freio_disjuntor) + a.d };
+    return { ...base, sem_freio: Number(base.sem_freio) + a.s, com_freio: Number(base.com_freio) + a.f, com_freio_disjuntor: Number(base.com_freio_disjuntor) + a.d, __aberto: a } as any;
   }
   // Pesado recarrega quando uma posição abre ou fecha (ou pelo botão).
   const abertasSig = ((q.data?.cards ?? []) as any[]).filter((c) => !!c.open).map((c) => `${c.run_id}|${c.mode}`).sort().join(",");
@@ -888,7 +889,7 @@ function CockpitPage() {
       <MoreInfo label={`Carteira e exposição · ${scopeAssets}`}><WalletBand title={`Cockpit simulado — ${scopeAssets} · carteira atual`} rows={allSymbols ? walletRows : walletRows.filter(w => symbolsSel.includes(w.symbol))} exposure={vivo ? currentExposure : undefined} pending={walletsQ.isPending} error={walletsQ.isError} risk={riskFor("total")} riskPending={riskQ.isPending} riskError={riskQ.isError} /></MoreInfo>
 
       {/* ── Placar do dia — recalcula no MESMO recorte dos filtros ── */}
-      <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte · {scopeAssets}</h2><Button variant="outline" className="min-h-11" onClick={() => copiarTexto(readingText(displayedReading(threeRows)))}><Copy />Copiar resultado</Button></div><ThreeReadings row={vivo ? comAberto(displayedReading(threeRows), () => true) : displayedReading(threeRows)} /></section>
+      <section className="cockpit-top-result border-y border-border py-3"><div className="flex items-center justify-between"><h2 className="font-bold">Resultado do recorte · {scopeAssets}</h2><Button variant="outline" className="min-h-11" onClick={() => { const r = vivo ? comAberto(displayedReading(threeRows), () => true) : displayedReading(threeRows); const a = (r as any)?.__aberto; return copiarTexto(readingText(r) + (a ? `\nAbertas agora: ${a.n} (${a.sombra ?? 0} na sombra), já somadas` : "")); }}><Copy />Copiar resultado</Button></div><ThreeReadings row={vivo ? comAberto(displayedReading(threeRows), () => true) : displayedReading(threeRows)} /></section>
       {recentQ.isPending ? <p>Carregando os pregões…</p> : recentQ.isError ? <p role="alert">Não foi possível ler os pregões.</p> : recentQ.data && <ThreePeriodRows rows={recentQ.data.daily} symbol={!allSymbols && symbolsSel.length === 1 ? symbolsSel[0] : undefined} total={displayedReading(recentQ.data.rows)} sessions={sessions} onToggleSessions={() => setSessions(sessions === 5 ? 10 : 5)} busy={recentQ.isFetching} capital={!allSymbols && symbolsSel.length === 1 ? capFor("ativo", symbolsSel[0]) : capFor("total")} aberto={abertoAgora(() => true)} />}
 
       {/* ── Resumo + filtros (ativo, modalidade, modo) ── */}
