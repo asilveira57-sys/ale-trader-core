@@ -365,6 +365,13 @@
       "when": 1795435000000,
       "tag": "0052_confirmacao_historico",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1795436000000,
+      "tag": "0053_pa_sc_regua_solta_nos_8",
+      "breakpoints": true
     }
   ]
 }
