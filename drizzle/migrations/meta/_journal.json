@@ -351,6 +351,13 @@
       "when": 1795433000000,
       "tag": "0050_mr_alvo_na_media_e_resumo_recusas",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1795434000000,
+      "tag": "0051_remove_resumo_recusas",
+      "breakpoints": true
     }
   ]
 }
