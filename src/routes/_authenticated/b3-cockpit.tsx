@@ -667,7 +667,7 @@ function CockpitPage() {
       if (c.open.sombra) sombra++;
       else { f += v; if (!disjuntorDisparouHoje(rootSymbol(c.symbol))) d += v; }
     }
-    return { dia: String(currentDate ?? ""), s, f, d, n, sombra };
+    return { dia: vivo ? String(q.data?.session_date ?? "") : "", s, f, d, n, sombra };
   };
   function comAberto(row: ThreeReading | undefined, pred: (c: any) => boolean): ThreeReading | undefined {
     const a = abertoAgora(pred);

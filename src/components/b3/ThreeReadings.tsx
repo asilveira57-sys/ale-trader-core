@@ -52,13 +52,14 @@ function TileLines({ r }: { r: any }) {
 export function ThreePeriodRows({ rows, total, symbol, variant, sessions, onToggleSessions, busy, title = "Resultados por pregão", peaks, capital, aberto }: { rows: any[]; total?: ThreeReading; symbol?: string; variant?: string; sessions?: 5 | 10; onToggleSessions?: () => void; busy?: boolean; title?: string; compact?: boolean; peaks?: PeakLike[]; capital?: CapitalLike[]; aberto?: AbertoAgora }) {
   let daily: any[] = newestSessions(rows.filter(r => symbol ? r.symbol === symbol && (variant ? r.variant === variant && r.gid === 0 : r.gid === 1) : r.gid === 3));
   // "Se fechar agora" (dono 19/11): ordens abertas entram no quadradinho de hoje e no total.
-  if (aberto && aberto.n > 0) {
+  // O pregão de hoje sempre tem quadradinho, mesmo zerado (dono 25/11): sem ordem, mostra R$ 0.
+  if (aberto && String(aberto.dia ?? "").length >= 10) {
     const dia = String(aberto.dia).slice(0, 10);
     const i = daily.findIndex(r => String(r.dia).slice(0, 10) === dia);
-    const soma = (r: any) => ({ ...r, sem_freio: Number(r.sem_freio ?? 0) + aberto.s, com_freio: Number(r.com_freio ?? 0) + aberto.f, com_freio_disjuntor: Number(r.com_freio_disjuntor ?? 0) + aberto.d, __aberto: aberto.f });
+    const soma = (r: any) => aberto.n > 0 ? ({ ...r, sem_freio: Number(r.sem_freio ?? 0) + aberto.s, com_freio: Number(r.com_freio ?? 0) + aberto.f, com_freio_disjuntor: Number(r.com_freio_disjuntor ?? 0) + aberto.d, __aberto: aberto.f }) : r;
     if (i >= 0) daily = daily.map((r, j) => j === i ? soma(r) : r);
     else { daily = [soma({ dia, sem_freio: 0, com_freio: 0, com_freio_disjuntor: 0, disparos: [] }), ...daily]; if (sessions && daily.length > sessions) daily = daily.slice(0, sessions); }
-    if (total) total = { ...total, sem_freio: Number(total.sem_freio) + aberto.s, com_freio: Number(total.com_freio) + aberto.f, com_freio_disjuntor: Number(total.com_freio_disjuntor) + aberto.d };
+    if (total && aberto.n > 0) total = { ...total, sem_freio: Number(total.sem_freio) + aberto.s, com_freio: Number(total.com_freio) + aberto.f, com_freio_disjuntor: Number(total.com_freio_disjuntor) + aberto.d };
   }
   // Pregão mais recente à esquerda (pedido do dono 16/11).
   const tiles = [...daily].sort((a, b) => String(b.dia).localeCompare(String(a.dia)));
