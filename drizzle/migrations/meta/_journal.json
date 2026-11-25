@@ -386,6 +386,13 @@
       "when": 1795438000000,
       "tag": "0055_faixa_chegada_forte",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1795439000000,
+      "tag": "0056_freio_grupo_win_por_modalidade",
+      "breakpoints": true
     }
   ]
 }
