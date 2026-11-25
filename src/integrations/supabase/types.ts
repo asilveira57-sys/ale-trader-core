@@ -4667,6 +4667,8 @@ export type Database = {
           pullback_min_leg_pts: number | null
           pullback_min_retracement: number | null
           pullback_target_leg_ratio: number | null
+          range_exaustao_janela_min: number | null
+          range_exaustao_min: number | null
           range_min_size_pts: number | null
           risco_contratos_pct: number | null
           simulation_run_id: string
@@ -4738,6 +4740,8 @@ export type Database = {
           pullback_min_leg_pts?: number | null
           pullback_min_retracement?: number | null
           pullback_target_leg_ratio?: number | null
+          range_exaustao_janela_min?: number | null
+          range_exaustao_min?: number | null
           range_min_size_pts?: number | null
           risco_contratos_pct?: number | null
           simulation_run_id: string
@@ -4809,6 +4813,8 @@ export type Database = {
           pullback_min_leg_pts?: number | null
           pullback_min_retracement?: number | null
           pullback_target_leg_ratio?: number | null
+          range_exaustao_janela_min?: number | null
+          range_exaustao_min?: number | null
           range_min_size_pts?: number | null
           risco_contratos_pct?: number | null
           simulation_run_id?: string

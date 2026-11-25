@@ -46,6 +46,7 @@ import {
   avaliarConfirmacao, confirmacaoNaAbertura, confirmacaoArmada, avaliarPendente,
   criarPendente, motivoNaoConfirmou, ladoDoPendente, acaoDoPendenteNaPassada, type ConfirmacaoPendente,
 } from "./b3-confirmacao-entrada";
+import { eficienciaContraOperacao } from "./b3-faixa-exaustao";
 import {
   decideB3Grupo, aplicarFatorContratos, textoNivelGrupo,
   type B3GrupoLimites, type B3GrupoEstado, type B3GrupoDecision,
@@ -2441,6 +2442,26 @@ async function runB3SimulationTickInner(
     // Só o miolo da faixa não opera.
     if (!rangeSide) {
       hardBlock.push(`preço no meio da faixa (posição ${(posInRange * 100).toFixed(0)}%) — sem borda para operar`);
+    }
+    // CHEGADA FORTE À BORDA (24/11/2026, livreto 155). A faixa só tem vantagem
+    // quando o preço chegou à borda empurrado (exaustão): eficiência direcional
+    // dos últimos N minutos, no sentido CONTRA a operação, >= range_exaustao_min.
+    // Medido no WIN 20/10–24/11 (881 entradas range_fade, por 1 contrato): todas
+    // −5.879; com >= 0,5 ficam 395 e somam +1.377, positivo nas duas metades.
+    // Vazio = desligado (comportamento anterior).
+    const exaustaoMin = Number((cfg as any).range_exaustao_min);
+    if (rangeSide && Number.isFinite(exaustaoMin) && exaustaoMin > 0) {
+      const janelaMin = Math.max(10, Math.min(240, Number((cfg as any).range_exaustao_janela_min ?? 60) || 60));
+      const exa = eficienciaContraOperacao(sorted, rangeSide, janelaMin, Date.now());
+      details["exaustao_eficiencia"] = exa.eficiencia == null ? null : Number(exa.eficiencia.toFixed(3));
+      details["exaustao_min"] = exaustaoMin;
+      details["exaustao_janela_min"] = janelaMin;
+      details["exaustao_velas"] = exa.velas;
+      if (exa.eficiencia == null) {
+        hardBlock.push(`sem velas suficientes para medir a chegada à borda (${exa.velas} em ${janelaMin} min)`);
+      } else if (exa.eficiencia < exaustaoMin) {
+        hardBlock.push(`preço não chegou à borda com força (eficiência ${exa.eficiencia.toFixed(2)} < ${exaustaoMin} em ${janelaMin} min)`);
+      }
     }
 
     // Evidências macias.

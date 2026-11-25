@@ -379,6 +379,13 @@
       "when": 1795437000000,
       "tag": "0054_pa_confirmacao_15",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1795438000000,
+      "tag": "0055_faixa_chegada_forte",
+      "breakpoints": true
     }
   ]
 }
