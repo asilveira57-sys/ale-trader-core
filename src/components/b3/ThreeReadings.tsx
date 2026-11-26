@@ -16,8 +16,18 @@ export function ThreeReadings({ row }: { row?: ThreeReading }) {
     {([['Sem freio', 'sem_freio'], ['Com freio', 'com_freio'], ['Com freio + disjuntor', 'com_freio_disjuntor']] as const).map(([label, key]) => <div className="min-w-0" key={key}>
       <span className="block min-h-8 text-muted-foreground">{label}</span>
       <strong className={`block break-words font-mono ${row ? color(row[key]) : "text-muted-foreground"}`}>{row ? brl(row[key]) : "sem registro"}</strong>
+      {key === "com_freio_disjuntor" && disjuntorParou(row) && <span className="block text-[9px] leading-tight text-amber-500" data-disjuntor-parou>{disjuntorParou(row)}</span>}
     </div>)}
   </div>{(row as any)?.__aberto && <AbertoLinha a={(row as any).__aberto} />}</div><Popover><PopoverTrigger asChild><button type="button" className="mt-2 flex size-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground" aria-label="Como o disjuntor foi calculado"><Info className="size-4" /></button></PopoverTrigger><PopoverContent className="max-h-[70vh] w-96 overflow-y-auto text-xs"><p className="mb-2 font-semibold">{circuitLabel(row)}</p>{row?.disparos?.length ? <DisjuntorEvidence row={row} /> : <p className="text-muted-foreground">Disjuntor não disparou.</p>}</PopoverContent></Popover></div>;
+}
+// Quando o disjuntor do ativo dispara, a coluna D congela no valor daquele
+// instante (é o "se tivesse parado ali"). Dizer isso embaixo do número (dono 26/11).
+function disjuntorParou(row?: ThreeReading): string | null {
+  const d = (row as any)?.disparos?.find?.((x: any) => x?.hora_disparo_brt || (x?.motivo && x.motivo !== "não disparou"));
+  if (!d) return null;
+  const hora = d.hora_disparo_brt ? String(d.hora_disparo_brt).slice(0, 5) : null;
+  const motivo = String(d.motivo ?? "disparou");
+  return hora ? `parado às ${hora} (${motivo})` : `parado: ${motivo}`;
 }
 // Ordens abertas agora (já somadas acima). Ordem na sombra só mexe no "sem freio".
 function AbertoLinha({ a }: { a: AbertoAgora }) {
