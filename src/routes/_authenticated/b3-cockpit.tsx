@@ -676,13 +676,27 @@ function CockpitPage() {
     return { ...base, sem_freio: Number(base.sem_freio) + a.s, com_freio: Number(base.com_freio) + a.f, com_freio_disjuntor: Number(base.com_freio_disjuntor) + a.d, __aberto: a } as any;
   }
   // Pesado recarrega quando uma posição abre ou fecha (ou pelo botão).
-  const abertasSig = ((q.data?.cards ?? []) as any[]).filter((c) => !!c.open).map((c) => `${c.run_id}|${c.mode}`).sort().join(",");
+  // Assinatura = posições abertas + realizado do dia: abrir e fechar enquanto a aba
+  // estava escondida (ex.: celular no bolso) também muda a assinatura (dono 26/11).
+  const abertasSig = ((q.data?.cards ?? []) as any[]).filter((c) => !!c.open).map((c) => `${c.run_id}|${c.mode}`).sort().join(",")
+    + "|" + Math.round(((q.data?.cards ?? []) as any[]).reduce((t, c) => t + Number(c.realized_today ?? 0), 0));
   const [abertasPrev, setAbertasPrev] = useState<string | null>(null);
   useEffect(() => {
     if (!vivo || !q.data) return;
     if (abertasPrev !== null && abertasPrev !== abertasSig) qc.invalidateQueries({ queryKey: ["b3-cockpit-pesado"] });
     setAbertasPrev(abertasSig);
   }, [abertasSig]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Ao voltar para a aba, e no máximo a cada 3 min com a aba visível, o pesado
+  // recarrega mesmo sem mudança detectada (ordens na sombra não mexem no realizado).
+  useEffect(() => {
+    if (!vivo) return;
+    let ultimo = Date.now();
+    const recarregar = () => { if (document.visibilityState === "visible" && Date.now() - ultimo > 20_000) { ultimo = Date.now(); qc.invalidateQueries({ queryKey: ["b3-cockpit-pesado"] }); } };
+    const vis = () => { if (document.visibilityState === "visible") recarregar(); };
+    document.addEventListener("visibilitychange", vis);
+    const t = window.setInterval(() => { if (Date.now() - ultimo >= 180_000) recarregar(); }, 30_000);
+    return () => { document.removeEventListener("visibilitychange", vis); window.clearInterval(t); };
+  }, [vivo]); // eslint-disable-line react-hooks/exhaustive-deps
   const runIds = Array.from(new Set(all.map((c) => c.run_id)));
 
 
