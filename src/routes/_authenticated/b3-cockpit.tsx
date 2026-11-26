@@ -1027,6 +1027,9 @@ function CockpitPage() {
         const robotCount = Array.from(group.byVariant.values()).reduce((s, arr) => s + arr.length, 0);
         return (
         <div key={root} className="space-y-3" data-asset={root}>
+          {/* Gráfico do preço (dono 25/11): com um ativo só a testeira some, mas o gráfico fica. */}
+          {orderedAssets.length <= 1 && vivo && peakDates[0] && <AssetPricePath symbol={root} today={peakDates[0]} />}
+          {orderedAssets.length <= 1 && !vivo && hd?.period?.end && <AssetPricePath key={`${root}|${hd.period.end}`} symbol={root} today={hd.period.end} historical />}
           {/* ── Testeira do ativo: sempre visível, mesmo recolhida ── */}
           {orderedAssets.length > 1 && <div className={`overflow-hidden rounded-lg border border-current/30 shadow-sm ${assetBand(root)}`} data-asset-header>
             <div className="flex items-start gap-2 flex-wrap px-3 py-2">

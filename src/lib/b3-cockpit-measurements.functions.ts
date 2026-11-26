@@ -38,7 +38,7 @@ export const getCockpitPricePath = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({
     symbol: z.string().regex(/^[A-Z0-9]{2,12}$/), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    step: z.union([z.literal(5), z.literal(10), z.literal(15), z.literal(30), z.literal(60)]),
+    step: z.union([z.literal(1), z.literal(5), z.literal(10), z.literal(15), z.literal(30), z.literal(60)]),
   }).parse(input))
   .handler(async ({ data, context }) => {
     const root = rootSymbol(data.symbol);

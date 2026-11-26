@@ -19,7 +19,7 @@ export function AssetPricePath({ symbol, today, historical = false }: { symbol: 
   const milestones = useContext(MilestoneContext);
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(today);
-  const [step, setStep] = useState<5 | 10 | 15 | 30 | 60>(30);
+  const [step, setStep] = useState<1 | 5 | 10 | 15 | 30 | 60>(5);
   const [hover, setHover] = useState<number | null>(null);
   const read = useServerFn(getCockpitPricePath);
   const interval = useVisibleRefetchInterval(60000);
@@ -81,7 +81,7 @@ export function AssetPricePath({ symbol, today, historical = false }: { symbol: 
           Passo
           <select aria-label={`Passo do preço de ${symbol}`} value={step} onChange={(event) => setStep(Number(event.target.value) as typeof step)}
             className="min-h-11 bg-background text-foreground">
-            {[5, 10, 15, 30, 60].map((value) => <option key={value} value={value}>{value} min</option>)}
+            {[1, 5, 10, 15, 30, 60].map((value) => <option key={value} value={value}>{value} min</option>)}
           </select>
         </label>
         <Button variant="outline" className="ml-auto min-h-11 bg-background" onClick={copy} disabled={!query.data}><Copy className="mr-1 size-4" />Copiar</Button>
