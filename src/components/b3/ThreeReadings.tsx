@@ -27,7 +27,7 @@ function disjuntorParou(row?: ThreeReading): string | null {
   if (!d) return null;
   const hora = d.hora_disparo_brt ? String(d.hora_disparo_brt).slice(0, 5) : null;
   const motivo = String(d.motivo ?? "disparou");
-  return hora ? `parado às ${hora} (${motivo})` : `parado: ${motivo}`;
+  return (hora ? `parado às ${hora} (${motivo})` : `parado: ${motivo}`) + " · real sem novas entradas";
 }
 // Ordens abertas agora (já somadas acima). Ordem na sombra só mexe no "sem freio".
 function AbertoLinha({ a }: { a: AbertoAgora }) {

@@ -400,6 +400,13 @@
       "when": 1795440000000,
       "tag": "0057_robos_indicados",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1795441000000,
+      "tag": "0058_disjuntor_simulado_trava_real",
+      "breakpoints": true
     }
   ]
 }

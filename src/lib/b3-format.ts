@@ -115,6 +115,7 @@ export const FREIO_LABEL: Record<string, string> = {
   grupo: "Freio de grupo",
   protecao_resultado: "Proteção de resultado",
   setup_invalido: "sem setup da modalidade",
+  disjuntor_simulado: "Disjuntor do simulado disparou (real sem novas entradas)",
 };
 // Ordem fixa na tela e na cópia: do mais frequente ao menos.
 export const FREIO_ORDEM = ["pico", "pos_meta", "stop_diario", "drawdown", "protecao_resultado", "grupo"] as const;

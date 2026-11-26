@@ -3439,6 +3439,20 @@ async function runB3SimulationTickInner(
       // Sem números reais comprovados, nenhum número simulado ganha o direito
       // de barrar ou encerrar posição real por estes freios de resultado.
     }
+    // 26/11/2026 (dono): disjuntor SIMULADO do ativo disparou hoje → o espelho real
+    // não abre ordem nova no resto do dia (posição real aberta segue no stop/alvo).
+    // Trava gravada em b3_disjuntor_sim_trava; checagem cara no máximo a cada 60 s.
+    // Falha na leitura não barra (mesma regra dos outros freios: sem número
+    // comprovado, nada barra o real), mas fica registrada no log do tique.
+    let disjuntorSimParouReal: { hora: string; motivo: string } | null = null;
+    try {
+      const { data: dj, error: djErr } = await supabase.rpc("b3_disjuntor_sim_verificar", { p_user: userId, p_symbol: grupoRoot });
+      const linha = Array.isArray(dj) ? dj[0] : dj;
+      if (djErr) log.push({ action: "disjuntor_simulado_erro", erro: djErr.message });
+      else if (linha?.disparou) disjuntorSimParouReal = { hora: String(linha.hora ?? "").slice(0, 5), motivo: String(linha.motivo ?? "disparou") };
+    } catch (e: any) {
+      log.push({ action: "disjuntor_simulado_erro", erro: String(e?.message ?? e) });
+    }
     const grupoBarraReal = (mode: string) => realFreiosDia.grupo_tem_atividade
       && realFreiosDia.grupo_nivel >= 2
       && realFreiosDia.grupo_travados.includes(mode);
@@ -4858,6 +4872,7 @@ async function runB3SimulationTickInner(
         && (f !== "grupo" || grupoBarraReal(mode))
         && (f !== "stop_diario" || stopDiarioBarraReal));
 
+      if (disjuntorSimParouReal) freiosBarrandoReal = [...freiosBarrandoReal, "disjuntor_simulado"];
       let espelhoBarradoPorFreio = freiosBarrandoReal.length > 0;
       let entradaSobLiberacao = entradaEmSombra && !espelhoBarradoPorFreio;
 
