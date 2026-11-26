@@ -86,3 +86,34 @@ export const getCockpitPricePath = createServerFn({ method: "GET" })
     const candles = rows.filter((row) => rootSymbol(row.symbol) === root);
     return { ...candlePath(candles, data.step), rows_truncated: truncated, source: "hist" as const };
   });
+// Ordens do dia sobre o gráfico de preço (dono 25/11): só leitura, por 1 contrato,
+// só ordens que valeram (fora da sombra). Paginado em faixas de 1.000.
+export const getCockpitPriceOrders = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({
+    symbol: z.string().regex(/^[A-Z0-9]{2,12}$/), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  }).parse(input))
+  .handler(async ({ data, context }) => {
+    const root = rootSymbol(data.symbol);
+    const out: { entry: number; entry_price: number; side: string; exit: number | null; exit_price: number | null; net: number | null; open: boolean }[] = [];
+    let truncated = false;
+    for (let from = 0; from < 5000; from += 1000) {
+      const { data: page, error } = await (context.supabase as any).from("b3_ordens_1_contrato")
+        .select("symbol, side, entry_time, entry_price, exit_time, exit_price, net_result_brl, status, bloqueado_na_sombra")
+        .eq("user_id", context.userId).like("symbol", `${root}%`)
+        .gte("entry_time", `${data.date}T03:00:00.000Z`).lt("entry_time", `${addDays(data.date, 1)}T03:00:00.000Z`)
+        .order("entry_time").range(from, from + 999);
+      if (error) throw new Error("Não foi possível ler as ordens do pregão");
+      for (const o of (page ?? []) as any[]) {
+        if (rootSymbol(o.symbol) !== root || o.bloqueado_na_sombra === true) continue;
+        out.push({
+          entry: Date.parse(o.entry_time), entry_price: Number(o.entry_price), side: String(o.side),
+          exit: o.exit_time ? Date.parse(o.exit_time) : null, exit_price: o.exit_price == null ? null : Number(o.exit_price),
+          net: o.net_result_brl == null ? null : Number(o.net_result_brl), open: o.status === "open",
+        });
+      }
+      if (from + 1000 >= 5000 && (page?.length ?? 0) === 1000) truncated = true;
+      if (!page || page.length < 1000) break;
+    }
+    return { orders: out, truncated };
+  });

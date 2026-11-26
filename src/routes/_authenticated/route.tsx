@@ -148,6 +148,7 @@ const PRINCIPAL_NAV = [
   // Diagnóstico diário, Livro de ocorrências e Limites proporcionais saíram do menu
   // (ver claude/revisao-telas-menu.md); as rotas continuam existindo.
   { to: "/b3-cockpit", label: "Cockpit (todos os robôs)", icon: LayoutGrid },
+  { to: "/b3-robos-indicados", label: "Robôs indicados", icon: Trophy },
   { to: "/cockpit-real", label: "Cockpit Real (dinheiro real)", icon: Smartphone },
   { to: "/b3-autorizacoes-reais", label: "B3 — Automações Reais", icon: ShieldAlert },
   { to: "/b3-ficha-dia", label: "Extrato do dia", icon: Table2 },

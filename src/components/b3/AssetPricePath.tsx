@@ -6,7 +6,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { ChevronDown, ChevronUp, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getCockpitPricePath } from "@/lib/b3-cockpit-measurements.functions";
+import { getCockpitPricePath, getCockpitPriceOrders } from "@/lib/b3-cockpit-measurements.functions";
 import { useVisibleRefetchInterval } from "@/hooks/use-visible-refetch-interval";
 import { copiarTexto, tabular } from "@/lib/b3-copiar";
 
@@ -32,6 +32,16 @@ export function AssetPricePath({ symbol, today, historical = false }: { symbol: 
     refetchOnWindowFocus: historical ? false : undefined,
     refetchOnReconnect: historical ? false : undefined,
     refetchIntervalInBackground: false,
+  });
+  const [showOrders, setShowOrders] = useState(true);
+  const readOrders = useServerFn(getCockpitPriceOrders);
+  const ordersQ = useQuery({
+    queryKey: ["cockpit-price-orders", symbol, date],
+    queryFn: () => readOrders({ data: { symbol, date } }),
+    enabled: open && showOrders && !!date,
+    staleTime: 60000,
+    refetchInterval: !historical && open && showOrders && date === today ? interval : false,
+    refetchOnWindowFocus: false,
   });
   const points = query.data?.points ?? [];
   const opening = query.data?.opening ?? null;
@@ -84,6 +94,9 @@ export function AssetPricePath({ symbol, today, historical = false }: { symbol: 
             {[1, 5, 10, 15, 30, 60].map((value) => <option key={value} value={value}>{value} min</option>)}
           </select>
         </label>
+        <label className="flex min-h-11 items-center gap-2 rounded border border-border bg-background px-2 text-xs">
+          <input type="checkbox" checked={showOrders} onChange={(e) => setShowOrders(e.target.checked)} aria-label="Mostrar ordens no gráfico" />Ordens
+        </label>
         <Button variant="outline" className="ml-auto min-h-11 bg-background" onClick={copy} disabled={!query.data}><Copy className="mr-1 size-4" />Copiar</Button>
       </div>
       {query.isPending ? <p className="text-sm">Carregando preço…</p> : query.isError ? <p className="text-sm">Não foi possível ler o preço.</p> : !points.length ? <p className="text-sm">sem dados</p> : <div className="bg-background px-2 py-2">
@@ -117,6 +130,20 @@ export function AssetPricePath({ symbol, today, historical = false }: { symbol: 
                 <text x={Math.min(W - R - 4, Math.max(L + 4, x(p.time)))} y={y(p.price) + (above ? -7 : 15)} fontSize="11" fontWeight="700"
                   textAnchor={m.i === points.length - 1 ? "end" : m.i === 0 ? "start" : "middle"} className="fill-foreground">{m.t} {number(p.price)}</text>
               </g>; })}
+            {showOrders && (ordersQ.data?.orders ?? []).filter((o) => o.entry >= minTime - 60000 && o.entry <= maxTime + 60000).map((o, i) => {
+              const ex = x(Math.min(maxTime, Math.max(minTime, o.entry))), ey = y(Math.min(maxPrice, Math.max(minPrice, o.entry_price)));
+              const tone = o.open ? "text-muted-foreground" : (o.net ?? 0) > 0 ? "text-success" : "text-destructive";
+              const up = o.side === "buy";
+              const tri = up ? `${ex},${ey - 6} ${ex - 5},${ey + 3} ${ex + 5},${ey + 3}` : `${ex},${ey + 6} ${ex - 5},${ey - 3} ${ex + 5},${ey - 3}`;
+              const hasExit = o.exit != null && o.exit_price != null && o.exit <= maxTime + 60000;
+              const xx = hasExit ? x(Math.min(maxTime, Math.max(minTime, o.exit!))) : 0, xy = hasExit ? y(Math.min(maxPrice, Math.max(minPrice, o.exit_price!))) : 0;
+              return <g key={`o${i}`} className={tone}>
+                <title>{`${up ? "Compra" : "Venda"} ${hour(o.entry)} a ${number(o.entry_price)}${hasExit ? ` → saída ${hour(o.exit!)} a ${number(o.exit_price!)}` : " (aberta)"}${o.net != null && !o.open ? ` · ${number(o.net)} R$` : ""}`}</title>
+                {hasExit && <line x1={ex} y1={ey} x2={xx} y2={xy} stroke="currentColor" strokeWidth="1" strokeDasharray="2 2" opacity="0.6" />}
+                <polygon points={tri} fill="currentColor" />
+                {hasExit && <circle cx={xx} cy={xy} r="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" />}
+              </g>;
+            })}
             {hp && <g>
               <line x1={x(hp.time)} x2={x(hp.time)} y1={T} y2={H - B} stroke="currentColor" className="text-foreground" strokeWidth="1" />
               <circle cx={x(hp.time)} cy={y(hp.price)} r="5" fill="currentColor" />
@@ -127,7 +154,7 @@ export function AssetPricePath({ symbol, today, historical = false }: { symbol: 
             {hour(hp.time)} · <strong className="font-mono">{number(hp.price)}</strong>
           </div>}
         </div>
-        <p className="text-[10px] text-muted-foreground">Linha tracejada amarela: abertura do dia. Toque ou passe o dedo no gráfico para ver o valor.</p>
+        <p className="text-[10px] text-muted-foreground">Linha tracejada amarela: abertura do dia. Ordens que valeram: ▲ compra, ▼ venda, ○ saída; verde ganhou, vermelho perdeu, cinza aberta. Toque ou passe o dedo no gráfico para ver o valor.</p>
         {segments.size > 1 && <p className="mt-1 text-xs text-warning">Há intervalos sem dados (não interpolados).</p>}
         {query.data?.rows_truncated && <p className="mt-1 text-xs text-warning">Leitura atingiu o limite; acompanhamento incompleto.</p>}
       </div>}

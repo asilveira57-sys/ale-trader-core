@@ -457,3 +457,88 @@ export const setPrdBatch = createServerFn({method:'POST'})
     if(result.error) throw result.error;
     return {ok:true as const,changed:result.data?.length ?? 0,preview:null};
   });
+
+// Tirar do real direto do ranking de robôs indicados (dono 25/11). Desligar não
+// pede senha (mesma regra do lote: desligar só reduz risco).
+export const desligarRobosReais = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({
+    items: z.array(z.object({ symbol: z.enum(SYMBOLS), variant: z.string().min(1).max(100), mode: z.enum(MODES) })).min(1).max(200),
+  }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const owner = await supabase.rpc("is_owner");
+    if (owner.error || !owner.data) throw new Error("Somente o dono pode alterar autorizações reais.");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await setOrigem(supabaseAdmin, "robos_indicados_desligar");
+    const now = new Date().toISOString();
+    let changed = 0;
+    for (const it of data.items) {
+      const r = await supabaseAdmin.from("b3_prd_authorizations")
+        .update({ enabled: false, revoked_at: now, updated_at: now } as never)
+        .eq("user_id", userId).eq("symbol", it.symbol).eq("variant", it.variant).eq("mode", it.mode).eq("enabled", true)
+        .select("id");
+      if (r.error) throw r.error;
+      changed += r.data?.length ?? 0;
+    }
+    const { syncPeakFloorFromGlobalStop } = await import("@/lib/b3-real-stop.server");
+    await syncPeakFloorFromGlobalStop(supabase, userId);
+    return { ok: true as const, changed };
+  });
+
+// Autorizar no real direto do ranking (dono 25/11). Mesmas checagens do
+// setPrdAuthorization (senha, robô apto no simulado, stop legível), feitas para
+// TODOS antes de gravar: se algum falha, nada muda (sem lote parcial).
+export const ligarRobosReais = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({
+    items: z.array(z.object({ symbol: z.enum(SYMBOLS), variant: z.string().min(1).max(100), mode: z.enum(MODES) })).min(1).max(200),
+    password: z.string().min(1),
+  }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await assertMasterPassword(data.password);
+    const { loadRealSizing } = await import("@/lib/b3-real-stop.server");
+    const { brlFromMult, STOPS_POR_DIA } = await import("@/lib/b3-real-sizing");
+    const { rootSymbol } = await import("@/lib/b3-format");
+    const { canEnableAuthorization } = await import("./prd-authorization-view");
+    const [insumos, wallets, atuais, sizing] = await Promise.all([
+      supabase.rpc("b3_prd_tela_insumos"),
+      supabase.from("b3_carteira_robo").select("symbol, variant, mode, estado").eq("user_id", userId),
+      supabase.from("b3_prd_authorizations").select("symbol, variant, mode, max_qty").eq("user_id", userId),
+      loadRealSizing(supabase, userId),
+    ]);
+    if (insumos.error) throw insumos.error;
+    if (wallets.error) throw wallets.error;
+    if (atuais.error) throw atuais.error;
+    const k = (s: string, v: string, m: string) => `${s}|${v}|${m}`;
+    const wal = new Map(((wallets.data ?? []) as any[]).map((w) => [k(w.symbol, w.variant, w.mode), w.estado]));
+    const qtd = new Map(((atuais.data ?? []) as any[]).map((a) => [k(a.symbol, a.variant, a.mode), Number(a.max_qty ?? 1)]));
+    const ins = (insumos.data ?? []) as unknown as import("./prd-authorization-view").AuthorizationInput[];
+    const falhas: string[] = [];
+    const planos: { it: (typeof data.items)[number]; max_qty: number; loss: number }[] = [];
+    for (const it of data.items) {
+      const input = ins.find((i) => i.symbol === it.symbol && i.variant === it.variant && i.mode === it.mode);
+      if (!canEnableAuthorization(input, wal.get(k(it.symbol, it.variant, it.mode)) as any)) { falhas.push(`${it.variant}/${it.mode}: sem condições de operar no simulado`); continue; }
+      const robot = sizing.find((s) => s.symbol === rootSymbol(it.symbol) && s.variant === it.variant && s.mode === it.mode);
+      if (!robot || !(robot.stop_pts > 0) || !(robot.point_value_brl > 0)) { falhas.push(`${it.variant}/${it.mode}: stop em pontos ilegível`); continue; }
+      const max_qty = Math.max(1, qtd.get(k(it.symbol, it.variant, it.mode)) ?? 1);
+      planos.push({ it, max_qty, loss: brlFromMult(STOPS_POR_DIA, robot.stop_pts, robot.point_value_brl, max_qty) });
+    }
+    if (falhas.length) return { ok: false as const, changed: 0, falhas };
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await setOrigem(supabaseAdmin, "robos_indicados_ligar");
+    const now = new Date().toISOString();
+    let changed = 0;
+    for (const p of planos) {
+      const r = await supabaseAdmin.from("b3_prd_authorizations").update({
+        enabled: true, max_qty: p.max_qty, max_daily_loss_mult: STOPS_POR_DIA, max_daily_loss_brl: p.loss,
+        authorized_at: now, authorized_by: userId, revoked_at: null, updated_at: now,
+      } as never).eq("user_id", userId).eq("symbol", p.it.symbol).eq("variant", p.it.variant).eq("mode", p.it.mode).select("id");
+      if (r.error) throw r.error;
+      changed += r.data?.length ?? 0;
+    }
+    const { syncPeakFloorFromGlobalStop } = await import("@/lib/b3-real-stop.server");
+    await syncPeakFloorFromGlobalStop(supabase, userId);
+    return { ok: true as const, changed, falhas: [] as string[] };
+  });
